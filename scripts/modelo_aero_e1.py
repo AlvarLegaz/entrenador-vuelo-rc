@@ -68,30 +68,35 @@ def a_cuerpo(m):
 
 
 sec = CrossSection([G.ccw((G.section_pts(P.C) - G.spar_origin(P.C)).tolist())])
-semiala = Manifold.extrude(sec, P.B / 2)
+# poliedro: la parte de dentro (plana) hasta el quiebro y la de fuera con el diedro
+dentro = Manifold.extrude(sec, P.QUIEBRO)
+fuera = Manifold.extrude(sec, P.B / 2 - P.QUIEBRO)
 if G.ALERON:   # el ala sin el hueco del aleron, y cada aleron como pieza movil con su bisagra (ejes cuerpo)
     AL = G.ALERON
-    xh, xa = G.aleron_x()
-    semiala = semiala - Manifold.cube([P.C, 100, AL["y1"] - AL["y0"]]).translate([xh, -50, AL["y0"]])
+    xw, xe = G.aleron_x()
+    _, ye = G.aleron_eje()
+    fuera = fuera - Manifold.cube([P.C, 100, AL["y1"] - AL["y0"]]).translate([xw, -50, AL["y0"] - P.QUIEBRO])
     aleron = Manifold.extrude(G.aleron_cs(), AL["y1"] - AL["y0"])
-    yu_h = G.y_superficie(xa)[0]
     alerones = []
     for left, signo in ((True, 1.0), (False, -1.0)):      # comprobado en el visor: giro + sobre el eje = borde de fuga abajo
-        p0, p1 = (G.punto_ala(xa, yu_h, s, left) for s in (AL["y0"], AL["y1"]))
+        p0, p1 = (G.punto_ala(xe, ye, s, left) for s in (AL["y0"], AL["y1"]))
         eje = (p1 - p0) if not left else (p0 - p1)              # hacia +y del cuerpo en los dos lados
         eje = np.array([-eje[0], eje[1], -eje[2]]) / np.linalg.norm(eje)
         alerones.append(dict(**a_cuerpo(G.wing_to_global(aleron, AL["y0"], left)),
                              bisagra=[-(p0[0] - x_cg) / 1000, p0[1] / 1000, -(p0[2] - z_cg) / 1000],
                              eje=np.round(eje, 5).tolist(), signo=signo))   # giro = signo * da: con da > 0 el derecho sube y el izquierdo baja
-ala = G.wing_to_global(semiala, 0.0, True) + G.wing_to_global(semiala, 0.0, False)
+ala = None
+for left in (True, False):
+    semi = G.wing_to_global(dentro, 0.0, left, exterior=False) + G.wing_to_global(fuera, P.QUIEBRO, left, exterior=True)
+    ala = semi if ala is None else ala + semi
 fus = G.solid(0, P.L) + (G.fin_fixed() - G.solid(G.FUS_SEG[-1][0], P.L))
 estab = G.stab_global(True) + G.stab_global(False)
 prof = G.elevator_global(True) + G.elevator_global(False)
 malla = dict(fuselaje=a_cuerpo(fus), ala=a_cuerpo(ala), estab=a_cuerpo(estab), prof=a_cuerpo(prof),
-             bisagra_prof=[-(G.X_HINGE_H + G.GAP - x_cg) / 1000, 0.0, -(P.HT_Z - z_cg) / 1000],
+             bisagra_prof=[-(G.X_HINGE_H + G.EJE_H - x_cg) / 1000, 0.0, -(P.HT_Z + G.EJE_HZ - G.PLATE_T / 2 - z_cg) / 1000],
              helice=[-(-25.0 - x_cg) / 1000, 0.0, -(0.0 - z_cg) / 1000], helice_r=D_prop / 2)
 if G.CON_TIMON:
-    malla.update(timon=a_cuerpo(G.rudder()), bisagra_timon=[-(P.L - x_cg) / 1000, 0.0, 0.0])
+    malla.update(timon=a_cuerpo(G.rudder()), bisagra_timon=[-(G.X_EJE_T - x_cg) / 1000, 0.0, 0.0])
 if G.ALERON:
     malla["alerones"] = alerones
 
@@ -108,7 +113,7 @@ modelo = dict(
            "El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto."),
     caracteristicas=[["Envergadura", "%.2f m" % (P.B / 1e3)], ["Superficie alar", "%.1f dm²" % (S * 100)],
                      ["Masa en vuelo", "%.0f g" % (m_kg * 1e3)], ["Carga alar", "%.1f g/dm²" % (m_kg * 1e3 / (S * 100))],
-                     ["Diedro", "%.0f° por semiala" % P.DIEDRO], ["Mandos", getattr(P, "MANDOS_TXT", "timón y profundidad")],
+                     ["Diedro", "%.0f° en las puntas (centro plano hasta %.0f mm)" % (P.DIEDRO, P.QUIEBRO)], ["Mandos", getattr(P, "MANDOS_TXT", "timón y profundidad")],
                      ["Velocidad de pérdida", "%.1f m/s" % v_perd], ["Crucero (compensado)", "≈ %.1f m/s" % v_crucero],
                      ["Motor", "SunnySky X2212 KV980, hélice 9×4,7"], ["Batería", "3S 1300 mAh"],
                      ["Empuje / peso", "%.2f" % (0.840 / m_kg)], ["Margen estático", "%.0f %%" % ((xnp - x_cg) / P.C * 100)]],

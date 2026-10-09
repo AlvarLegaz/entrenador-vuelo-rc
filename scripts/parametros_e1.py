@@ -26,6 +26,7 @@ Q_SEMI = 40.0           # la pieza del quiebro ALA_Q va de QUIEBRO - 40 a QUIEBR
 # _xN se imprimen N veces iguales; los _izq se imprimen una vez y otra en espejo (para la semiala derecha)
 TRAMOS = [("ALA_I_x2", 75.0, 260.0), ("ALA_E_x4", 340.0, 470.0), ("ALA_E_x4", 470.0, 600.0)]
 Z_ALA = 36.0            # el intrados del centro apoya en el lomo del fuselaje (Z = FUS_H/2)
+BARRIDO_DIEDRO = (8, 10, 12, 14, 16)   # diedros de las puntas que barre vlm_e1.py
 
 # ---------------- fuselaje impreso ----------------
 # seccion rectangular redondeada, constante hasta X_TAPER y luego conica recta hasta la cola
@@ -39,7 +40,7 @@ CORNER = 12.0                        # radio de las esquinas de la seccion llena
 HT_B, HT_C = 420.0, 110.0          # estabilizador: 4,6 dm2 (21 % del ala), atraviesa el fuselaje
 HT_XLE = 690.0
 HT_Z = -5.0
-HT_INC = -1.1                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py)
+HT_INC = -1.0                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py)
 ELEV_HINGE = 0.65                   # profundidad: 35 % de la cuerda, detras del final del fuselaje
 FIN_XLE = 640.0                     # deriva impresa con el ultimo tramo del fuselaje
 FIN_C = 170.0                       # cuerda total (parte fija 120 + timon 50)

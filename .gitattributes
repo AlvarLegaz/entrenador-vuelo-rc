@@ -1,0 +1,6 @@
+# Texto siempre con LF en el repositorio (en Windows se trabaja igual); binarios marcados para que git no los toque
+* text=auto eol=lf
+*.stl binary
+*.png binary
+*.pkl binary
+*.db binary
