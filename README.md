@@ -26,7 +26,7 @@ Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de
 
 **Por qué poliedro y no una V en la raíz.** Cada semiala hace palanca en el centro del ala: unos 3,8 N·m a 4 g (lanzamiento fuerte, recogida, ráfaga). Con la V en la raíz, los dos tubos de carbono terminaban en la pieza central y esa palanca la tenía que pasar la pieza impresa. Con el poliedro, el centro lleva un solo tubo recto y el quiebro está donde la palanca es 5 veces menor (0,8 N·m a 4 g). Allí la pasa una llave de tubo de aluminio de 6×4 mm doblada al ángulo del diedro, que aguanta unos 4,2 N·m. Para que el avión se comporte igual que con la V de 8° hacen falta 12° en las puntas: el VLM da el mismo efecto diedro (Cl_β −0,146 frente a −0,138) y la espiral se corrige a la mitad en unos 10 s.
 
-## Piezas del E1 (carpeta `stl/`)
+## Piezas del E1 (carpeta `stl/E1/`)
 
 Todas se imprimen sin soportes. Las medidas son las de la orientación de impresión del STL.
 
