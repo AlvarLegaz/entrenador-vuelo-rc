@@ -33,7 +33,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUT_NOMBRE)
 
 # ---------------- construccion ----------------
 WALL = 1.0                    # pared del fuselaje
-SPIGOT_L, SPIGOT_T = 10.0, 1.2   # cuello de union entre tramos (entra en el tramo siguiente)
+SPIGOT_L, SPIGOT_T = 15.0, 1.2   # cuello de union entre tramos (entra en el tramo siguiente); 15 mm suaviza el escalon donde rompe la pared
 FUS_SEG = [(0, 170), (170, 330), (330, 500), (500, 640), (640, P.L)]   # F1 llega a 170: el palillo delantero (X 161) cae dentro
 SPAR_D, SPAR2_D, SPAR2_X = 8.2, 3.2, 0.60   # tubo 8x6 al 25 % de la cuerda, varilla 3 mm al 60 %
 LLAVE_D = 6.3                 # paso de la llave del quiebro (barra de aluminio de 6 mm, dentro de los tubos 8x6)
