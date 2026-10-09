@@ -38,7 +38,7 @@ Todas se imprimen sin soportes. Las medidas son las de la orientación de impres
 | `ALA_E_x4` | 4 | Tramos exteriores de 130 mm, de pie. Todos iguales |
 | `F1` | 1 | Morro con la bancada y el agujero del palillo delantero. **PLA normal**, de pie sobre la bancada |
 | `F2`–`F5` | 1 de cada | Fuselaje, de pie sobre la cara delantera. El cuello de unión queda arriba. F2 lleva la bandeja de los servos; F3 a F5, las guías de las transmisiones; F5, la deriva con los nudillos de la bisagra del timón |
-| `ESTAB_izq` | 2 | Estabilizador con los nudillos de la bisagra. Tumbado; **la segunda, en espejo** |
+| `ESTAB_izq`, `ESTAB_der` | 1 de cada | Estabilizador con los nudillos de la bisagra y el solape a media madera del centro (20 mm: la izquierda lleva la media placa de arriba y la derecha la de abajo). Tumbados |
 | `PROF_izq` | 1 | Mitad izquierda de la profundidad, con el horn impreso. Tumbada |
 | `PROF_der` | 1 | Mitad derecha de la profundidad. Tumbada |
 | `TIMON` | 1 | De pie sobre su canto de abajo, con el horn apoyado en la cama (ponle borde de adherencia) |
@@ -60,7 +60,7 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 4. **Puntas.** Mete la llave de aluminio por el agujero del nervio de `ALA_Q`, 50 mm dentro de cada tubo, y pégala con epoxi. Desliza el tubo de punta de 300 mm sobre la otra mitad de la llave, hasta el nervio. Después monta los dos `ALA_E` de cada lado.
 5. **Varillas de 3 mm.** Van partidas en el quiebro: cada trozo hace tope en el nervio de `ALA_Q`.
 6. **Pegado del ala.** Pega todos los tramos entre sí por sus caras, del centro hacia las puntas, sobre una mesa plana. Comprueba con una regla que el borde de fuga queda recto.
-7. **Estabilizador.** Pasa las dos mitades por la ranura de F5, unidas por las dos varillas de 100 mm. Alinéalo con el ala (visto desde atrás y desde arriba) y pégalo.
+7. **Estabilizador.** Pasa las dos mitades por la ranura de F5, cada una desde su lado: en el centro encajan por el solape a media madera (la izquierda por encima de la derecha) y las dos varillas de 100 mm atraviesan el solape. Alinéalo con el ala (visto desde atrás y desde arriba) y pega el solape, las varillas y la ranura.
 8. **Profundidad.** Pega las dos mitades a tope por el centro. Mete el pasador de 420 mm por los nudillos del estabilizador y el canto de la profundidad, y pégalo **solo a la profundidad**: debe girar libre en los nudillos del estabilizador.
 9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
 10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
@@ -104,7 +104,7 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 
 **Banco de pruebas del simulador** (física sola, sin viento): lanzado sin tocar los mandos sube a 2 m/s; planea a 9,4 m/s con 1,0 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
 
-**Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_izq` y `PROF_izq`/`PROF_der` son idénticas a las del E1; `F2` (bandeja con un solo servo útil), `F3` y `F5` (deriva fija, solo la salida de la profundidad) cambian. No hay `TIMON`.
+**Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_izq`/`ESTAB_der` y `PROF_izq`/`PROF_der` son idénticas a las del E1; `F2` (bandeja con un solo servo útil), `F3` y `F5` (deriva fija, solo la salida de la profundidad) cambian. No hay `TIMON`.
 
 | Pieza | Cuántas | Cómo se imprime |
 |---|---|---|
@@ -119,14 +119,14 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 **Compras respecto al E1:**
 - 3 servos de 9 g en vez de 2.
 - Una sola transmisión Bowden.
-- 2 alargadores de cable de servo.
+- 2 alargadores de cable de servo de 300 mm y un cable en Y: los dos servos de alerón llegan por dentro del ala a la boca de `ALA_C` y se unen en la escotilla; el Y va al receptor, así que al quitar o poner el ala solo hay un conector.
 - 2 varillas de empuje cortas con sus horns para los alerones.
 - Varilla de carbono de 2 mm: 2 pasadores de 290 mm para los alerones, en vez del pasador del timón.
 - Tubo central de 480 mm y 2 tubos de punta de 360 mm, en vez de 600 + 2 × 300 (el quiebro está a 240 mm).
 
 **Montaje (lo que cambia):**
 1. **Llaves:** se doblan 7°.
-2. **Servos de los alerones:** entran de costado por el intradós de `ALA_E1`, con el brazo hacia abajo, y el cable sale hasta la raíz.
+2. **Servos de los alerones:** entran de costado por el intradós de `ALA_E1`, con el brazo hacia abajo y el eje hacia el alerón (varilla corta y recta). El cable va **por dentro del ala**: por la abertura del cajeado entra en el canal de 8 mm (a 69 mm del borde de ataque, entre el tubo y el larguero trasero) que recorre `ALA_E1`, `ALA_Q` (por su nervio), `ALA_I` y `ALA_C`, y sale por la boca del intradós de `ALA_C`, encima de la escotilla. Se enhebra al montar: pasa el cable (o un hilo guía) por cada tramo antes de pegarlo al siguiente.
 3. **Alerones:** cada uno se monta con sus dos tramos sobre el pasador de 2 mm, que entra por los nudillos del ala y se pega solo al alerón.
 4. **F5:** solo se usa la salida de la profundidad.
 

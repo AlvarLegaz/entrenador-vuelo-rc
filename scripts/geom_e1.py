@@ -37,6 +37,11 @@ SPIGOT_L, SPIGOT_T = 10.0, 1.2   # cuello de union entre tramos (entra en el tra
 FUS_SEG = [(0, 170), (170, 330), (330, 500), (500, 640), (640, P.L)]   # F1 llega a 170: el palillo delantero (X 161) cae dentro
 SPAR_D, SPAR2_D, SPAR2_X = 8.2, 3.2, 0.60   # tubo 8x6 al 25 % de la cuerda, varilla 3 mm al 60 %
 LLAVE_D = 6.3                 # paso de la llave del quiebro (barra de aluminio de 6 mm, dentro de los tubos 8x6)
+# canal del cable de los servos de alerón (E2/E3): agujero de 8 mm a lo largo del ala entre el tubo y el larguero
+# trasero (x local 24 = 69 mm de cuerda, en la linea media), por celosia, tapas y nervio del quiebro, desde el
+# cajeado del servo hasta ALA_C, donde sale por el intrados sobre la escotilla del fuselaje
+CABLE_X, CABLE_Y, CABLE_R = 24.0, 0.0, 4.0
+CABLE_BOCA = 24.0             # largo (envergadura) de la boca de salida en ALA_C, centrada
 SKIN, RIB_T, CAP, RIB_P = 0.45, 0.45, 0.6, 40.0   # paso 40: con 30 el ala pesaba 243 g
 TRAMOS = P.TRAMOS             # tramos del ala (pieza, desde, hasta), aparte de ALA_C y ALA_Q
 ALERON = getattr(P, "ALERON", None)      # alerones (E2): bisagra, tramo de envergadura, piezas y servo
@@ -220,10 +225,16 @@ def servo_caja(c=P.C):
     return x0, x1, y_int + ALERON["servo_fondo"], ALERON["servo_ancho"]
 
 
-def wing_segment(h, caps=(True, True), c=P.C, corte=None, servo_s=None):
+def canal_cable(z0, z1):
+    """Cilindro del canal del cable entre las envergaduras locales z0 y z1."""
+    return Manifold.cylinder(z1 - z0, CABLE_R).translate([CABLE_X, CABLE_Y, z0])
+
+
+def wing_segment(h, caps=(True, True), c=P.C, corte=None, servo_s=None, canal=None):
     """Tramo de ala hueco (ver hollow). corte = (s0, s1): tramo de envergadura (local) donde va el
     aleron: se quita el ala tras la bisagra y se cierra con una pared; servo_s: envergadura local del
-    centro del cajeado del servo."""
+    centro del cajeado del servo; canal = (z0, z1): tramo de envergadura local por el que pasa el canal
+    del cable (None: sin canal)."""
     cs, _ = wing_cs(c)
     body = hollow(cs, h, caps, c)
     if corte is not None:
@@ -243,6 +254,10 @@ def wing_segment(h, caps=(True, True), c=P.C, corte=None, servo_s=None):
         caja = Manifold.cube([x1 - x0, 60, w]).translate([x0, yt - 60, servo_s - w / 2])
         pared = outer ^ Manifold.cube([x1 - x0 + 2 * WALL, 60 + WALL, w + 2 * WALL]).translate([x0 - WALL, yt - 60, servo_s - w / 2 - WALL])
         body = body + pared - caja
+        if canal is not None:   # abertura del cajeado al canal (por la pared delantera del cajeado)
+            body = body - Manifold.cube([x0 + 1.0 - (CABLE_X - 1.0), 6.0, 8.0]).translate([CABLE_X - 1.0, -3.0, servo_s - 4.0])
+    if canal is not None:
+        body = body - canal_cable(canal[0], canal[1])
     return body
 
 
@@ -318,7 +333,9 @@ def center_piece():
     """Pieza central ALA_C, plana, de -ALA_C_SEMI a +ALA_C_SEMI: un tramo recto que atraviesa el tubo central.
     Se devuelve en local (de pie, para imprimir) y en global (montada)."""
     h = 2 * P.ALA_C_SEMI
-    seg = wing_segment(h)
+    seg = wing_segment(h, canal=(-1.0, h + 1.0) if ALERON else None)
+    if ALERON:   # boca de salida de los cables por el intrados, sobre la escotilla del fuselaje
+        seg = seg - Manifold.cube([2 * CABLE_R + 2.0, 30.0, CABLE_BOCA]).translate([CABLE_X - CABLE_R - 1.0, -30.0, h / 2 - CABLE_BOCA / 2])
     return seg, wing_to_global(seg, -P.ALA_C_SEMI, True, exterior=False)
 
 
@@ -336,8 +353,9 @@ def quiebro_piece():
     carbono (central y de la punta) hacen tope en el nervio; la llave de aluminio de 6 mm pasa por el."""
     h = P.Q_SEMI
     n, off = _plano_quiebro()
-    dentro = wing_to_global(wing_segment(h + 6.0, caps=(True, False)), P.QUIEBRO - h, True, exterior=False)
-    fuera = wing_to_global(wing_segment(h + 6.0, caps=(False, True)).translate([0, 0, -6.0]), P.QUIEBRO, True, exterior=True)
+    canal = (-1.0, h + 7.0) if ALERON else None
+    dentro = wing_to_global(wing_segment(h + 6.0, caps=(True, False), canal=canal), P.QUIEBRO - h, True, exterior=False)
+    fuera = wing_to_global(wing_segment(h + 6.0, caps=(False, True), canal=canal).translate([0, 0, -6.0]), P.QUIEBRO, True, exterior=True)
     dentro = dentro.trim_by_plane((-n).tolist(), -off)
     fuera = fuera.trim_by_plane(n.tolist(), off)
     us, vs = spar_origin(P.C)
@@ -348,6 +366,8 @@ def quiebro_piece():
     # paso de la llave por el nervio, en la linea del larguero principal
     c = punto_ala(0.0, 0.0, P.QUIEBRO, True)
     nervio = nervio - Manifold.cylinder(12.0, LLAVE_D / 2, center=True).rotate([90, 0, 0]).translate(c.tolist())
+    if ALERON:   # paso del cable por el nervio (a lo largo del ala plana de dentro; el nervio esta a +-0,8 del quiebro)
+        nervio = nervio - wing_to_global(canal_cable(-12.0, 12.0), P.QUIEBRO, True, exterior=False)
     return dentro + fuera + nervio
 
 
@@ -592,19 +612,35 @@ def _cil_y(largo, r, x, y0, z):
     return Manifold.cylinder(largo, r).rotate([90, 0, 0]).translate([x, y0, z])
 
 
-def stab_half():
-    """Media placa fija del estabilizador (local: cuerda X, espesor Z, envergadura Y de 0 a -HT_B/2)."""
+SOLAPE_H, SOLAPE_HOLGURA = 20.0, 0.2       # solape a media madera entre las dos mitades del estabilizador
+
+
+def stab_half(solape="arriba"):
+    """Media placa fija del estabilizador (local: cuerda X, espesor Z, envergadura Y de 0 a -HT_B/2). Las dos
+    mitades se unen en el centro, dentro de la ranura de F5, con un solape a media madera de SOLAPE_H mm:
+    cada una prolonga mas alla del centro solo media placa (la izquierda la de arriba, la derecha la de abajo)
+    y vacia la otra media en su raiz, y las varillas de 2 mm atraviesan el solape. La derecha se construye
+    como izquierda con solape="abajo" y se refleja."""
     c = P.ELEV_HINGE * P.HT_C
     xe = c + EJE_H
     m = Manifold.extrude(plate_cs(c, PLATE_T), P.HT_B / 2).rotate([90, 0, 0])   # envergadura hacia -Y (mitad izquierda)
-    # las dos mitades se unen con varillas de 2 mm al 25 % y al 70 % de la placa, 50 mm dentro de cada una
+    lengua = Manifold.extrude(plate_cs(c, PLATE_T), SOLAPE_H).rotate([90, 0, 0]).translate([0, SOLAPE_H, 0])   # y de 0 a +SOLAPE_H
+    zc = PLATE_T / 2
+    if solape == "arriba":
+        lengua = lengua ^ Manifold.cube([c + 2, SOLAPE_H + 2, PLATE_T]).translate([-1, -1, zc + SOLAPE_HOLGURA / 2])
+        raiz = Manifold.cube([c + 2, SOLAPE_H + 1, zc - SOLAPE_HOLGURA / 2 + 1]).translate([-1, -SOLAPE_H, -1])   # quita la media de abajo
+    else:
+        lengua = lengua ^ Manifold.cube([c + 2, SOLAPE_H + 2, zc - SOLAPE_HOLGURA / 2 + 1]).translate([-1, -1, -1])
+        raiz = Manifold.cube([c + 2, SOLAPE_H + 1, PLATE_T]).translate([-1, -SOLAPE_H, zc + SOLAPE_HOLGURA / 2])   # quita la media de arriba
+    m = m + lengua - raiz
+    # las dos mitades se unen ademas con varillas de 2 mm al 25 % y al 70 % de la placa, 50 mm dentro de cada una
     for u in (0.25, 0.70):
-        m = m - Manifold.cylinder(51, HT_PIN_D / 2).rotate([90, 0, 0]).translate([u * c, 1, PLATE_T / 2])
-    m = m - _cil_y(P.HT_B / 2 + 2, NUDILLO_R + 0.4, xe, 1, EJE_HZ)                  # acanaladura de la bisagra
+        m = m - Manifold.cylinder(51 + SOLAPE_H, HT_PIN_D / 2).rotate([90, 0, 0]).translate([u * c, SOLAPE_H + 1, PLATE_T / 2])
+    m = m - _cil_y(P.HT_B / 2 + 2 + SOLAPE_H, NUDILLO_R + 0.4, xe, SOLAPE_H + 1, EJE_HZ)    # acanaladura de la bisagra
     for yk in NUDILLOS_H:
         nud = _cil_y(NUDILLO_L, NUDILLO_R, xe, -yk, EJE_HZ) + Manifold.cube([xe - (c - 4.0), NUDILLO_L, PLATE_T]).translate([c - 4.0, -yk - NUDILLO_L, 0])
         m = m + nud
-    return m - _cil_y(P.HT_B / 2 + 2, PIN_LIBRE / 2, xe, 1, EJE_HZ)                # el pasador gira libre aqui
+    return m - _cil_y(P.HT_B / 2 + 2 + SOLAPE_H, PIN_LIBRE / 2, xe, SOLAPE_H + 1, EJE_HZ)   # el pasador gira libre aqui
 
 
 def elevator_half(con_horn=False):
@@ -688,7 +724,7 @@ def rudder():
 
 
 def stab_global(left):
-    g = stab_half().translate([0, 0, -PLATE_T / 2]).rotate([0, P.HT_INC, 0]).translate([P.HT_XLE, 0, P.HT_Z])
+    g = stab_half("arriba" if left else "abajo").translate([0, 0, -PLATE_T / 2]).rotate([0, P.HT_INC, 0]).translate([P.HT_XLE, 0, P.HT_Z])
     return g if left else g.mirror([0, 1, 0])
 
 
@@ -713,7 +749,10 @@ def build():
             corte = (max(ALERON["y0"], s0) - s0, min(ALERON["y1"], s1) - s0)
         if ALERON and s0 < ALERON["servo_y"] < s1:
             servo_s = ALERON["servo_y"] - s0
-        seg = parts[nm] if nm in parts else wing_segment(s1 - s0, corte=corte, servo_s=servo_s)
+        canal = None
+        if ALERON and s0 < ALERON["servo_y"]:      # el canal del cable va del cajeado del servo hacia la raiz
+            canal = (-1.0, servo_s if servo_s is not None else s1 - s0 + 1.0)
+        seg = parts[nm] if nm in parts else wing_segment(s1 - s0, corte=corte, servo_s=servo_s, canal=canal)
         parts[nm] = seg
         for s, left in (("izq", True), ("der", False)):
             glob["ALA%d_%s" % (k + 1, s)] = wing_to_global(seg, s0, left)
@@ -732,7 +771,8 @@ def build():
     for s, left in (("izq", True), ("der", False)):
         glob["ESTAB_" + s] = stab_global(left)
         glob["PROF_" + s] = elevator_global(left)
-    parts["ESTAB_izq"] = stab_half()                   # la derecha, en espejo
+    parts["ESTAB_izq"] = stab_half("arriba")           # solape de arriba
+    parts["ESTAB_der"] = stab_half("abajo").mirror([0, 1, 0])   # solape de abajo
     parts["PROF_izq"] = elevator_half(con_horn=True)   # con el horn
     parts["PROF_der"] = elevator_half().mirror([0, 1, 0])
     if CON_TIMON:
