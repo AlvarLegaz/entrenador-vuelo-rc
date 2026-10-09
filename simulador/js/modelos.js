@@ -117,7 +117,7 @@ class ModeloAvion {
     const Cn = d("Cnb") * beta + d("Cnp") * ph + d("Cnr") * rh + M.Cn;
     const ca = Math.cos(alfa), sa = Math.sin(alfa);
     const Fa = [qS * (-CD * ca + CL * sa), qS * CY, qS * (-CD * sa - CL * ca)];
-    const Ma = [qS * b * Cl, qS * c * Cm, qS * b * Cn];
+    const Ma = [qS * b * Cl, qS * c * Cm, qS * b * Cn];          // (el empuje suma su momento mas abajo)
     // motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gases
     const pr = this.propulsion;
     if (av.motorRoto) av.gases = 0;
@@ -129,8 +129,13 @@ class ModeloAvion {
       av.Wh += pr.P_max_W * g * g * g * dt / 3600;
     }
     av.T = T; av.rpm = g > 0.02 ? pr.n_max_rps * g * 60 : 0;
+    // linea de empuje: la helice esta en malla.helice (ejes cuerpo desde el CG); si queda por debajo del CG, el
+    // empuje encabrita. downthrust_grados (opcional, en propulsion) inclina el empuje hacia abajo para compensarlo
+    const dth = (pr.downthrust_grados || 0) * D2R, hp = (this.malla && this.malla.helice) || [0, 0, 0];
+    const Tx = T * Math.cos(dth), Tz = T * Math.sin(dth);
+    Ma[1] += hp[2] * Tx - hp[0] * Tz;
     const gb = Cuat.rot(Cuat.inv(q), [0, 0, G0]), m = this.masa_kg;
-    const F = [Fa[0] + T + m * gb[0], Fa[1] + m * gb[1], Fa[2] + m * gb[2]];
+    const F = [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]];
     // ecuaciones de Euler: m(dv + w x v) = F ; I dw + w x (I w) = M
     const dv = [F[0] / m - (w[1] * v[2] - w[2] * v[1]), F[1] / m - (w[2] * v[0] - w[0] * v[2]), F[2] / m - (w[0] * v[1] - w[1] * v[0])];
     const I = this.inercia, Ixx = I.Ixx, Iyy = I.Iyy, Izz = I.Izz, Ixz = I.Ixz;
