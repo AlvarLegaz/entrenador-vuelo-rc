@@ -2,51 +2,72 @@
 
 Simulador de vuelo RC para el aula (**Entrenador Vuelo RC**, `simulador/simulador.html`) y los dos aviones de aprendizaje impresos en 3D con los que se entrena, el **Entrenador E1** y el **Entrenador E2**. Repositorio: <https://github.com/AlvarLegaz/entrenador-vuelo-rc>.
 
-Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él en clase. El avión es un ala alta con 8° de diedro por semiala y solo dos servos, timón y profundidad. El diedro hace que nivele las alas solo cuando se sueltan los mandos. El **Entrenador E2** (más abajo) es la variante con alerones y profundidad, para que los alumnos practiquen también con alerones.
+Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él en clase. El **Entrenador E1** es un ala alta con poliedro (centro plano y 12° de diedro en las puntas) y solo dos servos, timón y profundidad: el diedro hace que nivele las alas solo cuando se sueltan los mandos. El **Entrenador E2** (más abajo) es la variante con alerones y profundidad, para que los alumnos practiquen también con alerones.
 
 ![Vistas](ENTRENADOR_E1_vistas.png)
 
-## Datos del avión
+## Datos del E1
 
 | | |
 |---|---|
 | Envergadura y cuerda | 1200 × 180 mm, rectangular, NACA 2412 (`NACA2412.dat`) |
 | Superficie alar | 21,6 dm² |
-| Masa en vuelo | 761 g (LW-PLA; F1 en PLA normal) |
-| Carga alar | 35,2 g/dm² |
-| Pérdida / crucero | 7,2 m/s / ≈ 9,5 m/s con la profundidad neutra |
+| Ala | **Poliedro:** plana hasta 300 mm del centro, con un tubo de carbono recto que la atraviesa; las puntas suben 12° desde ese quiebro |
+| Masa en vuelo | 783 g (LW-PLA; F1 en PLA normal) |
+| Carga alar | 36,2 g/dm² |
+| Pérdida / crucero | 7,3 m/s / ≈ 9,5 m/s con la profundidad neutra |
 | Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh |
-| Centro de gravedad | 234 mm desde la bancada del motor = **59 mm detrás del borde de ataque del ala** (33 % de la cuerda). Margen estático 22 % |
+| Centro de gravedad | 234 mm desde la bancada del motor = **59 mm detrás del borde de ataque del ala** (33 % de la cuerda). Margen estático 21 % |
 | Batería | Centrada a unos 47 mm de la bancada, contra el fondo del morro |
 
 Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de las piezas y el VLM usa la geometría real. La pérdida, la resistencia parásita y el empuje en vuelo son estimaciones hasta calibrarlas con planeos del avión real.
 
-## Piezas (carpeta `stl/`)
+**Por qué poliedro y no una V en la raíz.** Cada semiala hace palanca en el centro del ala: unos 3,8 N·m a 4 g (lanzamiento fuerte, recogida, ráfaga). Con la V en la raíz, los dos tubos de carbono terminaban en la pieza central y esa palanca la tenía que pasar la pieza impresa. Con el poliedro, el centro lleva un solo tubo recto y el quiebro está donde la palanca es 5 veces menor (0,8 N·m a 4 g). Allí la pasa una llave de tubo de aluminio de 6×4 mm doblada al ángulo del diedro, que aguanta unos 4,2 N·m. Para que el avión se comporte igual que con la V de 8° hacen falta 12° en las puntas: el VLM da el mismo efecto diedro (Cl_β −0,146 frente a −0,138) y la espiral se corrige a la mitad en unos 10 s.
+
+## Piezas del E1 (carpeta `stl/`)
 
 Todas se imprimen sin soportes. Las medidas son las de la orientación de impresión del STL.
 
 | Pieza | Cuántas | Cómo se imprime |
 |---|---|---|
-| `ALA_C` | 1 | Pieza central en V. De pie sobre la cara exterior de una mitad |
-| `ALA1a4_x8` | 8 | Tramos de ala de 135 mm, de pie. Son iguales para los dos lados |
-| `F1` | 1 | Morro con la bancada. **PLA normal**, de pie sobre la bancada |
-| `F2`–`F5` | 1 de cada | Fuselaje, de pie sobre la cara delantera. El cuello de unión queda arriba. F5 lleva la deriva |
-| `ESTAB_x2` | 2 | Estabilizador. Tumbado; la segunda, en espejo |
-| `PROF_x2` | 2 | Profundidad. Tumbada; las dos son iguales |
-| `TIMON` | 1 | De pie sobre el canto de la bisagra |
+| `ALA_C` | 1 | Centro del ala, plano, de −75 a +75 mm. De pie |
+| `ALA_I_x2` | 2 | Tramo interior de 185 mm (de 75 a 260 mm), de pie. Igual para los dos lados |
+| `ALA_Q_izq` | 2 | Pieza del quiebro (de 260 a 340 mm), con el ángulo de 12° y el nervio donde hacen tope los tubos. De pie sobre la cara del lado del centro; **la segunda, en espejo** |
+| `ALA_E_x4` | 4 | Tramos exteriores de 130 mm, de pie. Todos iguales |
+| `F1` | 1 | Morro con la bancada y el agujero del palillo delantero. **PLA normal**, de pie sobre la bancada |
+| `F2`–`F5` | 1 de cada | Fuselaje, de pie sobre la cara delantera. El cuello de unión queda arriba. F2 lleva la bandeja de los servos; F3 a F5, las guías de las transmisiones; F5, la deriva con los nudillos de la bisagra del timón |
+| `ESTAB_izq` | 2 | Estabilizador con los nudillos de la bisagra. Tumbado; **la segunda, en espejo** |
+| `PROF_izq` | 1 | Mitad izquierda de la profundidad, con el horn impreso. Tumbada |
+| `PROF_der` | 1 | Mitad derecha de la profundidad. Tumbada |
+| `TIMON` | 1 | De pie sobre su canto de abajo, con el horn apoyado en la cama (ponle borde de adherencia) |
 
-Las piezas de ala se imprimen como cuerpos de pared única con celosía interior, igual que las del ALFA-T. Estabilizador, profundidad y timón van con 2 perímetros, 3 capas arriba y abajo y 10 % de relleno.
+Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizador, profundidad y timón van con 2 perímetros, 3 capas arriba y abajo y 10 % de relleno.
 
-**Compras:** tubo de carbono 8×6 mm (2 × 600 mm), varilla de carbono de 3 mm (2 × 600 mm), varilla de carbono de 2 mm (unos 60 cm: uniones del estabilizador y de la profundidad), 2 transmisiones tipo Bowden de 550 mm, 2 servos de 9 g, 2 horns, cinta para las bisagras, gomas y 2 palillos de bambú de 3 mm.
+**Compras:**
+- Tubo de carbono 8×6 mm: 1 de 600 mm (centro) y 2 de 300 mm (puntas).
+- Varilla de carbono de 3 mm: 2 de 600 mm (largueros traseros).
+- **Varilla de carbono maciza de 4 mm:** 2 trozos de 80 mm, para los palillos de las gomas.
+- **Tubo de aluminio de 6×4 mm:** 2 trozos de 100 mm, para las llaves del quiebro. Si no entra en el tubo de carbono, lija un poco.
+- Varilla de carbono de 2 mm, unos 80 cm: 2 de 100 mm para unir el estabilizador, 1 de 420 mm de pasador de la profundidad y 1 de 180 mm de pasador del timón.
+- 2 transmisiones tipo Bowden de 550 mm (funda de 2–3 mm y alambre de 0,8 mm), 2 servos de 9 g y gomas.
 
-**Montaje en breve:**
-1. Pega los tramos del fuselaje F1 a F5 por sus cuellos.
-2. Mete el tubo y la varilla de cada semiala en la pieza central y pega los tramos del ala.
-3. Pasa las dos mitades del estabilizador por la ranura de F5, unidas con las varillas de 2 mm.
-4. Une las dos mitades de la profundidad con la varilla de 2 mm de la bisagra.
-5. Pega los servos al nervio central de F2.
-6. Las transmisiones salen por las ranuras de F5: la de la profundidad por la izquierda abajo y la del timón por la derecha arriba.
-7. El ala se sujeta con gomas sobre los dos palillos. Quitando el ala queda abierta la escotilla de la batería.
+**Montaje:**
+1. **Fuselaje.** Pega F1 a F5 por sus cuellos.
+2. **Llaves del quiebro.** Dobla cada tubo de aluminio 12° por el centro, en un tornillo de banco o sobre el canto de una mesa.
+3. **Centro del ala.** Mete el tubo de 600 mm por `ALA_C` y los dos `ALA_I`, y una pieza `ALA_Q` en cada extremo, hasta que el tubo haga tope en su nervio.
+4. **Puntas.** Mete la llave de aluminio por el agujero del nervio de `ALA_Q`, 50 mm dentro de cada tubo, y pégala con epoxi. Desliza el tubo de punta de 300 mm sobre la otra mitad de la llave, hasta el nervio. Después monta los dos `ALA_E` de cada lado.
+5. **Varillas de 3 mm.** Van partidas en el quiebro: cada trozo hace tope en el nervio de `ALA_Q`.
+6. **Pegado del ala.** Pega todos los tramos entre sí por sus caras, del centro hacia las puntas, sobre una mesa plana. Comprueba con una regla que el borde de fuga queda recto.
+7. **Estabilizador.** Pasa las dos mitades por la ranura de F5, unidas por las dos varillas de 100 mm. Alinéalo con el ala (visto desde atrás y desde arriba) y pégalo.
+8. **Profundidad.** Pega las dos mitades a tope por el centro. Mete el pasador de 420 mm por los nudillos del estabilizador y el canto de la profundidad, y pégalo **solo a la profundidad**: debe girar libre en los nudillos del estabilizador.
+9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
+10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
+11. **Transmisiones.** Las fundas pasan por los anillos guía de F3 a F5:
+    - **Profundidad:** sale por el costado izquierdo de F5, por encima del estabilizador, y va al horn de encima de la profundidad.
+    - **Timón:** sale por el lomo, a la derecha de la deriva, y va al horn del timón.
+    - El horn tiene 3 agujeros para el doblez en Z del alambre: el de abajo da más recorrido.
+12. **Ala al fuselaje.** Se sujeta con 4–6 gomas sobre los dos palillos de carbono. Quitando el ala queda abierta la escotilla.
+13. **Prueba de los palillos.** Con el ala puesta, tira hacia arriba de un extremo de un palillo con una báscula de equipaje hasta unos 3 kg. No debe crujir nada.
 
 ## Regenerar el diseño
 
@@ -55,46 +76,57 @@ Todos los números del diseño están en `scripts/parametros_e1.py`. Después de
 ```
 python scripts/geom_e1.py          # piezas (scripts/out/stl) y mallas montadas
 python scripts/masas_e1.py         # masa, CG, posicion de la bateria, inercias
-python analisis/vlm_e1.py 0.761 0.0352 0.0681   # estabilidad y calado del estabilizador (masa, Ixx, Izz)
+python analisis/vlm_e1.py 0.783 0.0360 0.0695   # estabilidad y calado del estabilizador (masa, Ixx, Izz)
 python scripts/modelo_aero_e1.py   # modelo de vuelo -> simulador/aviones/E1.js
 python scripts/vistas_e1.py        # ENTRENADOR_E1_vistas.png
 ```
 
 ## Entrenador E2: alerones y profundidad
 
-La misma célula que el E1 (fuselaje, ala, cola horizontal, motor y batería) con **alerones y profundidad** (2 canales) y la **deriva fija, sin timón**. Como alabean los alerones, lleva mucho menos diedro (5° por semiala) y una deriva más pequeña. Sus números están en `scripts/parametros_e2.py`, que solo redefine lo que cambia respecto a `parametros_e1.py`.
+La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **alerones y profundidad** (2 canales) y la **deriva fija, sin timón**. Sus números están en `scripts/parametros_e2.py`, que solo redefine lo que cambia respecto a `parametros_e1.py`.
 
 ![Vistas del E2](ENTRENADOR_E2_vistas.png)
 
 | | |
 |---|---|
-| Alerones | 25 % de la cuerda, del 40 al 95 % de la semienvergadura (de 240 a 570 mm del plano de simetría). Bisagra de cinta en el extradós, canto delantero en bisel a 45° por debajo. Recorrido mecánico ±15°; en el simulador ±5°, porque con teclado la palanca va siempre a tope (con 15° un segundo de alerón da la vuelta al avión) |
-| Servos | 3 de 9 g: profundidad en F2 y uno por alerón dentro del ala (cajeado de 24 × 25 × 12,5 mm abierto por el intradós en `ALA2`, delante del larguero trasero; el brazo asoma por abajo y una varilla corta va al horn del alerón) |
-| Diedro | 5° por semiala |
-| Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado y cerrado) |
-| Masa en vuelo | 762 g; carga alar 35,3 g/dm² |
-| Centro de gravedad | 234 mm desde la bancada (33 % de la cuerda). Margen estático 19 % |
-| Batería | Centrada a unos 120 mm de la bancada (los servos del ala pesan detrás del CG y la batería retrasa 7 cm respecto al E1) |
+| Ala | Poliedro: plana hasta 240 mm del centro y **7° de diedro** en las puntas. El quiebro va justo antes del alerón, que queda entero en el panel exterior |
+| Alerones | 25 % de la cuerda, de 280 a 570 mm del plano de simetría. **Bisagra de nudillos** con pasador de carbono de 2 mm, que también une los dos tramos de cada alerón. Recorrido mecánico ±15° (comprobado: a ±20° no tocan el ala); en el simulador ±5°, porque con teclado la palanca va siempre a tope |
+| Servos | 3 de 9 g: profundidad en la bandeja de F2 y uno por alerón dentro del ala (cajeado abierto por el intradós en el centro de `ALA_E1`) |
+| Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado) |
+| Masa en vuelo | 792 g; carga alar 36,7 g/dm² |
+| Centro de gravedad | 234 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
+| Batería | Centrada a unos 115 mm de la bancada (los servos del ala pesan detrás del CG) |
 | Calado del estabilizador | −0,4° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
-| Pérdida / crucero | 7,2 m/s / ≈ 9,5 m/s |
 
-**Por qué 5° y esa deriva.** El VLM (`analisis/vlm_e1.py` con `ENTRENADOR=E2`) barre el diedro de 0 a 5° y añade la deflexión diferencial de alerones: Cl_δa = 0,47/rad, Cn_δa = −0,015/rad (guiñada adversa del 3 % del momento de alabeo; se corrige sola con el diedro) y CY_δa = 0,11/rad. Con la deriva grande del E1 (170 × 175) la espiral es inestable con cualquier diedro hasta 4° (dobla en 4-12 s). Con la deriva de 120 × 125 y 4° la espiral queda neutra, pero Cn_β cae a 0,020 y el balanceo holandés casi no amortigua: en el banco de pruebas del simulador un segundo de alerón ponía el avión a 30° de resbale. Con 5° y la deriva de 120 × 145 (Cn_β 0,033, Cl_β −0,087) la espiral es neutra (se corrige a la mitad en ~170 s), el holandés amortigua (0,56 Hz, amortiguamiento 0,11) y el resbale al dar alerón baja a 22°. Es un avión que no vuelve solo al nivel: si se sueltan los mandos mantiene el alabeo que tenga, como un avión de alerones normal.
+**Por qué 7°.** Con poliedro a 240 mm el VLM da: con 6° la espiral se duplica en ~40 s, con 7° se corrige a la mitad en ~90 s (casi neutra, como debe ser un avión de alerones: no vuelve solo al nivel, pero tampoco se cierra en espiral) y con 8° en ~20 s. La guiñada adversa de los alerones es pequeña (Cn_δa / Cl_δa ≈ −0,03). La V de 2,5° en la raíz que tenía antes se cerraba en espiral (doblaba en ~8 s).
 
-**Banco de pruebas del simulador** (física sola, sin viento, 65 % de gases): lanzado sin tocar los mandos sube como el E1 (9,8 m en 10 s a 9,4 m/s); planea con el motor parado a 9,8 m/s y 0,9 m/s de descenso; un segundo de alerón a tope lo deja a 40° de alabeo (el E1, con un segundo de timón, a 46°) y al soltar mantiene unos 35° mientras el holandés se apaga en 3 s. El E1 da exactamente lo mismo que antes.
+**Banco de pruebas del simulador** (física sola, sin viento): lanzado sin tocar los mandos sube a 2 m/s; planea a 9,4 m/s con 1,0 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
 
-**Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_x2` y `PROF_x2` son idénticas a las del E1. Cambian `ALA_C`, `F2` y `F3` (el asiento del ala lleva los 5° de diedro) y `F5` (deriva fija cerrada). No hay `TIMON`.
+**Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_izq` y `PROF_izq`/`PROF_der` son idénticas a las del E1; `F2` (bandeja con un solo servo útil), `F3` y `F5` (deriva fija, solo la salida de la profundidad) cambian. No hay `TIMON`.
 
 | Pieza | Cuántas | Cómo se imprime |
 |---|---|---|
-| `ALA1_x2` | 2 | Tramo liso de 180 mm (de 60 a 240 mm), de pie. Igual para los dos lados |
-| `ALA2_x2` | 2 | Tramo de 180 mm con el corte del alerón y el cajeado del servo, de pie. Igual para los dos lados |
-| `ALA3_izq` | 2 | Tramo de punta: corte del alerón hasta 150 mm y los 30 mm de la punta enteros. De pie; la derecha, en espejo |
-| `ALERON_A_x2` | 2 | Alerón de 180 mm con la ranura del horn, de pie. Igual para los dos lados |
+| `ALA_C` | 1 | Centro plano, de −75 a +75 mm |
+| `ALA_I_x2` | 2 | Tramo interior de 125 mm (de 75 a 200 mm). Igual para los dos lados |
+| `ALA_Q_izq` | 2 | Quiebro de 7° (de 200 a 280 mm). **La segunda, en espejo** |
+| `ALA_E1_x2` | 2 | Tramo de 140 mm (de 280 a 420) con el corte del alerón, sus nudillos y el cajeado del servo en el centro. Igual para los dos lados |
+| `ALA_E2_izq` | 2 | Tramo de punta (de 420 a 600) con el corte del alerón hasta 570. **La segunda, en espejo** |
+| `ALERON_A_x2` | 2 | Alerón de 140 mm con la ranura del horn, de pie |
 | `ALERON_B_x2` | 2 | Alerón de 150 mm, de pie |
 
-**Compras respecto al E1:** 3 servos de 9 g en vez de 2, una sola transmisión Bowden, 2 alargadores de cable de servo, 2 varillas de empuje cortas con sus horns (3 horns en total) y unos 70 cm más de varilla de carbono de 2 mm (une los dos tramos de cada alerón por el agujero del canto delantero).
+**Compras respecto al E1:**
+- 3 servos de 9 g en vez de 2.
+- Una sola transmisión Bowden.
+- 2 alargadores de cable de servo.
+- 2 varillas de empuje cortas con sus horns para los alerones.
+- Varilla de carbono de 2 mm: 2 pasadores de 290 mm para los alerones, en vez del pasador del timón.
+- Tubo central de 480 mm y 2 tubos de punta de 360 mm, en vez de 600 + 2 × 300 (el quiebro está a 240 mm).
 
-**Montaje (lo que cambia):** los tramos del ala van `ALA1`, `ALA2` y `ALA3` desde la pieza central; los servos de los alerones entran de costado por el intradós de `ALA2` con el brazo hacia abajo (cola caliente o cinta) y el cable sale por el cajeado hasta la raíz; cada alerón se monta con los dos tramos sobre la varilla de 2 mm, se articula con cinta por el extradós (el bisel queda abajo) y lleva el horn en la ranura de `ALERON_A`; en F5 solo se usa la ranura de la profundidad (izquierda abajo).
+**Montaje (lo que cambia):**
+1. **Llaves:** se doblan 7°.
+2. **Servos de los alerones:** entran de costado por el intradós de `ALA_E1`, con el brazo hacia abajo, y el cable sale hasta la raíz.
+3. **Alerones:** cada uno se monta con sus dos tramos sobre el pasador de 2 mm, que entra por los nudillos del ala y se pega solo al alerón.
+4. **F5:** solo se usa la salida de la profundidad.
 
 **Regenerar el E2:** los mismos scripts, con la variable de entorno `ENTRENADOR=E2` (escriben en `scripts/out_E2/` y en `simulador/aviones/E2.js`):
 
@@ -102,7 +134,7 @@ La misma célula que el E1 (fuselaje, ala, cola horizontal, motor y batería) co
 $env:ENTRENADOR = "E2"             # PowerShell (en cmd: set ENTRENADOR=E2)
 python scripts/geom_e1.py          # piezas (scripts/out_E2/stl) y mallas montadas
 python scripts/masas_e1.py
-python analisis/vlm_e1.py 0.762 0.0373 0.0642
+python analisis/vlm_e1.py 0.792 0.0394 0.0666
 python scripts/modelo_aero_e1.py   # -> simulador/aviones/E2.js, con la clase ModeloE2 de scripts/clase_e2.js
 python scripts/vistas_e1.py        # ENTRENADOR_E2_vistas.png
 ```

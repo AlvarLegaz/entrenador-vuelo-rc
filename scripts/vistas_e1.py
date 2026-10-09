@@ -37,15 +37,16 @@ def dibujar(ax, R, titulo):
 fig = plt.figure(figsize=(16, 11))
 # planta: X hacia abajo de la hoja es raro; se dibuja con el morro a la izquierda
 dibujar(fig.add_subplot(2, 2, 1), np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]]), "Planta (morro a la izquierda, mm)")
-dibujar(fig.add_subplot(2, 2, 2), np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]), "Frente (mm): diedro de %.0f° por semiala" % P.DIEDRO)
+dibujar(fig.add_subplot(2, 2, 2), np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]), ("Frente (mm): centro plano hasta %.0f mm y %.0f° de diedro en las puntas" % (P.QUIEBRO, P.DIEDRO)) if P.DIEDRO else "Frente (mm): ala plana, sin diedro")
 dibujar(fig.add_subplot(2, 2, 3), np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]]), "Perfil (mm)")
 a, b = np.radians(35), np.radians(25)
 Rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
 Rx = np.array([[1, 0, 0], [0, np.cos(b), -np.sin(b)], [0, np.sin(b), np.cos(b)]])
 Riso = Rx @ np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]) @ Rz
 ax = fig.add_subplot(2, 2, 4); dibujar(ax, Riso, "Vista 3D"); ax.axis("off")
-fig.suptitle("%s · %.1f m de envergadura · ala alta con diedro · %s" % (getattr(P, "NOMBRE", "Entrenador E1"), P.B / 1000,
-                                                                          getattr(P, "MANDOS_TXT", "timón y profundidad")), fontsize=15)
+fig.suptitle("%s · %.1f m de envergadura · ala alta %s · %s" % (getattr(P, "NOMBRE", "Entrenador E1"), P.B / 1000,
+                                                                 "con diedro" if P.DIEDRO else "plana",
+                                                                 getattr(P, "MANDOS_TXT", "timón y profundidad")), fontsize=15)
 fig.tight_layout()
 sal = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ENTRENADOR_%s_vistas.png" % ID)
 fig.savefig(sal, dpi=110)

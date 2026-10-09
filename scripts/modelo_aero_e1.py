@@ -101,6 +101,7 @@ if G.ALERON:
     malla["alerones"] = alerones
 
 m_kg = iner["masa_kg"]
+PERFIL_TXT = "NACA %d%d%02d" % (round(P.PERFIL[0] * 100), round(P.PERFIL[1] * 10), round(P.PERFIL[2] * 100))
 v_perd = np.sqrt(2 * m_kg * 9.81 / (1.225 * S * 1.1))
 v_crucero = 9.5
 xnp = V.punto_neutro(HT_INC=P.HT_INC)
@@ -111,9 +112,11 @@ modelo = dict(
     ayuda=("Las flechas ← → mueven los alerones: inclina el avión y tira un poco para virar. Con poco diedro, "
            "si sueltas los mandos tarda en nivelarse: nivélalo tú." if G.ALERON else
            "El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto."),
-    caracteristicas=[["Envergadura", "%.2f m" % (P.B / 1e3)], ["Superficie alar", "%.1f dm²" % (S * 100)],
+    perfil=PERFIL_TXT,
+    caracteristicas=[["Envergadura", "%.2f m" % (P.B / 1e3)], ["Cuerda", "%.0f mm" % P.C], ["Perfil alar", PERFIL_TXT],
+                     ["Superficie alar", "%.1f dm²" % (S * 100)],
                      ["Masa en vuelo", "%.0f g" % (m_kg * 1e3)], ["Carga alar", "%.1f g/dm²" % (m_kg * 1e3 / (S * 100))],
-                     ["Diedro", "%.0f° en las puntas (centro plano hasta %.0f mm)" % (P.DIEDRO, P.QUIEBRO)], ["Mandos", getattr(P, "MANDOS_TXT", "timón y profundidad")],
+                     ["Diedro", "%.0f° en las puntas (centro plano hasta %.0f mm)" % (P.DIEDRO, P.QUIEBRO) if P.DIEDRO else "ninguno (ala plana)"], ["Mandos", getattr(P, "MANDOS_TXT", "timón y profundidad")],
                      ["Velocidad de pérdida", "%.1f m/s" % v_perd], ["Crucero (compensado)", "≈ %.1f m/s" % v_crucero],
                      ["Motor", "SunnySky X2212 KV980, hélice 9×4,7"], ["Batería", "3S 1300 mAh"],
                      ["Empuje / peso", "%.2f" % (0.840 / m_kg)], ["Margen estático", "%.0f %%" % ((xnp - x_cg) / P.C * 100)]],
@@ -133,9 +136,11 @@ os.makedirs(DIR_AV, exist_ok=True)
 clase = getattr(P, "CLASE_JS", None)        # (nombre de la clase, fichero js en scripts/) para un avion con otra fisica
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:
     fj.write("// %s. Generado por scripts/modelo_aero_e1.py (ENTRENADOR=%s): no editar a mano." % (modelo["nombre"], ID) + NL)
-    if clase:
-        fj.write(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), clase[1]), encoding="utf-8").read().rstrip() + NL)
-    fj.write("Modelos.registrar(" + json.dumps(modelo) + (", " + clase[0] if clase else "") + ");" + NL)
+    if clase:   # varios aviones pueden usar la misma clase (E2 y E3): se declara solo si no existe ya
+        codigo = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), clase[1]), encoding="utf-8").read().rstrip()
+        codigo = codigo.replace("class %s extends" % clase[0], "window.%s = window.%s || class %s extends" % ((clase[0],) * 3), 1)
+        fj.write(codigo + ";" + NL)
+    fj.write("Modelos.registrar(" + json.dumps(modelo) + (", window." + clase[0] if clase else "") + ");" + NL)
 fich = sorted(f for f in os.listdir(DIR_AV) if f.endswith(".js") and f != "indice.js")
 with open(os.path.join(DIR_AV, "indice.js"), "w", encoding="utf-8") as fj:
     fj.write("// Ficheros de aviones de esta carpeta. Lo reescribe scripts/modelo_aero_e1.py; con el servidor del aula se genera solo." + NL
