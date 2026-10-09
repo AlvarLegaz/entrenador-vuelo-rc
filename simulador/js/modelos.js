@@ -188,7 +188,11 @@ class Modelos {
     return Modelos.ids();
   }
 
-  static ids() { return Object.keys(Modelos._datos); }
+  /** Ids de los aviones en el orden de aviones/indice.js (alfabetico: E1, E2, E3...), no en el que acaban de cargar. */
+  static ids() {
+    const orden = Modelos._indice.map(f => f.replace(/\.js$/i, "")), pos = id => { const i = orden.indexOf(id); return i < 0 ? 1e9 : i; };
+    return Object.keys(Modelos._datos).sort((a, b) => pos(a) - pos(b) || a.localeCompare(b));
+  }
   static datos(id) { return Modelos._datos[id]; }
   static crear(id) { return new Modelos._clases[id](Modelos._datos[id]); }
 }
