@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrenador Vuelo RC</title>
+<!--
+  ENTRENADOR VUELO RC: simulador de entrenamiento RC del aula. Fisica de 6 grados de libertad y visor 3D en el navegador.
+
+  FLUJO: alumno -> avion (y viento) -> escenario o vuelo libre -> volar -> resultado guardado -> progreso.
+
+  Con el servidor del aula (aula/servidor_aula.py) los alumnos y los vuelos se guardan en la base de
+  datos comun. Sin servidor (doble clic en este fichero) se puede elegir el REGISTRO LOCAL (AulaLocal:
+  alumnos y vuelos en este ordenador, en el navegador y/o en un archivo JSON) o volar sin registrar.
+
+  Codigo: js/modelos.js (Modelos y ModeloAvion: carga de aviones y fisica), js/entorno.js (Entorno: viento,
+  pista, pilones, suelo) y js/visor.js (Visor y VistaPrevia: Three.js). Los aviones estan en la carpeta
+  aviones/ (ver aviones/LEEME.md): con el servidor del aula, un avion nuevo aparece solo al copiarlo ahi.
+  Ejes de la fisica: cuerpo (x adelante, y derecha, z abajo) y mundo NED (norte, este, abajo). El
+  piloto esta en el origen mirando al norte; la pista va hacia el norte (N 10 a 70).
+
+  TECLAS (en vuelo)
+    Flechas  arriba/abajo = profundidad (abajo = tirar = morro arriba), izq/der = timon (alerones en el E2)
+    W / S    gases + / -        Espacio: cortar gases       L: lanzar a mano
+    R        volver a empezar   Esc: terminar el vuelo y volver al menu
+    1 / 2 / 3 camara: piloto / persecucion / a bordo         [ / ]: compensador de profundidad
+    H        datos   T: ayuda   G: rachas (solo vuelo libre)  + / -: viento (solo vuelo libre)
+-->
+<style>
+  :root { --fondo: #0d1b2a; --panel: #13263b; --borde: #2c4a6b; --texto: #e8eef5; --suave: #9fb3c8;
+          --acento: #ffd34d; --ok: #4caf50; --mal: #ef5350; --azul: #42a5f5; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; color: var(--texto); }
+  #vista { width: 100%; height: 100%; display: block; }
+  #hud { position: absolute; left: 12px; top: 10px; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000;
+         font-size: 15px; line-height: 1.45; pointer-events: none; }
+  #hud b { color: var(--acento); }
+  #aviso { position: absolute; left: 0; right: 0; top: 34%; text-align: center; color: #fff; font-size: 34px;
+           font-weight: bold; text-shadow: 0 0 10px #000; pointer-events: none; }
+  #lejos { position: fixed; left: 50%; top: 15%; transform: translateX(-50%); color: #ff5252; font-weight: 700; font-size: 18px; text-align: center; text-shadow: 0 0 6px #000; max-width: 80%; pointer-events: none; }
+  #toast { position: absolute; left: 0; right: 0; top: 22%; text-align: center; color: var(--acento); font-size: 26px;
+           font-weight: bold; text-shadow: 0 0 8px #000; pointer-events: none; }
+  #ayuda { position: absolute; right: 12px; top: 10px; color: #ddd; background: rgba(0,0,0,.55); padding: 10px 14px;
+           border-radius: 8px; font-size: 13px; line-height: 1.5; max-width: 330px; display: none; }
+  #ayuda h3 { margin: 0 0 6px; font-size: 14px; color: var(--acento); }
+  #objetivos { position: absolute; right: 12px; top: 10px; background: rgba(0,0,0,.55); padding: 10px 14px; border-radius: 8px;
+               font-size: 14px; line-height: 1.6; min-width: 260px; max-width: 340px; }
+  #objetivos h3 { margin: 0 0 4px; font-size: 15px; color: var(--acento); }
+  .ob-ok { color: #8be08f; } .ob-mal { color: #ff8a80; } .ob-pend { color: #ddd; } .ob-curso { color: #b3e5fc; }
+  #barra { position: absolute; left: 12px; bottom: 12px; color: #fff; font-size: 13px; text-shadow: 0 0 3px #000; }
+  .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
+           position: relative; margin-right: 10px; background: rgba(0,0,0,.25); vertical-align: bottom; }
+  .mando i { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--acento); left: 50%; top: 50%; }
+  .gases { display: inline-block; width: 18px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 4px;
+           position: relative; background: rgba(0,0,0,.25); vertical-align: bottom; margin-right: 10px; }
+  .gases i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--ok); }
+  #cajaNegra { position: absolute; right: 12px; bottom: 12px; color: #ddd; background: rgba(0,0,0,.55); padding: 8px 12px;
+               border-radius: 8px; font-size: 12px; }
+  #cajaNegra button { font-size: 12px; margin: 4px 6px 0 0; }
+
+  /* ---------- pantallas ---------- */
+  .pantalla { position: absolute; inset: 0; background: radial-gradient(ellipse at top, #1d3557 0%, var(--fondo) 70%);
+              overflow-y: auto; display: none; z-index: 10; }
+  .pantalla.activa { display: block; }
+  .caja { max-width: 980px; margin: 0 auto; padding: 28px 16px 40px; }
+  .pantalla h1 { margin: 0 0 4px; font-size: 28px; }
+  .pantalla h2 { margin: 26px 0 10px; font-size: 19px; color: var(--acento); }
+  .sub { color: var(--suave); margin: 0 0 18px; }
+  .barraSup { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .barraSup .esp { flex: 1; }
+  input[type=text], input[type=search], input[type=password], select { background: #0b1726; color: var(--texto); border: 1px solid var(--borde);
+      border-radius: 8px; padding: 9px 12px; font-size: 15px; }
+  button { background: #1e3a5a; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 9px 16px;
+           font-size: 15px; cursor: pointer; }
+  button:hover { background: #26486e; }
+  button.prim { background: #f5b301; color: #1a1a1a; border-color: #f5b301; font-weight: 600; }
+  button.prim:hover { background: #ffc832; }
+  button.peligro { background: #5a1e1e; border-color: #8a2c2c; }
+  button:disabled { opacity: .45; cursor: default; }
+  .lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .alumno { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px; display: flex;
+            align-items: center; gap: 10px; cursor: pointer; }
+  .alumno:hover { border-color: var(--acento); }
+  .alumno .nom { font-size: 17px; font-weight: 600; }
+  .alumno .det { color: var(--suave); font-size: 13px; margin-top: 2px; }
+  .alumno .crece { flex: 1; min-width: 0; }
+  .alumno .borrar { background: transparent; border: none; color: #c98; font-size: 18px; padding: 4px 8px; }
+  .alumno .borrar:hover { color: var(--mal); }
+  .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #24405f; margin-right: 4px; }
+  .chip.ok { background: #1f4d2a; color: #9be59f; } .chip.mal { background: #4d1f1f; color: #ffb4ab; }
+  .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 16px; }
+  .avionCaja { display: grid; grid-template-columns: minmax(280px, 1.2fr) 1fr; gap: 16px; }
+  @media (max-width: 760px) { .avionCaja { grid-template-columns: 1fr; } }
+  #vistaPrevia { width: 100%; height: 300px; display: block; border-radius: 10px; background: #9fc8ea; }
+  table.datos { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table.datos td, table.datos th { padding: 5px 8px; border-bottom: 1px solid #22394f; text-align: left; vertical-align: top; }
+  table.datos th { color: var(--suave); font-weight: 500; }
+  #resObjetivos td:first-child { width: 28px; }
+  .fila { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .fila label { min-width: 120px; color: var(--suave); }
+  .escenarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .escenario { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; cursor: pointer; }
+  .escenario:hover { border-color: var(--acento); }
+  .escenario h3 { margin: 0 0 6px; font-size: 18px; }
+  .escenario p { margin: 4px 0 8px; color: var(--suave); font-size: 14px; }
+  .escenario ul { margin: 0; padding-left: 18px; font-size: 13px; color: #cfd8e3; }
+  .grande { font-size: 44px; font-weight: 800; margin: 6px 0; }
+  .apto { color: #66d36e; } .noapto { color: #ff6e66; } .libre { color: var(--azul); }
+  .progreso { height: 18px; background: #0b1726; border: 1px solid var(--borde); border-radius: 9px; overflow: hidden; }
+  .progreso i { display: block; height: 100%; background: linear-gradient(90deg, #f5b301, #66d36e); }
+  .estadisticas { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .estadisticas div { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; }
+  .estadisticas b { display: block; font-size: 24px; }
+  .estadisticas span { color: var(--suave); font-size: 13px; }
+  .aviso-aula { background: #3b2f12; border: 1px solid #7a5d16; color: #ffe6a6; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  #modal { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 30; align-items: center; justify-content: center; }
+  #modal.activa { display: flex; }
+  #modal .tarjeta { max-width: 420px; margin: 16px; }
+  #modal h3 { margin: 0 0 8px; }
+  #modal .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .err { color: #ff8a80; min-height: 1.3em; font-size: 14px; }
+</style>
+</head>
+<body>
+<canvas id="vista"></canvas>
+<div id="hud"></div>
+<div id="aviso"></div>
+<div id="lejos"></div>
+<div id="toast"></div>
+<div id="objetivos"></div>
+<div id="ayuda">
+  <h3>Teclas</h3>
+  <b>Flechas</b>: ↓ tira (morro arriba), ↑ empuja, ← → <span id="ayudaLR">timón</span><br>
+  <b>W / S</b>: gases · <b>Espacio</b>: cortar gases · <b>L</b>: lanzar<br>
+  <b>R</b>: empezar de nuevo · <b>Esc</b>: terminar y volver al menú<br>
+  <b>1 / 2 / 3</b>: cámara piloto / persecución / a bordo<br>
+  <b>[ / ]</b>: compensador de profundidad · <b>H</b>: datos · <b>T</b>: ayuda<br>
+  <span style="color:#aaa">En vuelo libre: <b>+ / −</b> viento, <b>G</b> rachas.<br>
+  <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
+</div>
+<div id="barra">
+  <div class="gases"><i id="gasesBarra" style="height:0%"></i></div>
+  <div class="mando"><i id="punto"></i></div>
+</div>
+<div id="cajaNegra">
+  <label><input type="checkbox" id="cnAuto"> Descargar la caja negra (CSV) de cada vuelo</label><br>
+  <button id="cnUltimo" disabled>Descargar el último</button>
+</div>
+
+<!-- ============ 1. ALUMNO ============ -->
+<div class="pantalla" id="pAlumno"><div class="caja">
+  <div class="barraSup"><div><h1>¿Quién vuela?</h1><p class="sub" id="aulaInfo">Conectando con el aula…</p></div>
+    <div class="esp"></div><button id="btnProfesor">Profesor</button></div>
+  <div id="sinAula" class="aviso-aula" style="display:none">
+    No hay servidor del aula. Elige cómo guardar los vuelos:
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="prim" id="btnAulaLocal">Registro local en este ordenador</button>
+      <button id="btnSinAlumno">Volar sin registrar</button></div>
+    <p class="sub" style="margin:8px 0 0">El registro local guarda alumnos, vuelos y progreso en este navegador y, si quieres, en un
+    archivo JSON que puedes copiar a otro ordenador. Para un aula con varios ordenadores y panel del profesor, arranca
+    <code>aula/servidor_aula.py</code> y abre la dirección que indica.</p>
+  </div>
+  <div id="conAula">
+    <div class="barraSup">
+      <input type="search" id="buscar" placeholder="Buscar alumno…" style="flex:1;min-width:200px" autocomplete="off">
+      <input type="text" id="nuevoNombre" placeholder="Nombre del alumno nuevo" maxlength="60" style="min-width:220px" autocomplete="off">
+      <button id="btnAnadir">Añadir</button>
+    </div>
+    <div class="err" id="errAlumno"></div>
+    <div class="lista" id="listaAlumnos"></div>
+    <p class="sub" id="pendientes" style="margin-top:14px"></p>
+    <div id="barraLocal" class="sub" style="display:none;margin-top:12px"></div>
+  </div>
+</div></div>
+
+<!-- ============ 2. AVION ============ -->
+<div class="pantalla" id="pAvion"><div class="caja">
+  <div class="barraSup"><div><h1>Elige el avión</h1><p class="sub" id="saludo"></p></div><div class="esp"></div>
+    <button id="btnCambiarAlumno">Cambiar de alumno</button><button id="btnVerProgreso">Mi progreso</button></div>
+  <div class="fila" id="selAviones"></div>
+  <div class="avionCaja">
+    <div class="tarjeta"><canvas id="vistaPrevia"></canvas>
+      <h2 id="avNombre" style="margin-top:12px"></h2><p class="sub" id="avDesc" style="margin:0"></p></div>
+    <div class="tarjeta"><table class="datos" id="avDatos"></table></div>
+  </div>
+  <h2>Viento</h2>
+  <div class="tarjeta">
+    <div class="fila"><label for="vVel">Velocidad</label><input type="range" id="vVel" min="0" max="10" step="0.5" value="2" style="flex:1;max-width:340px">
+      <b id="vVelTxt">2 m/s</b></div>
+    <div class="fila"><label for="vDir">Viene del</label><select id="vDir">
+      <option value="0">norte (de cara al piloto: la pista va contra el viento)</option><option value="45">nordeste</option>
+      <option value="90">este (cruzado)</option><option value="135">sudeste</option><option value="180">sur (de cola en la pista)</option>
+      <option value="225">sudoeste</option><option value="270">oeste (cruzado)</option><option value="315">noroeste</option></select></div>
+    <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked></div>
+    <p class="sub" style="margin:6px 0 0">Para empezar, menos de 3 m/s. El escenario de viento cruzado pone su propio viento.</p>
+  </div>
+  <div class="fila" style="justify-content:flex-end;margin-top:20px"><button class="prim" id="btnAEscenario">Siguiente: escenario →</button></div>
+</div></div>
+
+<!-- ============ 3. ESCENARIO ============ -->
+<div class="pantalla" id="pEscenario"><div class="caja">
+  <div class="barraSup"><div><h1>Elige el entrenamiento</h1><p class="sub" id="escSub"></p></div><div class="esp"></div>
+    <button id="btnVolverAvion">← Avión y viento</button></div>
+  <div class="escenarios" id="listaEscenarios"></div>
+</div></div>
+
+<!-- ============ 4. RESULTADO ============ -->
+<div class="pantalla" id="pResultado"><div class="caja">
+  <h1 id="resTitulo"></h1>
+  <div class="grande" id="resVeredicto"></div>
+  <p class="sub" id="resFinal"></p>
+  <div class="tarjeta"><table class="datos" id="resObjetivos"></table></div>
+  <p class="sub" id="resGuardado" style="margin-top:12px"></p>
+  <div class="fila" style="margin-top:18px">
+    <button class="prim" id="btnRepetir">Volar otra vez</button>
+    <button id="btnOtroEscenario">Otro escenario</button>
+    <button id="btnResProgreso">Ver mi progreso</button>
+  </div>
+</div></div>
+
+<!-- ============ 5. PROGRESO ============ -->
+<div class="pantalla" id="pProgreso"><div class="caja">
+  <div class="barraSup"><div><h1 id="progNombre"></h1><p class="sub">Progreso del entrenamiento</p></div><div class="esp"></div>
+    <button id="btnProgVolver">← Volver</button></div>
+  <div id="progContenido"></div>
+</div></div>
+
+<div id="modal"><div class="tarjeta"><h3 id="modTitulo"></h3><div id="modTexto"></div>
+  <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
+
+<script src="three.min.js"></script>
+<script src="js/modelos.js"></script>
+<script src="js/entorno.js"></script>
+<script src="js/visor.js"></script>
+<script>
+"use strict";
+// =====================================================================
+//  APLICACION: pantallas del aula, escenarios, caja negra, teclado y bucle. La fisica esta en
+//  js/modelos.js (Modelos, ModeloAvion), el campo en js/entorno.js (Entorno) y el dibujo en
+//  js/visor.js (Visor, VistaPrevia). Los aviones, en la carpeta aviones/.
+// =====================================================================
+const entorno = new Entorno();
+let visor = null, previa = null;
+let modelo = null, av = null;                 // ModeloAvion en uso y su estado
+const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0 };
+let vuelo = null;                             // registro del vuelo en curso (de L al final)
+const sesion = { aula: false, alumno: null, avion: null, escenario: "libre", viento: { vel: 2, desde: 0, rachas: true } };
+try { const g = JSON.parse(localStorage.getItem("sim_viento") || "null"); if (g) sesion.viento = g; } catch (e) {}
+
+let pantallaActual = null;
+function mostrar(id) {
+  document.querySelectorAll(".pantalla").forEach(p => p.classList.toggle("activa", p.id === id));
+  pantallaActual = id;
+  const enVuelo = id === null;
+  for (const k of ["hud", "objetivos", "barra", "cajaNegra", "lejos"]) document.getElementById(k).style.display = enVuelo ? "" : "none";
+  if (!enVuelo) document.getElementById("ayuda").style.display = "none";
+  if (enVuelo && document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function confirmar(titulo, html, textoSi) {
+  return new Promise(res => {
+    document.getElementById("modTitulo").textContent = titulo;
+    document.getElementById("modTexto").innerHTML = html;
+    document.getElementById("modSi").textContent = textoSi || "Sí";
+    const m = document.getElementById("modal"), si = document.getElementById("modSi"), no = document.getElementById("modNo");
+    m.classList.add("activa");
+    const fin = v => { m.classList.remove("activa"); si.onclick = no.onclick = null; res(v); };
+    si.onclick = () => fin(true); no.onclick = () => fin(false);
+  });
+}
+function uuid4() {      // crypto.randomUUID solo existe en https/localhost; getRandomValues funciona en el http del aula
+  const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+function fmtHoras(h) { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`; }
+function fmtFecha(iso) { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }); }
+
+// =====================================================================
+//  AULA: API del servidor y cola de vuelos sin enviar
+// =====================================================================
+async function api(metodo, ruta, cuerpo) {
+  if (sesion.modo === "local") return AulaLocal.api(metodo, ruta, cuerpo);
+  const r = await fetch("/api/" + ruta, { method: metodo, headers: cuerpo ? { "Content-Type": "application/json" } : {},
+                                         body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error((d && d.error) || ("error " + r.status)); e.status = r.status; throw e; }
+  return d;
+}
+const esDefinitivo = e => e.status >= 400 && e.status < 500;      // error del vuelo, no de la red: no reintentar
+function cola() { try { return JSON.parse(localStorage.getItem("sim_cola_vuelos") || "[]"); } catch (e) { return []; } }
+function guardarCola(c) { try { localStorage.setItem("sim_cola_vuelos", JSON.stringify(c)); } catch (e) {} }
+async function vaciarCola() {
+  if (!sesion.aula) return;
+  const quedan = [];
+  for (const v of cola()) { try { await api("POST", "vuelos", v); } catch (e) { if (!esDefinitivo(e)) quedan.push(v); } }
+  guardarCola(quedan);
+  document.getElementById("pendientes").textContent = quedan.length ? `${quedan.length} vuelo(s) de este ordenador pendientes de enviar.` : "";
+}
+setInterval(vaciarCola, 30000);
+async function enviarVuelo(v) {
+  if (!sesion.aula || !sesion.alumno) return { estado: "sin_aula" };
+  try { const r = await api("POST", "vuelos", v); vaciarCola(); return { estado: "ok", progreso: r.progreso }; }
+  catch (e) {
+    if (esDefinitivo(e)) return { estado: "error", msg: e.message };
+    const c = cola(); c.push(v); guardarCola(c);        // sin red: se envia en cuanto vuelva (el id evita duplicados)
+    return { estado: "cola" };
+  }
+}
+
+// =====================================================================
+//  REGISTRO LOCAL: sin servidor, los alumnos y los vuelos viven en este ordenador (localStorage del
+//  navegador) y, si el usuario lo pide, en un archivo JSON que se reescribe tras cada cambio (File System
+//  Access API: Chrome y Edge) o que se exporta e importa a mano (cualquier navegador). Responde a las
+//  mismas rutas que el servidor del aula y calcula el progreso igual que aula/servidor_aula.py.
+// =====================================================================
+const AulaLocal = {
+  CLAVE: "evrc_aula_local", HORAS_MINIMAS: 10, ESC: ["primer_vuelo", "orientacion", "viento_cruzado", "emergencia"],
+  datos: null, archivo: null,
+  async iniciar() {
+    try { this.datos = JSON.parse(localStorage.getItem(this.CLAVE) || "null"); } catch (e) {}
+    if (!this.datos || !Array.isArray(this.datos.alumnos)) this.datos = { version: 1, creado: new Date().toISOString(), alumnos: [], vuelos: [] };
+    if (!this.archivo) { const h = await this._idb("get"); if (h) { try { if ((await h.queryPermission({ mode: "readwrite" })) === "granted") await this.conectarArchivo(h); else this.archivoPendiente = h; } catch (e) {} } }
+  },
+  async guardar() {
+    try { localStorage.setItem(this.CLAVE, JSON.stringify(this.datos)); } catch (e) { console.warn("sin localStorage", e); }
+    if (this.archivo) {
+      try { const w = await this.archivo.createWritable(); await w.write(JSON.stringify(this.datos, null, 1)); await w.close(); this.errorArchivo = null; }
+      catch (e) { this.errorArchivo = e.message; console.warn("no se pudo escribir el archivo", e); }
+    }
+    pintarBarraLocal();
+  },
+  // archivo JSON: elegirlo (nuevo o existente), reabrirlo al arrancar, y copias a mano
+  get hayArchivos() { return !!window.showSaveFilePicker; },
+  async elegirArchivo() {
+    const h = await window.showSaveFilePicker({ suggestedName: "entrenador_vuelo_rc_registro.json", types: [{ description: "Registro JSON", accept: { "application/json": [".json"] } }] });
+    await this.conectarArchivo(h, true);
+  },
+  async abrirArchivo() {
+    const [h] = await window.showOpenFilePicker({ types: [{ description: "Registro JSON", accept: { "application/json": [".json"] } }] });
+    await this.conectarArchivo(h);
+  },
+  async conectarArchivo(h, escribirPrimero = false) {
+    if ((await h.requestPermission({ mode: "readwrite" })) !== "granted") throw new Error("sin permiso para el archivo");
+    this.archivo = h; this.archivoPendiente = null; await this._idb("set", h);
+    if (!escribirPrimero) {
+      const txt = await (await h.getFile()).text();
+      if (txt.trim()) this.datos = this._valida(JSON.parse(txt));     // el archivo manda sobre lo del navegador
+    }
+    await this.guardar();
+  },
+  exportar() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(this.datos, null, 1)], { type: "application/json" }));
+    a.download = `entrenador_vuelo_rc_registro_${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  },
+  async importar(fichero) { this.datos = this._valida(JSON.parse(await fichero.text())); await this.guardar(); },
+  _valida(d) { if (!d || !Array.isArray(d.alumnos) || !Array.isArray(d.vuelos)) throw new Error("El archivo no es un registro del simulador"); return d; },
+  _idb(op, valor) {          // el "handle" del archivo se guarda en IndexedDB para reabrirlo la proxima vez
+    return new Promise(res => {
+      if (!window.indexedDB) return res(null);
+      const rq = indexedDB.open("evrc", 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore("kv");
+      rq.onerror = () => res(null);
+      rq.onsuccess = () => {
+        const tx = rq.result.transaction("kv", "readwrite"), st = tx.objectStore("kv");
+        const r = op === "set" ? st.put(valor, "archivo") : st.get("archivo");
+        r.onsuccess = () => res(op === "set" ? true : r.result || null); r.onerror = () => res(null);
+      };
+    });
+  },
+  // la misma API que el servidor
+  progreso(id) {
+    const vs = this.datos.vuelos.filter(v => v.alumno_id === id), sup = new Set(vs.filter(v => v.resultado === "APTO").map(v => v.escenario));
+    const horas = vs.reduce((a, v) => a + (+v.tiempo_vuelo_s || 0), 0) / 3600, esc = {};
+    for (const e of this.ESC) esc[e] = { superado: sup.has(e), intentos: vs.filter(v => v.escenario === e).length };
+    return { vuelos: vs.length, horas: +horas.toFixed(3), accidentes: vs.reduce((a, v) => a + (+v.accidentes || 0), 0),
+             aterrizajes: vs.reduce((a, v) => a + (+v.aterrizajes || 0), 0), ultimo_vuelo: vs.map(v => v.inicio).sort().pop() || null,
+             escenarios: esc, escenarios_superados: this.ESC.filter(e => sup.has(e)).length, horas_minimas: this.HORAS_MINIMAS,
+             requisitos_cumplidos: horas >= this.HORAS_MINIMAS && this.ESC.every(e => sup.has(e)) };
+  },
+  _alumno(a) { return Object.assign({}, a, { progreso: this.progreso(a.id) }); },
+  _error(codigo, msg) { const e = new Error(msg); e.status = codigo; return e; },
+  async api(m, ruta, cuerpo) {
+    const p = ruta.split("/"), D = this.datos;
+    if (m === "GET" && ruta === "estado") return { ok: true, aula: "este ordenador", horas_minimas: this.HORAS_MINIMAS, escenarios: this.ESC, local: true };
+    if (m === "GET" && ruta === "alumnos") return D.alumnos.filter(a => !a.archivado).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))).map(a => this._alumno(a));
+    if (m === "POST" && ruta === "alumnos") {
+      const nombre = String((cuerpo || {}).nombre || "").replace(/\s+/g, " ").trim();
+      if (nombre.length < 2 || nombre.length > 60) throw this._error(400, "El nombre tiene que tener entre 2 y 60 caracteres");
+      if (D.alumnos.some(a => !a.archivado && norm(a.nombre) === norm(nombre))) throw this._error(409, "Ya hay un alumno con ese nombre");
+      const a = { id: uuid4(), nombre, creado: new Date().toISOString(), notas: "", archivado: false, archivado_en: null, habilitado: false, habilitado_en: null };
+      D.alumnos.push(a); await this.guardar(); return this._alumno(a);
+    }
+    if (p.length === 2 && p[0] === "alumnos") {
+      const a = D.alumnos.find(x => x.id === p[1]);
+      if (!a) throw this._error(404, "alumno no encontrado");
+      if (m === "GET") {
+        const d = this._alumno(a);
+        d.vuelos = D.vuelos.filter(v => v.alumno_id === a.id).sort((x, y) => y.inicio.localeCompare(x.inicio))
+          .map(v => Object.assign({ escenario_nombre: (ESCENARIOS[v.escenario] || {}).nombre || v.escenario }, v));
+        return d;
+      }
+      if (m === "DELETE") { a.archivado = true; a.archivado_en = new Date().toISOString(); await this.guardar(); return { ok: true }; }
+    }
+    if (m === "POST" && ruta === "vuelos") {
+      const v = cuerpo || {};
+      for (const k of ["id", "alumno_id", "inicio", "avion", "escenario", "resultado"]) if (!v[k]) throw this._error(400, "faltan campos: " + k);
+      if (!D.alumnos.some(a => a.id === v.alumno_id)) throw this._error(404, "alumno no encontrado");
+      const nuevo = !D.vuelos.some(x => x.id === v.id);
+      if (nuevo) { D.vuelos.push(Object.assign({}, v, { tiempo_vuelo_s: Math.max(0, +v.tiempo_vuelo_s || 0), recibido: new Date().toISOString() })); await this.guardar(); }
+      return { ok: true, nuevo, progreso: this.progreso(v.alumno_id) };
+    }
+    throw this._error(404, "ruta no disponible en el registro local: " + m + " " + ruta);
+  },
+};
+function pintarBarraLocal() {
+  const el = document.getElementById("barraLocal");
+  if (sesion.modo !== "local") { el.style.display = "none"; return; }
+  const A = AulaLocal, n = A.datos.alumnos.filter(a => !a.archivado).length;
+  let arch = "";
+  if (A.archivo) arch = `Archivo: <b>${esc(A.archivo.name)}</b>${A.errorArchivo ? ` <span class="err">(no se pudo escribir: ${esc(A.errorArchivo)})</span>` : " (se actualiza tras cada vuelo)"}`;
+  else if (A.archivoPendiente) arch = `<button id="btnReabrir">Reabrir ${esc(A.archivoPendiente.name)}</button>`;
+  else arch = A.hayArchivos ? "Solo en este navegador" : "Solo en este navegador (este navegador no puede escribir archivos: usa Exportar / Importar)";
+  el.style.display = "";
+  el.innerHTML = `Registro local · ${n} alumno(s) · ${A.datos.vuelos.length} vuelo(s) · ${arch}
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      ${A.hayArchivos ? '<button id="btnArchivoNuevo">Guardar en un archivo…</button><button id="btnArchivoAbrir">Abrir un archivo…</button>' : ""}
+      <button id="btnExportar">Exportar copia</button><button id="btnImportar">Importar copia</button>
+      <button id="btnSalirLocal" title="Vuelve a preguntar cómo guardar los vuelos">Dejar el registro local</button></div>`;
+  const err = m => { document.getElementById("errAlumno").textContent = m; };
+  const b = id => document.getElementById(id);
+  if (b("btnArchivoNuevo")) b("btnArchivoNuevo").onclick = () => A.elegirArchivo().then(cargarAlumnos).catch(e => { if (e.name !== "AbortError") err(e.message); });
+  if (b("btnArchivoAbrir")) b("btnArchivoAbrir").onclick = () => A.abrirArchivo().then(cargarAlumnos).catch(e => { if (e.name !== "AbortError") err(e.message); });
+  if (b("btnReabrir")) b("btnReabrir").onclick = () => A.conectarArchivo(A.archivoPendiente).then(cargarAlumnos).catch(e => err(e.message));
+  b("btnExportar").onclick = () => A.exportar();
+  b("btnImportar").onclick = () => {
+    const i = document.createElement("input"); i.type = "file"; i.accept = ".json,application/json";
+    i.onchange = () => A.importar(i.files[0]).then(cargarAlumnos).catch(e => err(e.message)); i.click();
+  };
+  b("btnSalirLocal").onclick = () => { try { localStorage.removeItem("evrc_modo"); } catch (e) {} sesion.aula = false; sesion.modo = "servidor"; pintarPantallaAula(); };
+}
+
+// =====================================================================
+//  1. ALUMNOS
+// =====================================================================
+let alumnos = [];
+async function iniciarAula() {
+  sesion.aula = false; sesion.modo = "servidor";
+  if (location.protocol.startsWith("http")) {
+    try { const e = await api("GET", "estado"); sesion.aula = true; sesion.nombreAula = e.aula; } catch (e) {}
+  }
+  if (!sesion.aula) { let modo = null; try { modo = localStorage.getItem("evrc_modo"); } catch (e) {} if (modo === "local") await activarAulaLocal(); }
+  await pintarPantallaAula();
+}
+async function activarAulaLocal() {
+  await AulaLocal.iniciar(); sesion.aula = true; sesion.modo = "local";
+  try { localStorage.setItem("evrc_modo", "local"); } catch (e) {}
+}
+async function pintarPantallaAula() {
+  const local = sesion.modo === "local";
+  document.getElementById("sinAula").style.display = sesion.aula ? "none" : "";
+  document.getElementById("conAula").style.display = sesion.aula ? "" : "none";
+  document.getElementById("btnProfesor").style.display = sesion.aula && !local ? "" : "none";
+  document.getElementById("aulaInfo").textContent = !sesion.aula ? "Modo sin aula" : local
+    ? "Registro local de este ordenador · elige tu nombre para entrar" : `Aula: ${sesion.nombreAula} · elige tu nombre para entrar`;
+  pintarBarraLocal();
+  if (sesion.aula) { await cargarAlumnos(); vaciarCola(); }
+}
+document.getElementById("btnAulaLocal").onclick = async () => { await activarAulaLocal(); await pintarPantallaAula(); };
+async function cargarAlumnos() {
+  try { alumnos = await api("GET", "alumnos"); document.getElementById("errAlumno").textContent = ""; }
+  catch (e) { document.getElementById("errAlumno").textContent = "No se pudo leer la lista: " + e.message; }
+  pintarAlumnos();
+}
+function norm(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+function pintarAlumnos() {
+  const f = norm(document.getElementById("buscar").value), el = document.getElementById("listaAlumnos");
+  const vis = alumnos.filter(a => norm(a.nombre).includes(f));
+  el.innerHTML = vis.length ? "" : `<p class="sub">${alumnos.length ? "Nadie coincide con la búsqueda." : "Todavía no hay alumnos: añade el primero arriba."}</p>`;
+  for (const a of vis) {
+    const g = a.progreso, d = document.createElement("div");
+    d.className = "alumno";
+    d.innerHTML = `<div class="crece"><div class="nom">${esc(a.nombre)}</div>
+      <div class="det">${fmtHoras(g.horas)} · ${g.vuelos} vuelos · ${g.escenarios_superados}/4 escenarios
+      ${a.habilitado ? '<span class="chip ok">avión real</span>' : ""}</div></div>
+      <button class="borrar" title="Quitar de la lista">🗑</button>`;
+    d.onclick = () => { sesion.alumno = a; irAvion(); };
+    d.querySelector(".borrar").onclick = async e => {
+      e.stopPropagation();
+      const ok = await confirmar("¿Quitar a " + a.nombre + "?",
+        `<p>Desaparecerá de esta lista. Sus <b>${g.vuelos} vuelos</b> y sus horas se conservan, y el profesor puede devolverlo a la lista.</p>`, "Quitar");
+      if (!ok) return;
+      try { await api("DELETE", "alumnos/" + a.id); } catch (err) { document.getElementById("errAlumno").textContent = err.message; }
+      cargarAlumnos();
+    };
+    el.appendChild(d);
+  }
+}
+document.getElementById("buscar").addEventListener("input", pintarAlumnos);
+async function anadirAlumno() {
+  const inp = document.getElementById("nuevoNombre"), nombre = inp.value.trim();
+  if (!nombre) return;
+  try { const a = await api("POST", "alumnos", { nombre }); inp.value = ""; await cargarAlumnos();
+        document.getElementById("errAlumno").textContent = `Añadido: ${a.nombre}`; }
+  catch (e) { document.getElementById("errAlumno").textContent = e.message; }
+}
+document.getElementById("btnAnadir").onclick = anadirAlumno;
+document.getElementById("nuevoNombre").addEventListener("keydown", e => { if (e.key === "Enter") anadirAlumno(); });
+document.getElementById("btnProfesor").onclick = () => window.open("profesor.html", "_blank");
+document.getElementById("btnSinAlumno").onclick = () => { sesion.alumno = null; irAvion(); };
+
+// =====================================================================
+//  2. AVION Y VIENTO
+// =====================================================================
+function irAvion() {
+  document.getElementById("saludo").textContent = sesion.alumno ? `Hola, ${sesion.alumno.nombre}.` : "Modo sin aula: los vuelos no se guardan.";
+  document.getElementById("btnVerProgreso").style.display = sesion.alumno ? "" : "none";
+  const sel = document.getElementById("selAviones"); sel.innerHTML = "";
+  for (const id of Modelos.ids()) {
+    const b = document.createElement("button"); b.textContent = Modelos.datos(id).nombre;
+    if (id === sesion.avion) b.className = "prim";
+    b.onclick = () => { sesion.avion = id; irAvion(); };
+    sel.appendChild(b);
+  }
+  const A = Modelos.datos(sesion.avion);
+  document.getElementById("avNombre").textContent = A.nombre;
+  document.getElementById("avDesc").textContent = A.descripcion || "";
+  // ficha: lo que trae el fichero del avion y, si no lo trae ya, la cuerda (de c_m) y el perfil alar (campo perfil)
+  const filas = (A.caracteristicas || []).slice(), tiene = n => filas.some(([k]) => k.toLowerCase().startsWith(n));
+  if (A.c_m && !tiene("cuerda")) filas.splice(1, 0, ["Cuerda", `${(A.c_m * 1000).toFixed(0)} mm`]);
+  if (A.perfil && !tiene("perfil")) filas.splice(2, 0, ["Perfil alar", A.perfil]);
+  document.getElementById("avDatos").innerHTML = filas.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+  const v = sesion.viento;
+  document.getElementById("vVel").value = v.vel; document.getElementById("vDir").value = String(v.desde);
+  document.getElementById("vRachas").checked = v.rachas; document.getElementById("vVelTxt").textContent = v.vel + " m/s";
+  previa.mostrar(A);
+  mostrar("pAvion");
+}
+function leerViento() {
+  sesion.viento = { vel: +document.getElementById("vVel").value, desde: +document.getElementById("vDir").value,
+                    rachas: document.getElementById("vRachas").checked };
+  document.getElementById("vVelTxt").textContent = sesion.viento.vel + " m/s";
+  try { localStorage.setItem("sim_viento", JSON.stringify(sesion.viento)); } catch (e) {}
+}
+for (const id of ["vVel", "vDir", "vRachas"]) document.getElementById(id).addEventListener("input", leerViento);
+document.getElementById("btnCambiarAlumno").onclick = () => { mostrar("pAlumno"); iniciarAula(); };
+document.getElementById("btnVerProgreso").onclick = () => irProgreso("pAvion");
+document.getElementById("btnAEscenario").onclick = () => {
+  leerViento(); try { localStorage.setItem("sim_avion", sesion.avion); } catch (e) {} irEscenario();
+};
+
+// =====================================================================
+//  3. ESCENARIOS: objetivos y evaluacion automatica
+// =====================================================================
+const ESCENARIOS = {
+  primer_vuelo: { nombre: "1 · Primer vuelo", desc: "Lanza el avión, da dos vueltas al circuito rodeando por fuera los 4 pilones y aterriza.",
+    objetivos: [["subir", "Lanzar y subir a 20 m"], ["circ1", "Primera vuelta por fuera de los 4 pilones"],
+                ["circ2", "Segunda vuelta por fuera de los 4 pilones"], ["aterrizar", "Aterrizar sin daños"]] },
+  orientacion: { nombre: "2 · Orientación", desc: "Dos figuras de ocho delante de ti, sin alejarte y sin entrar en pérdida.",
+    objetivos: [["subir", "Subir a 20 m"], ["ocho1", "Primer ocho (vuelta a un lado y luego al otro)"], ["ocho2", "Segundo ocho"],
+                ["cerca", "No alejarse más de 200 m"], ["sinPerdida", "Sin entrar en pérdida"], ["aterrizar", "Aterrizar sin daños"]] },
+  viento_cruzado: { nombre: "3 · Viento cruzado", desc: "Viento de 4 m/s del oeste, de lado a la pista. Corrige la deriva y aterriza en la pista.",
+    viento: { vel: 4, desde: 270, rachas: true },
+    objetivos: [["subir", "Subir a 20 m"], ["circ1", "Una vuelta por fuera de los 4 pilones"], ["enPista", "Tocar tierra en la pista"],
+                ["alineado", "Toma alineada con la pista (±25°)"], ["aterrizar", "Aterrizar sin daños"]] },
+  emergencia: { nombre: "4 · Emergencia", desc: "Sube a 40 m. En algún momento el motor se para: planea y aterriza cerca de ti.",
+    objetivos: [["subir40", "Subir a 40 m"], ["fallo", "Fallo de motor: mantener el control (sin pérdida)"],
+                ["aterrizar", "Aterrizar sin daños"], ["cerca100", "Aterrizar a menos de 100 m del piloto"]] },
+  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones: se cronometra cada vuelta.", objetivos: [] },
+};
+function irEscenario() {
+  const g = sesion.alumno && sesion.alumno.progreso;
+  document.getElementById("escSub").textContent = `${Modelos.datos(sesion.avion).nombre} · viento ${sesion.viento.vel} m/s` +
+    (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : "");
+  const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
+  for (const [id, E] of Object.entries(ESCENARIOS)) {
+    const st = g && g.escenarios[id];
+    const d = document.createElement("div"); d.className = "escenario";
+    d.innerHTML = `<h3>${esc(E.nombre)} ${st ? (st.superado ? '<span class="chip ok">superado</span>' : st.intentos ? `<span class="chip">${st.intentos} intentos</span>` : "") : ""}</h3>
+      <p>${esc(E.desc)}</p>${E.objetivos.length ? "<ul>" + E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("") + "</ul>" : ""}`;
+    d.onclick = () => { sesion.escenario = id; empezar(); };
+    el.appendChild(d);
+  }
+  mostrar("pEscenario");
+}
+document.getElementById("btnVolverAvion").onclick = irAvion;
+
+let ev = null;     // evaluador del vuelo en curso
+function nuevoEvaluador() {
+  ev = { obj: Object.fromEntries(ESCENARIOS[sesion.escenario].objetivos.map(([id, t]) => [id, { texto: t, estado: "pend" }])),
+         contador: entorno.contadorVueltas(), acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
+         t40: null, tFallo: null, falloHecho: false };
+  for (const k of ["cerca", "sinPerdida"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
+}
+function marcar(id, estado) { if (ev.obj[id] && ev.obj[id].estado !== "mal") ev.obj[id].estado = estado; }
+const desenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
+function evaluar(dt) {
+  if (!ev || av.estado !== "volando") return;
+  const h = -av.p[2], N = av.p[0], E = av.p[1], dist = Math.hypot(N, E), t = av.t;
+  if (h >= 20) marcar("subir", "ok");
+  if (h >= 40) { marcar("subir40", "ok"); if (ev.t40 === null) { ev.t40 = t; ev.tFallo = t + 8 + 12 * Math.random(); } }
+  // vueltas al circuito por fuera de los 4 pilones (las cuenta el Entorno en cada paso)
+  if (ev.contador.vueltas >= 1) marcar("circ1", "ok"); if (ev.contador.vueltas >= 2) marcar("circ2", "ok");
+  // ochos: vueltas completas de rumbo (330 grados) alternando el sentido
+  const rumbo = Cuat.euler(av.q)[2];
+  if (ev.rumboPrev !== null) ev.acumRumbo += desenrollar(rumbo - ev.rumboPrev);
+  ev.rumboPrev = rumbo;
+  if (Math.abs(ev.acumRumbo) >= 330 * D2R) { ev.giros.push(Math.sign(ev.acumRumbo)); ev.acumRumbo = 0; }
+  let ochos = 0; for (let i = 1; i < ev.giros.length; i++) if (ev.giros[i] !== ev.giros[i - 1]) { ochos++; i++; }
+  if (ochos >= 1) marcar("ocho1", "ok"); if (ochos >= 2) marcar("ocho2", "ok");
+  if (dist > 200) marcar("cerca", "mal");
+  // perdida: mas de 0,3 s seguidos con perdida > 0,6 (despues del lanzamiento)
+  ev.perdidaT = av.perdida > 0.6 && t > 3 ? ev.perdidaT + dt : 0;
+  if (ev.perdidaT > 0.3) { marcar("sinPerdida", "mal"); if (ev.falloHecho) marcar("fallo", "mal"); }
+  // emergencia: el motor se para a los 8-20 s de llegar a 40 m
+  if (sesion.escenario === "emergencia" && ev.tFallo !== null && !ev.falloHecho && t >= ev.tFallo) {
+    ev.falloHecho = true; av.motorRoto = true; av.gases = 0; marcar("fallo", "curso");
+    aviso("¡FALLO DE MOTOR!"); setTimeout(() => { if (av.estado === "volando") aviso(""); }, 2500);
+  }
+}
+function evaluarFinal(final, vn) {
+  const N = av.p[0], E = av.p[1], ok = final === "aterrizado";
+  if (ok) {
+    marcar("aterrizar", sesion.escenario === "emergencia" && !ev.falloHecho ? "mal" : "ok");
+    const enPista = entorno.enPista(N, E);
+    marcar("enPista", enPista ? "ok" : "mal");
+    const tr = Math.atan2(vn[1], vn[0]) * R2D, desv = Math.min(Math.abs(tr), 180 - Math.abs(tr));
+    marcar("alineado", enPista && desv <= 25 ? "ok" : "mal");
+    marcar("cerca100", ev.falloHecho && Math.hypot(N, E) <= 100 ? "ok" : "mal");
+  }
+  // lo que seguia "en curso" solo cuenta si el vuelo acabo en un aterrizaje; lo pendiente, no se hizo
+  for (const o of Object.values(ev.obj)) if (o.estado === "curso") o.estado = ok ? "ok" : "mal";
+  for (const o of Object.values(ev.obj)) if (o.estado === "pend") o.estado = "mal";
+}
+function textoVueltas() {
+  const c = ev && ev.contador;
+  if (!c) return "";
+  return `Vueltas por fuera de los pilones: <b>${c.vueltas}</b>` + (c.mejor !== null ? ` · mejor ${c.mejor.toFixed(1)} s` : "");
+}
+function pintarObjetivos() {
+  const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
+  if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoVueltas()}`; return; }
+  const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
+  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+    (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
+}
+
+// =====================================================================
+//  VUELO
+// =====================================================================
+function empezar() {
+  modelo = Modelos.crear(sesion.avion);
+  visor.ponerAvion(Modelos.datos(sesion.avion));
+  document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
+  if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
+  reiniciar(); mostrar(null);
+}
+function reiniciar() {
+  av = modelo.estadoInicial();
+  mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
+  entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
+  nuevoEvaluador(); vuelo = null;
+  aviso("Pulsa L para lanzar (pon antes gases con W)");
+}
+function lanzar() {
+  if (av.estado !== "en mano") return;
+  modelo.lanzar(av); aviso("");
+  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario };
+  cnContador = 0; grabarMuestra();
+}
+function paso(dt) {
+  const viento = entorno.actualizar(dt);
+  modelo.servos(av, mando, dt);
+  if (av.estado !== "volando") return;
+  const pAnt = av.p.slice();
+  const vn = modelo.paso(av, viento, dt);
+  if (vuelo) vuelo.tVuelo += dt;
+  if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
+  if (av.estado !== "volando") return;
+  if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
+  if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
+  const su = ev && ev.contador.actualizar(pAnt, av.p, av.t);
+  if (su) toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? "¡Por dentro del pilón! Vuelta anulada" : su.n === 1 ? "Pilón de salida" : `Pilón ${su.n - 1}/4`);
+  const suelo = entorno.contactoSuelo(av, vn);
+  if (suelo) terminarVuelo(suelo, vn);
+}
+function terminarVuelo(final, vn) {
+  if (av.estado !== "volando") return;
+  av.estado = final.startsWith("roto") ? "roto" : final === "aterrizado" ? "aterrizado" : "terminado";
+  av.v = [0, 0, 0]; av.w = [0, 0, 0];
+  if (!vuelo) return;
+  vuelo.final = final; grabarMuestra();
+  evaluarFinal(final, vn || [0, 0, 0]);
+  aviso(final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
+        : final === "fuera de límites" ? "FUERA DE LÍMITES: el avión se ha perdido de vista" : "");
+  document.getElementById("lejos").textContent = "";
+  ultimoVuelo = vuelo;
+  document.getElementById("cnUltimo").disabled = false;
+  if (document.getElementById("cnAuto").checked) descargarVuelo(vuelo);
+  const v = vuelo;
+  setTimeout(() => mostrarResultado(v), final === "abandonado" ? 0 : 1800);
+}
+
+// =====================================================================
+//  4. RESULTADO Y GUARDADO
+// =====================================================================
+async function mostrarResultado(v) {
+  if (v.mostrado) { mostrar("pResultado"); return; }
+  v.mostrado = true;
+  const E = ESCENARIOS[v.escenario], libre = v.escenario === "libre";
+  const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
+  const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
+  const resultado = libre ? "LIBRE" : apto ? "APTO" : "NO APTO";
+  document.getElementById("resTitulo").textContent = E.nombre;
+  const ver = document.getElementById("resVeredicto");
+  ver.textContent = libre ? "Vuelo libre" : resultado; ver.className = "grande " + (libre ? "libre" : apto ? "apto" : "noapto");
+  const fin = v.final === "aterrizado" ? "Aterrizaje correcto" : v.final.startsWith("roto") ? "Accidente: " + v.final.slice(6, -1)
+    : v.final === "fuera de límites" ? `Fuera de límites: a más de ${entorno.limites.distancia_m} m el avión ya no se ve` : "Vuelo terminado sin aterrizar";
+  document.getElementById("resFinal").textContent = `${fin} · tiempo de vuelo ${(v.tVuelo / 60).toFixed(1)} min · ` + textoVueltas().replace(/<[^>]+>/g, "");
+  document.getElementById("resObjetivos").innerHTML = objs.length
+    ? objs.map(o => `<tr><td class="${o.ok ? "ob-ok" : "ob-mal"}">${o.ok ? "✔" : "✘"}</td><td>${esc(o.texto)}</td></tr>`).join("")
+    : `<tr><td>Sin objetivos: el tiempo cuenta para las horas de entrenamiento.</td></tr>`;
+  document.getElementById("btnResProgreso").style.display = sesion.alumno ? "" : "none";
+  const g = document.getElementById("resGuardado");
+  mostrar("pResultado");
+  if (!sesion.alumno) { g.textContent = "Modo sin aula: este vuelo no se ha guardado."; return; }
+  g.textContent = "Guardando…";
+  const r = await enviarVuelo({ id: v.id, alumno_id: sesion.alumno.id, inicio: v.inicio.toISOString(), fin: new Date().toISOString(),
+    avion: modelo.nombre, escenario: v.escenario, tiempo_vuelo_s: +v.tVuelo.toFixed(1),
+    accidentes: v.final.startsWith("roto") ? 1 : 0, aterrizajes: v.final === "aterrizado" ? 1 : 0,
+    objetivos: objs, resultado, final: v.final, viento: E.viento || sesion.viento });
+  if (r.estado === "ok") {
+    g.textContent = sesion.modo === "local" ? "✔ Guardado en el registro local" + (AulaLocal.archivo ? ` y en ${AulaLocal.archivo.name}.` : " de este navegador.")
+                                            : "✔ Guardado en el registro del aula.";
+    sesion.alumno.progreso = r.progreso;
+  }
+  else if (r.estado === "cola") g.textContent = "Sin conexión con el aula: se guardará solo en cuanto vuelva (no se perderá).";
+  else g.textContent = "No se pudo guardar: " + (r.msg || "");
+}
+document.getElementById("btnRepetir").onclick = empezar;
+document.getElementById("btnOtroEscenario").onclick = irEscenario;
+document.getElementById("btnResProgreso").onclick = () => irProgreso("pResultado");
+
+// =====================================================================
+//  5. PROGRESO
+// =====================================================================
+let volverDesde = "pAvion";
+async function irProgreso(desde) {
+  volverDesde = desde;
+  const el = document.getElementById("progContenido");
+  document.getElementById("progNombre").textContent = sesion.alumno.nombre;
+  el.innerHTML = '<p class="sub">Cargando…</p>'; mostrar("pProgreso");
+  let a;
+  try { a = await api("GET", "alumnos/" + sesion.alumno.id); sesion.alumno.progreso = a.progreso; }
+  catch (e) { el.innerHTML = `<p class="err">No se pudo leer el progreso: ${esc(e.message)}</p>`; return; }
+  const g = a.progreso, pct = Math.min(100, 100 * g.horas / g.horas_minimas), faltan = [];
+  if (g.horas < g.horas_minimas) faltan.push(`${fmtHoras(g.horas_minimas - g.horas)} de vuelo`);
+  const pend = Object.entries(g.escenarios).filter(([, s]) => !s.superado).map(([k]) => ESCENARIOS[k].nombre.replace(/^\d · /, ""));
+  if (pend.length) faltan.push("superar " + pend.join(", "));
+  const estado = a.habilitado ? `<span class="chip ok">AUTORIZADO</span> para volar la maqueta real desde ${fmtFecha(a.habilitado_en)}.`
+    : g.requisitos_cumplidos ? `<span class="chip">Requisitos cumplidos</span> Pide al profesor que te autorice para la maqueta real.`
+    : `<span class="chip mal">No habilitado</span> Te falta: ${faltan.join(" y ")}.`;
+  el.innerHTML = `
+    <div class="estadisticas">
+      <div><b>${fmtHoras(g.horas)}</b><span>horas de vuelo</span></div><div><b>${g.vuelos}</b><span>vuelos</span></div>
+      <div><b>${g.aterrizajes}</b><span>aterrizajes</span></div><div><b>${g.accidentes}</b><span>accidentes</span></div>
+      <div><b>${g.escenarios_superados}/4</b><span>escenarios superados</span></div></div>
+    <h2>Camino a la maqueta real</h2>
+    <div class="tarjeta"><div class="fila" style="margin-top:0"><b>${fmtHoras(g.horas)} de ${g.horas_minimas} h mínimas</b></div>
+      <div class="progreso"><i style="width:${pct}%"></i></div>
+      <table class="datos" style="margin-top:12px">${Object.entries(g.escenarios).map(([k, s]) =>
+        `<tr><td class="${s.superado ? "ob-ok" : "ob-pend"}">${s.superado ? "✔" : "○"}</td><td>${esc(ESCENARIOS[k].nombre)}</td><td>${s.intentos} intentos</td></tr>`).join("")}</table>
+      <p style="margin:12px 0 0">${estado}</p></div>
+    <h2>Historial</h2>
+    <div class="tarjeta" style="overflow-x:auto"><table class="datos"><tr><th>Fecha</th><th>Avión</th><th>Entrenamiento</th><th>Tiempo</th><th>Objetivos</th><th>Final</th><th>Resultado</th></tr>
+      ${a.vuelos.length ? a.vuelos.map(v => `<tr><td>${fmtFecha(v.inicio)}</td><td>${esc(v.avion)}</td><td>${esc(v.escenario_nombre)}</td>
+        <td>${(v.tiempo_vuelo_s / 60).toFixed(1)} min</td><td>${v.objetivos.length ? v.objetivos.filter(o => o.ok).length + "/" + v.objetivos.length : "—"}</td>
+        <td>${esc(v.final || "")}</td><td class="${v.resultado === "APTO" ? "ob-ok" : v.resultado === "NO APTO" ? "ob-mal" : ""}">${v.resultado}</td></tr>`).join("")
+        : '<tr><td colspan="7">Todavía no hay vuelos.</td></tr>'}</table></div>`;
+}
+document.getElementById("btnProgVolver").onclick = () => volverDesde === "pResultado" ? mostrar("pResultado") : irAvion();
+
+// =====================================================================
+//  CAJA NEGRA (CSV de cada vuelo, a 20 Hz)
+// =====================================================================
+const DT = 1 / 500, CN_CADA = 25;
+const CN_COLUMNAS = ["t_s", "x_norte_m", "y_este_m", "z_altura_m", "vel_aire_ms", "vel_suelo_ms", "vel_vertical_ms",
+  "alabeo_grados", "cabeceo_grados", "rumbo_grados", "alfa_grados", "resbale_grados", "carga_g",
+  "gases_pct", "motor_rpm", "empuje_N", "energia_Wh", "bateria_pct", "palanca_profundidad", "palanca_timon",
+  "compensador_grados", "profundidad_grados", "timon_grados", "aleron_grados", "viento_norte_ms", "viento_este_ms", "perdida"];
+let cnContador = 0, ultimoVuelo = null;
+function grabarMuestra() {
+  if (!vuelo) return;
+  const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), vn = Cuat.rot(av.q, av.v), r = (x, n) => +(+x).toFixed(n), w = entorno.viento.actual;
+  vuelo.filas.push([r(av.t, 2), r(av.p[0], 2), r(av.p[1], 2), r(-av.p[2], 2), r(av.V, 2), r(Math.hypot(vn[0], vn[1]), 2),
+    r(-vn[2], 2), r(roll, 1), r(pitch, 1), r((yaw + 360) % 360, 1), r(av.alfa, 2), r(av.beta, 2), r(av.g_carga, 2),
+    r(av.gases * 100, 1), r(av.rpm, 0), r(av.T, 3), r(av.Wh, 4), r(modelo.bateriaPct(av), 1),
+    r(mando.pitch, 3), r(mando.yaw, 3), r(mando.trim, 2), r(av.de * R2D, 2), r(av.dr * R2D, 2), r((av.da || 0) * R2D, 2), r(w[0], 2), r(w[1], 2), r(av.perdida, 2)]);
+}
+function descargarVuelo(v) {
+  const d = v.inicio, z = n => String(n).padStart(2, "0"), f = v.filas;
+  const cab = [`# ${modelo.nombre} · vuelo del ${d.toLocaleString("es-ES")} · ${ESCENARIOS[v.escenario].nombre}` + (sesion.alumno ? ` · ${sesion.alumno.nombre}` : ""),
+    `# masa ${(modelo.masa_kg * 1000).toFixed(0)} g · viento ${entorno.viento.base} m/s ${entorno.viento.rachas ? "con" : "sin"} rachas · final: ${v.final} · ${f.length} muestras a 20 Hz`,
+    `# ruta: x al norte, y al este, z altura (m, desde el lanzamiento) · profundidad: + = abajo · timon: + = a la derecha · aleron: + = alabeo a la derecha`];
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([cab.join("\n") + "\n" + CN_COLUMNAS.join(",") + "\n" + f.map(x => x.join(",")).join("\n") + "\n"], { type: "text/csv" }));
+  a.download = `vuelo_${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}_${v.escenario}_${(v.final || "").split(" ")[0]}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+document.getElementById("cnUltimo").addEventListener("click", e => { if (ultimoVuelo) descargarVuelo(ultimoVuelo); e.target.blur(); });
+document.getElementById("cnAuto").addEventListener("change", e => e.target.blur());
+
+// =====================================================================
+//  TECLADO
+// =====================================================================
+const teclas = {};
+let mostrarHud = true;
+window.addEventListener("keydown", e => {
+  if (pantallaActual !== null || document.getElementById("modal").classList.contains("activa")) return;
+  teclas[e.code] = true;
+  const libre = sesion.escenario === "libre", vto = entorno.viento;
+  if (e.code === "KeyL") lanzar();
+  if (e.code === "KeyR") { if (av.estado === "volando") terminarVuelo("abandonado"); else reiniciar(); }
+  if (e.code === "Escape") {
+    if (av.estado === "volando") terminarVuelo("abandonado");
+    else if (vuelo && vuelo.final) mostrarResultado(vuelo);
+    else irEscenario();
+  }
+  if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
+  if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
+  if (e.code === "KeyH") mostrarHud = !mostrarHud;
+  if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
+  if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
+  if (e.code === "BracketLeft") mando.trim = Math.max(-6, mando.trim - 0.25);
+  if (e.code === "BracketRight") mando.trim = Math.min(6, mando.trim + 0.25);
+  if ((e.key === "+" || e.code === "NumpadAdd") && libre) vto.base = Math.min(10, vto.base + 1);
+  if ((e.key === "-" || e.code === "NumpadSubtract") && libre) vto.base = Math.max(0, vto.base - 1);
+  if (e.code.startsWith("Arrow")) e.preventDefault();
+});
+window.addEventListener("keyup", e => { teclas[e.code] = false; });
+window.addEventListener("blur", () => { for (const k in teclas) teclas[k] = false; });
+function leerTeclado(dt) {
+  mando.pitchObj = (teclas["ArrowDown"] ? 1 : 0) - (teclas["ArrowUp"] ? 1 : 0);    // +1 = tirar
+  mando.yawObj = (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0);
+  for (const k of ["pitch", "yaw"]) {         // la palanca va al tope a 5/s y vuelve al centro a 8/s
+    const obj = mando[k + "Obj"], vel = obj === 0 ? 8 : 5, d = obj - mando[k];
+    mando[k] += Math.sign(d) * Math.min(Math.abs(d), vel * dt);
+  }
+  if (av.motorRoto) return;
+  if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + 0.8 * dt);
+  if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - 0.8 * dt);
+}
+
+// =====================================================================
+//  HUD Y BUCLE
+// =====================================================================
+let tToast = 0;
+function aviso(txt) { document.getElementById("aviso").textContent = txt; }
+function toast(txt) { const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
+function hud() {
+  const el = document.getElementById("hud");
+  if (!mostrarHud) { el.textContent = ""; return; }
+  const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0], av.p[1]);
+  const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento;
+  el.innerHTML =
+    `<b>${av.estado.toUpperCase()}</b>  t ${av.t.toFixed(1)} s${vuelo && av.estado === "volando" ? ' · <span style="color:#ff5252">● grabando</span>' : ""}` +
+    `${av.motorRoto ? ' · <b style="color:#ff5252">MOTOR PARADO</b>' : ""}<br>` +
+    `vel. aire <b>${av.V.toFixed(1)}</b> m/s · suelo ${Math.hypot(vn[0], vn[1]).toFixed(1)} m/s · asc. ${vs >= 0 ? "+" : ""}${vs.toFixed(1)} m/s<br>` +
+    `altura <b>${h.toFixed(1)}</b> m · distancia ${dist.toFixed(0)} m<br>` +
+    `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
+    `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
+    `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
+    `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú`;
+  const L = entorno.limites, lejos = document.getElementById("lejos");
+  if (av.estado === "volando" && dist > L.aviso_m) {
+    const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);
+    lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
+  } else lejos.textContent = "";
+  document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
+  document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
+  document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
+}
+let tAnterior = performance.now(), acumulado = 0, tObj = 0;
+function bucle(ahora) {
+  const dtReal = Math.min(0.1, (ahora - tAnterior) / 1000); tAnterior = ahora;
+  if (pantallaActual === null) {
+    leerTeclado(dtReal);
+    acumulado += dtReal;
+    while (acumulado >= DT) { paso(DT); acumulado -= DT; }
+    visor.dibujar(av); hud();
+    if ((tObj += dtReal) > 0.2) { tObj = 0; pintarObjetivos(); }
+  } else {
+    acumulado = 0;
+    if (pantallaActual === "pAvion") previa.pintar(ahora);
+  }
+  requestAnimationFrame(bucle);
+}
+
+(async function arrancar() {
+  const ids = await Modelos.cargar();
+  if (!ids.length) { document.getElementById("aulaInfo").textContent = "No hay ningún avión en la carpeta aviones/."; mostrar("pAlumno"); return; }
+  let guardado = null; try { guardado = localStorage.getItem("sim_avion"); } catch (e) {}
+  sesion.avion = ids.includes(guardado) ? guardado : ids[0];
+  visor = new Visor(document.getElementById("vista"), entorno);
+  previa = new VistaPrevia(document.getElementById("vistaPrevia"));
+  mostrar("pAlumno");
+  await iniciarAula();
+  requestAnimationFrame(bucle);
+})();
+</script>
+</body>
+</html>

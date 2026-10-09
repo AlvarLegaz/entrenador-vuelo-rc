@@ -1,0 +1,11 @@
+# salidas regenerables de los scripts (python scripts/geom_e1.py ...): mallas, pickles y STL intermedios
+scripts/out/
+scripts/out_*/
+__pycache__/
+*.pyc
+# datos del aula (base de datos SQLite y copias) y registros de prueba
+aula/datos/
+aula_prueba/
+# temporales
+*.tmp
+~$*

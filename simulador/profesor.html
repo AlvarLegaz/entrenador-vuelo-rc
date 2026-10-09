@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrenador Vuelo RC · Panel del profesor</title>
+<!-- Panel del profesor del simulador del aula. Necesita el servidor del aula (aula/servidor_aula.py)
+     y el PIN del profesor. La sesion dura 8 h o hasta pulsar "Salir". -->
+<style>
+  :root { --fondo: #0d1b2a; --panel: #13263b; --borde: #2c4a6b; --texto: #e8eef5; --suave: #9fb3c8; --acento: #ffd34d;
+          --ok: #66d36e; --mal: #ff6e66; }
+  html, body { margin: 0; background: var(--fondo); color: var(--texto); font-family: system-ui, sans-serif; }
+  .caja { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
+  h1 { margin: 0; font-size: 26px; } h2 { font-size: 19px; color: var(--acento); margin: 22px 0 10px; }
+  .sub { color: var(--suave); }
+  input, select, textarea { background: #0b1726; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 11px; font-size: 15px; font-family: inherit; }
+  button { background: #1e3a5a; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 7px 13px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #26486e; } button:disabled { opacity: .4; cursor: default; }
+  button.prim { background: #f5b301; color: #1a1a1a; border-color: #f5b301; font-weight: 600; }
+  button.peligro { background: #5a1e1e; border-color: #8a2c2c; }
+  .barra { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+  .barra .esp { flex: 1; }
+  .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 6px; border-bottom: 1px solid var(--borde); }
+  .pestanas button { border-radius: 8px 8px 0 0; border-bottom: none; background: transparent; }
+  .pestanas button.activa { background: var(--panel); color: var(--acento); }
+  .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; }
+  .tabla { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { padding: 7px 8px; border-bottom: 1px solid #22394f; text-align: left; vertical-align: top; }
+  th { color: var(--suave); font-weight: 500; white-space: nowrap; }
+  tr.archivado td { opacity: .55; }
+  .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #24405f; white-space: nowrap; }
+  .chip.ok { background: #1f4d2a; color: #9be59f; } .chip.mal { background: #4d1f1f; color: #ffb4ab; } .chip.ama { background: #4d3f12; color: #ffe08a; }
+  .ok { color: var(--ok); } .mal { color: var(--mal); }
+  .acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+  .acciones button { padding: 4px 9px; font-size: 13px; }
+  .err { color: #ff8a80; min-height: 1.3em; }
+  #login { max-width: 360px; margin: 12vh auto; }
+  #modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 5; }
+  #modal.activa { display: flex; }
+  #modal .tarjeta { max-width: 520px; width: calc(100% - 32px); max-height: 85vh; overflow-y: auto; }
+  #modal .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+  .progreso { height: 14px; background: #0b1726; border: 1px solid var(--borde); border-radius: 7px; overflow: hidden; min-width: 90px; }
+  .progreso i { display: block; height: 100%; background: linear-gradient(90deg, #f5b301, #66d36e); }
+  .esc4 span { display: inline-block; width: 20px; text-align: center; }
+  details summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="caja">
+  <div id="login" class="tarjeta">
+    <h1>Panel del profesor</h1>
+    <p class="sub">Introduce el PIN del profesor.</p>
+    <div class="barra"><input type="password" id="pin" inputmode="numeric" autocomplete="off" placeholder="PIN" style="flex:1">
+      <button class="prim" id="entrar">Entrar</button></div>
+    <div class="err" id="errLogin"></div>
+  </div>
+
+  <div id="panel" style="display:none">
+    <div class="barra"><div><h1>Panel del profesor</h1><span class="sub" id="resumen"></span></div><div class="esp"></div>
+      <button id="exAlumnos">Exportar alumnos (CSV)</button><button id="exVuelos">Exportar vuelos (CSV)</button>
+      <button id="salir">Salir</button></div>
+    <div class="pestanas">
+      <button data-p="alumnos" class="activa">Alumnos</button><button data-p="historial">Historial</button>
+      <button data-p="copias">Copias y registro</button><button data-p="ajustes">PIN</button>
+    </div>
+    <div class="err" id="err"></div>
+
+    <section id="p-alumnos">
+      <div class="barra">
+        <input type="search" id="buscar" placeholder="Buscar alumno…" style="min-width:220px">
+        <label class="sub"><input type="checkbox" id="verArchivados"> ver archivados</label>
+        <div class="esp"></div>
+        <input type="text" id="nuevo" placeholder="Nombre del alumno nuevo" maxlength="60"><button id="anadir">Añadir</button>
+      </div>
+      <div class="tarjeta tabla"><table id="tAlumnos"></table></div>
+      <p class="sub" style="font-size:13px">Requisitos para la maqueta real: 10 h de vuelo y los 4 escenarios superados. La autorización la da el profesor a mano.
+        «Archivar» quita al alumno de la lista conservando sus vuelos; «Borrar» (solo archivados) lo elimina con sus vuelos, después de una copia de seguridad.</p>
+    </section>
+
+    <section id="p-historial" style="display:none">
+      <div class="barra">
+        <select id="fAlumno"><option value="">Todos los alumnos</option></select>
+        <select id="fEscenario"><option value="">Todos los entrenamientos</option></select>
+        <select id="fResultado"><option value="">Cualquier resultado</option><option>APTO</option><option>NO APTO</option><option>LIBRE</option></select>
+        <span class="sub" id="nVuelos"></span>
+      </div>
+      <div class="tarjeta tabla"><table id="tVuelos"></table></div>
+    </section>
+
+    <section id="p-copias" style="display:none">
+      <div class="barra"><button class="prim" id="copiaYa">Hacer una copia ahora</button><span class="sub">Se hacen solas al arrancar el servidor, cada hora si hubo cambios, al cerrarlo y antes de cada borrado. Se guardan las 60 últimas en <code>aula/datos/copias</code>.</span></div>
+      <div class="tarjeta tabla"><table id="tCopias"></table></div>
+      <h2>Registro de acciones</h2>
+      <div class="tarjeta tabla"><table id="tRegistro"></table></div>
+    </section>
+
+    <section id="p-ajustes" style="display:none">
+      <div class="tarjeta" style="max-width:420px">
+        <h2 style="margin-top:0">Cambiar el PIN</h2>
+        <div class="barra"><input type="password" id="pinActual" placeholder="PIN actual" inputmode="numeric" style="flex:1"></div>
+        <div class="barra"><input type="password" id="pinNuevo" placeholder="PIN nuevo (4 a 12 cifras)" inputmode="numeric" style="flex:1"></div>
+        <div class="barra"><input type="password" id="pinNuevo2" placeholder="Repite el PIN nuevo" inputmode="numeric" style="flex:1"></div>
+        <button class="prim" id="cambiarPin">Cambiar</button> <span id="msgPin" class="sub"></span>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="modal"><div class="tarjeta"><h2 id="mTitulo" style="margin-top:0"></h2><div id="mCuerpo"></div>
+  <div class="botones" id="mBotones"></div></div></div>
+
+<script>
+"use strict";
+const ESC = { primer_vuelo: "Primer vuelo", orientacion: "Orientación", viento_cruzado: "Viento cruzado", emergencia: "Emergencia", libre: "Vuelo libre" };
+const ORDEN = ["primer_vuelo", "orientacion", "viento_cruzado", "emergencia"];
+let token = sessionStorage.getItem("prof_token") || "";
+let alumnos = [];
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function fmtHoras(h) { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`; }
+function fmtFecha(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }); }
+
+async function api(metodo, ruta, cuerpo, crudo) {
+  const h = { Authorization: "Bearer " + token }; if (cuerpo) h["Content-Type"] = "application/json";
+  const r = await fetch("/api/" + ruta, { method: metodo, headers: h, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  if (r.status === 401 && ruta !== "profesor/entrar" && ruta !== "profesor/pin") { salir(); throw new Error("La sesión ha caducado: vuelve a entrar"); }
+  if (crudo && r.ok) return r;
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && d.error) || "error " + r.status);
+  return d;
+}
+function fallo(e) { $("err").textContent = e.message; setTimeout(() => { if ($("err").textContent === e.message) $("err").textContent = ""; }, 6000); }
+
+// ---------- modal ----------
+function modal(titulo, html, botones) {
+  return new Promise(res => {
+    $("mTitulo").textContent = titulo; $("mCuerpo").innerHTML = html;
+    const b = $("mBotones"); b.innerHTML = "";
+    for (const [txt, val, clase] of botones) {
+      const x = document.createElement("button"); x.textContent = txt; if (clase) x.className = clase;
+      x.onclick = () => { $("modal").classList.remove("activa"); res(val); }; b.appendChild(x);
+    }
+    $("modal").classList.add("activa");
+  });
+}
+
+// ---------- entrar / salir ----------
+async function entrar() {
+  $("errLogin").textContent = "";
+  try {
+    const r = await fetch("/api/profesor/entrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: $("pin").value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "error");
+    token = d.token; sessionStorage.setItem("prof_token", token); $("pin").value = ""; abrirPanel();
+  } catch (e) { $("errLogin").textContent = e.message === "Failed to fetch" ? "No hay conexión con el servidor del aula" : e.message; }
+}
+$("entrar").onclick = entrar; $("pin").addEventListener("keydown", e => { if (e.key === "Enter") entrar(); });
+function salir() {
+  if (token) fetch("/api/profesor/salir", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => {});
+  token = ""; sessionStorage.removeItem("prof_token"); $("panel").style.display = "none"; $("login").style.display = "";
+}
+$("salir").onclick = salir;
+async function abrirPanel() {
+  try { await cargarAlumnos(); } catch (e) { if (!token) return; $("errLogin").textContent = e.message; return; }
+  $("login").style.display = "none"; $("panel").style.display = "";
+}
+
+// ---------- pestanas ----------
+document.querySelectorAll(".pestanas button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".pestanas button").forEach(x => x.classList.toggle("activa", x === b));
+  for (const p of ["alumnos", "historial", "copias", "ajustes"]) $("p-" + p).style.display = p === b.dataset.p ? "" : "none";
+  if (b.dataset.p === "historial") cargarVuelos().catch(fallo);
+  if (b.dataset.p === "copias") cargarCopias().catch(fallo);
+  if (b.dataset.p === "alumnos") cargarAlumnos().catch(fallo);
+});
+
+// ---------- alumnos ----------
+async function cargarAlumnos() {
+  alumnos = await api("GET", "profesor/alumnos");
+  const act = alumnos.filter(a => !a.archivado);
+  $("resumen").textContent = `${act.length} alumnos · ${fmtHoras(act.reduce((s, a) => s + a.progreso.horas, 0))} de vuelo en total · ` +
+    `${act.filter(a => a.habilitado).length} autorizados para la maqueta real`;
+  const sel = $("fAlumno"), v = sel.value;
+  sel.innerHTML = '<option value="">Todos los alumnos</option>' + alumnos.map(a => `<option value="${a.id}">${esc(a.nombre)}${a.archivado ? " (archivado)" : ""}</option>`).join("");
+  sel.value = v;
+  pintarAlumnos();
+}
+function norm(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+function pintarAlumnos() {
+  const f = norm($("buscar").value), arch = $("verArchivados").checked;
+  const lista = alumnos.filter(a => (arch || !a.archivado) && norm(a.nombre).includes(f));
+  $("tAlumnos").innerHTML = `<tr><th>Alumno</th><th>Horas</th><th>Vuelos</th><th>Aterrizajes / accidentes</th><th>Escenarios</th><th>Último vuelo</th><th>Maqueta real</th><th>Acciones</th></tr>` +
+    (lista.length ? lista.map(a => {
+      const g = a.progreso, pct = Math.min(100, 100 * g.horas / g.horas_minimas);
+      const estado = a.archivado ? '<span class="chip">archivado</span>' : a.habilitado ? `<span class="chip ok">autorizado</span><br><span class="sub" style="font-size:12px">${fmtFecha(a.habilitado_en)}</span>`
+        : g.requisitos_cumplidos ? '<span class="chip ama">cumple: pendiente de autorizar</span>' : '<span class="chip mal">no cumple</span>';
+      return `<tr class="${a.archivado ? "archivado" : ""}"><td><b>${esc(a.nombre)}</b>${a.notas ? `<br><span class="sub" style="font-size:12px">${esc(a.notas)}</span>` : ""}</td>
+        <td>${fmtHoras(g.horas)}<div class="progreso"><i style="width:${pct}%"></i></div></td><td>${g.vuelos}</td>
+        <td>${g.aterrizajes} / ${g.accidentes}</td>
+        <td class="esc4">${ORDEN.map(e => `<span title="${ESC[e]}: ${g.escenarios[e].intentos} intentos" class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔" : "○"}</span>`).join("")}</td>
+        <td>${fmtFecha(g.ultimo_vuelo)}</td><td>${estado}</td>
+        <td><div class="acciones">
+          <button data-a="ver" data-id="${a.id}">Ver</button><button data-a="editar" data-id="${a.id}">Editar</button>
+          ${a.archivado ? `<button data-a="restaurar" data-id="${a.id}">Restaurar</button><button class="peligro" data-a="borrar" data-id="${a.id}">Borrar</button>`
+                        : `<button data-a="archivar" data-id="${a.id}">Archivar</button>`}
+          ${a.archivado ? "" : a.habilitado ? `<button data-a="retirar" data-id="${a.id}">Retirar autorización</button>`
+                        : `<button class="prim" data-a="autorizar" data-id="${a.id}" ${g.requisitos_cumplidos ? "" : "disabled title='Necesita 10 h y los 4 escenarios'"}>Autorizar maqueta real</button>`}
+        </div></td></tr>`;
+    }).join("") : `<tr><td colspan="8" class="sub">No hay alumnos${f ? " que coincidan" : ""}.</td></tr>`);
+  $("tAlumnos").querySelectorAll("button[data-a]").forEach(b => b.onclick = () => accion(b.dataset.a, alumnos.find(a => a.id === b.dataset.id)).catch(fallo));
+}
+$("buscar").addEventListener("input", pintarAlumnos); $("verArchivados").addEventListener("change", pintarAlumnos);
+async function anadir() {
+  const n = $("nuevo").value.trim(); if (!n) return;
+  await api("POST", "profesor/alumnos", { nombre: n }); $("nuevo").value = ""; await cargarAlumnos();
+}
+$("anadir").onclick = () => anadir().catch(fallo); $("nuevo").addEventListener("keydown", e => { if (e.key === "Enter") anadir().catch(fallo); });
+
+async function accion(a, al) {
+  if (a === "ver") return verAlumno(al);
+  if (a === "editar") {
+    const ok = await modal("Editar alumno", `<div class="barra"><input id="eNombre" style="flex:1" maxlength="60" value="${esc(al.nombre)}"></div>
+      <textarea id="eNotas" rows="4" style="width:100%;box-sizing:border-box" placeholder="Notas del profesor">${esc(al.notas)}</textarea>`,
+      [["Cancelar", false], ["Guardar", true, "prim"]]);
+    if (!ok) return;
+    await api("PUT", "profesor/alumnos/" + al.id, { nombre: document.getElementById("eNombre").value, notas: document.getElementById("eNotas").value });
+  } else if (a === "archivar") {
+    if (!await modal("¿Archivar a " + al.nombre + "?", "<p>Desaparece de la lista de alumnos. Sus vuelos se conservan y se puede restaurar.</p>", [["Cancelar", false], ["Archivar", true, "peligro"]])) return;
+    await api("POST", `profesor/alumnos/${al.id}/archivar`);
+  } else if (a === "restaurar") {
+    await api("POST", `profesor/alumnos/${al.id}/restaurar`);
+  } else if (a === "borrar") {
+    const ok = await modal("Borrar definitivamente", `<p>Se borrará <b>${esc(al.nombre)}</b> con sus <b>${al.progreso.vuelos} vuelos</b>. Antes se hace una copia de seguridad.</p>
+      <p>Escribe el nombre del alumno para confirmar:</p><input id="confNombre" style="width:100%;box-sizing:border-box">`, [["Cancelar", false], ["Borrar", true, "peligro"]]);
+    if (!ok) return;
+    if (document.getElementById("confNombre").value.trim() !== al.nombre) throw new Error("El nombre no coincide: no se ha borrado nada");
+    const r = await api("DELETE", "profesor/alumnos/" + al.id);
+    fallo(new Error("Borrado. Copia previa: " + r.copia));
+  } else if (a === "autorizar" || a === "retirar") {
+    const si = a === "autorizar";
+    const ok = await modal(si ? "Autorizar la maqueta real" : "Retirar la autorización",
+      si ? `<p><b>${esc(al.nombre)}</b> tiene ${fmtHoras(al.progreso.horas)} de vuelo y los 4 escenarios superados.</p><p>¿Le autorizas a volar la maqueta RC real?</p>`
+         : `<p>¿Retirar a <b>${esc(al.nombre)}</b> la autorización para la maqueta real?</p>`,
+      [["Cancelar", false], [si ? "Autorizar" : "Retirar", true, si ? "prim" : "peligro"]]);
+    if (!ok) return;
+    await api("POST", `profesor/alumnos/${al.id}/habilitar`, { autorizar: si });
+  }
+  await cargarAlumnos();
+}
+
+function filaVuelo(v, conAlumno) {
+  const ok = v.objetivos.filter(o => o.ok).length;
+  return `<tr>${conAlumno ? `<td>${esc(v.alumno)}</td>` : ""}<td>${fmtFecha(v.inicio)}</td><td>${esc(v.equipo)}</td><td>${esc(v.avion)}</td><td>${esc(v.escenario_nombre)}</td>
+    <td>${(v.tiempo_vuelo_s / 60).toFixed(1)} min</td><td>${v.aterrizajes} / ${v.accidentes}</td>
+    <td>${v.objetivos.length ? `<details><summary>${ok}/${v.objetivos.length}</summary>${v.objetivos.map(o => `<div class="${o.ok ? "ok" : "mal"}">${o.ok ? "✔" : "✘"} ${esc(o.texto)}</div>`).join("")}</details>` : "—"}</td>
+    <td>${esc(v.final)}</td><td class="${v.resultado === "APTO" ? "ok" : v.resultado === "NO APTO" ? "mal" : ""}"><b>${v.resultado}</b></td></tr>`;
+}
+const CAB_VUELOS = c => `<tr>${c ? "<th>Alumno</th>" : ""}<th>Fecha</th><th>Equipo</th><th>Avión</th><th>Entrenamiento</th><th>Tiempo</th><th>Aterr. / acc.</th><th>Objetivos</th><th>Final</th><th>Resultado</th></tr>`;
+
+async function verAlumno(al) {
+  const vs = await api("GET", "profesor/vuelos?alumno=" + encodeURIComponent(al.id)), g = al.progreso;
+  await modal(al.nombre, `<p>${fmtHoras(g.horas)} de vuelo · ${g.vuelos} vuelos · ${g.aterrizajes} aterrizajes · ${g.accidentes} accidentes</p>
+    <table>${ORDEN.map(e => `<tr><td class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔ superado" : "○ pendiente"}</td><td>${ESC[e]}</td><td>${g.escenarios[e].intentos} intentos</td></tr>`).join("")}</table>
+    <h2>Historial</h2><div class="tabla"><table>${CAB_VUELOS(false)}${vs.map(v => filaVuelo(v, false)).join("") || '<tr><td colspan="9" class="sub">Sin vuelos</td></tr>'}</table></div>`,
+    [["Cerrar", true]]);
+}
+
+// ---------- historial ----------
+let vuelos = [];
+$("fEscenario").innerHTML += Object.entries(ESC).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+async function cargarVuelos() { vuelos = await api("GET", "profesor/vuelos"); pintarVuelos(); }
+function pintarVuelos() {
+  const a = $("fAlumno").value, e = $("fEscenario").value, r = $("fResultado").value;
+  const l = vuelos.filter(v => (!a || v.alumno_id === a) && (!e || v.escenario === e) && (!r || v.resultado === r));
+  $("nVuelos").textContent = `${l.length} vuelos · ${fmtHoras(l.reduce((s, v) => s + v.tiempo_vuelo_s, 0) / 3600)}`;
+  $("tVuelos").innerHTML = CAB_VUELOS(true) + (l.map(v => filaVuelo(v, true)).join("") || '<tr><td colspan="10" class="sub">Sin vuelos</td></tr>');
+}
+for (const id of ["fAlumno", "fEscenario", "fResultado"]) $(id).addEventListener("change", () => vuelos.length ? pintarVuelos() : cargarVuelos().catch(fallo));
+
+// ---------- exportar ----------
+async function exportar(tipo) {
+  const r = await api("GET", "profesor/exportar?tipo=" + tipo, null, true);
+  const nombre = (r.headers.get("Content-Disposition") || "").match(/filename="(.+)"/)?.[1] || tipo + ".csv";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+$("exAlumnos").onclick = () => exportar("alumnos").catch(fallo); $("exVuelos").onclick = () => exportar("vuelos").catch(fallo);
+
+// ---------- copias y registro ----------
+async function cargarCopias() {
+  const [cs, rg] = await Promise.all([api("GET", "profesor/copias"), api("GET", "profesor/registro")]);
+  $("tCopias").innerHTML = "<tr><th>Copia</th><th>Tamaño</th></tr>" + cs.map(c => `<tr><td>${esc(c.nombre)}</td><td>${c.kb} kB</td></tr>`).join("");
+  $("tRegistro").innerHTML = "<tr><th>Fecha</th><th>Acción</th><th>Detalle</th></tr>" + rg.map(r => `<tr><td>${fmtFecha(r.fecha)}</td><td>${esc(r.accion)}</td><td>${esc(r.detalle)}</td></tr>`).join("");
+}
+$("copiaYa").onclick = async () => { try { const r = await api("POST", "profesor/copias"); fallo(new Error("Copia hecha: " + r.copia)); cargarCopias(); } catch (e) { fallo(e); } };
+
+// ---------- PIN ----------
+$("cambiarPin").onclick = async () => {
+  $("msgPin").textContent = "";
+  if ($("pinNuevo").value !== $("pinNuevo2").value) { $("msgPin").textContent = "Los PIN nuevos no coinciden"; return; }
+  try { await api("POST", "profesor/pin", { actual: $("pinActual").value, nuevo: $("pinNuevo").value });
+        $("msgPin").textContent = "PIN cambiado"; for (const id of ["pinActual", "pinNuevo", "pinNuevo2"]) $(id).value = ""; }
+  catch (e) { $("msgPin").textContent = e.message; }
+};
+
+if (token) abrirPanel();
+</script>
+</body>
+</html>
