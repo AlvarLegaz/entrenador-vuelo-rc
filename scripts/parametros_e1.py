@@ -28,6 +28,12 @@ TRAMOS = [("ALA_I_x2", 75.0, 260.0), ("ALA_E_x4", 340.0, 470.0), ("ALA_E_x4", 47
 Z_ALA = 36.0            # el intrados del centro apoya en el lomo del fuselaje (Z = FUS_H/2)
 BARRIDO_DIEDRO = (8, 10, 12, 14, 16)   # diedros de las puntas que barre vlm_e1.py
 
+# ---------------- motor ----------------
+# Inclinacion del motor hacia abajo. La linea de empuje pasa ~22 mm por debajo del CG (ala alta) y la helice
+# esta ~259 mm por delante: con potencia el avion encabrita. Anularlo del todo pediria ~5 grados; con 4 queda
+# una ligera tendencia a subir al dar gas, que es lo que se busca en un entrenador (el gas controla la altura)
+DOWNTHRUST = 4.0
+
 # ---------------- fuselaje impreso ----------------
 # seccion rectangular redondeada, constante hasta X_TAPER y luego conica recta hasta la cola
 L = 760.0

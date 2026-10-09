@@ -43,7 +43,8 @@ CD0 = (cd_ala + cd_fus + cd_cola + 0.004) * 1.3      # +0,004 interferencias y g
 D_prop, n_max = 9 * 0.0254, 8730 / 60
 CT0 = 0.840 * 9.81 / 1.225 / n_max ** 2 / D_prop ** 4
 prop = dict(T_max_N=0.840 * 9.81, D_m=D_prop, n_max_rps=n_max, CT0=float(CT0), J0=0.72, I_max_A=13.2,
-            P_max_W=146.5, masa_bateria_Wh=11.1 * 1.3)
+            P_max_W=146.5, masa_bateria_Wh=11.1 * 1.3,
+            downthrust_grados=P.DOWNTHRUST)      # bancada de F1 inclinada: el empuje apunta hacia abajo
 
 # timon: con 25 grados, 3 s a tope ponian el avion a 150 grados de alabeo; con teclado la palanca siempre va a tope
 mandos = dict(prof_max_grados=12.0, timon_max_grados=15.0 if G.CON_TIMON else 0.0, expo=0.40, servo_tau_s=0.06,

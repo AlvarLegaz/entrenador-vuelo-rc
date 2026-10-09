@@ -436,12 +436,18 @@ def fuselage_segment(k):
             body = body + (boss ^ pared)
             body = body - Manifold.cylinder(2 * w + 10, DOWEL_D / 2, center=True).rotate([90, 0, 0]).translate([xd, 0, zd])
     if k == 0:     # bancada del motor: 4 mm maciza, cruz del X2212 (16 x 19, M3), eje y ventilacion
-        body = body + solid(0, 4.0)
-        for (yy, zz) in [(8, 0), (-8, 0), (0, 9.5), (0, -9.5)]:
-            body = body - along_x(Manifold.cylinder(10, 1.65)).translate([-2, yy, zz])
-        body = body - along_x(Manifold.cylinder(10, 5.0)).translate([-2, 0, 0])
-        for (yy, zz) in [(17, 20), (-17, 20), (17, -20), (-17, -20)]:
-            body = body - along_x(Manifold.cylinder(10, 4.0)).translate([-2, yy, zz])
+        # inclinada DOWNTHRUST grados: la cara de la bancada (normal n) mira hacia delante y abajo, asi el eje
+        # del motor apunta DOWNTHRUST grados por debajo del eje del fuselaje (la parte de arriba sobresale)
+        d = np.radians(P.DOWNTHRUST)
+        n = [float(np.cos(d)), 0.0, float(np.sin(d))]
+        body = body + (solid(-4.0, 8.0) ^ solid(-4.0, 8.0)).trim_by_plane(n, 0.0).trim_by_plane([-v for v in n], -4.0)
+        body = body.trim_by_plane(n, 0.0)                                  # nada por delante de la cara
+        agujeros = None
+        for (yy, zz, r) in [(8, 0, 1.65), (-8, 0, 1.65), (0, 9.5, 1.65), (0, -9.5, 1.65), (0, 0, 5.0),
+                            (17, 20, 4.0), (-17, 20, 4.0), (17, -20, 4.0), (-17, -20, 4.0)]:
+            h = along_x(Manifold.cylinder(14, r)).translate([-5, yy, zz])
+            agujeros = h if agujeros is None else agujeros + h
+        body = body - agujeros.rotate([0, -P.DOWNTHRUST, 0])               # perpendiculares a la cara
         for xv in (40, 70, 100):     # rejillas de refrigeracion del ESC en el suelo
             body = body - Manifold.cube([16, 30, 10]).translate([xv, -15, -P.FUS_H / 2 - 5])
     if a < SERVO_X[0] < b:     # bandeja de los servos (bajo la escotilla del ala)
@@ -698,8 +704,9 @@ def build():
         g = fuselage_segment(k)
         nm = "F%d" % (k + 1)
         glob[nm] = g
-        # de pie: F1 sobre la bancada; los demas sobre su cara delantera (el cuello queda arriba)
-        parts[nm] = g.rotate([0, -90, 0])
+        # de pie: F1 sobre la bancada (girada DOWNTHRUST para que la cara inclinada apoye plana); los demas sobre su
+        # cara delantera (el cuello queda arriba)
+        parts[nm] = (g.rotate([0, P.DOWNTHRUST, 0]) if k == 0 else g).rotate([0, -90, 0])
     for k, (nm, s0, s1) in enumerate(TRAMOS):
         corte = servo_s = None
         if ALERON and ALERON["y0"] < s1 and ALERON["y1"] > s0:

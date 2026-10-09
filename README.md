@@ -2,7 +2,7 @@
 
 Simulador de vuelo RC para el aula (**Entrenador Vuelo RC**, `simulador/simulador.html`) y los dos aviones de aprendizaje impresos en 3D con los que se entrena, el **Entrenador E1** y el **Entrenador E2**. Repositorio: <https://github.com/AlvarLegaz/entrenador-vuelo-rc>.
 
-Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él en clase. El **Entrenador E1** es un ala alta con poliedro (centro plano y 12° de diedro en las puntas) y solo dos servos, timón y profundidad: el diedro hace que nivele las alas solo cuando se sueltan los mandos. El **Entrenador E2** (más abajo) es la variante con alerones y profundidad, para que los alumnos practiquen también con alerones.
+Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él en clase. El **Entrenador E1** es un ala alta con poliedro (centro plano y 12° de diedro en las puntas) y solo dos servos, timón y profundidad: el diedro hace que nivele las alas solo cuando se sueltan los mandos. El **Entrenador E2** (más abajo) es la variante con alerones y profundidad, para que los alumnos practiquen también con alerones, y el **Entrenador E3**, el E2 con el ala plana.
 
 ![Vistas](ENTRENADOR_E1_vistas.png)
 
@@ -16,11 +16,13 @@ Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él e
 | Masa en vuelo | 783 g (LW-PLA; F1 en PLA normal) |
 | Carga alar | 36,2 g/dm² |
 | Pérdida / crucero | 7,3 m/s / ≈ 9,5 m/s con la profundidad neutra |
-| Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh |
+| Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh. **Inclinado 4° hacia abajo**: la bancada de F1 ya sale inclinada |
 | Centro de gravedad | 234 mm desde la bancada del motor = **59 mm detrás del borde de ataque del ala** (33 % de la cuerda). Margen estático 21 % |
 | Batería | Centrada a unos 47 mm de la bancada, contra el fondo del morro |
 
 Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de las piezas y el VLM usa la geometría real. La pérdida, la resistencia parásita y el empuje en vuelo son estimaciones hasta calibrarlas con planeos del avión real.
+
+**Motor inclinado y gas.** La línea de empuje pasa 22 mm por debajo del centro de gravedad y la hélice está 259 mm por delante, así que con motor el avión tiende a encabritar. Anularlo del todo pediría unos 5°. Con 4° queda una ligera tendencia a subir al dar gas, que en un entrenador es lo que se busca: el gas controla la altura. En el simulador, desde un planeo compensado a 9,5 m/s y sin tocar la profundidad, el 60 % de gas da una subida suave de unos 10° de cabeceo. El 100 % sube muy empinado, porque sobra motor (empuje máximo 1,07 veces el peso): se vuela con 50–70 % de gas y el 100 % se deja para el lanzamiento y las subidas.
 
 **Por qué poliedro y no una V en la raíz.** Cada semiala hace palanca en el centro del ala: unos 3,8 N·m a 4 g (lanzamiento fuerte, recogida, ráfaga). Con la V en la raíz, los dos tubos de carbono terminaban en la pieza central y esa palanca la tenía que pasar la pieza impresa. Con el poliedro, el centro lleva un solo tubo recto y el quiebro está donde la palanca es 5 veces menor (0,8 N·m a 4 g). Allí la pasa una llave de tubo de aluminio de 6×4 mm doblada al ángulo del diedro, que aguanta unos 4,2 N·m. Para que el avión se comporte igual que con la V de 8° hacen falta 12° en las puntas: el VLM da el mismo efecto diedro (Cl_β −0,146 frente a −0,138) y la espiral se corrige a la mitad en unos 10 s.
 
@@ -139,6 +141,18 @@ python scripts/modelo_aero_e1.py   # -> simulador/aviones/E2.js, con la clase Mo
 python scripts/vistas_e1.py        # ENTRENADOR_E2_vistas.png
 ```
 
+## Entrenador E3: alerones y profundidad, ala plana
+
+El E2 con el ala **totalmente plana, sin diedro**. Es el paso siguiente para quien ya vuela con alerones: sin diedro el avión no tiende a nivelar las alas y hay que llevarlo siempre con los alerones. Sus números están en `scripts/parametros_e3.py` (solo cambia el diedro respecto al E2).
+
+![Vistas del E3](ENTRENADOR_E3_vistas.png)
+
+**Cómo vuela (VLM y simulador).** Con el ala plana la espiral es inestable: si se inclina el avión y se sueltan los mandos, la inclinación se duplica en unos 4 s según el modelo lineal. En el banco de pruebas del simulador, 10° de inclinación con las manos quietas pasan a 40° en 20 s, mientras el avión baja ganando velocidad. Es lo normal en un avión sin diedro con una deriva grande; el E2, con 7°, es casi neutro. El resto (lanzamiento, planeo a 9,4 m/s con 1,0 m/s de descenso, pérdida a 7,3 m/s, margen estático 18 %, 792 g) es igual que en el E2.
+
+**Piezas (carpeta `stl/E3/`).** Todas son idénticas a las del E2 salvo `ALA_Q_izq`, que sale recta (sin ángulo en el quiebro). La llave de aluminio del quiebro va **sin doblar**. El resto del montaje y las compras, como el E2.
+
+**Regenerar el E3:** los mismos scripts con `ENTRENADOR=E3` (escriben en `scripts/out_E3/` y en `simulador/aviones/E3.js`; el VLM con `python analisis/vlm_e1.py 0.792 0.0393 0.0668`).
+
 ## Simulador
 
 `simulador/simulador.html` (Entrenador Vuelo RC). Funciona de tres formas, a elección del usuario:
@@ -154,7 +168,7 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | Tecla | Qué hace |
 |---|---|
 | Flechas ↑ ↓ | Profundidad (↓ tira, morro arriba) |
-| Flechas ← → | Timón (E1) o alerones (E2) |
+| Flechas ← → | Timón (E1) o alerones (E2 y E3) |
 | W / S | Gases |
 | Espacio | Cortar gases |
 | L | Lanzar |
