@@ -626,20 +626,22 @@ function textoCM() {
 //  3. ESCENARIOS: objetivos y evaluacion automatica
 // =====================================================================
 const ESCENARIOS = {
-  primer_vuelo: { nombre: "1 · Primer vuelo", desc: "Lanza el avión, da dos vueltas al circuito rodeando por fuera los 4 pilones y aterriza.",
-    objetivos: [["subir", "Lanzar y subir a 20 m"], ["circ1", "Primera vuelta por fuera de los 4 pilones"],
-                ["circ2", "Segunda vuelta por fuera de los 4 pilones"], ["aterrizar", "Aterrizar sin daños"]] },
+  primer_vuelo: { nombre: "1 · Primer vuelo", sentido: 1,
+    desc: "Lanza el avión, da dos vueltas al circuito rodeando por fuera los 4 pilones en el orden indicado (subes por la izquierda y vuelves por la derecha) y aterriza.",
+    objetivos: [["subir", "Lanzar y subir a 20 m"], ["circ1", "Primera vuelta por fuera de los 4 pilones, en orden"],
+                ["circ2", "Segunda vuelta por fuera de los 4 pilones, en orden"], ["aterrizar", "Aterrizar sin daños"]] },
   orientacion: { nombre: "2 · Orientación", desc: "Dos figuras de ocho delante de ti, sin alejarte y sin entrar en pérdida.",
     objetivos: [["subir", "Subir a 20 m"], ["ocho1", "Primer ocho (vuelta a un lado y luego al otro)"], ["ocho2", "Segundo ocho"],
                 ["cerca", "No alejarse más de 200 m"], ["sinPerdida", "Sin entrar en pérdida"], ["aterrizar", "Aterrizar sin daños"]] },
-  viento_cruzado: { nombre: "3 · Viento cruzado", desc: "Viento de 4 m/s del oeste, de lado a la pista. Corrige la deriva y aterriza en la pista.",
+  viento_cruzado: { nombre: "3 · Viento cruzado", sentido: -1,
+    desc: "Viento de 4 m/s del oeste, de lado a la pista. Una vuelta al circuito en el orden indicado (al revés que en el primer vuelo: subes por la derecha), corrige la deriva y aterriza en la pista.",
     viento: { vel: 4, desde: 270, rachas: true },
-    objetivos: [["subir", "Subir a 20 m"], ["circ1", "Una vuelta por fuera de los 4 pilones"], ["enPista", "Tocar tierra en la pista"],
+    objetivos: [["subir", "Subir a 20 m"], ["circ1", "Una vuelta por fuera de los 4 pilones, en orden"], ["enPista", "Tocar tierra en la pista"],
                 ["alineado", "Toma alineada con la pista (±25°)"], ["aterrizar", "Aterrizar sin daños"]] },
   emergencia: { nombre: "4 · Emergencia", desc: "Sube a 40 m. En algún momento el motor se para: planea y aterriza cerca de ti.",
     objetivos: [["subir40", "Subir a 40 m"], ["fallo", "Fallo de motor: mantener el control (sin pérdida)"],
                 ["aterrizar", "Aterrizar sin daños"], ["cerca100", "Aterrizar a menos de 100 m del piloto"]] },
-  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones: se cronometra cada vuelta.", objetivos: [] },
+  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones, en el sentido que quieras: se cronometra cada vuelta.", objetivos: [] },
 };
 function irEscenario() {
   const g = sesion.alumno && sesion.alumno.progreso;
@@ -650,7 +652,7 @@ function irEscenario() {
     const st = g && g.escenarios[id];
     const d = document.createElement("div"); d.className = "escenario";
     d.innerHTML = `<h3>${esc(E.nombre)} ${st ? (st.superado ? '<span class="chip ok">superado</span>' : st.intentos ? `<span class="chip">${st.intentos} intentos</span>` : "") : ""}</h3>
-      <p>${esc(E.desc)}</p>${E.objetivos.length ? "<ul>" + E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("") + "</ul>" : ""}`;
+      <p>${esc(E.desc)}</p>${E.sentido ? `<p>Orden de los pilones: ${ordenHTML(E.sentido)}</p>` : ""}${E.objetivos.length ? "<ul>" + E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("") + "</ul>" : ""}`;
     d.onclick = () => { sesion.escenario = id; empezar(); };
     el.appendChild(d);
   }
@@ -661,7 +663,7 @@ document.getElementById("btnVolverAvion").onclick = irAvion;
 let ev = null;     // evaluador del vuelo en curso
 function nuevoEvaluador() {
   ev = { obj: Object.fromEntries(ESCENARIOS[sesion.escenario].objetivos.map(([id, t]) => [id, { texto: t, estado: "pend" }])),
-         contador: entorno.contadorVueltas(), acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
+         contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
   for (const k of ["cerca", "sinPerdida"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
 }
@@ -710,11 +712,27 @@ function textoVueltas() {
   if (!c) return "";
   return `Vueltas por fuera de los pilones: <b>${c.vueltas}</b>` + (c.mejor !== null ? ` · mejor ${c.mejor.toFixed(1)} s` : "");
 }
+// pilones de colores (Entorno.circuito.colores): orden de paso de un sentido y el pilon que toca ahora
+function pilonHTML(i, mayus) {
+  const c = entorno.circuito.colores[i];
+  return `<span style="white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid #fff8;margin-right:3px"></span>${mayus ? c.nombre.toUpperCase() : c.nombre}</span>`;
+}
+function ordenHTML(sentido) {
+  const idx = [0, 1, 2, 3];
+  return (sentido > 0 ? idx : idx.reverse()).map(i => pilonHTML(i)).join(" → ");
+}
+function textoOrden() {
+  const E = ESCENARIOS[sesion.escenario], c = ev && ev.contador;
+  if (!c) return "";
+  const sig = c.siguiente();
+  return `<div style="margin:4px 0">${E.sentido ? "Orden: " + ordenHTML(E.sentido) : "Pilones en cualquier sentido"}</div>` +
+    `<div style="margin-bottom:4px">Siguiente pilón: <b>${sig === null ? (E.sentido ? "el que quieras para salir" : "el que quieras") : pilonHTML(sig, true)}</b></div>`;
+}
 function pintarObjetivos() {
   const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
-  if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoVueltas()}`; return; }
+  if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
   const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
-  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
     (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
 }
 
@@ -754,7 +772,12 @@ function paso(dt) {
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
   const su = ev && ev.contador.actualizar(pAnt, av.p, av.t);
-  if (su) toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? "¡Por dentro del pilón! Vuelta anulada" : su.n === 1 ? "Pilón de salida" : `Pilón ${su.n - 1}/4`);
+  if (su) {
+    const nom = entorno.circuito.colores[su.i].nombre, sen = ESCENARIOS[sesion.escenario].sentido;
+    toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? `¡Por dentro del pilón ${nom}! Vuelta anulada` :
+          su.tipo === "sentido" ? `¡Sentido contrario en el ${nom}! El orden es ${entorno.ordenPilones(sen)}` :
+          su.n === 1 ? `Pilón ${nom}: salida` : `Pilón ${nom} ${su.n - 1}/4`);
+  }
   const suelo = entorno.contactoSuelo(av, vn);
   if (suelo) terminarVuelo(suelo, vn);
 }

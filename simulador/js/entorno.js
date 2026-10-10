@@ -10,7 +10,12 @@ class Entorno {
     this.pista = { n0: 10, n1: 70, ancho: 10 };                       // N 10 a 70, centrada en E = 0
     // circuito: rectangulo de 120 x 180 m delante del piloto, con la pista dentro. Pilones en las esquinas
     // (N, E), ordenados por angulo alrededor del centro: los indices consecutivos son esquinas vecinas
-    this.circuito = { centro: [100, 0], pilones: [[40, -90], [160, -90], [160, 90], [40, 90]] };
+    // Cada pilon tiene su color. Indices crecientes (verde -> amarillo -> rojo -> azul) = vuelta en sentido
+    // horario visto desde arriba: subir por la izquierda, cruzar al fondo, bajar por la derecha y cruzar por
+    // delante del piloto. Sentido -1 = al reves.
+    this.circuito = { centro: [100, 0], pilones: [[40, -90], [160, -90], [160, 90], [40, 90]],
+                      colores: [{ nombre: "verde", hex: "#2e7d32" }, { nombre: "amarillo", hex: "#f9a825" },
+                                { nombre: "rojo", hex: "#c62828" }, { nombre: "azul", hex: "#1565c0" }] };
     this.pilon = { alto: 20, r0: 1.4, r1: 0.45 };                    // cono hinchable: radio abajo y arriba
     this.viento = { base: 2, rumbo: Math.PI, rachas: true, r: [0, 0, 0], actual: [0, 0, 0] };   // rumbo: hacia donde va
     // limites de un aterrizaje sin daños, y del campo: a mas de aviso_m se avisa, a mas de distancia_m el
@@ -65,8 +70,15 @@ class Entorno {
     return this.pilones().some(s => Math.hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8);
   }
 
-  /** Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(pAnt, p, t) en cada paso. */
-  contadorVueltas() { return new ContadorVueltas(this.circuito); }
+  /** Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(pAnt, p, t) en cada paso. sentido: +1 (verde,
+   *  amarillo, rojo, azul), -1 (al reves) o 0 (cualquiera). */
+  contadorVueltas(sentido = 0) { return new ContadorVueltas(this.circuito, sentido); }
+
+  /** Texto del orden de paso de un sentido: "verde → amarillo → rojo → azul". */
+  ordenPilones(sentido) {
+    const n = this.circuito.colores.map(c => c.nombre);
+    return sentido ? (sentido > 0 ? n : n.slice().reverse()).join(" → ") : "en cualquier sentido";
+  }
 
   /** true si (N, E) esta sobre la pista, con margen. */
   enPista(N, E, margen = 3) {
@@ -79,17 +91,27 @@ class Entorno {
 //  VUELTAS AL CIRCUITO. Se mira el angulo del avion alrededor del centro del rectangulo: cuando cruza
 //  la direccion de un pilon, ese pilon esta pasado; por fuera si el avion esta mas lejos del centro que
 //  el pilon. Una vuelta = rodear las 4 esquinas por fuera, en el mismo sentido, hasta volver al pilon
-//  de salida. Cortar uno por dentro anula la vuelta en curso.
+//  de salida. Cortar uno por dentro anula la vuelta en curso. Si el circuito tiene sentido obligatorio,
+//  pasar un pilon en el sentido contrario tampoco cuenta y anula la vuelta en curso.
 // =====================================================================
 class ContadorVueltas {
-  constructor(circuito) {
+  constructor(circuito, sentido = 0) {
     this.c = circuito.centro;
     this.pil = circuito.pilones.map(([n, e]) => ({ ang: Math.atan2(e - this.c[1], n - this.c[0]), r: Math.hypot(n - this.c[0], e - this.c[1]) }));
+    this.sentido = sentido;     // +1, -1 o 0 (cualquiera)
     this.serie = [];            // pilones pasados por fuera en la vuelta en curso: {i, sentido}
     this.vueltas = 0; this.tInicio = null; this.mejor = null; this.ultima = null;
   }
 
-  /** Devuelve null o un suceso: {tipo: "pilon" | "dentro" | "vuelta", i, n, tiempo}. */
+  /** Indice del siguiente pilon que toca rodear, o null si aun no se ha pasado ninguno (se puede salir de
+   *  cualquiera) y el sentido es libre. */
+  siguiente() {
+    const ult = this.serie[this.serie.length - 1];
+    if (!ult) return null;
+    return (ult.i + (this.sentido || ult.sentido) + 4) % 4;
+  }
+
+  /** Devuelve null o un suceso: {tipo: "pilon" | "dentro" | "sentido" | "vuelta", i, n, tiempo}. */
   actualizar(pAnt, p, t) {
     const c = this.c, a0 = Math.atan2(pAnt[1] - c[1], pAnt[0] - c[0]), a1 = Math.atan2(p[1] - c[1], p[0] - c[0]);
     const r = Math.hypot(p[0] - c[0], p[1] - c[1]);
@@ -102,6 +124,7 @@ class ContadorVueltas {
       if (Math.sign(hasta) !== Math.sign(d) || Math.abs(hasta) > Math.abs(d)) continue;     // no cruza este pilon
       const sentido = Math.sign(d);
       if (r <= this.pil[i].r) { this.serie = []; this.tInicio = null; return { tipo: "dentro", i }; }
+      if (this.sentido && sentido !== this.sentido) { this.serie = []; this.tInicio = null; return { tipo: "sentido", i }; }
       const ult = this.serie[this.serie.length - 1];
       if (ult && (ult.sentido !== sentido || i !== (ult.i + sentido + 4) % 4)) this.serie = [];
       if (!this.serie.length) this.tInicio = t;

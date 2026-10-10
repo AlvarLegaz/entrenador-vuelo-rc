@@ -186,13 +186,13 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 
 | Escenario | Para ser APTO |
 |---|---|
-| 1 · Primer vuelo | Subir a 20 m, dos vueltas al circuito por fuera de los 4 pilones y aterrizar sin daños |
+| 1 · Primer vuelo | Subir a 20 m, dos vueltas al circuito por fuera de los 4 pilones en orden verde → amarillo → rojo → azul y aterrizar sin daños |
 | 2 · Orientación | Subir a 20 m y hacer dos ochos (vuelta completa a un lado y luego al otro), sin pasar de 200 m de distancia ni entrar en pérdida, y aterrizar |
-| 3 · Viento cruzado | Con 4 m/s del oeste: una vuelta por fuera de los pilones y una toma en la pista, alineada con ella (±25°), sin daños |
+| 3 · Viento cruzado | Con 4 m/s del oeste: una vuelta por fuera de los pilones en orden azul → rojo → amarillo → verde (al revés que el primer vuelo) y una toma en la pista, alineada con ella (±25°), sin daños |
 | 4 · Emergencia | Subir a 40 m. El motor se para entre 8 y 20 s después: mantener el control sin pérdida y aterrizar a menos de 100 m del piloto |
 | Vuelo libre | Sin objetivos; cuenta horas y cronometra las vueltas al circuito |
 
-**El circuito:** 4 pilones hinchables tipo Red Bull en las esquinas de un rectángulo de 120 × 180 m delante del piloto, con la pista dentro (de 40 a 160 m hacia el frente y 90 m a cada lado). Una vuelta vale cuando se rodean las 4 esquinas **por fuera**, en el mismo sentido, hasta volver al pilón de salida. Cortar una esquina por dentro anula la vuelta en curso, y tocar un pilón rompe el avión.
+**El circuito:** 4 pilones hinchables tipo Red Bull en las esquinas de un rectángulo de 120 × 180 m delante del piloto, con la pista dentro (de 40 a 160 m hacia el frente y 90 m a cada lado). Cada pilón es de un color: **verde** delante a la izquierda, **amarillo** al fondo a la izquierda, **rojo** al fondo a la derecha y **azul** delante a la derecha. Una vuelta vale cuando se rodean las 4 esquinas **por fuera**, en el mismo sentido, hasta volver al pilón de salida (se puede salir de cualquiera). Los escenarios fijan el orden de paso (verde → amarillo → rojo → azul es subir por la izquierda y volver por la derecha), y el panel de objetivos muestra el orden y el siguiente pilón; pasar un pilón en sentido contrario no cuenta y anula la vuelta en curso. En vuelo libre vale cualquier sentido. Cortar una esquina por dentro anula la vuelta en curso, y tocar un pilón rompe el avión.
 
 Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30° de alabeo, menos de 25° de cabeceo y menos de 12 m/s respecto al suelo.
 

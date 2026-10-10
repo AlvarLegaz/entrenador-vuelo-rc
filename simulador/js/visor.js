@@ -404,19 +404,22 @@ class Visor {
       if (x === 0 && z === 0) continue;
       const p = new THREE.Mesh(estaca, mEst); p.position.set(x, 0.75, z); esc.add(p);
     }
-    // pilones hinchables tipo Red Bull: rojo arriba con cuadros, azul abajo
-    const ct = document.createElement("canvas"); ct.width = 64; ct.height = 512;
-    const gt = ct.getContext("2d");
-    gt.fillStyle = "#c62828"; gt.fillRect(0, 0, 64, 512); gt.fillStyle = "#1565c0"; gt.fillRect(0, 300, 64, 212);
-    for (let y = 0; y < 3; y++) for (let x = 0; x < 8; x++) { gt.fillStyle = (x + y) % 2 ? "#fff" : "#111"; gt.fillRect(x * 8, 40 + y * 8, 8, 8); }
-    gt.fillStyle = "#fff"; gt.fillRect(0, 290, 64, 10);
-    const Pi = E.pilon, mpil = new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(ct) });
+    // pilones hinchables tipo Red Bull, cada uno de su color (Entorno.circuito.colores): banda de cuadros arriba
+    // y franja blanca abajo
+    const Pi = E.pilon, colores = E.circuito.colores;
     const gpil = new THREE.CylinderGeometry(Pi.r1, Pi.r0, Pi.alto, 20, 1, true), gtapa = new THREE.SphereGeometry(Pi.r1, 12, 8);
-    const mtapa = new THREE.MeshLambertMaterial({ color: 0xc62828 });
-    for (const s of E.pilones()) {
-      const p = new THREE.Mesh(gpil, mpil); p.position.set(s[1], Pi.alto / 2, -s[0]); esc.add(p);
-      const t = new THREE.Mesh(gtapa, mtapa); t.position.set(s[1], Pi.alto, -s[0]); esc.add(t);
-    }
+    E.pilones().forEach((s, i) => {
+      const hex = colores[i % colores.length].hex;
+      const ct = document.createElement("canvas"); ct.width = 64; ct.height = 512;
+      const gt = ct.getContext("2d");
+      gt.fillStyle = hex; gt.fillRect(0, 0, 64, 512);
+      for (let y = 0; y < 3; y++) for (let x = 0; x < 8; x++) { gt.fillStyle = (x + y) % 2 ? "#fff" : "#111"; gt.fillRect(x * 8, 40 + y * 8, 8, 8); }
+      gt.fillStyle = "#fff"; gt.fillRect(0, 430, 64, 14);
+      const p = new THREE.Mesh(gpil, new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(ct) }));
+      p.position.set(s[1], Pi.alto / 2, -s[0]); esc.add(p);
+      const t = new THREE.Mesh(gtapa, new THREE.MeshLambertMaterial({ color: new THREE.Color(hex) }));
+      t.position.set(s[1], Pi.alto, -s[0]); esc.add(t);
+    });
     // el aparcamiento: la furgoneta, la carpa del piloto y la manga de viento a rayas
     const furgo = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.1, 4.8), lam(0xececec)); furgo.position.set(8, 1.05, 9); esc.add(furgo);
     const vent = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.7, 3.2), lam(0x2b3a48)); vent.position.set(8, 1.5, 9.3); esc.add(vent);
