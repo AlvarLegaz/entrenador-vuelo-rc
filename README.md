@@ -16,9 +16,9 @@ Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él e
 | Masa en vuelo | 783 g (LW-PLA; F1 en PLA normal) |
 | Carga alar | 36,2 g/dm² |
 | Pérdida / crucero | 7,3 m/s / ≈ 9,5 m/s con la profundidad neutra |
-| Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh. **Inclinado 4° hacia abajo**: la bancada de F1 ya sale inclinada |
+| Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh. **Inclinado 4° hacia abajo** (downthrust) con la cuña impresa `CUNA_MOTOR` entre la cruz del motor y la bancada vertical de F1 |
 | Centro de gravedad | 234 mm desde la bancada del motor = **59 mm detrás del borde de ataque del ala** (33 % de la cuerda). Margen estático 21 % |
-| Batería | Centrada a unos 47 mm de la bancada, contra el fondo del morro |
+| Batería | Centrada a unos 47 mm de la bancada, contra el fondo del morro, entre los dos carriles del suelo de F1 y sujeta con una cinta de velcro de 20 mm que pasa por las ranuras del suelo; el ESC va detrás de ella, en el mismo canal |
 
 Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de las piezas y el VLM usa la geometría real. La pérdida, la resistencia parásita y el empuje en vuelo son estimaciones hasta calibrarlas con planeos del avión real.
 
@@ -36,7 +36,8 @@ Todas se imprimen sin soportes. Las medidas son las de la orientación de impres
 | `ALA_I_x2` | 2 | Tramo interior de 185 mm (de 75 a 260 mm), de pie. Igual para los dos lados |
 | `ALA_Q_izq` | 2 | Pieza del quiebro (de 260 a 340 mm), con el ángulo de 12° y el nervio donde hacen tope los tubos. De pie sobre la cara del lado del centro; **la segunda, en espejo** |
 | `ALA_E_x4` | 4 | Tramos exteriores de 130 mm, de pie. Todos iguales |
-| `F1` | 1 | Morro con la bancada y el agujero del palillo delantero. **PLA normal**, de pie sobre la bancada |
+| `F1` | 1 | Morro con la bancada vertical, los carriles y las ranuras de la batería en el suelo y el agujero del palillo delantero. **PLA normal**, de pie sobre la bancada |
+| `CUNA_MOTOR` | 1 | Cuña de 34 × 34 mm (2 → 4,4 mm) que da los 4° de downthrust. **PLA normal**, tumbada sobre su cara plana |
 | `F2`–`F5` | 1 de cada | Fuselaje, de pie sobre la cara delantera. El cuello de unión queda arriba. F2 lleva la bandeja de los servos; F3 a F5, las guías de las transmisiones; F5, la deriva con los nudillos de la bisagra del timón |
 | `ESTAB_izq`, `ESTAB_der` | 1 de cada | Estabilizador con los nudillos de la bisagra y el solape a media madera del centro (20 mm: la izquierda lleva la media placa de arriba y la derecha la de abajo). Tumbados |
 | `PROF_izq` | 1 | Mitad izquierda de la profundidad, con el horn impreso. Tumbada |
@@ -64,6 +65,8 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 8. **Profundidad.** Pega las dos mitades a tope por el centro. Mete el pasador de 420 mm por los nudillos del estabilizador y el canto de la profundidad, y pégalo **solo a la profundidad**: debe girar libre en los nudillos del estabilizador.
 9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
 10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
+11. **Motor.** La cruz del X2212 se atornilla a la bancada de F1 con 4 tornillos M3 × 14 y tuercas por dentro (cruz 1,5 + cuña 2-4,4 + placa 4 + tuerca 2,4 mm), con la cuña `CUNA_MOTOR` entre medias (la parte gruesa arriba: así el eje apunta 4° hacia abajo). Los agujeros de la cuña son perpendiculares a su cara inclinada; los de F1, a la placa.
+12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: contra el fondo del morro; E2/E3: a 115 mm) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
 11. **Transmisiones.** Las fundas pasan por los anillos guía de F3 a F5:
     - **Profundidad:** sale por el costado izquierdo de F5, por encima del estabilizador, y va al horn de encima de la profundidad.
     - **Timón:** sale por el lomo, a la derecha de la deriva, y va al horn del timón.
@@ -97,7 +100,7 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 | Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado) |
 | Masa en vuelo | 792 g; carga alar 36,7 g/dm² |
 | Centro de gravedad | 234 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
-| Batería | Centrada a unos 115 mm de la bancada (los servos del ala pesan detrás del CG) |
+| Batería | Centrada a unos 115 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
 | Calado del estabilizador | −0,4° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
 
 **Por qué 7°.** Con poliedro a 240 mm el VLM da: con 6° la espiral se duplica en ~40 s, con 7° se corrige a la mitad en ~90 s (casi neutra, como debe ser un avión de alerones: no vuelve solo al nivel, pero tampoco se cierra en espiral) y con 8° en ~20 s. La guiñada adversa de los alerones es pequeña (Cn_δa / Cl_δa ≈ −0,03). La V de 2,5° en la raíz que tenía antes se cerraba en espiral (doblaba en ~8 s).

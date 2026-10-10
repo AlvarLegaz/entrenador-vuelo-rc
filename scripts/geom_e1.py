@@ -455,21 +455,18 @@ def fuselage_segment(k):
             pared = solid(xd - 12, xd + 12) - solid(xd - 13, xd + 13, WALL + DOWEL_BOSS_T)
             body = body + (boss ^ pared)
             body = body - Manifold.cylinder(2 * w + 10, DOWEL_D / 2, center=True).rotate([90, 0, 0]).translate([xd, 0, zd])
-    if k == 0:     # bancada del motor: 4 mm maciza, cruz del X2212 (16 x 19, M3), eje y ventilacion
-        # inclinada DOWNTHRUST grados: la cara de la bancada (normal n) mira hacia delante y abajo, asi el eje
-        # del motor apunta DOWNTHRUST grados por debajo del eje del fuselaje (la parte de arriba sobresale)
-        d = np.radians(P.DOWNTHRUST)
-        n = [float(np.cos(d)), 0.0, float(np.sin(d))]
-        body = body + (solid(-4.0, 8.0) ^ solid(-4.0, 8.0)).trim_by_plane(n, 0.0).trim_by_plane([-v for v in n], -4.0)
-        body = body.trim_by_plane(n, 0.0)                                  # nada por delante de la cara
-        agujeros = None
-        for (yy, zz, r) in [(8, 0, 1.65), (-8, 0, 1.65), (0, 9.5, 1.65), (0, -9.5, 1.65), (0, 0, 5.0),
-                            (17, 20, 4.0), (-17, 20, 4.0), (17, -20, 4.0), (-17, -20, 4.0)]:
-            h = along_x(Manifold.cylinder(14, r)).translate([-5, yy, zz])
-            agujeros = h if agujeros is None else agujeros + h
-        body = body - agujeros.rotate([0, -P.DOWNTHRUST, 0])               # perpendiculares a la cara
-        for xv in (40, 70, 100):     # rejillas de refrigeracion del ESC en el suelo
-            body = body - Manifold.cube([16, 30, 10]).translate([xv, -15, -P.FUS_H / 2 - 5])
+    if k == 0:     # bancada del motor: placa vertical de 4 mm maciza con el eje, la cruz del X2212 (16 x 19, M3)
+        # y 4 respiraderos; el downthrust lo da la pieza CUNA_MOTOR (cuna_motor), que va entre la cruz y la placa
+        body = body + solid(0.0, 4.0)
+        for (yy, zz, r) in [(8, 0, 1.7), (-8, 0, 1.7), (0, 9.5, 1.7), (0, -9.5, 1.7), (0, 0, 5.0),
+                            (21, 24, 4.0), (-21, 24, 4.0), (21, -24, 4.0), (-21, -24, 4.0)]:
+            body = body - along_x(Manifold.cylinder(14, r)).translate([-5, yy, zz])
+        # suelo: dos carriles que encajan la bateria (canal de 37 mm; el ESC, de 24, tambien cabe) y una fila de
+        # ranuras transversales para pasar una cinta de velcro de 20 mm donde haga falta (ventilan ademas el ESC)
+        for sy in (-1, 1):
+            body = body + Manifold.cube([CARRIL_L, 1.2, 4.0]).translate([CARRIL_X0, sy * 18.5 - (0.0 if sy > 0 else 1.2), SUELO_Z - 0.2])
+        for xr in RANURAS_X:
+            body = body - Manifold.cube([2.6, 24.0, 10.0]).translate([xr, -12.0, -P.FUS_H / 2 - 5])
     if a < SERVO_X[0] < b:     # bandeja de los servos (bajo la escotilla del ala)
         body = body + bandeja_servos()
     for (xg, nombre) in guias_posiciones():   # guias de las fundas de las transmisiones
@@ -499,6 +496,25 @@ SERVO = dict(largo=23.0, ancho=12.2, alto_orejeta=15.5, tornillos=27.8)
 SERVO_X = (215.0, 231.0)          # X del canto delantero de cada servo (profundidad, timon): lo mas adelante que deja la
                                   # escotilla, para que la bateria quepa en el morro con el CG al 33 %
 SUELO_Z = -P.FUS_H / 2 + WALL
+CARRIL_X0, CARRIL_L = 8.0, 152.0            # carriles de la bateria en el suelo de F1 (X 8 a 160)
+RANURAS_X = list(range(20, 160, 15))        # ranuras de la cinta de velcro (2,6 x 24 mm), cada 15 mm
+
+
+def cuna_motor():
+    """Cuna de bancada CUNA_MOTOR (global): 34 x 34 mm entre la cruz del motor y la placa de F1, de 2 mm de grueso
+    abajo a 2 + 34 tan(DOWNTHRUST) arriba: la cara delantera mira DOWNTHRUST grados hacia abajo y el motor,
+    atornillado a ella, apunta ese angulo por debajo del eje del fuselaje. Agujeros perpendiculares a su cara."""
+    d = np.radians(P.DOWNTHRUST)
+    n = [float(np.cos(d)), 0.0, float(np.sin(d))]
+    grueso = 2.0 + 34.0 * np.tan(d)
+    m = Manifold.cube([grueso + 1.0, 34.0, 34.0]).translate([-grueso - 1.0, -17.0, -17.0])
+    m = m.trim_by_plane(n, float(np.dot(n, [-2.0, 0.0, -17.0])))           # cara delantera inclinada
+    m = m.trim_by_plane([-1.0, 0.0, 0.0], 0.0)                               # cara trasera en X = 0
+    agujeros = None
+    for (yy, zz, r) in [(8, 0, 1.7), (-8, 0, 1.7), (0, 9.5, 1.7), (0, -9.5, 1.7), (0, 0, 5.0)]:
+        h = along_x(Manifold.cylinder(20, r)).translate([-10, yy, zz])
+        agujeros = h if agujeros is None else agujeros + h
+    return m - agujeros.rotate([0, -P.DOWNTHRUST, 0])
 
 
 def bandeja_servos():
@@ -742,7 +758,9 @@ def build():
         glob[nm] = g
         # de pie: F1 sobre la bancada (girada DOWNTHRUST para que la cara inclinada apoye plana); los demas sobre su
         # cara delantera (el cuello queda arriba)
-        parts[nm] = (g.rotate([0, P.DOWNTHRUST, 0]) if k == 0 else g).rotate([0, -90, 0])
+        parts[nm] = g.rotate([0, -90, 0])
+    glob["CUNA_MOTOR"] = cuna_motor()
+    parts["CUNA_MOTOR"] = cuna_motor().rotate([0, 90, 0])             # tumbada sobre su cara trasera (plana)
     for k, (nm, s0, s1) in enumerate(TRAMOS):
         corte = servo_s = None
         if ALERON and ALERON["y0"] < s1 and ALERON["y1"] > s0:

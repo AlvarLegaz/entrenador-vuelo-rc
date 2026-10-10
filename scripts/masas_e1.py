@@ -17,7 +17,7 @@ F_PLACA = 0.35     # placas macizas (estabilizador, profundidad, timon, deriva) 
 
 
 def masa_pieza(nm, vol_cm3, fin_vol):
-    if nm == "F1":
+    if nm in ("F1", "CUNA_MOTOR"):
         return vol_cm3 * RHO_PLA
     if nm == "F5":
         return (vol_cm3 - fin_vol) * RHO_LW + fin_vol * F_PLACA * RHO_LW
