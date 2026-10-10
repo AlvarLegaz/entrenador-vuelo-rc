@@ -29,7 +29,10 @@ MAX_COPIAS = 60
 HORAS_MINIMAS = 10.0
 ESCENARIOS = ["primer_vuelo", "orientacion", "viento_cruzado", "emergencia"]
 NOMBRES_ESC = {"primer_vuelo": "Primer vuelo", "orientacion": "Orientación", "viento_cruzado": "Viento cruzado",
-               "emergencia": "Emergencia", "libre": "Vuelo libre"}
+               "emergencia": "Emergencia", "libre": "Vuelo libre",
+               # zona 2 (precision, detras del piloto): practica, no cuentan para la autorizacion
+               "puerta": "Puerta (zona 2)", "pasada_baja": "Pasada baja (zona 2)", "diana": "Diana (zona 2)",
+               "recorrido": "Recorrido de precisión (zona 2)"}
 
 SESIONES = {}            # token -> caduca (epoch)
 FALLOS = {}              # ip -> (n fallos, bloqueado hasta)

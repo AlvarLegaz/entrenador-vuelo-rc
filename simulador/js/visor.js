@@ -111,8 +111,9 @@ function alturaTierraAdentro(E, N) {
 }
 
 /** Pinta el campo en coordenadas del mundo (metros) sobre un canvas de k px/m cuya esquina superior
- *  izquierda es (E0, N1). Devuelve la lista de almendros [E, N, tamano] para los arboles en 3D. */
-function pintarCampo(ctx, k, E0, N1, arboles) {
+ *  izquierda es (E0, N1). Devuelve la lista de almendros [E, N, tamano] para los arboles en 3D. z2: la zona 2 del
+ *  Entorno (pista 2, diana, puerta y el rectangulo despejado). */
+function pintarCampo(ctx, k, E0, N1, arboles, z2) {
   const r = semilla(11);
   ctx.setTransform(k, 0, 0, -k, -E0 * k, N1 * k);
   const ancho = ctx.canvas.width / k, alto = ctx.canvas.height / k;
@@ -131,7 +132,8 @@ function pintarCampo(ctx, k, E0, N1, arboles) {
     ctx.beginPath(); ctx.ellipse(E, N, mata ? 1 + r() * 2.2 : 0.6 + r() * 1.5, mata ? 1 + r() * 1.8 : 0.5 + r(), 0, 0, 7); ctx.fill();
   }
   // bancales: tierra, muros, surcos y la sombra de cada almendro
-  const excluido = (E, N) => E < bordeMonte(N) + 8 || (Math.abs(E) < 11 && N > -2 && N < 82) || (Math.abs(E) < 16 && N > -14 && N < 10)
+  const Z = z2.despejado;
+  const excluido = (E, N) => E < bordeMonte(N) + 8 || (E > Z.e0 && E < Z.e1 && N > Z.n0 && N < Z.n1) || (Math.abs(E) < 11 && N > -2 && N < 82) || (Math.abs(E) < 16 && N > -14 && N < 10)
     || Math.abs(E - CAMPO.rambla(N)) < 32 || (E > 40 && E < 130 && N > 195 && N < 250) || (E > 660 && E < 730 && N > 0 && N < 90)
     || CAMPO.pistas.some(p => { for (let i = 1; i < p.length; i++) { const [x0, y0] = p[i - 1], [x1, y1] = p[i], dx = x1 - x0, dy = y1 - y0;
       const t = Math.max(0, Math.min(1, ((E - x0) * dx + (N - y0) * dy) / (dx * dx + dy * dy))); if (Math.hypot(E - x0 - t * dx, N - y0 - t * dy) < 4.5) return true; } return false; });
@@ -188,6 +190,18 @@ function pintarCampo(ctx, k, E0, N1, arboles) {
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   for (const N of [10.5, 68.5]) ctx.fillRect(-4.5, N, 9, 1.0);
   for (let N = 15; N < 66; N += 5) ctx.fillRect(-0.18, N, 0.36, 2.2);
+  // zona 2 (detras del piloto): pista 2 de este a oeste con la diana de cal en el centro y la linea de la puerta
+  const P2 = z2.pista, D = z2.diana, Pu = z2.puerta;
+  ctx.fillStyle = "#d4bd98"; ctx.fillRect(P2.e0 - 2, P2.n - P2.ancho / 2 - 2, P2.e1 - P2.e0 + 4, P2.ancho + 4);
+  ctx.fillStyle = "#c6ac86"; ctx.fillRect(P2.e0, P2.n - P2.ancho / 2, P2.e1 - P2.e0, P2.ancho);
+  ctx.strokeStyle = "rgba(140,110,80,0.5)"; ctx.lineWidth = 0.3;
+  for (let N = P2.n - P2.ancho / 2 + 0.4; N < P2.n + P2.ancho / 2; N += 0.9) { ctx.beginPath(); ctx.moveTo(P2.e0, N); ctx.lineTo(P2.e1, N); ctx.stroke(); }
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  for (const E of [P2.e0 + 0.5, P2.e1 - 1.5]) ctx.fillRect(E, P2.n - P2.ancho / 2 + 0.5, 1.0, P2.ancho - 1);   // umbrales
+  ctx.strokeStyle = "rgba(255,255,255,0.92)"; ctx.lineWidth = 0.45;
+  for (const [r] of D.anillos) { ctx.beginPath(); ctx.arc(D.e, D.n, r, 0, 7); ctx.stroke(); }
+  ctx.fillStyle = "rgba(255,255,255,0.92)"; ctx.beginPath(); ctx.arc(D.e, D.n, 0.8, 0, 7); ctx.fill();
+  for (let N = Pu.n0 + 2; N < Pu.n1 - 1.5; N += 2.4) ctx.fillRect(Pu.e - 0.2, N, 0.4, 1.4);                      // linea de la puerta
   // la costa (solo en la textura lejana): agua somera, playa y espuma
   if (!arboles) {
     const traza = (pts, w, estilo) => { ctx.strokeStyle = estilo; ctx.lineWidth = w; ctx.beginPath(); pts.forEach(([E, N], i) => i ? ctx.lineTo(E, N) : ctx.moveTo(E, N)); ctx.closePath(); ctx.stroke(); };
@@ -305,10 +319,10 @@ class Visor {
     const tex = c => { const t = new THREE.CanvasTexture(c); t.anisotropy = aniso; return t; };
     // suelo: una textura de detalle de 1400 m alrededor del campo de vuelo y otra lejana de 6000 m
     const arboles = [];
-    const [cc, gc] = lienzo(4096, 4096); pintarCampo(gc, 4096 / 1400, -700, 900, arboles);
+    const [cc, gc] = lienzo(4096, 4096); pintarCampo(gc, 4096 / 1400, -700, 900, arboles, E.zona2);
     const cerca = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), lam(0xffffff, { map: tex(cc) }));
     cerca.rotation.x = -Math.PI / 2; cerca.position.set(0, 0.01, -200); esc.add(cerca);
-    const [cl, gl] = lienzo(2048, 2048); pintarCampo(gl, 2048 / 6000, -3000, 3000, null);
+    const [cl, gl] = lienzo(2048, 2048); pintarCampo(gl, 2048 / 6000, -3000, 3000, null, E.zona2);
     const forma = new THREE.Shape(poligonoCosta(70).map(p => new THREE.Vector2(...p)));
     forma.holes.push(new THREE.Path([[-700, -500], [700, -500], [700, 900], [-700, 900]].map(p => new THREE.Vector2(...p))));   // hueco bajo la textura cercana
     const tl = tex(cl); tl.repeat.set(1 / 6000, 1 / 6000); tl.offset.set(0.5, 0.5);
@@ -349,7 +363,8 @@ class Visor {
     const grandes = [];
     for (let i = 0; i < 70; i++) {
       const Ex = -300 + r() * 1100, Nn = -700 + r() * 1500;
-      if (Math.hypot(Ex, Nn - 40) < 95 || Math.abs(Ex - CAMPO.rambla(Nn)) < 36 || !enIsla(Ex, Nn, 80)) continue;
+      const Z = E.zona2.despejado;
+      if (Math.hypot(Ex, Nn - 40) < 95 || (Ex > Z.e0 - 10 && Ex < Z.e1 + 10 && Nn > Z.n0 - 10 && Nn < Z.n1 + 10) || Math.abs(Ex - CAMPO.rambla(Nn)) < 36 || !enIsla(Ex, Nn, 80)) continue;
       grandes.push([Ex, Nn, 2.2 + r() * 2.2, r() < 0.4]);
     }
     for (let i = 0; i < 36; i++) { const Nn = -600 + r() * 1300; grandes.push([CAMPO.rambla(Nn) + (r() < 0.5 ? -1 : 1) * (18 + r() * 12), Nn, 2.6 + r() * 2.4, false]); }
@@ -401,15 +416,17 @@ class Visor {
     // estacas blancas cada 50 m para juzgar distancias
     const estaca = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 5), mEst = lam(0xf2f2f2);
     for (let x = -200; x <= 200; x += 50) for (let z = -200; z <= 200; z += 50) {
-      if (x === 0 && z === 0) continue;
+      const Z = E.zona2.despejado;
+      if ((x === 0 && z === 0) || (x > Z.e0 && x < Z.e1 && -z > Z.n0 && -z < Z.n1)) continue;
       const p = new THREE.Mesh(estaca, mEst); p.position.set(x, 0.75, z); esc.add(p);
     }
-    // pilones hinchables tipo Red Bull, cada uno de su color (Entorno.circuito.colores): banda de cuadros arriba
-    // y franja blanca abajo
+    // pilones hinchables tipo Red Bull, cada uno de su color (Entorno.circuito.colores; la puerta de la zona 2,
+    // naranja): banda de cuadros arriba y franja blanca abajo
     const Pi = E.pilon, colores = E.circuito.colores;
     const gpil = new THREE.CylinderGeometry(Pi.r1, Pi.r0, Pi.alto, 20, 1, true), gtapa = new THREE.SphereGeometry(Pi.r1, 12, 8);
-    E.pilones().forEach((s, i) => {
-      const hex = colores[i % colores.length].hex;
+    const pilones = E.pilones().map((s, i) => [s, colores[i % colores.length].hex])
+      .concat(E.pilonesPuerta().map(s => [s, E.zona2.puerta.color.hex]));
+    pilones.forEach(([s, hex]) => {
       const ct = document.createElement("canvas"); ct.width = 64; ct.height = 512;
       const gt = ct.getContext("2d");
       gt.fillStyle = hex; gt.fillRect(0, 0, 64, 512);

@@ -100,6 +100,8 @@
   .escenarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
   .escenario { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; cursor: pointer; }
   .escenario:hover { border-color: var(--acento); }
+  .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 0; font-size: 15px; color: var(--suave); font-weight: 600; letter-spacing: .02em; }
+  .zonaTitulo:first-child { margin-top: 0; }
   .escenario h3 { margin: 0 0 6px; font-size: 18px; }
   .escenario p { margin: 4px 0 8px; color: var(--suave); font-size: 14px; }
   .escenario ul { margin: 0; padding-left: 18px; font-size: 13px; color: #cfd8e3; }
@@ -641,14 +643,31 @@ const ESCENARIOS = {
   emergencia: { nombre: "4 · Emergencia", desc: "Sube a 40 m. En algún momento el motor se para: planea y aterriza cerca de ti.",
     objetivos: [["subir40", "Subir a 40 m"], ["fallo", "Fallo de motor: mantener el control (sin pérdida)"],
                 ["aterrizar", "Aterrizar sin daños"], ["cerca100", "Aterrizar a menos de 100 m del piloto"]] },
-  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones, en el sentido que quieras: se cronometra cada vuelta.", objetivos: [] },
+  // zona 2, detras del piloto: se lanza hacia el sur (el piloto se da la vuelta). No cuentan para la autorizacion
+  // del avion real (esa la dan los 4 de la zona 1), son practica de precision
+  puerta: { nombre: "5 · Puerta", zona: 2, desc: "Cruza la puerta de pilones naranjas tres veces, de lado a lado (de este a oeste o al revés), por debajo de lo alto de los pilones (20 m), y aterriza.",
+    objetivos: [["subir", "Subir a 20 m"], ["puerta1", "Primer paso por la puerta"], ["puerta2", "Segundo paso por la puerta"],
+                ["puerta3", "Tercer paso por la puerta"], ["aterrizar", "Aterrizar sin daños"]] },
+  pasada_baja: { nombre: "6 · Pasada baja", zona: 2, desc: "Recorre la pista 2 de punta a punta entre 2 y 8 m de altura sin tocar el suelo ni salirte por los lados: una pasada hacia cada lado.",
+    objetivos: [["subir", "Subir a 20 m"], ["pasadaO", "Pasada baja hacia el oeste (de izquierda a derecha, mirando a la zona 2)"],
+                ["pasadaE", "Pasada baja hacia el este (de derecha a izquierda)"], ["aterrizar", "Aterrizar sin daños"]] },
+  diana: { nombre: "7 · Diana", zona: 2, desc: "Aterriza en la diana del centro de la pista 2: 100 puntos dentro del círculo de 5 m, 50 en el de 10 m y 20 en el de 20 m.",
+    objetivos: [["subir", "Subir a 20 m"], ["aterrizar", "Aterrizar sin daños"], ["diana10", "Tomar a menos de 10 m del centro de la diana"]] },
+  recorrido: { nombre: "8 · Recorrido de precisión", zona: 2, desc: "Todo seguido y en este orden: una pasada baja por la pista 2, un paso por la puerta y el aterrizaje en la diana.",
+    objetivos: [["subir", "Subir a 20 m"], ["pasada", "1. Pasada baja válida por la pista 2"], ["puertaR", "2. Después, un paso por la puerta"],
+                ["dianaR", "3. Después, aterrizar a menos de 10 m del centro de la diana"], ["aterrizar", "Aterrizar sin daños"]] },
+  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones, en el sentido que quieras: se cronometra cada vuelta. También puedes darte la vuelta y practicar en la zona 2.", objetivos: [] },
 };
+const zonaDe = id => ESCENARIOS[id].zona || 1;
 function irEscenario() {
   const g = sesion.alumno && sesion.alumno.progreso;
   document.getElementById("escSub").textContent = `${Modelos.datos(sesion.avion).nombre} · viento ${sesion.viento.vel} m/s` +
     (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : "");
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
+  const titulos = { primer_vuelo: "Zona 1 · Circuito de pilones, delante del piloto (cuentan para el avión real)",
+                    puerta: "Zona 2 · Precisión, detrás del piloto: date la vuelta, se lanza hacia el sur; mejor con viento del sur, que es lanzar de cara al viento (práctica)", libre: "Libre" };
   for (const [id, E] of Object.entries(ESCENARIOS)) {
+    if (titulos[id]) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = titulos[id]; el.appendChild(t); }
     const st = g && g.escenarios[id];
     const d = document.createElement("div"); d.className = "escenario";
     d.innerHTML = `<h3>${esc(E.nombre)} ${st ? (st.superado ? '<span class="chip ok">superado</span>' : st.intentos ? `<span class="chip">${st.intentos} intentos</span>` : "") : ""}</h3>
@@ -663,7 +682,8 @@ document.getElementById("btnVolverAvion").onclick = irAvion;
 let ev = null;     // evaluador del vuelo en curso
 function nuevoEvaluador() {
   ev = { obj: Object.fromEntries(ESCENARIOS[sesion.escenario].objetivos.map(([id, t]) => [id, { texto: t, estado: "pend" }])),
-         contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
+         contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
+         pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
   for (const k of ["cerca", "sinPerdida"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
 }
@@ -672,10 +692,14 @@ const desenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
 function evaluar(dt) {
   if (!ev || av.estado !== "volando") return;
   const h = -av.p[2], N = av.p[0], E = av.p[1], dist = Math.hypot(N, E), t = av.t;
-  if (h >= 20) marcar("subir", "ok");
+  if (h >= 20) { marcar("subir", "ok"); ev.subido = true; }
   if (h >= 40) { marcar("subir40", "ok"); if (ev.t40 === null) { ev.t40 = t; ev.tFallo = t + 8 + 12 * Math.random(); } }
   // vueltas al circuito por fuera de los 4 pilones (las cuenta el Entorno en cada paso)
   if (ev.contador.vueltas >= 1) marcar("circ1", "ok"); if (ev.contador.vueltas >= 2) marcar("circ2", "ok");
+  // zona 2: puerta y pasadas bajas (las cuentan paso() y el Entorno); en el recorrido, cada cosa despues de la anterior
+  for (let i = 1; i <= 3; i++) if (ev.puertas >= i) marcar("puerta" + i, "ok");
+  if (ev.pasadas.oeste) marcar("pasadaO", "ok"); if (ev.pasadas.este) marcar("pasadaE", "ok");
+  if (ev.pasadas.oeste + ev.pasadas.este) marcar("pasada", "ok");
   // ochos: vueltas completas de rumbo (330 grados) alternando el sentido
   const rumbo = Cuat.euler(av.q)[2];
   if (ev.rumboPrev !== null) ev.acumRumbo += desenrollar(rumbo - ev.rumboPrev);
@@ -702,6 +726,9 @@ function evaluarFinal(final, vn) {
     const tr = Math.atan2(vn[1], vn[0]) * R2D, desv = Math.min(Math.abs(tr), 180 - Math.abs(tr));
     marcar("alineado", enPista && desv <= 25 ? "ok" : "mal");
     marcar("cerca100", ev.falloHecho && Math.hypot(N, E) <= 100 ? "ok" : "mal");
+    ev.toma = entorno.diana(N, E);
+    marcar("diana10", ev.toma.d <= 10 ? "ok" : "mal");
+    marcar("dianaR", ev.toma.d <= 10 && ev.obj.puertaR && ev.obj.puertaR.estado === "ok" ? "ok" : "mal");
   }
   // lo que seguia "en curso" solo cuenta si el vuelo acabo en un aterrizaje; lo pendiente, no se hizo
   for (const o of Object.values(ev.obj)) if (o.estado === "curso") o.estado = ok ? "ok" : "mal";
@@ -710,7 +737,22 @@ function evaluarFinal(final, vn) {
 function textoVueltas() {
   const c = ev && ev.contador;
   if (!c) return "";
-  return `Vueltas por fuera de los pilones: <b>${c.vueltas}</b>` + (c.mejor !== null ? ` · mejor ${c.mejor.toFixed(1)} s` : "");
+  const z2 = `Pasos por la puerta: <b>${ev.puertas}</b> · pasadas bajas válidas: <b>${ev.pasadas.este + ev.pasadas.oeste}</b>` +
+    (ev.toma && ev.toma.d <= 40 ? ` · toma a <b>${ev.toma.d.toFixed(1)} m</b> de la diana: <b>${ev.toma.puntos} puntos</b>` : "");
+  const z1 = `Vueltas por fuera de los pilones: <b>${c.vueltas}</b>` + (c.mejor !== null ? ` · mejor ${c.mejor.toFixed(1)} s` : "");
+  if (ev.zona === 2) return z2;
+  return sesion.escenario === "libre" && (ev.puertas || ev.pasadas.este + ev.pasadas.oeste || (ev.toma && ev.toma.d <= 40)) ? z1 + "<br>" + z2 : z1;
+}
+// zona 2: que toca ahora
+function textoZona2() {
+  const id = sesion.escenario, o = ev.obj, hecho = k => o[k] && o[k].estado === "ok";
+  let sig = "";
+  if (!ev.subido) sig = "sube a 20 m";
+  else if (id === "puerta") sig = ev.puertas < 3 ? `cruzar la puerta naranja (${ev.puertas}/3)` : "aterrizar";
+  else if (id === "pasada_baja") sig = !hecho("pasadaO") ? "pasada baja hacia el oeste (de izquierda a derecha)" : !hecho("pasadaE") ? "pasada baja hacia el este (de derecha a izquierda)" : "aterrizar";
+  else if (id === "diana") sig = "aterrizar en la diana";
+  else if (id === "recorrido") sig = !hecho("pasada") ? "1. pasada baja por la pista 2 (2 a 8 m)" : !hecho("puertaR") ? "2. cruzar la puerta naranja" : "3. aterrizar en la diana";
+  return `<div style="margin:4px 0">Zona 2, detrás de ti · Ahora: <b>${sig}</b></div>`;
 }
 // pilones de colores (Entorno.circuito.colores): orden de paso de un sentido y el pilon que toca ahora
 function pilonHTML(i, mayus) {
@@ -732,7 +774,7 @@ function pintarObjetivos() {
   const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
   if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
   const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
-  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.zona === 2 ? textoZona2() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
     (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
 }
 
@@ -748,15 +790,21 @@ function empezar() {
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
-  av = modelo.estadoInicial();
+  av = modelo.estadoInicial(); orientarLanzamiento();
   mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
   nuevoEvaluador(); vuelo = null;
   aviso("Pulsa L para lanzar (pon antes gases con W)");
 }
+// en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
+function orientarLanzamiento() {
+  if (zonaDe(sesion.escenario) !== 2) return;
+  const [roll, pitch] = Cuat.euler(av.q);
+  av.q = Cuat.desdeEuler(roll, pitch, Math.PI);
+}
 function lanzar() {
   if (av.estado !== "en mano") return;
-  modelo.lanzar(av); aviso("");
+  modelo.lanzar(av); orientarLanzamiento(); aviso("");
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario };
   cnContador = 0; grabarMuestra();
 }
@@ -771,7 +819,8 @@ function paso(dt) {
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
-  const su = ev && ev.contador.actualizar(pAnt, av.p, av.t);
+  const su = ev && ev.zona !== 2 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
+  if (ev) zona2(pAnt);
   if (su) {
     const nom = entorno.circuito.colores[su.i].nombre, sen = ESCENARIOS[sesion.escenario].sentido;
     toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? `¡Por dentro del pilón ${nom}! Vuelta anulada` :
@@ -780,6 +829,23 @@ function paso(dt) {
   }
   const suelo = entorno.contactoSuelo(av, vn);
   if (suelo) terminarVuelo(suelo, vn);
+}
+/** Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso. */
+function zona2(pAnt) {
+  const pu = entorno.cruzaPuerta(pAnt, av.p);
+  if (pu) {
+    if (pu.tipo === "puerta") {
+      ev.puertas++;
+      if (ev.obj.puertaR && ev.obj.pasada && ev.obj.pasada.estado === "ok") marcar("puertaR", "ok");
+      toast(`¡Puerta ${ev.puertas}!  (hacia el ${pu.sentido}, a ${pu.h.toFixed(0)} m)`);
+    } else toast(pu.tipo === "alta" ? `Por encima de la puerta (${pu.h.toFixed(0)} m): no cuenta` : "Por fuera de la puerta: no cuenta");
+  }
+  if (!ev.subido) return;          // el lanzamiento cruza la pista 2: las pasadas cuentan despues de subir
+  const pb = ev.pasada.actualizar(av.p);
+  if (pb) {
+    if (pb.ok) { ev.pasadas[pb.sentido]++; toast(`¡Pasada baja hacia el ${pb.sentido}!  (${pb.hmin.toFixed(1)}–${pb.hmax.toFixed(1)} m)`); }
+    else toast("Pasada baja no válida: " + pb.motivo);
+  }
 }
 function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;

@@ -190,9 +190,21 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | 2 · Orientación | Subir a 20 m y hacer dos ochos (vuelta completa a un lado y luego al otro), sin pasar de 200 m de distancia ni entrar en pérdida, y aterrizar |
 | 3 · Viento cruzado | Con 4 m/s del oeste: una vuelta por fuera de los pilones en orden azul → rojo → amarillo → verde (al revés que el primer vuelo) y una toma en la pista, alineada con ella (±25°), sin daños |
 | 4 · Emergencia | Subir a 40 m. El motor se para entre 8 y 20 s después: mantener el control sin pérdida y aterrizar a menos de 100 m del piloto |
-| Vuelo libre | Sin objetivos; cuenta horas y cronometra las vueltas al circuito |
+| 5 · Puerta (zona 2) | Cruzar la puerta naranja 3 veces de lado a lado, por debajo de lo alto de los pilones (20 m), y aterrizar |
+| 6 · Pasada baja (zona 2) | Recorrer la pista 2 de punta a punta entre 2 y 8 m, sin tocar ni salirse por los lados: una pasada hacia cada lado |
+| 7 · Diana (zona 2) | Aterrizar a menos de 10 m del centro de la diana |
+| 8 · Recorrido de precisión (zona 2) | En este orden: pasada baja válida, paso por la puerta y toma a menos de 10 m de la diana |
+| Vuelo libre | Sin objetivos; cuenta horas, cronometra las vueltas al circuito y cuenta puertas, pasadas bajas y la toma en la diana |
+
+Los escenarios 1 a 4 (zona 1) son los que cuentan para autorizar la maqueta real; los de la zona 2 son práctica de precisión: se guardan en el historial pero no son requisito.
 
 **El circuito:** 4 pilones hinchables tipo Red Bull en las esquinas de un rectángulo de 120 × 180 m delante del piloto, con la pista dentro (de 40 a 160 m hacia el frente y 90 m a cada lado). Cada pilón es de un color: **verde** delante a la izquierda, **amarillo** al fondo a la izquierda, **rojo** al fondo a la derecha y **azul** delante a la derecha. Una vuelta vale cuando se rodean las 4 esquinas **por fuera**, en el mismo sentido, hasta volver al pilón de salida (se puede salir de cualquiera). Los escenarios fijan el orden de paso (verde → amarillo → rojo → azul es subir por la izquierda y volver por la derecha), y el panel de objetivos muestra el orden y el siguiente pilón; pasar un pilón en sentido contrario no cuenta y anula la vuelta en curso. En vuelo libre vale cualquier sentido. Cortar una esquina por dentro anula la vuelta en curso, y tocar un pilón rompe el avión.
+
+**La zona 2, detrás del piloto:** en sus escenarios el piloto se da la vuelta y se lanza hacia el sur (mejor con viento del sur, para lanzar de cara al viento). Todo va paralelo a la línea del piloto, como en un campo real:
+- **Pista 2**: franja de tierra de este a oeste, de 70 × 10 m, a 45 m detrás del piloto. Una pasada baja vale si se entra por una punta, se sale por la otra sin salirse por los lados (5 m de margen) y se mantiene siempre entre 2 y 8 m de altura; cuenta a partir de haber subido a 20 m (el lanzamiento la cruza).
+- **Diana**: círculos de cal de 5, 10 y 20 m en el centro de la pista 2, que dan 100, 50 y 20 puntos según dónde toque tierra el avión.
+- **Puerta**: dos pilones naranjas separados 16 m, a 130 m del piloto (60 m al este de la pista 2). Se cruza de este a oeste o al revés, por debajo de lo alto de los pilones; por encima o por fuera no cuenta, y tocarlos rompe el avión.
+- Alrededor no hay almendros ni estacas, para ver bien la altura.
 
 Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30° de alabeo, menos de 25° de cabeceo y menos de 12 m/s respecto al suelo.
 
@@ -207,7 +219,7 @@ Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30°
 | Fichero | Contenido |
 |---|---|
 | `js/modelos.js` | `Modelos` (carga los aviones de `aviones/`) y `ModeloAvion` (física de 6 grados de libertad; un avión con otros mandos, como el E2, redefine `servos()` y `mandosCoef()`) |
-| `js/entorno.js` | `Entorno` (viento y rachas, pista, pilones, reglas del suelo) y `ContadorVueltas` (vueltas al circuito por fuera de los pilones) |
+| `js/entorno.js` | `Entorno` (viento y rachas, pista, pilones, zona 2 con su puerta y su diana, reglas del suelo), `ContadorVueltas` (vueltas al circuito por fuera de los pilones) y `PasadaBaja` (pasadas bajas por la pista 2) |
 | `js/visor.js` | `Visor` (escena 3D y cámaras) y `VistaPrevia` (el avión girando en la pantalla de elección). El campo está modelado sobre el sitio real (imagen de satélite): bancales de tierra rojiza con almendros, pista de tierra compactada y aparcamiento de grava, la Rambla del Palmeral al este, el cerro de monte bajo al oeste, el cortijo al norte y la AP-7 al noreste; todo ello en una isla de ~1,7 km de radio rodeada de mar (el mundo es finito). Es decorado generado por código (`CAMPO` y `pintarCampo`): la pista, los pilones y las reglas del suelo siguen en `Entorno` |
 | `simulador.html` | Pantallas, escenarios, caja negra y bucle |
 

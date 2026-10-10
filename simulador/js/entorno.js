@@ -1,7 +1,8 @@
 "use strict";
 // =====================================================================
 //  ENTORNO: el campo de vuelo. Viento con rachas, pista, los 4 pilones tipo Red Bull que marcan el
-//  circuito (se rodean siempre por fuera) y las reglas del suelo (aterrizaje o accidente).
+//  circuito (se rodean siempre por fuera), la zona 2 de precision detras del piloto (pista 2 con la diana
+//  y la puerta) y las reglas del suelo (aterrizaje o accidente).
 //
 //  Coordenadas NED en metros con origen en el piloto, que mira al norte. La pista va hacia el norte.
 // =====================================================================
@@ -17,6 +18,18 @@ class Entorno {
                       colores: [{ nombre: "verde", hex: "#2e7d32" }, { nombre: "amarillo", hex: "#f9a825" },
                                 { nombre: "rojo", hex: "#c62828" }, { nombre: "azul", hex: "#1565c0" }] };
     this.pilon = { alto: 20, r0: 1.4, r1: 0.45 };                    // cono hinchable: radio abajo y arriba
+    // ZONA 2, detras del piloto (al sur; el piloto se da la vuelta): entrenamiento de precision.
+    //  - pista 2: franja de tierra de este a oeste, paralela a la linea del piloto, para la pasada baja (de
+    //    punta a punta entre hmin y hmax, sin salirse por los lados) y con la diana de aterrizaje en el centro
+    //  - diana: circulos de cal de 5, 10 y 20 m con sus puntos
+    //  - puerta: dos pilones naranjas separados 16 m; se cruza de este a oeste o al reves, por debajo de lo alto
+    //  - despejado: rectangulo sin almendros ni estacas
+    this.zona2 = {
+      pista: { n: -45, e0: -35, e1: 35, ancho: 10, margen: 5, hmin: 2, hmax: 8 },
+      diana: { n: -45, e: 0, anillos: [[5, 100], [10, 50], [20, 20]] },
+      puerta: { e: 60, n0: -123, n1: -107, color: { nombre: "naranja", hex: "#ef6c00" } },
+      despejado: { n0: -150, n1: -14, e0: -60, e1: 95 },
+    };
     this.viento = { base: 2, rumbo: Math.PI, rachas: true, r: [0, 0, 0], actual: [0, 0, 0] };   // rumbo: hacia donde va
     // limites de un aterrizaje sin daños, y del campo: a mas de aviso_m se avisa, a mas de distancia_m el
     // avion ya no se ve desde el piloto y el vuelo termina "fuera de limites" (asi nadie se queda atrapado
@@ -57,6 +70,8 @@ class Entorno {
   }
 
   pilones() { return this.circuito.pilones; }
+  /** Los dos pilones de la puerta de la zona 2, (N, E). */
+  pilonesPuerta() { const P = this.zona2.puerta; return [[P.n0, P.e], [P.n1, P.e]]; }
 
   /** Distancia horizontal al piloto (m) y si esta fuera del campo. */
   distancia(p) { return Math.hypot(p[0], p[1]); }
@@ -67,7 +82,7 @@ class Entorno {
     const h = -p[2], P = this.pilon;
     if (h > P.alto + 0.3) return false;
     const r = P.r0 + (P.r1 - P.r0) * Math.max(0, h) / P.alto;
-    return this.pilones().some(s => Math.hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8);
+    return this.pilones().concat(this.pilonesPuerta()).some(s => Math.hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8);
   }
 
   /** Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(pAnt, p, t) en cada paso. sentido: +1 (verde,
@@ -78,6 +93,26 @@ class Entorno {
   ordenPilones(sentido) {
     const n = this.circuito.colores.map(c => c.nombre);
     return sentido ? (sentido > 0 ? n : n.slice().reverse()).join(" → ") : "en cualquier sentido";
+  }
+
+  /** Cruce de la linea de la puerta entre dos pasos: null, {tipo: "puerta", sentido: "este" | "oeste", h},
+   *  {tipo: "alta", h} (por encima de los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon). */
+  cruzaPuerta(pAnt, p) {
+    const P = this.zona2.puerta, a = pAnt[1] - P.e, b = p[1] - P.e;
+    if ((a < 0) === (b < 0)) return null;
+    const t = a / (a - b), n = pAnt[0] + t * (p[0] - pAnt[0]), h = -(pAnt[2] + t * (p[2] - pAnt[2]));
+    if (n > P.n0 && n < P.n1) return h < this.pilon.alto ? { tipo: "puerta", sentido: b > a ? "este" : "oeste", h } : { tipo: "alta", h };
+    if (n > P.n0 - 30 && n < P.n1 + 30 && h < 40) return { tipo: "fuera" };
+    return null;
+  }
+
+  /** Pasadas bajas por la pista 2: un objeto por vuelo, con actualizar(p) en cada paso. */
+  pasadaBaja() { return new PasadaBaja(this.zona2.pista); }
+
+  /** Distancia horizontal (m) de (N, E) al centro de la diana y los puntos de esa toma. */
+  diana(N, E) {
+    const D = this.zona2.diana, d = Math.hypot(N - D.n, E - D.e), a = D.anillos.find(([r]) => d <= r);
+    return { d, puntos: a ? a[1] : 0 };
   }
 
   /** true si (N, E) esta sobre la pista, con margen. */
@@ -138,5 +173,37 @@ class ContadorVueltas {
       return { tipo: "pilon", i, n: this.serie.length };
     }
     return null;
+  }
+}
+
+// =====================================================================
+//  PASADA BAJA por la pista 2: entrar por una punta de la pista (de este a oeste o al reves), recorrerla
+//  entera sin salirse por los lados (ancho/2 + margen a cada lado del eje) y salir por la otra punta,
+//  siempre entre hmin y hmax de altura. Tocar el suelo ya termina el vuelo (lo mira el Entorno).
+// =====================================================================
+class PasadaBaja {
+  constructor(pista) { this.P = pista; this.en = null; this.validas = 0; }
+
+  /** Devuelve null o, al salir de la pista, {ok, sentido: "este" | "oeste", hmin, hmax, motivo}. */
+  actualizar(p) {
+    const P = this.P, h = -p[2];
+    const dentro = Math.abs(p[0] - P.n) <= P.ancho / 2 + P.margen && p[1] >= P.e0 && p[1] <= P.e1;
+    if (dentro) {
+      if (!this.en) this.en = { desde: p[1] < (P.e0 + P.e1) / 2 ? "oeste" : "este", e: p[1], hmin: h, hmax: h };
+      else { this.en.hmin = Math.min(this.en.hmin, h); this.en.hmax = Math.max(this.en.hmax, h); }
+      return null;
+    }
+    if (!this.en) return null;
+    const e = this.en; this.en = null;
+    const sale = p[1] > P.e1 ? "este" : p[1] < P.e0 ? "oeste" : "lado";
+    const r = { ok: false, sentido: sale, hmin: e.hmin, hmax: e.hmax };
+    if (sale === "lado") r.motivo = "te has salido de la pista por un lado";
+    else if (sale === e.desde) r.motivo = "no la has recorrido de punta a punta";
+    else if (e.hmax > P.hmax) r.motivo = `demasiado alta (${e.hmax.toFixed(1)} m; máximo ${P.hmax} m)`;
+    else if (e.hmin < P.hmin) r.motivo = `demasiado baja (${e.hmin.toFixed(1)} m; mínimo ${P.hmin} m)`;
+    else { r.ok = true; this.validas++; }
+    // solo avisa de las que de verdad intentan ser una pasada: bajas y siguiendo la pista al menos 20 m (cruzarla
+    // alta o de lado, como al lanzar, no es nada)
+    return e.hmin <= P.hmax + 7 && (sale !== "lado" || Math.abs(p[1] - e.e) > 20) ? r : null;
   }
 }
