@@ -32,7 +32,7 @@ BARRIDO_DIEDRO = (8, 10, 12, 14, 16)   # diedros de las puntas que barre vlm_e1.
 # Inclinacion del motor hacia abajo. La linea de empuje pasa ~22 mm por debajo del CG (ala alta) y la helice
 # esta ~259 mm por delante: con potencia el avion encabrita. Anularlo del todo pediria ~5 grados; con 4 queda
 # una ligera tendencia a subir al dar gas, que es lo que se busca en un entrenador (el gas controla la altura)
-DOWNTHRUST = 4.0
+DOWNTHRUST = 2.0
 
 # ---------------- fuselaje impreso ----------------
 # seccion rectangular redondeada, constante hasta X_TAPER y luego conica recta hasta la cola
