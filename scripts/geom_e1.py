@@ -32,9 +32,10 @@ set_circular_segments(72)
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUT_NOMBRE)
 
 # ---------------- construccion ----------------
-WALL = 1.0                    # pared del fuselaje
+WALL = 1.0                    # pared de cierre y cajeado del servo de las piezas del ala
+WALL_F = 1.6                  # pared del fuselaje: 4 lineas de 0,4 mm (con 1,0, dos lineas, salia flojo al imprimir)
 SPIGOT_L, SPIGOT_T = 15.0, 1.2   # cuello de union entre tramos (entra en el tramo siguiente); 15 mm suaviza el escalon donde rompe la pared
-FUS_SEG = [(0, 170), (170, 330), (330, 500), (500, 640), (640, P.L)]   # F1 llega a 170: el palillo delantero (X 161) cae dentro
+FUS_SEG = [(0, 180), (180, 330), (330, 500), (500, 640), (640, P.L)]   # F1 llega a 180: el palillo delantero (X 171) y su taco caen dentro
 SPAR_D, SPAR2_D, SPAR2_X = 8.2, 3.2, 0.60   # tubo 8x6 al 25 % de la cuerda, varilla 3 mm al 60 %
 LLAVE_D = 6.3                 # paso de la llave del quiebro (barra de aluminio de 6 mm, dentro de los tubos 8x6)
 # canal del cable de los servos de alerón (E2/E3): agujero de 8 mm a lo largo del ala entre el tubo y el larguero
@@ -329,13 +330,41 @@ def punto_ala(u, v, s, left):
     return q if left else q * [1, -1, 1]
 
 
+# Topes de ALA_C: dos nervios en cuna bajo el intrados, uno por lado, que entran justo por dentro de las pestanas
+# del asiento del fuselaje (TOPE_HOLGURA mm por lado): el ala no se desliza de lado sobre el fuselaje y, al
+# ponerla, se centra sola. En dos tramos de la cuerda donde hay pestana debajo (en X global). Seccion en V de
+# 10 mm arriba y TOPE_HONDO bajo el intrados, con las caras a 45 grados: ALA_C se imprime de pie (envergadura
+# vertical) y asi no hay voladizos.
+TOPES_X = [(P.X_LE + 20.0, P.X_LE + 60.0), (P.X_LE + 105.0, P.X_LE + 145.0)]
+TOPE_HONDO, TOPE_HOLGURA = 4.0, 0.3
+
+
+def topes_ala_c(h):
+    """Topes en local de ALA_C (cuerda X desde el larguero, espesor Y, envergadura Z de 0 a h)."""
+    us, _ = spar_origin(P.C)
+    y_cara = P.FUS_W / 2 - WALL_F - 4.0 - TOPE_HOLGURA        # cara de fuera, a la altura del intrados
+    out = None
+    for (X0, X1) in TOPES_X:
+        for x in np.arange(X0, X1 - 0.1, 10.0):               # trozos de 10 mm, cada uno a la altura de su intrados
+            u0 = (x - P.X_LE) / np.cos(np.radians(P.INC)) - us
+            vi = max(y_superficie(u0)[1], y_superficie(u0 + 10.0)[1])
+            for sgn in (-1, 1):                                # local z = h/2 - Y global: sgn -1 es Y > 0
+                zf = h / 2 + sgn * y_cara
+                tri = [(zf + sgn * 1.0, vi + 1.0), (zf - sgn * 9.0, vi + 1.0), (zf - sgn * 4.0, vi - TOPE_HONDO)]
+                cs = CrossSection([ccw(tri)])
+                t = Manifold.extrude(cs, 10.0).transform([[0, 0, 1, u0], [0, 1, 0, 0], [1, 0, 0, 0]])
+                out = t if out is None else out + t
+    return out
+
+
 def center_piece():
-    """Pieza central ALA_C, plana, de -ALA_C_SEMI a +ALA_C_SEMI: un tramo recto que atraviesa el tubo central.
-    Se devuelve en local (de pie, para imprimir) y en global (montada)."""
+    """Pieza central ALA_C, plana, de -ALA_C_SEMI a +ALA_C_SEMI: un tramo recto que atraviesa el tubo central,
+    con los topes que la centran sobre el fuselaje. Se devuelve en local (de pie, para imprimir) y en global."""
     h = 2 * P.ALA_C_SEMI
     seg = wing_segment(h, canal=(-1.0, h + 1.0) if ALERON else None)
     if ALERON:   # boca de salida de los cables por el intrados, sobre la escotilla del fuselaje
         seg = seg - Manifold.cube([2 * CABLE_R + 2.0, 30.0, CABLE_BOCA]).translate([CABLE_X - CABLE_R - 1.0, -30.0, h / 2 - CABLE_BOCA / 2])
+    seg = seg + topes_ala_c(h)
     return seg, wing_to_global(seg, -P.ALA_C_SEMI, True, exterior=False)
 
 
@@ -415,15 +444,15 @@ def saddle_cutter(up=True):
 def fuselage_segment(k):
     a, b = FUS_SEG[k]
     last = k == len(FUS_SEG) - 1
-    body = solid(a, b) - solid(a - 1, b + 1, WALL)
+    body = solid(a, b) - solid(a - 1, b + 1, WALL_F)
     xa, xb = P.X_LE, P.X_LE + P.C
     if not last:   # cuello hacia el tramo siguiente: encaja dentro de su pared, holgura 0,15
         # anclaje dentro de este tramo: un anillo pegado a la pared (se mete 0,2 mm en ella) con el canto de
         # abajo a 45 grados; el cuello que sale arranca 1 mm dentro del anillo
-        anclaje = (Manifold.batch_hull([slab(b - 3.5, WALL - 0.2), slab(b, WALL - 0.2)])
-                   - Manifold.batch_hull([slab(b - 3.51, WALL), slab(b - 3.5 + SPIGOT_T, WALL + SPIGOT_T), slab(b + 0.01, WALL + SPIGOT_T)]))
-        cuello = anclaje + (Manifold.batch_hull([slab(b - 1.0, WALL + 0.15), slab(b + SPIGOT_L, WALL + 0.15)])
-                            - Manifold.batch_hull([slab(b - 3, WALL + SPIGOT_T), slab(b + SPIGOT_L + 1, WALL + SPIGOT_T)]))
+        anclaje = (Manifold.batch_hull([slab(b - 3.5, WALL_F - 0.2), slab(b, WALL_F - 0.2)])
+                   - Manifold.batch_hull([slab(b - 3.51, WALL_F), slab(b - 3.5 + SPIGOT_T, WALL_F + SPIGOT_T), slab(b + 0.01, WALL_F + SPIGOT_T)]))
+        cuello = anclaje + (Manifold.batch_hull([slab(b - 1.0, WALL_F + 0.15), slab(b + SPIGOT_L, WALL_F + 0.15)])
+                            - Manifold.batch_hull([slab(b - 3, WALL_F + SPIGOT_T), slab(b + SPIGOT_L + 1, WALL_F + SPIGOT_T)]))
         if xa < b < xb:   # bajo el ala el cuello no lleva techo (la escotilla queda libre)
             w, h, zc = P.fus_seccion(b)
             cuello = cuello - Manifold.cube([SPIGOT_L + 4, 2 * w, 50]).translate([b - 3, -w, zc + h - 8.0])
@@ -433,8 +462,8 @@ def fuselage_segment(k):
         x0, x1 = max(a, xa), min(b, xb)
         w, h, zc = P.fus_seccion(x0)
         tall = along_x(Manifold.extrude(rrect(w, 60.0, 20.0, corner_r(w)), x1 - x0)).translate([x0, 0, 0])
-        tall_in = along_x(Manifold.extrude(rrect(w - WALL, 80.0, 20.0, corner_r(w) - WALL), x1 - x0 + 2)).translate([x0 - 1, 0, 0])
-        ledge_in = along_x(Manifold.extrude(rrect(w - WALL - 4.0, 80.0, 20.0, corner_r(w) - WALL - 4.0), x1 - x0 + 2)).translate([x0 - 1, 0, 0])
+        tall_in = along_x(Manifold.extrude(rrect(w - WALL_F, 80.0, 20.0, corner_r(w) - WALL_F), x1 - x0 + 2)).translate([x0 - 1, 0, 0])
+        ledge_in = along_x(Manifold.extrude(rrect(w - WALL_F - 4.0, 80.0, 20.0, corner_r(w) - WALL_F - 4.0), x1 - x0 + 2)).translate([x0 - 1, 0, 0])
         cut = saddle_cutter()
         # las paredes del asiento arrancan rectas desde donde empieza la curva de la esquina del fuselaje: si
         # arrancaran en el lomo quedarian sueltas (la esquina redondeada ya se ha metido hacia dentro)
@@ -444,7 +473,7 @@ def fuselage_segment(k):
         # pestanas de apoyo (4 mm hacia dentro, 3 mm de grueso) solo en los costados
         xl = max(x0, a + SPIGOT_L + 0.5) if k > 0 else x0     # la pestana no pisa el cuello del tramo anterior
         band = (tall_in - ledge_in) ^ top ^ Manifold.cube([x1 - xl, 2 * w, 100]).translate([xl, -w, zc + h - 6.0])
-        band = band - Manifold.cube([x1 - x0 + 2, 2 * (w - WALL - 4.0), 200]).translate([x0 - 1, -(w - WALL - 4.0), -50])
+        band = band - Manifold.cube([x1 - x0 + 2, 2 * (w - WALL_F - 4.0), 200]).translate([x0 - 1, -(w - WALL_F - 4.0), -50])
         body = body + band
         body = body - cut.translate([0, 0, -0.2])                 # 0,2 mm de holgura bajo el ala
     # tacos y agujeros de los palillos de las gomas (varilla de carbono de 4 mm)
@@ -452,7 +481,7 @@ def fuselage_segment(k):
         if a + DOWEL_BOSS_R + 1 < xd < b - DOWEL_BOSS_R - 1:
             w = P.fus_seccion(xd)[0]
             boss = Manifold.cylinder(2 * w, DOWEL_BOSS_R, center=True).rotate([90, 0, 0]).translate([xd, 0, zd])
-            pared = solid(xd - 12, xd + 12) - solid(xd - 13, xd + 13, WALL + DOWEL_BOSS_T)
+            pared = solid(xd - 12, xd + 12) - solid(xd - 13, xd + 13, WALL_F + DOWEL_BOSS_T)
             body = body + (boss ^ pared)
             body = body - Manifold.cylinder(2 * w + 10, DOWEL_D / 2, center=True).rotate([90, 0, 0]).translate([xd, 0, zd])
     if k == 0:     # bancada del motor: placa vertical de 4 mm maciza con el eje, la cruz del X2212 (16 x 19, M3)
@@ -471,18 +500,22 @@ def fuselage_segment(k):
         body = body + bandeja_servos()
     if last:
         body = body + fin_fixed()
-        body = body - solid(a - 1, b + 1, WALL)                              # la deriva no entra en el hueco
+        body = body - solid(a - 1, b + 1, WALL_F)                              # la deriva no entra en el hueco
         body = body + (fin_fixed() ^ Manifold.cube([200, 10, 30]).translate([a + SPIGOT_L + 1, -5, P.fus_lomo(b) - 6]))  # raiz (tras el cuello de F4)
         # ranura del estabilizador (abierta por detras) y agujeros de las varillas de union
-        body = body - Manifold.cube([X_HINGE_H - P.HT_XLE + 5, 2 * P.HT_B, PLATE_T + 0.3]).translate(
-            [-0.15, -P.HT_B, -(PLATE_T + 0.3) / 2]).rotate([0, P.HT_INC, 0]).translate([P.HT_XLE, 0, P.HT_Z])
+        body = body - ranura_estab()
         # salidas de las transmisiones: la de la profundidad por el costado izquierdo, por encima del
         # estabilizador; la del timon por el lomo, a la derecha de la deriva
         body = body - salida("prof")
         if CON_TIMON:
             body = body - salida("timon")
-    # guias de las transmisiones y vainas de los larguerillos: al final, porque en F5 el hueco interior se vacia
-    # otra vez al poner la deriva (antes se llevaba por delante la guia de X 675)
+    # cuaderna, guias de las transmisiones y vainas de los larguerillos: al final, porque en F5 el hueco interior
+    # se vacia otra vez al poner la deriva (antes se llevaba por delante la guia de X 675)
+    body = body + cuaderna(k)
+    if last:
+        body = body - ranura_estab() - salida("prof")
+        if CON_TIMON:
+            body = body - salida("timon")
     for (xg, nombre) in guias_posiciones():
         if a + SPIGOT_L + 1 < xg - 14 and xg + 11 < b:
             body = body + guia(xg, nombre)
@@ -496,9 +529,9 @@ def fuselage_segment(k):
 # F2, con el eje largo a lo ancho del fuselaje: las orejetas se atornillan a dos placas laterales que, al
 # imprimir, son paredes verticales (el borde de abajo va a 45 grados: sin voladizos)
 SERVO = dict(largo=23.0, ancho=12.2, alto_orejeta=15.5, tornillos=27.8)
-SERVO_X = (215.0, 231.0)          # X del canto delantero de cada servo (profundidad, timon): lo mas adelante que deja la
+SERVO_X = (P.X_LE + 40.0, P.X_LE + 56.0)   # X del canto delantero de cada servo (profundidad, timon): lo mas adelante que deja la
                                   # escotilla, para que la bateria quepa en el morro con el CG al 33 %
-SUELO_Z = -P.FUS_H / 2 + WALL
+SUELO_Z = -P.FUS_H / 2 + WALL_F
 CARRIL_X0, CARRIL_L = 8.0, 152.0            # carriles de la bateria en el suelo de F1 (X 8 a 160)
 RANURAS_X = list(range(20, 160, 15))        # ranuras de la cinta de velcro (2,6 x 24 mm), cada 15 mm
 
@@ -562,7 +595,7 @@ def guia(x, nombre, largo=10.0, r_ext=3.0):
     p = _punto_linea(nombre, x)
     sy = -1 if p[1] < 0 else 1
     w, h, zc = P.fus_seccion(x)
-    y_pared = sy * (w - WALL + 0.3)
+    y_pared = sy * (w - WALL_F + 0.3)
     alma = CrossSection.square([abs(y_pared - p[1]), 2.0]).translate([min(y_pared, p[1]), p[2] - 1.0])
     perfil = CrossSection.circle(r_ext).translate([p[1], p[2]]) + alma                    # en el plano (Y, Z)
     def a_x(cs, x0, l):        # extruye el perfil (Y, Z) a lo largo de X
@@ -591,22 +624,26 @@ def guias_agujeros(a, b):
 
 
 # ---------------- larguerillos ----------------
-# Dos varillas de carbono de 2 mm por lado, por dentro de las esquinas de abajo del fuselaje, en vainas impresas
-# pegadas a la pared. El fuselaje se imprime de pie: un golpe que lo flexiona intenta despegar capa de capa, que
-# es como peor aguanta una pieza impresa; las varillas llevan esa traccion y atan las uniones F2|F3, F3|F4 y
-# F4|F5. Como la seccion es constante hasta X_TAPER y luego se estrecha en linea recta, cada esquina lleva dos
-# varillas rectas: una en la parte recta y otra en la conica.
+# Varillas de carbono de 2 mm por dentro de las 4 esquinas del fuselaje, en vainas impresas pegadas a la pared.
+# El fuselaje se imprime de pie: un golpe que lo flexiona intenta despegar capa de capa, que es como peor aguanta
+# una pieza impresa; las varillas llevan esa traccion y atan las uniones F2|F3, F3|F4 y F4|F5. Como la seccion
+# es constante hasta X_TAPER y luego se estrecha en linea recta, las varillas son tramos rectos:
+#  - abajo (dos esquinas): una en la parte recta, desde detras de los servos, y otra en la conica
+#  - arriba (dos esquinas): solo en la conica, desde detras del palillo de atras del ala (X 369, que cruza el
+#    fuselaje a esa altura). Delante el techo es la escotilla del ala, abierta
+# Todas acaban antes de la ranura del estabilizador.
 LARG_D, LARG_R = 2.3, 2.6          # agujero de la varilla de 2 mm y radio exterior de la vaina
-LARG_TRAMOS = [(205.0, P.X_TAPER - 1.0), (P.X_TAPER + 1.0, P.HT_XLE - 5.0)]   # la de atras acaba antes de la ranura del estabilizador
+LARG_TRAMOS = [(-1, P.X_LE + 30.0, P.X_TAPER - 1.0), (-1, P.X_TAPER + 1.0, P.HT_XLE - 5.0),   # (abajo -1 / arriba +1, desde, hasta)
+               (1, max(P.X_TAPER + 8.0, DOWELS[1][0] + 10.0), P.HT_XLE - 5.0)]       # las de arriba, detras del taco del palillo
 
 
-def larg_centro(X, sy):
-    """Centro de la varilla en X: dentro de la esquina de abajo (sy = -1 izquierda, +1 derecha), con la vaina
-    metida 0,3 mm en la pared para que quede soldada a ella."""
+def larg_centro(X, sy, sz=-1):
+    """Centro de la varilla en X: dentro de la esquina (sy = -1 izquierda, +1 derecha; sz = -1 abajo, +1 arriba),
+    con la vaina metida 0,3 mm en la pared para que quede soldada a ella."""
     w, h, zc = P.fus_seccion(X)
-    rc = corner_r(w); r_in = rc - WALL
+    rc = corner_r(w); r_in = rc - WALL_F
     d = (r_in - LARG_R + 0.3) / np.sqrt(2)
-    return np.array([X, sy * (w - rc) + sy * d, zc - h + rc - d])
+    return np.array([X, sy * (w - rc) + sy * d, zc + sz * (h - rc + d)])
 
 
 def _cil_entre(p0, p1, r):
@@ -621,13 +658,13 @@ def vainas_larguerillos(a, b, k):
     """Vainas de este tramo, desde despues del cuello del tramo anterior; al principio de cada vaina, un cono a
     45 grados hasta la pared (al imprimir el tramo de pie la vaina no arranca en el aire)."""
     out = None
-    for (x0, x1) in LARG_TRAMOS:
+    for (sz, x0, x1) in LARG_TRAMOS:
         xa = max(x0, a + (SPIGOT_L + 1.0 + 2 * LARG_R + 0.5 if k > 0 else 0.0)); xb = min(x1, b)   # el cono no pisa el cuello
         if xb - xa < 5: continue
         for sy in (-1, 1):
-            p0, p1 = larg_centro(xa, sy), larg_centro(xb, sy)
+            p0, p1 = larg_centro(xa, sy, sz), larg_centro(xb, sy, sz)
             w, h, zc = P.fus_seccion(xa); rc = corner_r(w)
-            pared = np.array([xa - 2 * LARG_R, sy * (w - rc) + sy * (rc - WALL) / np.sqrt(2), zc - h + rc - (rc - WALL) / np.sqrt(2)])
+            pared = np.array([xa - 2 * LARG_R, sy * (w - rc) + sy * (rc - WALL_F) / np.sqrt(2), zc + sz * (h - rc + (rc - WALL_F) / np.sqrt(2))])
             u = (p1 - p0) / np.linalg.norm(p1 - p0)
             cono = Manifold.batch_hull([_cil_entre(p0, p0 + u * 0.05, LARG_R), Manifold.sphere(0.4).translate(pared.tolist())])
             pieza = _cil_entre(p0, p1, LARG_R) + cono
@@ -638,11 +675,43 @@ def vainas_larguerillos(a, b, k):
 
 def agujeros_larguerillos(a, b):
     out = None
-    for (x0, x1) in LARG_TRAMOS:
+    for (sz, x0, x1) in LARG_TRAMOS:
         for sy in (-1, 1):
-            h = _cil_entre(larg_centro(x0 - 1.0, sy), larg_centro(x1 + 1.0, sy), LARG_D / 2)
+            h = _cil_entre(larg_centro(x0 - 1.0, sy, sz), larg_centro(x1 + 1.0, sy, sz), LARG_D / 2)
             out = h if out is None else out + h
     return out ^ Manifold.cube([b - a + 40, 200, 200]).translate([a - 20, -100, -100])
+
+
+# ---------------- cuadernas ----------------
+# Un marco a mitad de cada tramo: anillo pegado a la pared por dentro, de CUAD_T mm de grueso y CUAD_D de ancho
+# (menos en la cola, donde la seccion es pequena), con la cara de abajo a 45 grados para imprimirlo de pie sin
+# soportes. Ata las cuatro paredes entre si y abraza las vainas de los larguerillos (las varillas lo atraviesan).
+#  - F1: sin travesano de abajo entre los carriles, para que la bateria siga entrando
+#  - F2: en U, abierta por arriba, porque el techo bajo el ala es la escotilla
+#  - las transmisiones lo atraviesan por su taladro: hace ademas de guia
+CUADERNAS_X = [88.0, P.X_LE + 80.0, 415.0, 570.0, 670.0]   # entre las ranuras del velcro (F1), detras de los servos (F2),
+                                                    # delante de la ranura del estabilizador (F5)
+CUAD_D, CUAD_T = 5.0, 2.5
+
+
+def cuaderna(k):
+    xm = CUADERNAS_X[k]
+    w, h, zc = P.fus_seccion(xm)
+    D = min(CUAD_D, 0.3 * w)
+    ext = Manifold.batch_hull([slab(xm - D, WALL_F - 0.2), slab(xm + CUAD_T, WALL_F - 0.2)])
+    hueco = Manifold.batch_hull([slab(xm - D - 0.01, WALL_F), slab(xm, WALL_F + D), slab(xm + CUAD_T + 0.01, WALL_F + D)])
+    c = ext - hueco
+    if k == 0:       # paso de la bateria entre los carriles
+        c = c - Manifold.cube([20, 41.0, 20]).translate([xm - 10, -20.5, SUELO_Z + D + 1 - 20])
+    if P.X_LE <= xm <= P.X_LE + P.C:   # bajo la escotilla del ala: solo hasta donde arrancan las paredes del asiento
+        c = c ^ Manifold.cube([20, 2 * w + 2, 200]).translate([xm - 10, -w - 1, zc + h - corner_r(w) - 1.0 - 200])
+    return c
+
+
+def ranura_estab():
+    """Ranura del estabilizador en F5 (abierta por detras)."""
+    return Manifold.cube([X_HINGE_H - P.HT_XLE + 5, 2 * P.HT_B, PLATE_T + 0.3]).translate(
+        [-0.15, -P.HT_B, -(PLATE_T + 0.3) / 2]).rotate([0, P.HT_INC, 0]).translate([P.HT_XLE, 0, P.HT_Z])
 
 
 def _rot(eje, ang):

@@ -13,12 +13,12 @@ Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él e
 | Envergadura y cuerda | 1200 × 180 mm, rectangular, NACA 2412 (`NACA2412.dat`) |
 | Superficie alar | 21,6 dm² |
 | Ala | **Poliedro:** plana hasta 300 mm del centro, con un tubo de carbono recto que la atraviesa; las puntas suben 12° desde ese quiebro |
-| Masa en vuelo | 806 g (LW-PLA; F1 en PLA normal) |
-| Carga alar | 37,3 g/dm² |
-| Pérdida / crucero | 7,4 m/s / ≈ 9,5 m/s con la profundidad neutra |
+| Masa en vuelo | 895 g (LW-PLA; F1 en PLA normal) |
+| Carga alar | 41,4 g/dm² |
+| Pérdida / crucero | 7,8 m/s / ≈ 9,5 m/s con la profundidad neutra (calado del estabilizador −1,2°) |
 | Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh. **Inclinado 2° hacia abajo** (downthrust) con la cuña impresa `CUNA_MOTOR` entre la cruz del motor y la bancada vertical de F1 |
-| Centro de gravedad | 238 mm desde la bancada del motor = **63 mm detrás del borde de ataque del ala** (35 % de la cuerda). Margen estático 19 %. Con los larguerillos de carbono la cola pesa 13 g más y al 33 % la batería no cabría |
-| Batería | Centrada a unos 54 mm de la bancada, cerca del fondo del morro, entre los dos carriles del suelo de F1 y sujeta con una cinta de velcro de 20 mm que pasa por las ranuras del suelo; el ESC va detrás de ella, en el mismo canal |
+| Centro de gravedad | 248 mm desde la bancada del motor = **63 mm detrás del borde de ataque del ala** (35 % de la cuerda). Margen estático 18 %. El ala va en X 185: con el fuselaje reforzado (pared de 1,6 mm, 4 larguerillos y cuadernas) la cola pesa bastante más, y con el ala en 175 el CG no bajaba del 38 %, donde el simulador entra en pérdidas cada vez más fuertes al cortar gas subiendo |
+| Batería | Centrada a unos 56 mm de la bancada, cerca del fondo del morro, entre los dos carriles del suelo de F1 y sujeta con una cinta de velcro de 20 mm que pasa por las ranuras del suelo; el ESC va detrás de ella, en el mismo canal |
 
 Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de las piezas y el VLM usa la geometría real. La pérdida, la resistencia parásita y el empuje en vuelo son estimaciones hasta calibrarlas con planeos del avión real.
 
@@ -32,13 +32,17 @@ Todas se imprimen sin soportes. Las medidas son las de la orientación de impres
 
 | Pieza | Cuántas | Cómo se imprime |
 |---|---|---|
-| `ALA_C` | 1 | Centro del ala, plano, de −75 a +75 mm. De pie |
+| `ALA_C` | 1 | Centro del ala, plano, de −75 a +75 mm, con los **topes** del intradós (ver montaje). De pie |
 | `ALA_I_x2` | 2 | Tramo interior de 185 mm (de 75 a 260 mm), de pie. Igual para los dos lados |
 | `ALA_Q_izq` | 2 | Pieza del quiebro (de 260 a 340 mm), con el ángulo de 12° y el nervio donde hacen tope los tubos. De pie sobre la cara del lado del centro; **la segunda, en espejo** |
 | `ALA_E_x4` | 4 | Tramos exteriores de 130 mm, de pie. Todos iguales |
 | `F1` | 1 | Morro con la bancada vertical, los carriles y las ranuras de la batería en el suelo y el agujero del palillo delantero. **PLA normal**, de pie sobre la bancada |
 | `CUNA_MOTOR` | 1 | Cuña de 34 × 34 mm (2 → 3,2 mm) que da los 2° de downthrust. **PLA normal**, tumbada sobre su cara plana |
 | `F2`–`F5` | 1 de cada | Fuselaje, de pie sobre la cara delantera. El cuello de unión queda arriba. F2 lleva la bandeja de los servos; F3 a F5, las guías de las transmisiones; F5, la deriva con los nudillos de la bisagra del timón |
+
+**Fuselaje reforzado.** Pared de **1,6 mm** (4 líneas de 0,4; con 1 mm salía flojo), **vainas de varilla de carbono en las 4 esquinas** y una **cuaderna a mitad de cada tramo**: un marco de 5 mm de ancho y 2,5 de grueso pegado por dentro a la pared, que ata las cuatro paredes y abraza las vainas (en la cola, más estrecho). Tiene la cara de abajo a 45°, así que se imprime de pie sin soportes. La de F1 no tiene travesaño entre los carriles, para que pase la batería; la de F2 es una U abierta por arriba, porque el techo bajo el ala es la escotilla; las fundas de las transmisiones atraviesan las de F4 y F5 y les sirven de guía. Los cortes están en `E1_fuselaje_secciones.png`.
+
+![Cortes del fuselaje](E1_fuselaje_secciones.png)
 | `ESTAB_izq`, `ESTAB_der` | 1 de cada | Estabilizador con los nudillos de la bisagra y el solape a media madera del centro (20 mm: la izquierda lleva la media placa de arriba y la derecha la de abajo). Tumbados |
 | `PROF_izq` | 1 | Mitad izquierda de la profundidad, con el horn impreso. Tumbada |
 | `PROF_der` | 1 | Mitad derecha de la profundidad. Tumbada |
@@ -52,13 +56,13 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 - **Varilla de carbono maciza de 4 mm:** 2 trozos de 80 mm, para los palillos de las gomas.
 - **Tubo de aluminio de 6×4 mm:** 2 trozos de 100 mm, para las llaves del quiebro. Si no entra en el tubo de carbono, lija un poco.
 - Varilla de carbono de 2 mm, unos 80 cm: 2 de 100 mm para unir el estabilizador, 1 de 420 mm de pasador de la profundidad y 1 de 180 mm de pasador del timón.
-- **Larguerillos del fuselaje:** varilla de carbono de 2 mm, 4 trozos: 2 de 165 mm (parte recta, X 205–369) y 2 de 315 mm (parte que se estrecha, X 371–685). Unos 5 g.
+- **Larguerillos del fuselaje:** varilla de carbono de 2 mm, 6 trozos: abajo, 2 de 154 mm (parte recta, X 215–369) y 2 de 314 mm (parte que se estrecha, X 371–685); arriba, 2 de 296 mm (X 389–685). Unos 7,5 g.
 - 2 transmisiones tipo Bowden de 550 mm (funda de 2–3 mm y alambre de 0,8 mm), 2 servos de 9 g y gomas.
 
 **Montaje:**
-1. **Fuselaje.** Pega F1 a F5 por sus cuellos (entran 15 mm en el tramo siguiente). Lija el cuello, usa epoxi de 5 min (rellena la holgura mejor que el cianocrilato) y limpia el sobrante. Después da **una vuelta de cinta de fibra de vidrio o kevlar de 20 mm alrededor de cada unión**, pegada con el mismo epoxi: el pegamento del cuello sobra, pero los tramos se imprimen de pie y la pared de 1 mm junto al escalón del cuello es por donde rompería el LW-PLA en un golpe; la cinta lo evita por 2-3 g. Las uniones que más lo agradecen son F1|F2 (el morro, PLA contra LW-PLA) y F2|F3 (bajo el ala, donde el cuello no tiene techo). **Larguerillos:** con los tramos ya pegados, mete las cuatro varillas de carbono de 2 mm por las vainas de las esquinas de abajo, dos por lado (desde dentro, por la escotilla del ala): la corta de 165 mm en la parte recta y la larga de 315 mm en la que se estrecha, empujándola hasta F5. Fíjalas con unas gotas de cianocrilato fluido en cada extremo y en cada unión. Llevan la tracción en un golpe: el fuselaje se imprime de pie y, al flexionarse, intenta despegar capa de capa, que es como peor aguanta una pieza impresa; con las varillas, para partirlo hay que romper el carbono.
+1. **Fuselaje.** Pega F1 a F5 por sus cuellos (entran 15 mm en el tramo siguiente). Lija el cuello, usa epoxi de 5 min (rellena la holgura mejor que el cianocrilato) y limpia el sobrante. Después da **una vuelta de cinta de fibra de vidrio o kevlar de 20 mm alrededor de cada unión**, pegada con el mismo epoxi: el pegamento del cuello sobra, pero los tramos se imprimen de pie y la pared junto al escalón del cuello es por donde rompería el LW-PLA en un golpe; la cinta lo evita por 2-3 g. Las uniones que más lo agradecen son F1|F2 (el morro, PLA contra LW-PLA) y F2|F3 (bajo el ala, donde el cuello no tiene techo). **Larguerillos:** con los tramos ya pegados y antes de poner los palillos, mete las seis varillas de carbono de 2 mm desde dentro, por la escotilla del ala. Abajo van dos por lado: la de 154 mm en la parte recta y la de 314 mm en la que se estrecha, empujándola hasta F5. Arriba, la de 296 mm de cada lado, que empieza detrás del palillo trasero (X 389): entra en ángulo por la escotilla y se dobla un poco para meterla en su vaina. Fíjalas con unas gotas de cianocrilato fluido en cada extremo y en cada unión. Llevan la tracción en un golpe: el fuselaje se imprime de pie y, al flexionarse, intenta despegar capa de capa, que es como peor aguanta una pieza impresa; con las varillas, para partirlo hay que romper el carbono.
 2. **Llaves del quiebro.** Dobla cada tubo de aluminio 12° por el centro, en un tornillo de banco o sobre el canto de una mesa.
-3. **Centro del ala.** Mete el tubo de 600 mm por `ALA_C` y los dos `ALA_I`, y una pieza `ALA_Q` en cada extremo, hasta que el tubo haga tope en su nervio.
+3. **Centro del ala.** Mete el tubo de 600 mm por `ALA_C` y los dos `ALA_I`, y una pieza `ALA_Q` en cada extremo, hasta que el tubo haga tope en su nervio. Debajo de `ALA_C` hay cuatro **topes** en cuña, dos por lado (de X 205 a 245 y de 290 a 330), que entran justo por dentro de las pestañas del asiento del fuselaje con 0,3 mm de holgura: el ala no se desliza de lado y, al apoyarla, se centra sola.
 4. **Puntas.** Mete la llave de aluminio por el agujero del nervio de `ALA_Q`, 50 mm dentro de cada tubo, y pégala con epoxi. Desliza el tubo de punta de 300 mm sobre la otra mitad de la llave, hasta el nervio. Después monta los dos `ALA_E` de cada lado.
 5. **Varillas de 3 mm.** Van partidas en el quiebro: cada trozo hace tope en el nervio de `ALA_Q`.
 6. **Pegado del ala.** Pega todos los tramos entre sí por sus caras, del centro hacia las puntas, sobre una mesa plana. Comprueba con una regla que el borde de fuga queda recto.
@@ -67,7 +71,7 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
 10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
 11. **Motor.** La cruz del X2212 se atornilla a la bancada de F1 con 4 tornillos M3 × 14 y tuercas por dentro (cruz 1,5 + cuña 2-3,2 + placa 4 + tuerca 2,4 mm), con la cuña `CUNA_MOTOR` entre medias (la parte gruesa arriba: así el eje apunta 2° hacia abajo). Los agujeros de la cuña son perpendiculares a su cara inclinada; los de F1, a la placa.
-12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: a unos 54 mm; E2/E3: a unos 98 mm) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
+12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: a unos 56 mm; E2/E3: a unos 94 mm) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
 11. **Transmisiones.** Las fundas pasan por los anillos guía de F3 a F5:
     - **Profundidad:** sale por el costado izquierdo de F5, por encima del estabilizador, y va al horn de encima de la profundidad.
     - **Timón:** sale por el lomo, a la derecha de la deriva, y va al horn del timón.
@@ -82,7 +86,7 @@ Todos los números del diseño están en `scripts/parametros_e1.py`. Después de
 ```
 python scripts/geom_e1.py          # piezas (scripts/out/stl) y mallas montadas
 python scripts/masas_e1.py         # masa, CG, posicion de la bateria, inercias
-python analisis/vlm_e1.py 0.783 0.0360 0.0695   # estabilidad y calado del estabilizador (masa, Ixx, Izz)
+python analisis/vlm_e1.py 0.895 0.0361 0.0746   # estabilidad y calado del estabilizador (masa, Ixx, Izz)
 python scripts/modelo_aero_e1.py   # modelo de vuelo -> simulador/aviones/E1.js
 python scripts/vistas_e1.py        # ENTRENADOR_E1_vistas.png
 ```
@@ -99,14 +103,14 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 | Alerones | 25 % de la cuerda, de 280 a 570 mm del plano de simetría. **Bisagra de nudillos** con pasador de carbono de 2 mm, que también une los dos tramos de cada alerón. Recorrido mecánico ±15° (comprobado: a ±20° no tocan el ala); en el simulador ±5°, porque con teclado la palanca va siempre a tope |
 | Servos | 3 de 9 g: profundidad en la bandeja de F2 y uno por alerón dentro del ala (cajeado abierto por el intradós en el centro de `ALA_E1`) |
 | Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado) |
-| Masa en vuelo | 813 g; carga alar 37,7 g/dm² |
-| Centro de gravedad | 234 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
-| Batería | Centrada a unos 98 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
-| Calado del estabilizador | −0,4° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
+| Masa en vuelo | 903 g; carga alar 41,8 g/dm² |
+| Centro de gravedad | 244 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
+| Batería | Centrada a unos 94 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
+| Calado del estabilizador | −0,9° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
 
 **Por qué 7°.** Con poliedro a 240 mm el VLM da: con 6° la espiral se duplica en ~40 s, con 7° se corrige a la mitad en ~90 s (casi neutra, como debe ser un avión de alerones: no vuelve solo al nivel, pero tampoco se cierra en espiral) y con 8° en ~20 s. La guiñada adversa de los alerones es pequeña (Cn_δa / Cl_δa ≈ −0,03). La V de 2,5° en la raíz que tenía antes se cerraba en espiral (doblaba en ~8 s).
 
-**Banco de pruebas del simulador** (física sola, sin viento): lanzado sin tocar los mandos sube a 2 m/s; planea a 9,4 m/s con 1,0 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
+**Banco de pruebas del simulador** (física sola, sin viento): lanzado al 75 % de gas sin tocar los mandos sube a 1,6 m/s; planea a 9,9 m/s con 1,1 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
 
 **Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_izq`/`ESTAB_der` y `PROF_izq`/`PROF_der` son idénticas a las del E1; `F2` (bandeja con un solo servo útil), `F3` y `F5` (deriva fija, solo la salida de la profundidad) cambian. No hay `TIMON`.
 
@@ -140,7 +144,7 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 $env:ENTRENADOR = "E2"             # PowerShell (en cmd: set ENTRENADOR=E2)
 python scripts/geom_e1.py          # piezas (scripts/out_E2/stl) y mallas montadas
 python scripts/masas_e1.py
-python analisis/vlm_e1.py 0.792 0.0394 0.0666
+python analisis/vlm_e1.py 0.903 0.0395 0.0727
 python scripts/modelo_aero_e1.py   # -> simulador/aviones/E2.js, con la clase ModeloE2 de scripts/clase_e2.js
 python scripts/vistas_e1.py        # ENTRENADOR_E2_vistas.png
 ```
@@ -155,7 +159,7 @@ El E2 con el ala **totalmente plana, sin diedro**. Es el paso siguiente para qui
 
 **Piezas (carpeta `stl/E3/`).** Todas son idénticas a las del E2 salvo `ALA_Q_izq`, que sale recta (sin ángulo en el quiebro). La llave de aluminio del quiebro va **sin doblar**. El resto del montaje y las compras, como el E2.
 
-**Regenerar el E3:** los mismos scripts con `ENTRENADOR=E3` (escriben en `scripts/out_E3/` y en `simulador/aviones/E3.js`; el VLM con `python analisis/vlm_e1.py 0.792 0.0393 0.0668`).
+**Regenerar el E3:** los mismos scripts con `ENTRENADOR=E3` (escriben en `scripts/out_E3/` y en `simulador/aviones/E3.js`; el VLM con `python analisis/vlm_e1.py 0.903 0.0394 0.0729`).
 
 ## Simulador
 

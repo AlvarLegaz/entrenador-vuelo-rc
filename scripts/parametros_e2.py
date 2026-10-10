@@ -38,8 +38,8 @@ TRAMOS = [("ALA_I_x2", 75.0, 200.0), ("ALA_E1_x2", 280.0, 420.0), ("ALA_E2_izq",
 X_CG = X_LE + 0.33 * C
 
 # ---------------- cola ----------------
-HT_INC = -0.4           # calado del estabilizador: vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py con la masa
-                        # y las inercias de masas_e1.py: 0,762 kg, Ixx 0,0373, Izz 0,0642 -> -0,38). El VLM del E2 lleva
+HT_INC = -0.9           # calado del estabilizador: vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py con la masa
+                        # y las inercias de masas_e1.py: 0,901 kg, Ixx 0,0395, Izz 0,0744 -> -0,89; el E3 da -0,84). El VLM del E2 lleva
                         # un borde de panel mas en el ala (la bisagra del aleron) y eso mueve el punto neutro unos mm
 RUD_HINGE = 1.0         # sin timon: la deriva es solo la parte fija de F5, con el borde de fuga afinado y cerrado
 FIN_C = 120.0           # cuerda de la deriva: de FIN_XLE (640) al final del fuselaje (760)

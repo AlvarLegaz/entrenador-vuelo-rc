@@ -10,7 +10,8 @@ la cola), Y a la derecha, Z arriba. Unidades: mm y grados.
 B = 1200.0              # envergadura
 C = 180.0               # cuerda (rectangular): S = 21,6 dm2, alargamiento 6,7
 PERFIL = (0.02, 0.4, 0.12)   # NACA 2412: perdida suave, 12 % de espesor para el tubo de 8 mm
-X_LE = 175.0            # borde de ataque (con 105 la cola pesaba demasiado: no habia sitio para centrar)
+X_LE = 185.0            # borde de ataque (con 105 la cola pesaba demasiado: no habia sitio para centrar; con la pared
+                        # de 1,6 mm, los 4 larguerillos y las cuadernas se retraso de 175 a 185 para seguir al 35 %)
 INC = 2.0               # calado respecto al eje del fuselaje (morro arriba +)
 # Poliedro: el centro del ala es PLANO (un tubo de carbono recto lo atraviesa entero) y el diedro va en un
 # quiebro a QUIEBRO mm del plano de simetria. Con la V en la raiz toda la flexion del ala (3,8 N m por lado a
@@ -38,7 +39,7 @@ DOWNTHRUST = 2.0
 # seccion rectangular redondeada, constante hasta X_TAPER y luego conica recta hasta la cola
 L = 760.0
 FUS_W, FUS_H = 60.0, 72.0           # seccion llena (ancho, alto), centrada en Z = 0
-X_TAPER = 370.0                      # el asiento del ala (X 175-355) queda en la parte recta
+X_TAPER = 370.0                      # el asiento del ala (X 185-365) queda en la parte recta
 TAIL_W, TAIL_H, TAIL_ZC = 18.0, 22.0, 1.0   # seccion en la cola (X = L)
 CORNER = 12.0                        # radio de las esquinas de la seccion llena
 
@@ -46,7 +47,7 @@ CORNER = 12.0                        # radio de las esquinas de la seccion llena
 HT_B, HT_C = 420.0, 110.0          # estabilizador: 4,6 dm2 (21 % del ala), atraviesa el fuselaje
 HT_XLE = 690.0
 HT_Z = -5.0
-HT_INC = -0.8                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py, CG al 35 %)
+HT_INC = -1.2                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py, 0,895 kg, CG al 35 %)
 ELEV_HINGE = 0.65                   # profundidad: 35 % de la cuerda, detras del final del fuselaje
 FIN_XLE = 640.0                     # deriva impresa con el ultimo tramo del fuselaje
 FIN_C = 170.0                       # cuerda total (parte fija 120 + timon 50)
@@ -55,8 +56,8 @@ FIN_H = 175.0                       # altura sobre el lomo. Con 125 el diedro de
 RUD_HINGE = 120.0 / 170.0           # bisagra del timon en X = 760 (el final del fuselaje)
 
 # ---------------- centro de gravedad objetivo ----------------
-X_CG = X_LE + 0.35 * C   # 35 % de la cuerda (margen estatico ~19 %): con los larguerillos de carbono la cola pesa
-                         # ~13 g mas y al 33 % la bateria tendria que ir centrada a 29 mm de la bancada (no cabe)
+X_CG = X_LE + 0.35 * C   # 35 % de la cuerda (margen estatico ~19 %). Al 38 % (margen ~16 % segun el VLM) el simulador
+                         # entra en perdidas que crecen al cortar gas subiendo; al 35 % se recupera solo
 
 
 def fus_seccion(X):

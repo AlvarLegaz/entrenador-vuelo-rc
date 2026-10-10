@@ -29,29 +29,29 @@ def masa_pieza(nm, vol_cm3, fin_vol):
 # componentes: (nombre, g, X, Y, Z) en mm
 Z_ALA_MEDIA = G.Z_LE
 COMP = [("Motor SunnySky X2212 KV980", 57.0, -16.0, 0, 0), ("Helice APC 9x4.7 + adaptador", 12.0, -42.0, 0, 0),
-        ("ESC 30 A", 26.0, 55.0, 0, -22.0), ("Receptor FlySky A6", 7.0, 285.0, 0, -15.0),
+        ("ESC 30 A", 26.0, 55.0, 0, -22.0), ("Receptor FlySky A6", 7.0, P.X_LE + 110.0, 0, -15.0),
         ("Servo 9 g profundidad", 9.0, G.SERVO_X[0] + 6.1, 0.0, G.SUELO_Z + 11.0),
         ("Varillas C 2 mm de la cola (union del estabilizador, pasadores de las bisagras)", 6.0, 750.0, 0, 0),
-        ("Gomas del ala", 4.0, 265.0, 0, 50.0),
-        ("Palillos de las gomas: varilla C maciza 4 mm, 2 x 80 mm", 3.2, 265.0, 0, 27.0),
+        ("Gomas del ala", 4.0, P.X_LE + 90.0, 0, 50.0),
+        ("Palillos de las gomas: varilla C maciza 4 mm, 2 x 80 mm", 3.2, P.X_LE + 90.0, 0, 27.0),
         ("Cables, XT60, velcro", 15.0, 110.0, 0, -15.0)]
 # llaves del quiebro: tubo de aluminio 6x4 mm, 100 mm (50 dentro de cada tubo de carbono), una por lado.
 # Aguanta ~4,2 N m (6082-T6) frente a 0,8 N m en el quiebro a 4 g
 for lado, left in (("izq", True), ("der", False)):
     X, Y, Z = G.punto_ala(0.0, 0.0, P.QUIEBRO, left)
     COMP.append(("Llave del quiebro (tubo aluminio 6x4 x 100) " + lado, 2.7 * np.pi / 4 * (0.36 - 0.16) * 10.0, X, Y, Z))
-# larguerillos del fuselaje: varilla de carbono de 2 mm (4,9 g/m), dos tramos rectos por esquina de abajo
-for (x0, x1) in G.LARG_TRAMOS:
+# larguerillos del fuselaje: varilla de carbono de 2 mm (4,9 g/m), tramos rectos en las 4 esquinas
+for (sz, x0, x1) in G.LARG_TRAMOS:
     for sy in (-1, 1):
-        pm = (G.larg_centro(x0, sy) + G.larg_centro(x1, sy)) / 2
+        pm = (G.larg_centro(x0, sy, sz) + G.larg_centro(x1, sy, sz)) / 2
         COMP.append(("Larguerillo C 2 mm X %.0f-%.0f" % (x0, x1), 4.9 * (x1 - x0) / 1000, *pm))
 if G.ALERON:    # E2: los dos servos de los alerones van en el ala (cajeado de geom_e1.servo_caja) y solo hay una Bowden
     x0, x1, yt, _ = G.servo_caja()
     for lado, left in (("izq", True), ("der", False)):
         X, Y, Z = G.punto_ala((x0 + x1) / 2, yt - G.ALERON["servo_fondo"] / 2, G.ALERON["servo_y"], left)
         COMP.append(("Servo 9 g aleron " + lado, 9.0, X, Y, Z))
-    COMP += [("Transmision Bowden (550 mm)", 6.0, 520.0, 0, -5.0), ("Cables de los servos del ala", 6.0, 265.0, 0, 40.0),
-             ("Varillas C 2 mm, horns y bisagras de los alerones", 6.0, 265.0, 0, 50.0)]
+    COMP += [("Transmision Bowden (550 mm)", 6.0, 520.0, 0, -5.0), ("Cables de los servos del ala", 6.0, P.X_LE + 90.0, 0, 40.0),
+             ("Varillas C 2 mm, horns y bisagras de los alerones", 6.0, P.X_LE + 90.0, 0, 50.0)]
 else:
     COMP += [("Servo 9 g timon", 9.0, G.SERVO_X[1] + 6.1, 0.0, G.SUELO_Z + 11.0), ("Transmisiones Bowden (2 x 550 mm)", 12.0, 520.0, 0, -5.0)]
 BATERIA = ("Bateria 3S 1300 mAh", 115.0)
