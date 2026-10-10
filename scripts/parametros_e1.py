@@ -46,7 +46,7 @@ CORNER = 12.0                        # radio de las esquinas de la seccion llena
 HT_B, HT_C = 420.0, 110.0          # estabilizador: 4,6 dm2 (21 % del ala), atraviesa el fuselaje
 HT_XLE = 690.0
 HT_Z = -5.0
-HT_INC = -1.0                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py)
+HT_INC = -0.8                       # calado del estabilizador: con el, vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py, CG al 35 %)
 ELEV_HINGE = 0.65                   # profundidad: 35 % de la cuerda, detras del final del fuselaje
 FIN_XLE = 640.0                     # deriva impresa con el ultimo tramo del fuselaje
 FIN_C = 170.0                       # cuerda total (parte fija 120 + timon 50)
@@ -55,7 +55,8 @@ FIN_H = 175.0                       # altura sobre el lomo. Con 125 el diedro de
 RUD_HINGE = 120.0 / 170.0           # bisagra del timon en X = 760 (el final del fuselaje)
 
 # ---------------- centro de gravedad objetivo ----------------
-X_CG = X_LE + 0.33 * C   # 33 % de la cuerda: con la bateria al fondo del morro (X ~ 46) no se llega al 30 %
+X_CG = X_LE + 0.35 * C   # 35 % de la cuerda (margen estatico ~19 %): con los larguerillos de carbono la cola pesa
+                         # ~13 g mas y al 33 % la bateria tendria que ir centrada a 29 mm de la bancada (no cabe)
 
 
 def fus_seccion(X):

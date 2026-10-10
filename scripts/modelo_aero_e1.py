@@ -127,7 +127,7 @@ modelo = dict(
     desglose_CD0=dict(ala=float(cd_ala), fuselaje=float(cd_fus), cola=float(cd_cola)),
     perdida=perdida, propulsion=prop, mandos=mandos, compensador_grados=0.0,
     lanzamiento=dict(vel_ms=9.0, cabeceo_grados=8.0),     # lanzamiento firme: la perdida esta en 7,2 m/s
-    malla=malla, punto_neutro_mm=xnp,
+    malla=malla, punto_neutro_mm=xnp, x_le_mm=P.X_LE,     # borde de ataque: para dar el CG en % de la cuerda
 )
 # cada avion es un fichero de simulador/aviones/ que se registra solo; indice.js lista los ficheros
 # (el servidor del aula lo genera leyendo la carpeta; sin servidor vale el que se escribe aqui)

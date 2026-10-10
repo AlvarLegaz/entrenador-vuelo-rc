@@ -193,6 +193,18 @@
     <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked></div>
     <p class="sub" style="margin:6px 0 0">Para empezar, menos de 3 m/s. El escenario de viento cruzado pone su propio viento.</p>
   </div>
+  <h2>Centro de gravedad y peso</h2>
+  <div class="tarjeta">
+    <div class="fila"><label for="cmCg">Centro de gravedad</label>
+      <span class="sub">morro</span><input type="range" id="cmCg" min="15" max="60" step="1" style="flex:1;max-width:340px"><span class="sub">cola</span>
+      <b id="cmCgTxt"></b></div>
+    <div class="fila"><label for="cmMasa">Peso</label>
+      <span class="sub">ligero</span><input type="range" id="cmMasa" step="10" style="flex:1;max-width:340px"><span class="sub">pesado</span>
+      <b id="cmMasaTxt"></b></div>
+    <p id="cmEfecto" style="margin:8px 0 0"></p>
+    <p class="sub" id="cmBateria" style="margin:4px 0 0"></p>
+    <div class="fila" style="margin-bottom:0"><button id="btnCmDiseno">Volver a los valores de diseño</button></div>
+  </div>
   <div class="fila" style="justify-content:flex-end;margin-top:20px"><button class="prim" id="btnAEscenario">Siguiente: escenario →</button></div>
 </div></div>
 
@@ -534,6 +546,7 @@ function irAvion() {
   document.getElementById("vVel").value = v.vel; document.getElementById("vDir").value = String(v.desde);
   document.getElementById("vRachas").checked = v.rachas; document.getElementById("vVelTxt").textContent = v.vel + " m/s";
   previa.mostrar(A);
+  pintarCM();
   mostrar("pAvion");
 }
 function leerViento() {
@@ -548,6 +561,66 @@ document.getElementById("btnVerProgreso").onclick = () => irProgreso("pAvion");
 document.getElementById("btnAEscenario").onclick = () => {
   leerViento(); try { localStorage.setItem("sim_avion", sesion.avion); } catch (e) {} irEscenario();
 };
+
+// ---- centro de gravedad y peso: por avion, por defecto los de diseno (para aprender sus efectos) ----
+// cg en % de la cuerda desde el borde de ataque; masa en gramos. Se guardan en el navegador por avion.
+let cmCfg = {};
+try { cmCfg = JSON.parse(localStorage.getItem("sim_cm") || "{}"); } catch (e) {}
+const BATERIA_G = 115;                                  // bateria 3S 1300 mAh: lo que se mueve para centrar el avion real
+function cmDiseno(A) {
+  return { cg: Math.round((A.cg_mm[0] - A.x_le_mm) / (A.c_m * 1000) * 100), masa: Math.round(A.masa_kg * 100) * 10 };
+}
+function cmActual(id) { const A = Modelos.datos(id); return cmCfg[id] || cmDiseno(A); }
+function cmEsDiseno(id) { const a = cmActual(id), d = cmDiseno(Modelos.datos(id)); return a.cg === d.cg && a.masa === d.masa; }
+function pintarCM() {
+  const A = Modelos.datos(sesion.avion), caja = document.getElementById("cmCg").closest(".tarjeta");
+  const titulo = caja.previousElementSibling;
+  if (A.x_le_mm === undefined || !A.punto_neutro_mm) { caja.style.display = titulo.style.display = "none"; return; }
+  caja.style.display = titulo.style.display = "";
+  const C = A.c_m * 1000, d = cmDiseno(A), c = cmActual(sesion.avion);
+  const sCg = document.getElementById("cmCg"), sM = document.getElementById("cmMasa");
+  sM.min = Math.round(d.masa * 0.8 / 10) * 10; sM.max = Math.round(d.masa * 1.5 / 10) * 10;
+  sCg.value = c.cg; sM.value = c.masa;
+  const np = (A.punto_neutro_mm - A.x_le_mm) / C * 100, margen = np - c.cg;
+  document.getElementById("cmCgTxt").textContent = `${c.cg} % de la cuerda (${(c.cg / 100 * C).toFixed(0)} mm tras el borde de ataque)` +
+    (c.cg === d.cg ? " · diseño" : "");
+  const vs = Math.sqrt(2 * c.masa / 1000 * 9.81 / (1.225 * A.S_m2 * 1.1));
+  document.getElementById("cmMasaTxt").textContent = `${c.masa} g · carga alar ${(c.masa / (A.S_m2 * 100)).toFixed(1)} g/dm² · pérdida ${vs.toFixed(1)} m/s` +
+    (c.masa === d.masa ? " · diseño" : "");
+  let txt, color;
+  if (margen < 0) { color = "#ff6e66"; txt = `⚠ El centro de gravedad está DETRÁS del punto neutro (${np.toFixed(0)} %): el avión es inestable en cabeceo, cada perturbación crece sola. No se puede volar; en el avión real acaba en accidente nada más lanzarlo.`; }
+  else if (margen < 10) { color = "#ffb74d"; txt = `Cola pesada: margen estático ${margen.toFixed(0)} % (punto neutro al ${np.toFixed(0)} %). Muy sensible a la profundidad, le cuesta mantener la velocidad y entra en pérdida con facilidad.`; }
+  else if (margen > 30) { color = "#ffb74d"; txt = `Morro pesado: margen estático ${margen.toFixed(0)} %. Muy estable, pero pide mucha profundidad arriba, vuela más rápido y puede no tener mando para recoger al aterrizar.`; }
+  else { color = "#8be08f"; txt = `Margen estático ${margen.toFixed(0)} % (punto neutro al ${np.toFixed(0)} %): dentro de lo normal en un entrenador (10–30 %).`; }
+  if (c.masa > d.masa * 1.15) txt += ` Con ${c.masa - d.masa} g más, pierde a ${vs.toFixed(1)} m/s: hay que lanzarlo más fuerte y aterrizar más rápido.`;
+  else if (c.masa < d.masa * 0.9) txt += ` Más ligero: vuela más despacio, pero las rachas lo mueven más.`;
+  const e = document.getElementById("cmEfecto"); e.textContent = txt; e.style.color = color;
+  const dBat = (c.cg - d.cg) / 100 * C * c.masa / BATERIA_G;
+  document.getElementById("cmBateria").textContent = c.cg === d.cg ? "En el avión real, el centro de gravedad se ajusta moviendo la batería." :
+    `En el avión real equivale a mover la batería ${Math.abs(dBat).toFixed(0)} mm hacia ${dBat > 0 ? "la cola" : "el morro"}` +
+    (Math.abs(dBat) > 60 ? " (no hay tanto sitio: haría falta lastre)." : ".");
+}
+function leerCM() {
+  cmCfg[sesion.avion] = { cg: +document.getElementById("cmCg").value, masa: +document.getElementById("cmMasa").value };
+  try { localStorage.setItem("sim_cm", JSON.stringify(cmCfg)); } catch (e) {}
+  pintarCM();
+}
+for (const id of ["cmCg", "cmMasa"]) document.getElementById(id).addEventListener("input", leerCM);
+document.getElementById("btnCmDiseno").onclick = () => {
+  delete cmCfg[sesion.avion]; try { localStorage.setItem("sim_cm", JSON.stringify(cmCfg)); } catch (e) {} pintarCM();
+};
+/** Aplica al modelo de vuelo el centro de gravedad y el peso elegidos. */
+function aplicarCM(m) {
+  const A = Modelos.datos(sesion.avion);
+  if (A.x_le_mm === undefined) return;
+  if (cmEsDiseno(sesion.avion)) return;             // los valores de diseno exactos (sin redondear a 1 % y 10 g)
+  const c = cmActual(sesion.avion);
+  m.configurar({ masa_kg: c.masa / 1000, cg_mm: A.x_le_mm + c.cg / 100 * A.c_m * 1000 });
+}
+function textoCM() {
+  const c = cmActual(sesion.avion);
+  return cmEsDiseno(sesion.avion) ? "CG y peso de diseño" : `CG ${c.cg} % de la cuerda · ${c.masa} g`;
+}
 
 // =====================================================================
 //  3. ESCENARIOS: objetivos y evaluacion automatica
@@ -650,6 +723,7 @@ function pintarObjetivos() {
 // =====================================================================
 function empezar() {
   modelo = Modelos.crear(sesion.avion);
+  aplicarCM(modelo);
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
@@ -728,7 +802,8 @@ async function mostrarResultado(v) {
   const r = await enviarVuelo({ id: v.id, alumno_id: sesion.alumno.id, inicio: v.inicio.toISOString(), fin: new Date().toISOString(),
     avion: modelo.nombre, escenario: v.escenario, tiempo_vuelo_s: +v.tVuelo.toFixed(1),
     accidentes: v.final.startsWith("roto") ? 1 : 0, aterrizajes: v.final === "aterrizado" ? 1 : 0,
-    objetivos: objs, resultado, final: v.final, viento: E.viento || sesion.viento });
+    objetivos: objs, resultado, final: v.final,
+    viento: Object.assign({}, E.viento || sesion.viento, cmEsDiseno(sesion.avion) ? {} : { cg_pct: cmActual(sesion.avion).cg, masa_g: cmActual(sesion.avion).masa }) });
   if (r.estado === "ok") {
     g.textContent = sesion.modo === "local" ? "✔ Guardado en el registro local" + (AulaLocal.archivo ? ` y en ${AulaLocal.archivo.name}.` : " de este navegador.")
                                             : "✔ Guardado en el registro del aula.";
@@ -800,7 +875,7 @@ function grabarMuestra() {
 function descargarVuelo(v) {
   const d = v.inicio, z = n => String(n).padStart(2, "0"), f = v.filas;
   const cab = [`# ${modelo.nombre} · vuelo del ${d.toLocaleString("es-ES")} · ${ESCENARIOS[v.escenario].nombre}` + (sesion.alumno ? ` · ${sesion.alumno.nombre}` : ""),
-    `# masa ${(modelo.masa_kg * 1000).toFixed(0)} g · viento ${entorno.viento.base} m/s ${entorno.viento.rachas ? "con" : "sin"} rachas · final: ${v.final} · ${f.length} muestras a 20 Hz`,
+    `# masa ${(modelo.masa_kg * 1000).toFixed(0)} g · ${textoCM()} · viento ${entorno.viento.base} m/s ${entorno.viento.rachas ? "con" : "sin"} rachas · final: ${v.final} · ${f.length} muestras a 20 Hz`,
     `# ruta: x al norte, y al este, z altura (m, desde el lanzamiento) · profundidad: + = abajo · timon: + = a la derecha · aleron: + = alabeo a la derecha`];
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([cab.join("\n") + "\n" + CN_COLUMNAS.join(",") + "\n" + f.map(x => x.join(",")).join("\n") + "\n"], { type: "text/csv" }));
@@ -870,7 +945,8 @@ function hud() {
     `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
     `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
     `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
-    `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú`;
+    `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú` +
+    (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`);
   const L = entorno.limites, lejos = document.getElementById("lejos");
   if (av.estado === "volando" && dist > L.aviso_m) {
     const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);

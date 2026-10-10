@@ -33,6 +33,10 @@ ALERON = dict(bisagra=0.75,                 # bisagra al 75 % de la cuerda: nudi
 # (200 a 280). ALA_E2 lleva el aleron solo hasta 570: la derecha se imprime en espejo
 TRAMOS = [("ALA_I_x2", 75.0, 200.0), ("ALA_E1_x2", 280.0, 420.0), ("ALA_E2_izq", 420.0, 600.0)]
 
+# centro de gravedad: el E2 (y el E3) se quedan al 33 %: con los servos de los alerones en el ala la bateria
+# tiene sitio de sobra (el E1 va al 35 %)
+X_CG = X_LE + 0.33 * C
+
 # ---------------- cola ----------------
 HT_INC = -0.4           # calado del estabilizador: vuela a ~9,5 m/s con la profundidad neutra (vlm_e1.py con la masa
                         # y las inercias de masas_e1.py: 0,762 kg, Ixx 0,0373, Izz 0,0642 -> -0,38). El VLM del E2 lleva

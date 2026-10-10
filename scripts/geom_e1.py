@@ -469,10 +469,6 @@ def fuselage_segment(k):
             body = body - Manifold.cube([2.6, 24.0, 10.0]).translate([xr, -12.0, -P.FUS_H / 2 - 5])
     if a < SERVO_X[0] < b:     # bandeja de los servos (bajo la escotilla del ala)
         body = body + bandeja_servos()
-    for (xg, nombre) in guias_posiciones():   # guias de las fundas de las transmisiones
-        if a + SPIGOT_L + 1 < xg - 14 and xg + 11 < b:
-            body = body + guia(xg, nombre)
-    body = body - guias_agujeros(a, b)
     if last:
         body = body + fin_fixed()
         body = body - solid(a - 1, b + 1, WALL)                              # la deriva no entra en el hueco
@@ -485,6 +481,13 @@ def fuselage_segment(k):
         body = body - salida("prof")
         if CON_TIMON:
             body = body - salida("timon")
+    # guias de las transmisiones y vainas de los larguerillos: al final, porque en F5 el hueco interior se vacia
+    # otra vez al poner la deriva (antes se llevaba por delante la guia de X 675)
+    for (xg, nombre) in guias_posiciones():
+        if a + SPIGOT_L + 1 < xg - 14 and xg + 11 < b:
+            body = body + guia(xg, nombre)
+    body = body + vainas_larguerillos(a, b, k)
+    body = body - guias_agujeros(a, b) - agujeros_larguerillos(a, b)
     return body
 
 
@@ -584,6 +587,61 @@ def guias_agujeros(a, b):
         R = _rot(eje, np.radians(ang))
         cil = cil.transform(np.c_[R, p0].tolist())
         out = cil if out is None else out + cil
+    return out ^ Manifold.cube([b - a + 40, 200, 200]).translate([a - 20, -100, -100])
+
+
+# ---------------- larguerillos ----------------
+# Dos varillas de carbono de 2 mm por lado, por dentro de las esquinas de abajo del fuselaje, en vainas impresas
+# pegadas a la pared. El fuselaje se imprime de pie: un golpe que lo flexiona intenta despegar capa de capa, que
+# es como peor aguanta una pieza impresa; las varillas llevan esa traccion y atan las uniones F2|F3, F3|F4 y
+# F4|F5. Como la seccion es constante hasta X_TAPER y luego se estrecha en linea recta, cada esquina lleva dos
+# varillas rectas: una en la parte recta y otra en la conica.
+LARG_D, LARG_R = 2.3, 2.6          # agujero de la varilla de 2 mm y radio exterior de la vaina
+LARG_TRAMOS = [(205.0, P.X_TAPER - 1.0), (P.X_TAPER + 1.0, P.HT_XLE - 5.0)]   # la de atras acaba antes de la ranura del estabilizador
+
+
+def larg_centro(X, sy):
+    """Centro de la varilla en X: dentro de la esquina de abajo (sy = -1 izquierda, +1 derecha), con la vaina
+    metida 0,3 mm en la pared para que quede soldada a ella."""
+    w, h, zc = P.fus_seccion(X)
+    rc = corner_r(w); r_in = rc - WALL
+    d = (r_in - LARG_R + 0.3) / np.sqrt(2)
+    return np.array([X, sy * (w - rc) + sy * d, zc - h + rc - d])
+
+
+def _cil_entre(p0, p1, r):
+    """Cilindro de radio r de p0 a p1."""
+    p0, p1 = np.asarray(p0, float), np.asarray(p1, float)
+    dd = p1 - p0; L = np.linalg.norm(dd); u = dd / L
+    R = _rot(np.cross([0, 0, 1], u), np.arccos(np.clip(u[2], -1, 1)))
+    return Manifold.cylinder(L, r).transform(np.c_[R, p0].tolist())
+
+
+def vainas_larguerillos(a, b, k):
+    """Vainas de este tramo, desde despues del cuello del tramo anterior; al principio de cada vaina, un cono a
+    45 grados hasta la pared (al imprimir el tramo de pie la vaina no arranca en el aire)."""
+    out = None
+    for (x0, x1) in LARG_TRAMOS:
+        xa = max(x0, a + (SPIGOT_L + 1.0 + 2 * LARG_R + 0.5 if k > 0 else 0.0)); xb = min(x1, b)   # el cono no pisa el cuello
+        if xb - xa < 5: continue
+        for sy in (-1, 1):
+            p0, p1 = larg_centro(xa, sy), larg_centro(xb, sy)
+            w, h, zc = P.fus_seccion(xa); rc = corner_r(w)
+            pared = np.array([xa - 2 * LARG_R, sy * (w - rc) + sy * (rc - WALL) / np.sqrt(2), zc - h + rc - (rc - WALL) / np.sqrt(2)])
+            u = (p1 - p0) / np.linalg.norm(p1 - p0)
+            cono = Manifold.batch_hull([_cil_entre(p0, p0 + u * 0.05, LARG_R), Manifold.sphere(0.4).translate(pared.tolist())])
+            pieza = _cil_entre(p0, p1, LARG_R) + cono
+            out = pieza if out is None else out + pieza
+    if out is None: return Manifold()
+    return out ^ solid(a - 1, b)
+
+
+def agujeros_larguerillos(a, b):
+    out = None
+    for (x0, x1) in LARG_TRAMOS:
+        for sy in (-1, 1):
+            h = _cil_entre(larg_centro(x0 - 1.0, sy), larg_centro(x1 + 1.0, sy), LARG_D / 2)
+            out = h if out is None else out + h
     return out ^ Manifold.cube([b - a + 40, 200, 200]).translate([a - 20, -100, -100])
 
 

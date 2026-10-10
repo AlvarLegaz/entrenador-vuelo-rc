@@ -54,6 +54,22 @@ class ModeloAvion {
     this.DA = datos.derivadas.map(d => d.alfa);
     this.DER = {};
     for (const k of Object.keys(datos.derivadas[0])) this.DER[k] = datos.derivadas.map(d => d[k]);
+    // centro de gravedad y masa de diseno; configurar() los cambia (pantalla de eleccion del avion)
+    this.masa_diseno_kg = datos.masa_kg;
+    this.inercia_diseno = Object.assign({}, datos.inercia);
+    this.dcg = 0;          // desplazamiento del CG respecto al de diseno, en ejes cuerpo (m, + = hacia el morro)
+  }
+
+  /** Cambia la masa (kg) y la X del centro de gravedad (mm desde la bancada, como cg_mm). Las tablas y derivadas
+   *  del VLM estan calculadas respecto al CG de diseno: paso() traslada sus momentos al CG nuevo, como en el
+   *  avion real. Las inercias se escalan con la masa (no se sabe donde va el lastre). */
+  configurar({ masa_kg, cg_mm }) {
+    if (masa_kg) {
+      this.masa_kg = masa_kg;
+      const k = masa_kg / this.masa_diseno_kg;
+      this.inercia = Object.fromEntries(Object.entries(this.inercia_diseno).map(([n, v]) => [n, v * k]));
+    }
+    if (cg_mm !== undefined) this.dcg = (this.cg_mm[0] - cg_mm) / 1000;
   }
 
   deriv(nombre, alfa) { return this.DER[nombre] ? interp(this.DA, this.DER[nombre], alfa) : 0; }
@@ -118,6 +134,10 @@ class ModeloAvion {
     const ca = Math.cos(alfa), sa = Math.sin(alfa);
     const Fa = [qS * (-CD * ca + CL * sa), qS * CY, qS * (-CD * sa - CL * ca)];
     const Ma = [qS * b * Cl, qS * c * Cm, qS * b * Cn];          // (el empuje suma su momento mas abajo)
+    // momentos respecto al CG real: M_nuevo = M_diseno + (r_diseno - r_nuevo) x F, con r_diseno - r_nuevo = (-dcg, 0, 0).
+    // CG adelantado (dcg > 0): la sustentacion (Fa[2] < 0) baja el morro y la deriva tiene mas brazo
+    const dx = this.dcg;
+    Ma[1] += dx * Fa[2]; Ma[2] -= dx * Fa[1];
     // motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gases
     const pr = this.propulsion;
     if (av.motorRoto) av.gases = 0;
@@ -133,7 +153,7 @@ class ModeloAvion {
     // empuje encabrita. downthrust_grados (opcional, en propulsion) inclina el empuje hacia abajo para compensarlo
     const dth = (pr.downthrust_grados || 0) * D2R, hp = (this.malla && this.malla.helice) || [0, 0, 0];
     const Tx = T * Math.cos(dth), Tz = T * Math.sin(dth);
-    Ma[1] += hp[2] * Tx - hp[0] * Tz;
+    Ma[1] += hp[2] * Tx - (hp[0] - dx) * Tz;                       // brazo de la helice desde el CG real
     const gb = Cuat.rot(Cuat.inv(q), [0, 0, G0]), m = this.masa_kg;
     const F = [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]];
     // ecuaciones de Euler: m(dv + w x v) = F ; I dw + w x (I w) = M

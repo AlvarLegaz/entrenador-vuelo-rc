@@ -13,12 +13,12 @@ Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él e
 | Envergadura y cuerda | 1200 × 180 mm, rectangular, NACA 2412 (`NACA2412.dat`) |
 | Superficie alar | 21,6 dm² |
 | Ala | **Poliedro:** plana hasta 300 mm del centro, con un tubo de carbono recto que la atraviesa; las puntas suben 12° desde ese quiebro |
-| Masa en vuelo | 783 g (LW-PLA; F1 en PLA normal) |
-| Carga alar | 36,2 g/dm² |
-| Pérdida / crucero | 7,3 m/s / ≈ 9,5 m/s con la profundidad neutra |
+| Masa en vuelo | 806 g (LW-PLA; F1 en PLA normal) |
+| Carga alar | 37,3 g/dm² |
+| Pérdida / crucero | 7,4 m/s / ≈ 9,5 m/s con la profundidad neutra |
 | Motor | SunnySky X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300 mAh. **Inclinado 2° hacia abajo** (downthrust) con la cuña impresa `CUNA_MOTOR` entre la cruz del motor y la bancada vertical de F1 |
-| Centro de gravedad | 234 mm desde la bancada del motor = **59 mm detrás del borde de ataque del ala** (33 % de la cuerda). Margen estático 21 % |
-| Batería | Centrada a unos 47 mm de la bancada, contra el fondo del morro, entre los dos carriles del suelo de F1 y sujeta con una cinta de velcro de 20 mm que pasa por las ranuras del suelo; el ESC va detrás de ella, en el mismo canal |
+| Centro de gravedad | 238 mm desde la bancada del motor = **63 mm detrás del borde de ataque del ala** (35 % de la cuerda). Margen estático 19 %. Con los larguerillos de carbono la cola pesa 13 g más y al 33 % la batería no cabría |
+| Batería | Centrada a unos 54 mm de la bancada, cerca del fondo del morro, entre los dos carriles del suelo de F1 y sujeta con una cinta de velcro de 20 mm que pasa por las ranuras del suelo; el ESC va detrás de ella, en el mismo canal |
 
 Todas las cifras salen de los scripts. Las masas se calculan sobre las mallas de las piezas y el VLM usa la geometría real. La pérdida, la resistencia parásita y el empuje en vuelo son estimaciones hasta calibrarlas con planeos del avión real.
 
@@ -52,10 +52,11 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 - **Varilla de carbono maciza de 4 mm:** 2 trozos de 80 mm, para los palillos de las gomas.
 - **Tubo de aluminio de 6×4 mm:** 2 trozos de 100 mm, para las llaves del quiebro. Si no entra en el tubo de carbono, lija un poco.
 - Varilla de carbono de 2 mm, unos 80 cm: 2 de 100 mm para unir el estabilizador, 1 de 420 mm de pasador de la profundidad y 1 de 180 mm de pasador del timón.
+- **Larguerillos del fuselaje:** varilla de carbono de 2 mm, 4 trozos: 2 de 165 mm (parte recta, X 205–369) y 2 de 315 mm (parte que se estrecha, X 371–685). Unos 5 g.
 - 2 transmisiones tipo Bowden de 550 mm (funda de 2–3 mm y alambre de 0,8 mm), 2 servos de 9 g y gomas.
 
 **Montaje:**
-1. **Fuselaje.** Pega F1 a F5 por sus cuellos (entran 15 mm en el tramo siguiente). Lija el cuello, usa epoxi de 5 min (rellena la holgura mejor que el cianocrilato) y limpia el sobrante. Después da **una vuelta de cinta de fibra de vidrio o kevlar de 20 mm alrededor de cada unión**, pegada con el mismo epoxi: el pegamento del cuello sobra, pero los tramos se imprimen de pie y la pared de 1 mm junto al escalón del cuello es por donde rompería el LW-PLA en un golpe; la cinta lo evita por 2-3 g. Las uniones que más lo agradecen son F1|F2 (el morro, PLA contra LW-PLA) y F2|F3 (bajo el ala, donde el cuello no tiene techo).
+1. **Fuselaje.** Pega F1 a F5 por sus cuellos (entran 15 mm en el tramo siguiente). Lija el cuello, usa epoxi de 5 min (rellena la holgura mejor que el cianocrilato) y limpia el sobrante. Después da **una vuelta de cinta de fibra de vidrio o kevlar de 20 mm alrededor de cada unión**, pegada con el mismo epoxi: el pegamento del cuello sobra, pero los tramos se imprimen de pie y la pared de 1 mm junto al escalón del cuello es por donde rompería el LW-PLA en un golpe; la cinta lo evita por 2-3 g. Las uniones que más lo agradecen son F1|F2 (el morro, PLA contra LW-PLA) y F2|F3 (bajo el ala, donde el cuello no tiene techo). **Larguerillos:** con los tramos ya pegados, mete las cuatro varillas de carbono de 2 mm por las vainas de las esquinas de abajo, dos por lado (desde dentro, por la escotilla del ala): la corta de 165 mm en la parte recta y la larga de 315 mm en la que se estrecha, empujándola hasta F5. Fíjalas con unas gotas de cianocrilato fluido en cada extremo y en cada unión. Llevan la tracción en un golpe: el fuselaje se imprime de pie y, al flexionarse, intenta despegar capa de capa, que es como peor aguanta una pieza impresa; con las varillas, para partirlo hay que romper el carbono.
 2. **Llaves del quiebro.** Dobla cada tubo de aluminio 12° por el centro, en un tornillo de banco o sobre el canto de una mesa.
 3. **Centro del ala.** Mete el tubo de 600 mm por `ALA_C` y los dos `ALA_I`, y una pieza `ALA_Q` en cada extremo, hasta que el tubo haga tope en su nervio.
 4. **Puntas.** Mete la llave de aluminio por el agujero del nervio de `ALA_Q`, 50 mm dentro de cada tubo, y pégala con epoxi. Desliza el tubo de punta de 300 mm sobre la otra mitad de la llave, hasta el nervio. Después monta los dos `ALA_E` de cada lado.
@@ -66,7 +67,7 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
 10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
 11. **Motor.** La cruz del X2212 se atornilla a la bancada de F1 con 4 tornillos M3 × 14 y tuercas por dentro (cruz 1,5 + cuña 2-3,2 + placa 4 + tuerca 2,4 mm), con la cuña `CUNA_MOTOR` entre medias (la parte gruesa arriba: así el eje apunta 2° hacia abajo). Los agujeros de la cuña son perpendiculares a su cara inclinada; los de F1, a la placa.
-12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: contra el fondo del morro; E2/E3: a 115 mm) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
+12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: a unos 54 mm; E2/E3: a unos 98 mm) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
 11. **Transmisiones.** Las fundas pasan por los anillos guía de F3 a F5:
     - **Profundidad:** sale por el costado izquierdo de F5, por encima del estabilizador, y va al horn de encima de la profundidad.
     - **Timón:** sale por el lomo, a la derecha de la deriva, y va al horn del timón.
@@ -98,9 +99,9 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 | Alerones | 25 % de la cuerda, de 280 a 570 mm del plano de simetría. **Bisagra de nudillos** con pasador de carbono de 2 mm, que también une los dos tramos de cada alerón. Recorrido mecánico ±15° (comprobado: a ±20° no tocan el ala); en el simulador ±5°, porque con teclado la palanca va siempre a tope |
 | Servos | 3 de 9 g: profundidad en la bandeja de F2 y uno por alerón dentro del ala (cajeado abierto por el intradós en el centro de `ALA_E1`) |
 | Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado) |
-| Masa en vuelo | 792 g; carga alar 36,7 g/dm² |
+| Masa en vuelo | 813 g; carga alar 37,7 g/dm² |
 | Centro de gravedad | 234 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
-| Batería | Centrada a unos 115 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
+| Batería | Centrada a unos 98 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
 | Calado del estabilizador | −0,4° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
 
 **Por qué 7°.** Con poliedro a 240 mm el VLM da: con 6° la espiral se duplica en ~40 s, con 7° se corrige a la mitad en ~90 s (casi neutra, como debe ser un avión de alerones: no vuelve solo al nivel, pero tampoco se cierra en espiral) y con 8° en ~20 s. La guiñada adversa de los alerones es pequeña (Cn_δa / Cl_δa ≈ −0,03). La V de 2,5° en la raíz que tenía antes se cerraba en espiral (doblaba en ~8 s).
@@ -194,6 +195,8 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 **El circuito:** 4 pilones hinchables tipo Red Bull en las esquinas de un rectángulo de 120 × 180 m delante del piloto, con la pista dentro (de 40 a 160 m hacia el frente y 90 m a cada lado). Una vuelta vale cuando se rodean las 4 esquinas **por fuera**, en el mismo sentido, hasta volver al pilón de salida. Cortar una esquina por dentro anula la vuelta en curso, y tocar un pilón rompe el avión.
 
 Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30° de alabeo, menos de 25° de cabeceo y menos de 12 m/s respecto al suelo.
+
+**Centro de gravedad y peso.** En la pantalla de elegir avión hay dos barras para mover el centro de gravedad (del 15 al 60 % de la cuerda) y el peso (del 80 al 150 % del de diseño), para aprender sus efectos. Por defecto están en los valores de diseño y el botón "Volver a los valores de diseño" los restaura. Se guardan por avión en el navegador. Debajo se explica el efecto: margen estático y punto neutro, carga alar, velocidad de pérdida y cuánto habría que mover la batería en el avión real. En vuelo, el HUD avisa si no son los de diseño, y el vuelo guardado y la caja negra los anotan. La física traslada los momentos aerodinámicos y los de la hélice al centro de gravedad elegido, y escala las inercias con la masa. Con el E1, en el banco de pruebas: con el CG al 20 % baja el morro y planea a 12–14 m/s; al 45 % sube y baja a tirones entrando en pérdida; detrás del punto neutro (58 %) se estrella 2 s después de lanzarlo.
 
 **Límites del campo:** a más de 400 m del piloto aparece un aviso en rojo con el rumbo de vuelta; a más de 650 m el avión ya no se distingue y el vuelo termina "fuera de límites" (se guarda como vuelo sin aterrizar; R para empezar de nuevo). Los dos valores están en `Entorno.limites` (`aviso_m`, `distancia_m`). El campo es una isla de ~1,7 km rodeada de mar, solo de decorado.
 

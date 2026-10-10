@@ -40,6 +40,11 @@ COMP = [("Motor SunnySky X2212 KV980", 57.0, -16.0, 0, 0), ("Helice APC 9x4.7 + 
 for lado, left in (("izq", True), ("der", False)):
     X, Y, Z = G.punto_ala(0.0, 0.0, P.QUIEBRO, left)
     COMP.append(("Llave del quiebro (tubo aluminio 6x4 x 100) " + lado, 2.7 * np.pi / 4 * (0.36 - 0.16) * 10.0, X, Y, Z))
+# larguerillos del fuselaje: varilla de carbono de 2 mm (4,9 g/m), dos tramos rectos por esquina de abajo
+for (x0, x1) in G.LARG_TRAMOS:
+    for sy in (-1, 1):
+        pm = (G.larg_centro(x0, sy) + G.larg_centro(x1, sy)) / 2
+        COMP.append(("Larguerillo C 2 mm X %.0f-%.0f" % (x0, x1), 4.9 * (x1 - x0) / 1000, *pm))
 if G.ALERON:    # E2: los dos servos de los alerones van en el ala (cajeado de geom_e1.servo_caja) y solo hay una Bowden
     x0, x1, yt, _ = G.servo_caja()
     for lado, left in (("izq", True), ("der", False)):
