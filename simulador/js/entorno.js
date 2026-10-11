@@ -108,6 +108,7 @@ class Entorno {
    *  simulador. En el mar el suelo es la superficie del agua. */
   ponerMundo(mundo) {
     this.mundo = mundo || null;
+    this.zona = null;
     if (!mundo) { this.altura = null; this.enMar = null; return; }
     const T = mundo.terreno, bin = atob(T.alturas_b64), H = new Int16Array(bin.length / 2);
     for (let i = 0; i < H.length; i++) H[i] = (bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) << 16 >> 16;
@@ -138,8 +139,37 @@ class Entorno {
     this.alturaMar = hMar; this.fraccionAgua = fAgua;
     // umbral 0,7: el mismo que usa la textura; con la orilla de la malla (tierra >= 1 m, agua a -1,5 m junto a la
     // costa) la superficie cruza el nivel del mar mas o menos ahi, asi el suelo fisico coincide con lo que se ve
-    this.altura = (N, E) => (fAgua(N, E) > 0.7 ? 0 : Math.max(0, hMar(N, E))) - T.h0;
-    this.enMar = (N, E) => fAgua(N, E) > 0.7;
+    this.alturaMundo = (N, E) => (fAgua(N, E) > 0.7 ? 0 : Math.max(0, hMar(N, E))) - T.h0;
+    this.enMarMundo = (N, E) => fAgua(N, E) > 0.7;
+    this.altura = this.alturaMundo; this.enMar = this.enMarMundo; this.zona = null;
+  }
+
+  /** Zona de detalle (simulador/zonas/<id>/, comun a los dos simuladores): terreno a 5 m y agua de la linea de costa.
+   *  z = { meta: zona.json, dem: Int16Array (dm sobre el mar, -32768 = agua, fila 0 = sur) } o null para quitarla.
+   *  Dentro de la zona el suelo es el de la zona; en los ultimos 100 m del borde se mezcla con el del mundo. */
+  ponerZona(z) {
+    this.zona = z || null;
+    if (!z) { this.altura = this.alturaMundo; this.enMar = this.enMarMundo; return; }
+    const Z = z.meta, D = z.dem, n = Z.dem.n, paso = Z.dem.paso_m, h0 = this.mundo.terreno.h0, lado = (n - 1) * paso;
+    const muestra = (N, E) => {                    // [altura sobre el mar, fraccion de agua] bilineal, o null fuera de la zona
+      let i = (N - Z.N0) / paso, j = (E - Z.E0) / paso;
+      if (i < 0 || j < 0 || i > n - 1 || j > n - 1) return null;
+      i = Math.min(n - 1.001, i); j = Math.min(n - 1.001, j);
+      const i0 = Math.floor(i), j0 = Math.floor(j), fi = i - i0, fj = j - j0, k = i0 * n + j0;
+      let h = 0, a = 0;
+      for (const [kk, w] of [[k, (1 - fi) * (1 - fj)], [k + n, fi * (1 - fj)], [k + 1, (1 - fi) * fj], [k + n + 1, fi * fj]]) {
+        const v = D[kk]; if (v === -32768) a += w; else h += w * v / 10;
+      }
+      return [a < 1 ? h / (1 - a) : 0, a];
+    };
+    this.muestraZona = muestra;
+    const borde = (N, E) => Math.min(N - Z.N0, Z.N0 + lado - N, E - Z.E0, Z.E0 + lado - E);   // distancia al borde (m)
+    this.altura = (N, E) => {
+      const m = muestra(N, E); if (!m) return this.alturaMundo(N, E);
+      const hz = (m[1] > 0.7 ? 0 : Math.max(0, m[0])) - h0, d = borde(N, E);
+      return d >= 100 ? hz : hz * d / 100 + this.alturaMundo(N, E) * (1 - d / 100);
+    };
+    this.enMar = (N, E) => { const m = muestra(N, E); return m ? m[1] > 0.7 : this.enMarMundo(N, E); };
   }
 
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */

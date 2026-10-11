@@ -298,6 +298,24 @@ Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `Mo
 - **Lanzamiento.** Con "Lanzamiento real", la velocidad, el cabeceo y el alabeo de salida varían al azar como al lanzar a mano.
 - **Calibración.** En la pantalla del avión: empuje estático medido con báscula, factor de resistencia (se ajusta con planeos a mano) y temperatura.
 
+## Dos simuladores con los mismos datos: v1 (navegador) y v2 (Godot)
+
+Los dos simuladores comparten los **datos**: aviones (`simulador/aviones/*.js`), mundos reales (`simulador/mundos/`), zonas de detalle (`simulador/zonas/`) y la **física** (la de la v2 es una traducción de `simulador/js/modelos.js` y `entorno.js`, comprobada contra la de la v1 con trazas de referencia). Cambia solo el motor gráfico y la interfaz. Se elige cuál usar:
+
+- **v1, navegador** (`simulador/simulador.html`): Three.js r169 empaquetado como script global (`scripts/empaquetar_three.py` → `simulador/lib/`), con iluminación física y *tone mapping* ACES, cielo con dispersión atmosférica (`Sky`), sombras del sol que siguen al avión, agua con reflejos y oleaje (`Water`, solo con mar a menos de 2 km, porque redibuja la escena) y, en los mundos reales, la ortofoto real de toda la región y las zonas de detalle (`js/visor_real.js`). Funciona con el servidor del aula o cualquier servidor HTTP; abriendo el fichero con doble clic no se cargan la ortofoto ni las zonas.
+- **v2, Godot 4** (`simulador_godot/`): ver su sección.
+
+### Zonas de detalle (`simulador/zonas/<id>/`, no van al repositorio)
+
+Un cuadrado de 3 × 3 km alrededor de un punto de salida con: ortofoto PNOA del IGN a ~0,5 m/píxel (36 teselas de 500 m), MDT del IGN a 5 m (suavizado, porque viene en metros enteros), edificios del Catastro con su huella y su número de plantas real, árboles detectados en la ortofoto (copas oscuras y verdosas; los de menos de 1,3 m de radio se dibujan como matorral) y el agua según la línea de costa de OSM. El suelo físico dentro de la zona es el del MDT a 5 m. Se generan con:
+
+```
+python analisis/mundo_cartagena/zona.py simulador/mundos/cartagena.js <id> <lat> <lon> [lado_m]
+python analisis/mundo_cartagena/orto_region.py simulador/mundos/cartagena.js 12     # ortofoto de toda la region (fondo lejano)
+```
+
+`zona.py` actualiza `simulador/zonas/indice.json`. Si el punto de salida elegido en el mapa cae dentro de una zona (recuadros amarillos), se vuela con el detalle; fuera, con el terreno de 150 m y la foto de 12 m. Zona generada: `origen` (el corazón del mapa, 11 MB: 6.043 edificios y 67.001 árboles). Fuentes: ortofoto y MDT © Instituto Geográfico Nacional (CC BY 4.0); edificios © Dirección General del Catastro; costa y carreteras © OpenStreetMap (ODbL).
+
 ## Mundo real del Campo de Cartagena (`simulador/mundos/cartagena.js`)
 
 Se genera con los scripts de `analisis/mundo_cartagena/`, que no están atados al simulador (sirven para cualquier otra zona cambiando el origen y la extensión):

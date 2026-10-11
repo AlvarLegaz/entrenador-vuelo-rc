@@ -11,3 +11,7 @@ aula_prueba/
 ~$*
 # salida regenerable del generador del T1 (python stl/T1/scripts/geom.py): las STL buenas van en stl/T1/stl/
 stl/T1/scripts/out/
+# Godot y otras herramientas descargadas (no van al repositorio)
+herramientas/
+# zonas de detalle de los mundos reales: se generan con analisis/mundo_cartagena/zona.py
+simulador/zonas/

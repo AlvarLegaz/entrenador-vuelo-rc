@@ -7,6 +7,8 @@
 //  Mundo Three: x = este, y = arriba, z = sur.  NED (n, e, d) -> (e, -d, -n).
 // =====================================================================
 function ned2three(p) { return [p[1], -p[2], -p[0]]; }
+/** Textura de color de un lienzo, en sRGB (desde Three r152 las texturas de color tienen que decirlo). */
+function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
 function construirAvion(datos) {
@@ -36,6 +38,7 @@ function construirAvion(datos) {
   helice.rotation.y = Math.PI / 2; helice.position.set(...K.helice); grupo.add(helice);
   const cono = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.04, 12), mat(0x333333));
   cono.rotation.z = -Math.PI / 2; cono.position.set(K.helice[0] + 0.02, 0, K.helice[2]); grupo.add(cono);
+  grupo.traverse(o => { if (o.isMesh && o !== helice) o.castShadow = true; });
   return { grupo, prof, timon, alerones, helice };
 }
 
@@ -220,7 +223,11 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
 class Visor {
   constructor(lienzo, entorno) {
     this.entorno = entorno;
-    this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true, logarithmicDepthBuffer: false });
+    // exposicion 0,5 y luces x2: el cielo fisico de Three (Sky) esta calibrado para esa exposicion; con 1 sale blanco
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 0.5;
+    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.aguas = [];                                  // superficies de agua (Water o plano simple, segun la calidad)
     this.escena = new THREE.Scene();
     this.escena.background = new THREE.Color(0xd3dfe9);
     // calidad 2 (todo), 1 (sin vegetacion lejana, 1 px por pixel) o 0 (ademas sin matas ni nubes, 3/4 de resolucion).
@@ -231,19 +238,27 @@ class Visor {
     this.cam = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);        // mas lejos todo es calima; con mas alcance el mar parpadea sobre el suelo (z-fighting)
     this.camara = 1;                                  // 1 piloto, 2 persecucion, 3 a bordo
     this.avion = null;
-    this.escena.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a5a3a, 0.72));     // cielo azul, rebote de la tierra rojiza
-    const sol = new THREE.DirectionalLight(0xfff1dc, 1.05); sol.position.set(-350, 520, 260); this.escena.add(sol);
+    this.escena.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a5a3a, 0.72 * 2 * Math.PI));     // cielo azul, rebote de la tierra rojiza
+    const sol = new THREE.DirectionalLight(0xfff1dc, 1.05 * 2 * Math.PI); sol.position.set(-350, 520, 260); this.escena.add(sol);
+    this._configurarSol(sol, this.escena);
     this._cielo(sol.position, this.escena, 2850);
     this._campo();
     this.escenaIsla = this.escena; this.mundoId = "isla"; this.mundo = null; this.mundos = {};
     this.sombra = new THREE.Mesh(new THREE.CircleGeometry(0.6, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
     this.sombra.rotation.x = -Math.PI / 2; this.sombra.position.y = 0.05; this.escena.add(this.sombra);
+    this.escena.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     window.addEventListener("resize", () => this.redimensionar()); this.aplicarCalidad(this.calidad);
   }
 
   /** Aplica un nivel de calidad (ver el constructor) y lo guarda. */
   aplicarCalidad(q) {
     this.calidad = q;
+    for (const esc of [this.escenaIsla, ...Object.values(this.mundos || {})]) if (esc && esc.userData.sol) {
+      const S = esc.userData.sol; S.castShadow = q >= 1; S.shadow.mapSize.set(q >= 2 ? 4096 : 2048, q >= 2 ? 4096 : 2048);
+      if (S.shadow.map) { S.shadow.map.dispose(); S.shadow.map = null; }
+    }
+    for (const a of this.aguas) { a.water.visible = q >= 2; a.plano.visible = q < 2; }
+    this._aguaCerca = undefined;
     this.renderer.setPixelRatio(Math.min(q === 2 ? 1.5 : q === 1 ? 1 : 0.75, window.devicePixelRatio));
     for (const m of this.lejanos) m.visible = q >= 2;
     for (const m of this.prescindibles) m.visible = q >= 1;
@@ -268,28 +283,74 @@ class Visor {
     this.renderer.setSize(w, h, false); this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
   }
 
+  /** Sol con sombras: un mapa de 4096 px que cubre 180 x 180 m alrededor del avion (dibujar() lo mueve con el). */
+  _configurarSol(sol, esc) {
+    sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096);
+    const c = sol.shadow.camera; c.left = c.bottom = -90; c.right = c.top = 90; c.near = 10; c.far = 1500;
+    sol.shadow.bias = -0.0003; sol.shadow.normalBias = 0.35;
+    sol.userData.dir = sol.position.clone().normalize();
+    esc.add(sol.target); esc.userData.sol = sol;
+  }
+
+  /** Mar: el agua de Three (reflejos del cielo y del sol, oleaje con un mapa de normales procedural) y, para la
+   *  calidad baja, un plano simple. y: altura de la superficie; lado: tamano del plano. */
+  _mar(esc, y, lado, color = 0x1f5a86) {
+    if (!Visor._normalesAgua) {                       // mapa de normales periodico (suma de ondas enteras: se repite sin costura)
+      const N = 512, [c, g] = lienzo(N, N), img = g.createImageData(N, N), r = semilla(91), ondas = [];
+      for (let k = 0; k < 24; k++) ondas.push([Math.round((r() - 0.5) * 24), Math.round((r() - 0.5) * 24), 0.6 / (1 + k * 0.25), r() * 6.28]);
+      const h = (x, z) => ondas.reduce((s, [a, b, amp, f]) => s + amp * Math.sin(2 * Math.PI * (a * x + b * z) / N + f), 0);
+      for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+        const dx = h(x + 1, z) - h(x - 1, z), dz = h(x, z + 1) - h(x, z - 1), l = Math.hypot(dx, dz, 2), p = 4 * (z * N + x);
+        img.data[p] = 128 - 127 * dx / l; img.data[p + 1] = 128 - 127 * dz / l; img.data[p + 2] = 128 + 127 * 2 / l; img.data[p + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; Visor._normalesAgua = t;
+    }
+    const geo = new THREE.PlaneGeometry(lado, lado);
+    const plano = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color, specular: 0x9fb8cc, shininess: 70 }));
+    plano.rotation.x = -Math.PI / 2; plano.position.y = y; esc.add(plano);
+    let water = plano;
+    if (THREE.Water) {
+      const sol = esc.userData.sol;
+      water = new THREE.Water(geo, { textureWidth: 1024, textureHeight: 1024, waterNormals: Visor._normalesAgua, sunDirection: sol ? sol.userData.dir.clone() : new THREE.Vector3(0.4, 0.8, 0.3),
+                                     sunColor: 0xfff4e0, waterColor: color, distortionScale: 2.2, fog: !!esc.fog, alpha: 1.0 });
+      water.material.uniforms.size.value = 2.5;
+      water.rotation.x = -Math.PI / 2; water.position.y = y; esc.add(water);
+    }
+    this.aguas.push({ water, plano });
+    water.visible = this.calidad >= 2; plano.visible = !water.visible || water === plano;
+  }
+
   /** Cupula de cielo con degradado, el sol y unas nubes lejanas. radio: el de la cupula (la isla, 2850 m; un mundo
-   *  real, mucho mas, y las nubes se escalan con el). */
+   *  real, mucho mas, y las nubes se escalan con el). Con THREE.Sky, cielo fisico (dispersion de Rayleigh y Mie). */
   _cielo(posSol, esc, radio) {
     const k = radio / 2850;
+    if (THREE.Sky) {
+      const sky = new THREE.Sky(); sky.scale.setScalar(radio * 3); sky.frustumCulled = false;
+      const u = sky.material.uniforms;
+      u.turbidity.value = 3.5; u.rayleigh.value = 2.2; u.mieCoefficient.value = 0.003; u.mieDirectionalG.value = 0.8;
+      u.sunPosition.value.copy(posSol).normalize();
+      esc.add(sky);
+    }
     const cielo = new THREE.Mesh(new THREE.SphereGeometry(radio, 32, 16), new THREE.ShaderMaterial({
       uniforms: { cima: { value: new THREE.Color(0x3f7fd0) }, horizonte: { value: new THREE.Color(0xd3dfe9) } },   // el horizonte, del color de la calima
       vertexShader: "varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: "uniform vec3 cima; uniform vec3 horizonte; varying vec3 vP; void main() { float t = pow(clamp(normalize(vP).y, 0.0, 1.0), 0.5); gl_FragColor = vec4(mix(horizonte, cima, t), 1.0); }",
       side: THREE.BackSide, depthWrite: false, fog: false }));
-    esc.add(cielo);
+    if (!THREE.Sky) esc.add(cielo);
     const [cs, gs] = lienzo(256, 256), g = gs.createRadialGradient(128, 128, 0, 128, 128, 128);
     g.addColorStop(0, "rgba(255,252,240,1)"); g.addColorStop(0.18, "rgba(255,246,210,0.9)"); g.addColorStop(0.5, "rgba(255,235,190,0.25)"); g.addColorStop(1, "rgba(255,230,180,0)");
     gs.fillStyle = g; gs.fillRect(0, 0, 256, 256);
-    const solSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cs), fog: false, depthWrite: false }));
-    solSprite.position.copy(posSol).normalize().multiplyScalar(2600 * k); solSprite.scale.set(520 * k, 520 * k, 1); esc.add(solSprite);
+    const solSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(cs), fog: false, depthWrite: false }));
+    solSprite.position.copy(posSol).normalize().multiplyScalar(2600 * k); solSprite.scale.set(520 * k, 520 * k, 1);
+    if (!THREE.Sky) esc.add(solSprite);
     const [cn, gn] = lienzo(256, 128), r = semilla(5);
     for (let i = 0; i < 26; i++) {
       const x = 40 + r() * 176, y = 50 + r() * 40, rad = 18 + r() * 26, gg = gn.createRadialGradient(x, y, 0, x, y, rad);
       gg.addColorStop(0, "rgba(255,255,255,0.75)"); gg.addColorStop(0.6, "rgba(250,250,252,0.35)"); gg.addColorStop(1, "rgba(245,245,250,0)");
       gn.fillStyle = gg; gn.fillRect(0, 0, 256, 128);
     }
-    const mn = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cn), transparent: true, depthWrite: false, opacity: 0.9 });
+    const mn = new THREE.SpriteMaterial({ map: texSRGB(cn), transparent: true, depthWrite: false, opacity: 0.9 });
     for (let i = 0; i < 14; i++) {
       const a = r() * Math.PI * 2, d = (900 + r() * 1400) * k, s = (260 + r() * 420) * k, nube = new THREE.Sprite(mn);
       nube.position.set(d * Math.cos(a), (420 + r() * 380) * Math.min(k, 3), d * Math.sin(a)); nube.scale.set(s, s * 0.42, 1); esc.add(nube); this.prescindibles.push(nube);
@@ -319,7 +380,7 @@ class Visor {
     const E = this.entorno, esc = this.escena, r = semilla(23);
     const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
     const aniso = this.renderer.capabilities.getMaxAnisotropy();
-    const tex = c => { const t = new THREE.CanvasTexture(c); t.anisotropy = aniso; return t; };
+    const tex = c => { const t = texSRGB(c); t.anisotropy = aniso; return t; };
     // suelo: una textura de detalle de 1400 m alrededor del campo de vuelo y otra lejana de 6000 m
     const arboles = [];
     const [cc, gc] = lienzo(4096, 4096); pintarCampo(gc, 4096 / 1400, -700, 900, arboles, E.zona2);
@@ -331,8 +392,7 @@ class Visor {
     const tl = tex(cl); tl.repeat.set(1 / 6000, 1 / 6000); tl.offset.set(0.5, 0.5);
     const lejos = new THREE.Mesh(new THREE.ShapeGeometry(forma), lam(0xffffff, { map: tl }));
     lejos.rotation.x = -Math.PI / 2; esc.add(lejos);
-    const mar = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), lam(0x2f6f99, { polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 }));
-    mar.rotation.x = -Math.PI / 2; mar.position.y = -1.2; esc.add(mar);          // bajo el suelo y empujado atras en profundidad: nunca parpadea sobre la isla
+    this._mar(esc, -1.2, 40000, 0x245f88);                                        // bajo el suelo: nunca parpadea sobre la isla
     // cerro del oeste: malla elevada con bandas de roca (colores por vertice) y una textura de matas repetida
     const gh = new THREE.PlaneGeometry(1540, 3200, 154, 320), ph = gh.getAttribute("position"), col = [];
     const cRoca = new THREE.Color(0xcfc5a8), cMonte = new THREE.Color(0xa69e84), cVerde = new THREE.Color(0x737a56), cPie = new THREE.Color(0xb3ab91);
@@ -435,7 +495,7 @@ class Visor {
       gt.fillStyle = hex; gt.fillRect(0, 0, 64, 512);
       for (let y = 0; y < 3; y++) for (let x = 0; x < 8; x++) { gt.fillStyle = (x + y) % 2 ? "#fff" : "#111"; gt.fillRect(x * 8, 40 + y * 8, 8, 8); }
       gt.fillStyle = "#fff"; gt.fillRect(0, 430, 64, 14);
-      const p = new THREE.Mesh(gpil, new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(ct) }));
+      const p = new THREE.Mesh(gpil, new THREE.MeshLambertMaterial({ map: texSRGB(ct) }));
       p.position.set(s[1], Pi.alto / 2, -s[0]); esc.add(p);
       const t = new THREE.Mesh(gtapa, new THREE.MeshLambertMaterial({ color: new THREE.Color(hex) }));
       t.position.set(s[1], Pi.alto, -s[0]); esc.add(t);
@@ -449,7 +509,7 @@ class Visor {
     const mesa = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.7), lam(0xcfcfcf)); mesa.position.set(-7, 0.78, 7); esc.add(mesa);
     const mastil = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4, 6), mEst); mastil.position.set(-14, 2, -10); esc.add(mastil);
     const [cmg, gmg] = lienzo(32, 128); for (let i = 0; i < 5; i++) { gmg.fillStyle = i % 2 ? "#ffffff" : "#ff6d00"; gmg.fillRect(0, i * 25.6, 32, 25.6); }
-    this.manga = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.4, 12, 1, true), new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(cmg), side: THREE.DoubleSide }));
+    this.manga = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.4, 12, 1, true), new THREE.MeshLambertMaterial({ map: texSRGB(cmg), side: THREE.DoubleSide }));
     this.manga.position.set(-14, 3.8, -10); esc.add(this.manga);
   }
 
@@ -554,7 +614,7 @@ class Visor {
       g.closePath(); g.fill();
     }
     this.lienzoMundo = c; this.lienzoMundoX = X; this.lienzoMundoY = Y;
-    const tex = new THREE.CanvasTexture(c); tex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy()); tex.minFilter = THREE.LinearMipmapLinearFilter;
+    const tex = texSRGB(c); tex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy()); tex.minFilter = THREE.LinearMipmapLinearFilter;
     return tex;
   }
 
@@ -564,8 +624,9 @@ class Visor {
   _construirMundo(m) {
     const esc = new THREE.Scene(), alt = this.entorno.altura, ent = this.entorno, h0 = m.terreno.h0;
     esc.background = new THREE.Color(0xcfdbe6); esc.fog = new THREE.Fog(0xcfdbe6, 2500, 10500);
-    esc.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a6a4a, 0.75));
-    const sol = new THREE.DirectionalLight(0xfff1dc, 1.0); sol.position.set(-3500, 5200, 2600); esc.add(sol);
+    esc.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a6a4a, 0.75 * 2 * Math.PI));
+    const sol = new THREE.DirectionalLight(0xfff1dc, 1.0 * 2 * Math.PI); sol.position.set(-3500, 5200, 2600); esc.add(sol);
+    this._configurarSol(sol, esc);
     this._cielo(sol.position, esc, 15000);
     const T = m.terreno, HT = ent.terreno.H, r = semilla(11);
     // --- terreno: una malla con color por vertice ---
@@ -594,37 +655,23 @@ class Visor {
     gt.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); gt.setIndex(new THREE.BufferAttribute(idx, 1)); gt.computeVertexNormals();
     esc.add(new THREE.Mesh(gt, new THREE.MeshLambertMaterial({ map: this._texturaMundo(m), vertexColors: true })));
     // --- mar: plano al nivel del mar, con el brillo del sol ---
-    const mar = new THREE.Mesh(new THREE.PlaneGeometry(300000, 300000), new THREE.MeshPhongMaterial({ color: 0x2a6aa8, specular: 0x9fb8cc, shininess: 70 }));
-    mar.rotation.x = -Math.PI / 2; mar.position.y = -h0 + 0.4; esc.add(mar);
-    // --- carreteras: cintas sobre el terreno, anchas segun el tipo (1 autovia .. 4 comarcal) ---
-    this._cintas(esc, m.carreteras, alt);
-    // --- zonas urbanas: edificios instanciados (cajas) repartidos por dentro de cada poligono ---
-    const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
-    const edificios = [], dentro = (P, x, y) => { let d = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) d = !d; } return d; };
-    for (const u of m.urbano) {
-      const P = []; for (let i = 1; i < u.length; i += 2) P.push([u[i], u[i + 1]]);
-      let e0 = 1e9, e1 = -1e9, n0 = 1e9, n1 = -1e9; for (const [e, n] of P) { e0 = Math.min(e0, e); e1 = Math.max(e1, e); n0 = Math.min(n0, n); n1 = Math.max(n1, n); }
-      const paso = u[0] === 1 ? 48 : 70;
-      for (let e = e0; e < e1; e += paso) for (let n = n0; n < n1; n += paso) {
-        const ee = e + (r() - 0.5) * paso * 0.7, nn = n + (r() - 0.5) * paso * 0.7;
-        if (edificios.length < 14000 && dentro(P, ee, nn) && !ent.enMar(nn, ee) && ent.alturaMar(nn, ee) > 0) edificios.push([ee, nn, u[0] === 1 ? 8 + r() * 8 : 12 + r() * 14, u[0], r()]);
-      }
-    }
-    const caja = new THREE.BoxGeometry(1, 1, 1); caja.translate(0, 0.5, 0);
-    this._instanciarEn(esc, caja, lam(0xffffff), edificios, (it, M, Cc) => {
-      const [e, n, s, tipo, z] = it, h = tipo === 1 ? 4 + z * 7 : 6 + z * 6;
-      M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), z * 3.14), new THREE.Vector3(s, h, s * (0.7 + z * 0.5)));
-      Cc.setHex(tipo === 1 ? [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8][Math.floor(z * 4)] : [0xd0d4d8, 0xc3c7cc, 0xb9bec4][Math.floor(z * 3)]);
-    }, 1200);
+    this._mar(esc, -h0 + 0.4, 300000, 0x1d5580);
+    // --- carreteras (cintas) y edificios genericos de las zonas urbanas de OSM: visor_real.js los rehace sin la
+    // zona de detalle, donde ya estan los de verdad ---
+    this.zonaBBox = null;
+    if (this._carreterasMundo) { this._carreterasMundo(esc, m); this._edificiosSinteticos(esc, m); }
+    else this._cintas(esc, m.carreteras, alt);
     this._arbolesMundo(esc, m, 0, 0);
     // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
     for (const [nombre, rango, e, n] of m.lugares) {
       if (rango > 3) continue;
       const [c, g] = lienzo(512, 128); g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, 30, 512, 68);
       g.fillStyle = "#fff"; g.fillText(nombre, 256, 78);
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
       const s = rango === 1 ? 1600 : rango === 2 ? 1000 : 600; sp.scale.set(s, s / 4, 1); sp.position.set(e, alt(n, e) + s * 0.18, -n); esc.add(sp);
     }
+    esc.traverse(o => { if (o.isMesh && !o.isSprite) o.receiveShadow = true; });
+    if (this._despuesDeConstruirMundo) this._despuesDeConstruirMundo(esc, m);    // visor_real.js: ortofoto de la region
     return esc;
   }
 
@@ -636,6 +683,7 @@ class Visor {
     const ent = this.entorno, alt = ent.altura, r = semilla(11 + Math.round(cN / 97) + Math.round(cE / 89)), antes = new Set(esc.children);
     const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
     const arboles = [], apto = (nn, ee) => {
+      const Zb = this.zonaBBox; if (Zb && nn > Zb[0] - 20 && nn < Zb[1] + 20 && ee > Zb[2] - 20 && ee < Zb[3] + 20) return 0;
       const h = ent.alturaMar(nn, ee); if (h <= 1 || h > 450 || ent.enMar(nn, ee)) return 0;
       const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
       return pend > 40 ? 0 : h;
@@ -690,7 +738,8 @@ class Visor {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
-    esc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
+    const malla = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    malla.receiveShadow = true; esc.add(malla); return malla;
   }
 
   /** Como _instanciar, pero en la escena que se diga, con celdas de `celda` m, y las celdas a mas de lejos_m del
@@ -738,6 +787,21 @@ class Visor {
       const s = Math.max(0.2, 1 - Math.max(0, -av.p[2] - suelo) / 60);
       this.sombra.scale.set(s, s, s); this.sombra.material.opacity = 0.35 * s;
     }
+    const S = this.escena.userData.sol;
+    if (S && a) {
+      const p = a.grupo.matrix.elements, d = S.userData.dir;
+      S.target.position.set(p[12], p[13], p[14]); S.position.set(p[12] + d.x * 700, p[13] + d.y * 700, p[14] + d.z * 700);
+      S.target.updateMatrixWorld();
+    }
+    if (this.sombra) this.sombra.visible = !(S && S.castShadow);
+    // el agua con reflejos vuelve a dibujar toda la escena: solo si hay agua a menos de 2 km del avion (se mira cada segundo)
+    if ((this._tAgua = (this._tAgua || 0) + dt) > 1 || this._aguaCerca === undefined) {
+      this._tAgua = 0; const ent = this.entorno; let cerca = !this.mundo;           // en la isla el mar siempre esta cerca
+      if (this.mundo && a) { const p = av.p; for (let k = 0; k < 16 && !cerca; k++) { const ang = k * Math.PI / 8; cerca = ent.enMar(p[0] + 2000 * Math.cos(ang), p[1] + 2000 * Math.sin(ang)) || ent.enMar(p[0] + 700 * Math.cos(ang), p[1] + 700 * Math.sin(ang)); } }
+      this._aguaCerca = cerca;
+      for (const ag of this.aguas) if (ag.water !== ag.plano) { ag.water.visible = this.calidad >= 2 && cerca; ag.plano.visible = !ag.water.visible; }
+    }
+    for (const ag of this.aguas) if (ag.water.material.uniforms && ag.water.visible) ag.water.material.uniforms.time.value += dt * 0.6;
     const v = this.entorno.viento, m = this.manga;
     if (v.base > 0.2) {
       const vw = ned2three([v.actual[0], v.actual[1], 0]);
@@ -779,8 +843,9 @@ class VistaPrevia {
     this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.escena = new THREE.Scene(); this.escena.background = new THREE.Color(0x9fc8ea);
-    this.escena.add(new THREE.HemisphereLight(0xffffff, 0x557755, 0.95));
-    const sol = new THREE.DirectionalLight(0xffffff, 0.8); sol.position.set(3, 5, 4); this.escena.add(sol);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
+    this.escena.add(new THREE.HemisphereLight(0xffffff, 0x557755, 0.95 * Math.PI));
+    const sol = new THREE.DirectionalLight(0xffffff, 0.8 * Math.PI); sol.position.set(3, 5, 4); this.escena.add(sol);
     this.cam = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
     this.actual = null;
   }

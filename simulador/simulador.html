@@ -337,11 +337,13 @@
 <div id="modal"><div class="tarjeta"><h3 id="modTitulo"></h3><div id="modTexto"></div>
   <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
 
-<script src="three.min.js"></script>
-<script src="js/modelos.js?v=19"></script>
-<script src="js/entorno.js?v=19"></script>
-<script src="js/visor.js?v=19"></script>
-<script src="mundos/cartagena.js?v=19"></script>
+<script src="lib/three.js?v=20"></script>
+<script src="lib/three-extras.js?v=21"></script>
+<script src="js/modelos.js?v=20"></script>
+<script src="js/entorno.js?v=20"></script>
+<script src="js/visor.js?v=24"></script>
+<script src="js/visor_real.js?v=24"></script>
+<script src="mundos/cartagena.js?v=20"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -944,10 +946,15 @@ function rumboDespejado(N, E) {
   }
   return mejor;
 }
-function irLanzamiento() {
+async function irLanzamiento() {
   const mundo = mundoDe(sesion.escenario);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo);              // construye el mundo (y su textura) si hace falta
-  if (!sesion.lanz || sesion.lanz.mundo !== mundo.id) sesion.lanz = { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
+  await indiceZonas();
+  if (!sesion.lanz || sesion.lanz.mundo !== mundo.id) {           // por defecto, el centro de la primera zona de detalle
+    const z0 = (ZONAS.indice || []).find(z => z.mundo === mundo.id);
+    sesion.lanz = z0 ? { mundo: mundo.id, N: Math.round(z0.centro.N), E: Math.round(z0.centro.E), rumbo: rumboDespejado(z0.centro.N, z0.centro.E) }
+                     : { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
+  }
   pintarMapaLanz(); mostrar("pLanzamiento");
 }
 function pintarMapaLanz() {
@@ -964,6 +971,10 @@ function pintarMapaLanz() {
   }
   g.font = "bold 11px sans-serif"; g.fillStyle = "#fff"; g.strokeStyle = "rgba(0,0,0,0.7)"; g.lineWidth = 3;
   for (const [nombre, rango, e, n] of M.lugares) if (rango <= 4) { g.strokeText(nombre, X(e) + 4, Y(n) - 3); g.fillText(nombre, X(e) + 4, Y(n) - 3); g.fillRect(X(e) - 2, Y(n) - 2, 4, 4); }
+  for (const zz of (ZONAS.indice || []).filter(q => q.mundo === M.id)) {                                   // zonas de detalle
+    g.strokeStyle = "#ffd54f"; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.strokeRect(X(zz.E0), Y(zz.N0 + zz.lado_m), zz.lado_m * k, zz.lado_m * k); g.setLineDash([]);
+    g.fillStyle = "#ffd54f"; g.font = "bold 10px sans-serif"; g.fillText("detalle", X(zz.E0) + 2, Y(zz.N0 + zz.lado_m) - 3);
+  }
   g.fillStyle = "#ff5252"; g.beginPath(); g.arc(X(0), Y(0), 4, 0, 2 * Math.PI); g.fill();              // origen del mundo (el corazon)
   g.fillStyle = "#fff"; g.font = "10px sans-serif"; g.fillText("origen", X(0) + 6, Y(0) + 4);
   const x = X(L.E), y = Y(L.N);                                                                         // punto elegido y rumbo de despegue
@@ -973,7 +984,8 @@ function pintarMapaLanz() {
   const M_LAT = 110574, M_LON = 111320 * Math.cos(M.origen.lat * D2R), lat = M.origen.lat + L.N / M_LAT, lon = M.origen.lon + L.E / M_LON;
   const hMar = entorno.alturaMar(L.N, L.E), mar = entorno.enMar(L.N, L.E);
   document.getElementById("lanzInfo").innerHTML = mar ? `<b style="color:#ff6e66">Eso es mar: elige un punto en tierra.</b>` :
-    `Punto elegido: <b>${lat.toFixed(5)} N, ${(-lon).toFixed(5)} O</b> · ${hMar.toFixed(0)} m sobre el mar · a ${(Math.hypot(L.N, L.E) / 1000).toFixed(1)} km del origen · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b> (el más despejado) · escala: ${(anchoM / 1000).toFixed(0)} km de ancho`;
+    `Punto elegido: <b>${lat.toFixed(5)} N, ${(-lon).toFixed(5)} O</b> · ${hMar.toFixed(0)} m sobre el mar · a ${(Math.hypot(L.N, L.E) / 1000).toFixed(1)} km del origen · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b> (el más despejado) · escala: ${(anchoM / 1000).toFixed(0)} km de ancho` +
+    (zonaEn(M.id, L.N, L.E) ? ` · <b style="color:#ffd54f">dentro de una zona de detalle</b> (foto a 0,5 m, terreno a 5 m, edificios y árboles reales)` : ` · fuera de las zonas de detalle (recuadros amarillos): terreno a 150 m y foto a 12 m`);
   document.getElementById("btnLanzAqui").disabled = mar;
 }
 document.getElementById("mapaLanz").addEventListener("click", e => {
@@ -1175,7 +1187,35 @@ function pintarObjetivos() {
 // =====================================================================
 //  VUELO
 // =====================================================================
-function empezar() {
+// ---- zonas de detalle de los mundos reales (zonas/indice.json; las mismas que usa el simulador de Godot) ----
+const ZONAS = { indice: null, cache: {} };
+async function indiceZonas() {
+  if (ZONAS.indice) return ZONAS.indice;
+  try { const r = await fetch("zonas/indice.json?" + Date.now()); ZONAS.indice = r.ok ? await r.json() : []; } catch (e) { ZONAS.indice = []; }
+  return ZONAS.indice;
+}
+/** La zona del mundo que contiene (N, E) con 150 m de margen, o null. */
+function zonaEn(mundoId, N, E) {
+  return (ZONAS.indice || []).find(z => z.mundo === mundoId && N > z.N0 + 150 && N < z.N0 + z.lado_m - 150 && E > z.E0 + 150 && E < z.E0 + z.lado_m - 150) || null;
+}
+async function cargarZona(meta) {
+  if (ZONAS.cache[meta.id]) return ZONAS.cache[meta.id];
+  const base = "zonas/" + meta.id + "/", r = await fetch(base + meta.dem.archivo);
+  if (!r.ok) throw new Error("sin " + base + meta.dem.archivo);
+  return (ZONAS.cache[meta.id] = { meta, dem: new Int16Array(await r.arrayBuffer()), base });
+}
+/** Pone (o quita) la zona de detalle que contiene el punto de lanzamiento, en el Entorno (suelo fisico) y en el Visor. */
+async function ponerZonaDeLanzamiento(mundo) {
+  let z = null;
+  if (mundo) {
+    await indiceZonas();
+    const c = casa(), meta = zonaEn(mundo.id, c.N, c.E);
+    if (meta) try { z = await cargarZona(meta); } catch (e) { console.warn("No se pudo cargar la zona " + meta.id, e); }
+  }
+  entorno.ponerZona(z); if (mundo) visor.ponerZona(z);
+}
+
+async function empezar() {
   modelo = Modelos.crear(sesion.avion);
   aplicarCM(modelo); aplicarCalibracion(modelo);
   visor.ponerAvion(Modelos.datos(sesion.avion));
@@ -1184,7 +1224,7 @@ function empezar() {
   construirAnemometro(velPerdida());
   const mundo = mundoDe(sesion.escenario);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
-  if (mundo) { const c = casa(); visor.ponerBase([c.N, c.E]); }
+  if (mundo) { await ponerZonaDeLanzamiento(mundo); const c = casa(); visor.ponerBase([c.N, c.E], true); }
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
