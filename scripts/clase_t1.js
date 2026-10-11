@@ -5,7 +5,7 @@
 // derecha), con el recorrido mecanico de cada superficie (mandos.elevon_max_grados) como tope: si la suma se pasa,
 // se reducen las dos consignas en la misma proporcion, como hace el mezclador de la emisora. Las derivadas CLde, Cmde,
 // Clda, Cnda y CYda salen del VLM (analisis/vlm_e1.py, configuracion tandem). No hay timon (dr siempre 0).
-// Con el motor parado o al ralenti, la helice de 9 pulgadas parada anade su resistencia (CD_helice_parada).
+// La resistencia de la helice parada (CD_helice_parada) la suma ModeloAvion.paso().
 class ModeloT1 extends ModeloAvion {
   estadoInicial() { const av = super.estadoInicial(); av.da = 0; av.elevon_izq = 0; av.elevon_der = 0; return av; }
 
@@ -32,10 +32,4 @@ class ModeloT1 extends ModeloAvion {
     return { CL: d("CLde") * de, CY: d("CYda") * da, Cl: d("Clda") * da, Cm: d("Cmde") * de, Cn: d("Cnda") * da };
   }
 
-  /** Igual que ModeloAvion, mas la resistencia de la helice parada cuando no hay gas. */
-  paso(av, viento, dt) {
-    const cd0 = this.CD0;
-    if (av.gases < 0.05 && this.CD_helice_parada) this.CD0 = cd0 + this.CD_helice_parada;
-    try { return super.paso(av, viento, dt); } finally { this.CD0 = cd0; }
-  }
 }

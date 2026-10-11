@@ -45,7 +45,24 @@ class Entorno {
   /** vel en m/s; desde = de donde viene el viento (grados: 0 norte, 90 este...). */
   configurarViento({ vel, desde, rachas }) {
     this.viento.base = vel; this.viento.rumbo = ((desde + 180) % 360) * Math.PI / 180; this.viento.rachas = rachas;
-    this.viento.r = [0, 0, 0];
+    this.viento.r = [0, 0, 0, 0];
+  }
+
+  /** Viento a la altura h sobre el suelo: el viento configurado es el de 10 m; mas abajo frena con el perfil
+   *  logaritmico de un campo de cultivo (rugosidad 5 cm): a 2 m sopla un 70 % y a 0,5 m un 45 %. Las rachas, igual. */
+  vientoA(vw, h) {
+    const z0 = 0.05, k = Math.max(0, Math.log(Math.max(h, 0.2) / z0) / Math.log(10 / z0));
+    return [vw[0] * Math.min(1.25, k), vw[1] * Math.min(1.25, k), vw[2] * Math.min(1, k)];
+  }
+
+  /** Velocidad de alabeo de la turbulencia (rad/s) para un avion de envergadura b a la altura h: la racha no es igual
+   *  en las dos semialas y alabea el avion. Intensidad de la integral del espectro de Dryden (MIL-F-8785C):
+   *  sigma_p^2 = sigma_w^2 (0,8 / L_w) (pi L_w / 4b)^(1/3) / (2 (4b / pi)), con L_w = h cerca del suelo. */
+  rafagaAlabeo(b, h) {
+    const v = this.viento;
+    if (!v.rachas || v.base < 0.01) return 0;
+    const sw = 0.5 * (0.18 * v.base + 0.15), Lw = Math.max(3, Math.min(h, 300));
+    return v.r[3] * sw * Math.sqrt(0.8 / Lw * Math.cbrt(Math.PI * Lw / (4 * b)) / (2 * 4 * b / Math.PI));
   }
 
   /** Rachas tipo Dryden simplificado: tres ruidos filtrados de 1,2 s. */
@@ -57,7 +74,9 @@ class Entorno {
         const s = i === 2 ? 0.5 * sigma : sigma;
         v.r[i] += (-v.r[i] / tau + s * Math.sqrt(2 / tau) * (Math.random() * 2 - 1) * Math.sqrt(3) / Math.sqrt(dt)) * dt;
       }
-    } else v.r = [0, 0, 0];
+      const tp = 0.15;                                 // componente de alabeo: ruido de varianza 1 (corte del espectro, ~pi V / 4b)
+      v.r[3] = (v.r[3] || 0) + (-(v.r[3] || 0) / tp + Math.sqrt(2 / tp) * (Math.random() * 2 - 1) * Math.sqrt(3) / Math.sqrt(dt)) * dt;
+    } else v.r = [0, 0, 0, 0];
     v.actual = [base[0] + v.r[0], base[1] + v.r[1], v.r[2]];
     return v.actual;
   }

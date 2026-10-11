@@ -58,12 +58,33 @@ class ModeloAvion {
     this.masa_diseno_kg = datos.masa_kg;
     this.inercia_diseno = Object.assign({}, datos.inercia);
     this.dcg = 0;          // desplazamiento del CG respecto al de diseno, en ejes cuerpo (m, + = hacia el morro)
+    // ---- realismo (valores por defecto razonados; un avion puede traer los suyos en sus datos) ----
+    this.rho = RHO;                                       // densidad del aire (configurar({ temperatura }))
+    this.calib = { empuje: 1, resistencia: 1 };           // calibracion con medidas del avion real (configurar)
+    const pr = this.propulsion, Dm = pr.D_m;
+    this.Qmax = pr.P_max_W / (2 * Math.PI * pr.n_max_rps);                         // par a tope (0,16 N m con el X2212 y la 9x4,7)
+    this.Ihelice = datos.I_helice !== undefined ? datos.I_helice : 0.012 * (Dm / 0.2286) ** 3 * Dm * Dm / 12;   // helice de 12 g como varilla
+    // helice parada: unos 27 cm2 de resistencia (palas de frente) para una 9", escalado con el diametro al cuadrado
+    if (this.CD_helice_parada === undefined) this.CD_helice_parada = 0.0027 * (Dm / 0.2286) ** 2 / this.S_m2;
+    this.k_perfil = datos.k_perfil !== undefined ? datos.k_perfil : 0.02;            // resistencia de perfil: k (CL - 0,3)^2, perfil a Re ~1e5
+    // chorro de la helice: fraccion de la profundidad y del timon dentro de la estela, y fraccion del giro de la estela
+    // que endereza la deriva (guinada a la izquierda a mucho gas). La deriva esta al final del fuselaje
+    const ch = datos.chorro || {};
+    this.chorro = { prof: ch.prof !== undefined ? ch.prof : (datos.malla && datos.malla.prof ? 0.3 : 0),
+                    timon: ch.timon !== undefined ? ch.timon : 0.35, deriva: ch.deriva !== undefined ? ch.deriva : 0.1 };
+    let xmin = 0; const fv = datos.malla && datos.malla.fuselaje && datos.malla.fuselaje.v;
+    if (fv) for (let i = 0; i < fv.length; i += 3) xmin = Math.min(xmin, fv[i]);
+    this.brazoDeriva = Math.max(0.1, -xmin - 0.06);
+    this.brazoPerdida = datos.brazo_perdida !== undefined ? datos.brazo_perdida : 0.2;   // fraccion de b (ala rectangular)
   }
 
   /** Cambia la masa (kg) y la X del centro de gravedad (mm desde la bancada, como cg_mm). Las tablas y derivadas
    *  del VLM estan calculadas respecto al CG de diseno: paso() traslada sus momentos al CG nuevo, como en el
    *  avion real. Las inercias se escalan con la masa (no se sabe donde va el lastre). */
-  configurar({ masa_kg, cg_mm }) {
+  configurar({ masa_kg, cg_mm, temperatura, empuje_gf, resistencia }) {
+    if (temperatura !== undefined) this.rho = 101325 / (287.05 * (temperatura + 273.15));
+    if (empuje_gf) { const pr = this.propulsion; this.calib.empuje = empuje_gf / 1000 * G0 / (pr.CT0 * RHO * pr.n_max_rps ** 2 * pr.D_m ** 4); }
+    if (resistencia) this.calib.resistencia = resistencia;
     if (masa_kg) {
       this.masa_kg = masa_kg;
       const k = masa_kg / this.masa_diseno_kg;
@@ -77,6 +98,7 @@ class ModeloAvion {
   /** Estado inicial: en la mano del piloto, a 1,6 m del suelo. */
   estadoInicial() {
     return { p: [0, 0, -1.6], q: Cuat.desdeEuler(0, 2 * D2R, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0,
+             asim: (Math.random() < 0.5 ? -1 : 1) * (0.2 + 0.4 * Math.random()),   // grados: ninguna ala es perfecta
              estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false };
   }
 
@@ -103,57 +125,95 @@ class ModeloAvion {
     return { CL: d("CLde") * de, CY: d("CYdr") * dr, Cl: d("Cldr") * dr, Cm: d("Cmde") * de, Cn: d("Cndr") * dr };
   }
 
-  /** Un paso de integracion de 6 grados de libertad. viento: velocidad del aire en NED (m/s). */
+  /** Un paso de integracion de 6 grados de libertad. viento: velocidad del aire en NED (m/s).
+   *  Opcionales en av, que pone el simulador antes de llamar: av.agl (altura sobre el suelo, m: efecto suelo) y av.pg
+   *  (velocidad de alabeo de la turbulencia, rad/s: la rafaga que no es igual en las dos semialas).
+   *  Ademas del modelo lineal del VLM: perdida por semiala (caida de ala y barrena), resistencia de perfil con el CL,
+   *  helice parada, efecto suelo, par del motor, giroscopico, efecto P, chorro de la helice sobre la cola y la deriva,
+   *  caida de tension de la bateria y densidad del aire (configurar). */
   paso(av, viento, dt) {
-    const q = av.q, v = av.v, w = av.w;
+    const q = av.q, v = av.v, w = av.w, rho = this.rho;
     const wb = Cuat.rot(Cuat.inv(q), viento);
     const va = [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]];
     const V = Math.max(0.3, Math.hypot(...va));
     const alfa = Math.atan2(va[2], va[0]), beta = Math.asin(Math.max(-1, Math.min(1, va[1] / V)));
     const ad = alfa * R2D;
-    const qS = 0.5 * RHO * V * V * this.S_m2, b = this.b_m, c = this.c_m;
-    const ph = w[0] * b / (2 * V), qh = w[1] * c / (2 * V), rh = w[2] * b / (2 * V);
-    // perdida: mezcla sigmoide entre el VLM (lineal) y una placa plana
-    const P = this.perdida;
-    const fpos = 1 / (1 + Math.exp(-(ad - P.alfa_perdida_grados) / (P.anchura_grados / 2)));
-    const fneg = 1 / (1 + Math.exp((ad - P.alfa_perdida_neg_grados) / (P.anchura_grados / 2)));
-    const f = Math.max(fpos, fneg);
-    const CLlin = interp(this.TA, this.TCL, ad), CDi = interp(this.TA, this.TCDI, ad), Cmlin = interp(this.TA, this.TCM, ad);
-    const CL0 = (1 - f) * CLlin + f * P.CL_placa_factor * 2 * Math.sin(alfa) * Math.cos(alfa);
-    const CD = this.CD0 + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2;
+    const qS = 0.5 * rho * V * V * this.S_m2, b = this.b_m, c = this.c_m;
+    const ph = (w[0] - (av.pg || 0)) * b / (2 * V), qh = w[1] * c / (2 * V), rh = w[2] * b / (2 * V);
+    // ---- perdida POR SEMIALA: el angulo de ataque de cada semiala (a un 35 % de la envergadura) cambia con el
+    // alabeo (la que baja ve mas alfa) y con una pequena asimetria de construccion (av.asim, grados, al azar en cada
+    // vuelo). Si una entra antes, pierde sustentacion y el avion cae hacia ese lado; la que baja sigue en perdida:
+    // autorrotacion (barrena). En perdida se pierde casi todo el amortiguamiento de alabeo ----
+    const P = this.perdida, an = P.anchura_grados / 2;
+    const fPerd = a => Math.max(1 / (1 + Math.exp(-(a - P.alfa_perdida_grados) / an)), 1 / (1 + Math.exp((a - P.alfa_perdida_neg_grados) / an)));
+    // la seccion que manda es donde empieza la perdida: en un ala rectangular, cerca de la raiz (brazoPerdida, 20 % de b)
+    const yc = this.brazoPerdida * b, dAp = w[0] * yc / V * R2D, asim = av.asim || 0;
+    const fR = fPerd(ad + dAp + asim / 2), fL = fPerd(ad - dAp - asim / 2), f = 0.5 * (fR + fL);
+    const CLlin = interp(this.TA, this.TCL, ad), Cmlin = interp(this.TA, this.TCM, ad);
+    let CDi = interp(this.TA, this.TCDI, ad);
+    const CLplaca = P.CL_placa_factor * 2 * Math.sin(alfa) * Math.cos(alfa);
+    // efecto suelo (Wieselsberger): menos resistencia inducida y algo mas de sustentacion a menos de media envergadura
+    const x16 = av.agl === undefined ? Infinity : (16 * Math.max(0.05, av.agl) / b) ** 2, fiS = isFinite(x16) ? x16 / (1 + x16) : 1;
+    CDi *= fiS;
+    const CL0 = ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS));
+    // resistencia: parasita (por el factor de calibracion), de perfil creciente con el CL, inducida, de la perdida y,
+    // con el motor parado, la de la helice quieta
+    const pr = this.propulsion, g = av.motorRoto ? 0 : av.gases;
+    const CDhel = g < 0.05 ? this.CD_helice_parada : 0;
+    const CD = this.CD0 * this.calib.resistencia + this.k_perfil * (CL0 - 0.3) ** 2 + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 + CDhel;
     const aP = ad > 0 ? P.alfa_perdida_grados : P.alfa_perdida_neg_grados;
     const Cm0 = (1 - f) * Cmlin + f * (interp(this.TA, this.TCM, aP) - 0.5 * (alfa - aP * D2R));
     const kman = 1 - f * (1 - P.mando_post_perdida);      // eficacia de los mandos tras la perdida
     const aD = Math.max(this.DA[0], Math.min(this.DA[this.DA.length - 1], ad));
     const d = (n) => this.deriv(n, aD), M = this.mandosCoef(av, d, kman);
-    const CL = CL0 + d("CLq") * qh + M.CL;
-    const CY = d("CYb") * beta + d("CYp") * ph + d("CYr") * rh + M.CY;
-    const Cl = d("Clb") * beta + d("Clp") * ph + d("Clr") * rh + M.Cl;
-    const Cm = Cm0 + d("Cmq") * qh + M.Cm;
-    const Cn = d("Cnb") * beta + d("Cnp") * ph + d("Cnr") * rh + M.Cn;
-    const ca = Math.cos(alfa), sa = Math.sin(alfa);
-    const Fa = [qS * (-CD * ca + CL * sa), qS * CY, qS * (-CD * sa - CL * ca)];
-    const Ma = [qS * b * Cl, qS * c * Cm, qS * b * Cn];          // (el empuje suma su momento mas abajo)
-    // momentos respecto al CG real: M_nuevo = M_diseno + (r_diseno - r_nuevo) x F, con r_diseno - r_nuevo = (-dcg, 0, 0).
-    // CG adelantado (dcg > 0): la sustentacion (Fa[2] < 0) baja el morro y la deriva tiene mas brazo
-    const dx = this.dcg;
-    Ma[1] += dx * Fa[2]; Ma[2] -= dx * Fa[1];
-    // motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gases
-    const pr = this.propulsion;
+    // ---- motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gas * tension (la bateria cae ~10 % al vaciarse) ----
     if (av.motorRoto) av.gases = 0;
-    const g = av.gases;
-    let T = 0;
+    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (1 - 0.10 * (1 - bat));
+    let T = 0, Q = 0, J = 0;
     if (g > 0.02) {
-      const n = pr.n_max_rps * g, J = V / (n * pr.D_m);
-      T = pr.CT0 * Math.max(0, 1 - J / pr.J0) * RHO * n * n * Math.pow(pr.D_m, 4);
+      J = V / (n * pr.D_m);
+      T = pr.CT0 * this.calib.empuje * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4);
+      Q = this.Qmax * (n / pr.n_max_rps) ** 2 * (0.6 + 0.4 * Math.max(0, 1 - J / pr.J0));   // par que absorbe la helice
       av.Wh += pr.P_max_W * g * g * g * dt / 3600;
     }
-    av.T = T; av.rpm = g > 0.02 ? pr.n_max_rps * g * 60 : 0;
-    // linea de empuje: la helice esta en malla.helice (ejes cuerpo desde el CG); si queda por debajo del CG, el
-    // empuje encabrita. downthrust_grados (opcional, en propulsion) inclina el empuje hacia abajo para compensarlo
+    av.T = T; av.Q = Q; av.rpm = g > 0.02 ? n * 60 : 0;
+    // chorro de la helice sobre la cola (momento: velocidad en la estela V^2 + 2T/(rho A), ~80 % desarrollada en la
+    // cola): da mando de profundidad y timon aunque el avion vaya despacio, como al lanzarlo a mano
+    const Adisco = Math.PI * pr.D_m * pr.D_m / 4, rq = Math.min(6, 1 + 0.8 * 2 * T / (rho * Adisco) / (V * V));
+    const kProf = 1 + this.chorro.prof * (rq - 1), kTimon = 1 + this.chorro.timon * (rq - 1);
+    M.CL *= kProf; M.Cm *= kProf;
+    if (this.mandos.timon_max_grados > 0) { M.CY *= kTimon; M.Cl *= kTimon; M.Cn *= kTimon; }
+    const ClpEf = d("Clp") * (1 - 0.6 * f);                 // en perdida se pierde buena parte del amortiguamiento de alabeo
+    const CL = CL0 + d("CLq") * qh + M.CL;
+    const CY = d("CYb") * beta + d("CYp") * ph + d("CYr") * rh + M.CY;
+    // lo que pierde una semiala al entrar en perdida: del CL maximo (el de la tabla en el alfa de perdida) al de placa
+    // plana. En un ala rectangular la perdida empieza en la raiz: el brazo de esa sustentacion perdida es un 20 % de
+    // la envergadura (en un ala con estrechamiento o flecha seria mayor y la caida de ala, mas brusca)
+    const dCLside = Math.max(0, Math.min(CLlin, interp(this.TA, this.TCL, P.alfa_perdida_grados)) - CLplaca), yP = this.brazoPerdida * b;
+    const Cl = d("Clb") * beta + ClpEf * ph + d("Clr") * rh + M.Cl + (fR - fL) * dCLside * yP / (2 * b);
+    const Cm = Cm0 + d("Cmq") * qh + M.Cm;
+    const Cn = d("Cnb") * beta + d("Cnp") * ph + d("Cnr") * rh + M.Cn + (fR - fL) * Math.max(0, 2 * Math.sin(alfa) ** 2 - CDi) * yP / (2 * b);
+    const ca = Math.cos(alfa), sa = Math.sin(alfa);
+    const Fa = [qS * (-CD * ca + CL * sa), qS * CY, qS * (-CD * sa - CL * ca)];
+    const Ma = [qS * b * Cl, qS * c * Cm, qS * b * Cn];
+    // momentos respecto al CG real: M_nuevo = M_diseno + (r_diseno - r_nuevo) x F, con r_diseno - r_nuevo = (-dcg, 0, 0).
+    const dx = this.dcg;
+    Ma[1] += dx * Fa[2]; Ma[2] -= dx * Fa[1];
+    // linea de empuje (downthrust) y brazo de la helice desde el CG real
     const dth = (pr.downthrust_grados || 0) * D2R, hp = (this.malla && this.malla.helice) || [0, 0, 0];
     const Tx = T * Math.cos(dth), Tz = T * Math.sin(dth);
-    Ma[1] += hp[2] * Tx - (hp[0] - dx) * Tz;                       // brazo de la helice desde el CG real
+    Ma[1] += hp[2] * Tx - (hp[0] - dx) * Tz;
+    // ---- efectos de la helice que giran el avion (helice que gira en sentido horario vista desde atras, s = +1):
+    //  par de reaccion: alabea a la izquierda; la estela que gira golpea la deriva por la izquierda: guinada a la
+    //  izquierda y algo de alabeo a la derecha (recupera una fraccion del par); efecto P con alfa: guinada a la
+    //  izquierda; giroscopico: al encabritar, guinada a la derecha ----
+    const s = pr.sentido || 1, sw = this.chorro.deriva, hFin = 0.05;
+    Ma[0] += -s * Q + s * sw * Q;
+    const Fsw = s * sw * Q / hFin;
+    Fa[1] += Fsw; Ma[2] += -this.brazoDeriva * Fsw;
+    if (T > 0) { const e = 0.5 * (pr.D_m / 2) * V * Math.sin(alfa) / (2 * Math.PI * n * 0.75 * pr.D_m / 2 + 1e-3); Ma[2] += -s * T * e; }
+    const Hx = s * this.Ihelice * 2 * Math.PI * n;
+    Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx;
     const gb = Cuat.rot(Cuat.inv(q), [0, 0, G0]), m = this.masa_kg;
     const F = [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]];
     // ecuaciones de Euler: m(dv + w x v) = F ; I dw + w x (I w) = M
@@ -168,7 +228,7 @@ class ModeloAvion {
     av.q = Cuat.norm([q[0] + 0.5 * dq[0] * dt, q[1] + 0.5 * dq[1] * dt, q[2] + 0.5 * dq[2] * dt, q[3] + 0.5 * dq[3] * dt]);
     const vn = Cuat.rot(av.q, v);
     for (let i = 0; i < 3; i++) av.p[i] += vn[i] * dt;
-    av.t += dt; av.alfa = ad; av.beta = beta * R2D; av.V = V; av.perdida = f;
+    av.t += dt; av.alfa = ad; av.beta = beta * R2D; av.V = V; av.perdida = f; av.perdidaLados = [fL, fR];
     av.g_carga = -Fa[2] / (m * G0);
     return vn;
   }

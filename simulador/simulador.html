@@ -152,7 +152,9 @@
   <b>W / S</b>: gases · <b>Espacio</b>: cortar gases · <b>L</b>: lanzar<br>
   <b>R</b>: empezar de nuevo · <b>Esc</b>: terminar y volver al menú<br>
   <b>1 / 2 / 3</b>: cámara piloto / persecución / a bordo<br>
-  <b>[ / ]</b>: compensador de profundidad · <b>H</b>: datos · <b>T</b>: ayuda<br>
+  <b>[ / ]</b>: compensador de profundidad · <b>H</b>: datos · <b>I</b>: instrumentos · <b>T</b>: ayuda<br>
+  <b>Mando</b>: palanca derecha el avión, izquierda el gas (ver la pantalla del avión)<br>
+  <span style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.</span><br>
   <span style="color:#aaa">En vuelo libre: <b>+ / −</b> viento, <b>G</b> rachas.<br>
   <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
 </div>
@@ -266,6 +268,20 @@
       Botones: A / ✕ lanzar · B / ○ cortar gas · Y / △ cámara · X / □ empezar de nuevo · cruceta arriba/abajo compensador · Start terminar el vuelo.
       Con mando la palanca es proporcional, como en la emisora: usa el mismo recorrido y la misma exponencial que vayas a poner en el avión real.</p>
   </div>
+  <h2>Recorridos (como en la emisora)</h2>
+  <div class="tarjeta">
+    <p class="sub" style="margin:0 0 8px">Con mando, la palanca a tope mueve las superficies el recorrido mecánico del avión por este porcentaje, igual que el <b>dual rate</b> de la emisora: pon aquí lo mismo que vayas a programar. Con teclado se usan siempre recorridos reducidos, porque la tecla va a tope.</p>
+    <div class="fila"><label for="drAlabeo">Alabeo</label><input type="range" id="drAlabeo" min="20" max="100" step="5" style="flex:1;max-width:340px"><b id="drAlabeoTxt"></b></div>
+    <div class="fila"><label for="drProf">Profundidad</label><input type="range" id="drProf" min="20" max="100" step="5" style="flex:1;max-width:340px"><b id="drProfTxt"></b></div>
+    <div class="fila" style="margin-bottom:0"><label for="lanzReal">Lanzamiento real</label><input type="checkbox" id="lanzReal" checked> <span class="sub">velocidad, cabeceo y alabeo al azar, como al lanzar a mano</span></div>
+  </div>
+  <h2>Calibración con el avión real y aire</h2>
+  <div class="tarjeta">
+    <div class="fila"><label for="calEmpuje">Empuje estático medido</label><input type="number" id="calEmpuje" min="200" max="2000" step="10" placeholder="del fabricante" style="width:120px"> <span class="sub">gramos, con báscula de cocina y batería cargada (vacío = tabla del fabricante)</span></div>
+    <div class="fila"><label for="calRes">Resistencia</label><input type="range" id="calRes" min="70" max="160" step="5" style="flex:1;max-width:340px"><b id="calResTxt"></b></div>
+    <div class="fila" style="margin-bottom:0"><label for="calTemp">Temperatura del aire</label><input type="range" id="calTemp" min="0" max="40" step="1" style="flex:1;max-width:340px"><b id="calTempTxt"></b></div>
+    <p class="sub" id="calInfo" style="margin:6px 0 0"></p>
+  </div>
   <h2>Centro de gravedad y peso</h2>
   <div class="tarjeta">
     <div class="fila"><label for="cmCg">Centro de gravedad</label>
@@ -322,10 +338,10 @@
   <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
 
 <script src="three.min.js"></script>
-<script src="js/modelos.js?v=12"></script>
-<script src="js/entorno.js?v=12"></script>
-<script src="js/visor.js?v=12"></script>
-<script src="mundos/cartagena.js?v=12"></script>
+<script src="js/modelos.js?v=19"></script>
+<script src="js/entorno.js?v=19"></script>
+<script src="js/visor.js?v=19"></script>
+<script src="mundos/cartagena.js?v=19"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -656,6 +672,7 @@ function cmDiseno(A) {
 function cmActual(id) { const A = Modelos.datos(id); return cmCfg[id] || cmDiseno(A); }
 function cmEsDiseno(id) { const a = cmActual(id), d = cmDiseno(Modelos.datos(id)); return a.cg === d.cg && a.masa === d.masa; }
 function pintarCM() {
+  pintarCfgAvion();
   const A = Modelos.datos(sesion.avion), caja = document.getElementById("cmCg").closest(".tarjeta");
   const titulo = caja.previousElementSibling;
   if (A.x_le_mm === undefined || !A.punto_neutro_mm) { caja.style.display = titulo.style.display = "none"; return; }
@@ -699,6 +716,62 @@ setInterval(() => { if (pantallaActual === "pAvion") pintarMandoCfg(); }, 1000);
 document.getElementById("btnCmDiseno").onclick = () => {
   delete cmCfg[sesion.avion]; try { localStorage.setItem("sim_cm", JSON.stringify(cmCfg)); } catch (e) {} pintarCM();
 };
+// ---- recorridos de la emisora y calibracion, por avion (se guardan en el navegador) ----
+// recorrido mecanico (grados a palanca a tope sin dual rate) de cada avion; si no esta, el del simulador
+const RECORRIDO_MECANICO = { E1: { prof: 12, timon: 15 }, E2: { prof: 12, aleron: 15 }, E3: { prof: 12, aleron: 15 }, T1: { prof: 15, aleron: 15 } };
+let cfgAvion = {};
+try { cfgAvion = JSON.parse(localStorage.getItem("sim_cfg_avion") || "{}"); } catch (e) {}
+function cfgDe(id) { return Object.assign({ drAlabeo: 100, drProf: 100, empuje: "", res: 100, temp: 20, lanzReal: true }, cfgAvion[id] || {}); }
+function guardarCfg() { try { localStorage.setItem("sim_cfg_avion", JSON.stringify(cfgAvion)); } catch (e) {} }
+function pintarCfgAvion() {
+  const c = cfgDe(sesion.avion), A = Modelos.datos(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || {};
+  const lat = A.mandos.timon_max_grados > 0 ? "timón" : "alerones", mLat = mec.aleron || mec.timon || A.mandos.aleron_max_grados || A.mandos.timon_max_grados;
+  document.getElementById("drAlabeo").value = c.drAlabeo; document.getElementById("drProf").value = c.drProf;
+  document.getElementById("drAlabeoTxt").textContent = `${c.drAlabeo} % · ${lat} ±${(mLat * c.drAlabeo / 100).toFixed(1)}° (mecánico ±${mLat}°)`;
+  const mP = mec.prof || A.mandos.prof_max_grados;
+  document.getElementById("drProfTxt").textContent = `${c.drProf} % · ±${(mP * c.drProf / 100).toFixed(1)}° (mecánico ±${mP}°)`;
+  document.getElementById("lanzReal").checked = c.lanzReal;
+  document.getElementById("calEmpuje").value = c.empuje; document.getElementById("calRes").value = c.res; document.getElementById("calTemp").value = c.temp;
+  document.getElementById("calResTxt").textContent = `${c.res} % de la estimada`;
+  document.getElementById("calTempTxt").textContent = `${c.temp} °C · densidad ${(101325 / (287.05 * (c.temp + 273.15))).toFixed(3)} kg/m³`;
+  document.getElementById("calInfo").textContent = "La resistencia se ajusta con planeos a mano sin motor: si el avión real toca antes que en el simulador lanzado igual, súbela. " +
+    "El calor baja la densidad: a 35 °C la pérdida sube un 3 % y el motor empuja un 6 % menos.";
+}
+function leerCfgAvion() {
+  const c = cfgDe(sesion.avion);
+  c.drAlabeo = +document.getElementById("drAlabeo").value; c.drProf = +document.getElementById("drProf").value;
+  c.lanzReal = document.getElementById("lanzReal").checked; c.empuje = document.getElementById("calEmpuje").value;
+  c.res = +document.getElementById("calRes").value; c.temp = +document.getElementById("calTemp").value;
+  cfgAvion[sesion.avion] = c; guardarCfg(); pintarCfgAvion();
+}
+for (const id of ["drAlabeo", "drProf", "calRes", "calTemp"]) document.getElementById(id).addEventListener("input", leerCfgAvion);
+for (const id of ["lanzReal", "calEmpuje"]) document.getElementById(id).addEventListener("change", leerCfgAvion);
+/** Calibracion y aire al modelo (al empezar el vuelo). */
+function aplicarCalibracion(m) {
+  const c = cfgDe(sesion.avion);
+  m.configurar({ temperatura: c.temp, empuje_gf: +c.empuje || 0, resistencia: c.res / 100 });
+  sesion.lanzReal = c.lanzReal;
+  m.mandosBase = Object.assign({}, m.mandos);
+}
+/** Con mando: recorridos mecanicos por el dual rate y sin la exponencial del simulador (la pone el mando).
+ *  Con teclado: los recorridos reducidos del simulador. Se llama en cada paso (cambia al tocar mando o teclado). */
+function aplicarRecorridos(mod, forzarMando) {
+  mod = mod || modelo;
+  if (!mod || !mod.mandosBase) return;
+  const fuente = MANDO.usado || forzarMando ? "mando" : "teclado";
+  if (mod._fuente === fuente) return;
+  mod._fuente = fuente;
+  const B = mod.mandosBase, m = Object.assign({}, B);
+  if (fuente === "mando") {
+    const c = cfgDe(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || {};
+    m.expo = 0;
+    m.prof_max_grados = (mec.prof || B.prof_max_grados) * c.drProf / 100;
+    if (B.aleron_max_grados) m.aleron_max_grados = (mec.aleron || B.aleron_max_grados) * c.drAlabeo / 100;
+    if (B.timon_max_grados) m.timon_max_grados = (mec.timon || B.timon_max_grados) * c.drAlabeo / 100;
+  }
+  mod.mandos = m;
+}
+
 /** Aplica al modelo de vuelo el centro de gravedad y el peso elegidos. */
 function aplicarCM(m) {
   const A = Modelos.datos(sesion.avion);
@@ -719,13 +792,16 @@ function textoCM() {
 // =====================================================================
 const LANZ = { prueba_s: 5, fallo_s: 6, fallo_h: 5 };   // un vuelo que acaba antes de 6 s sin pasar de 5 m es un lanzamiento fallido
 function pruebaLanzamiento(gas, { masa_kg, viento = [0, 0, 0], rumbo = 0, trim } = {}) {
-  const m = Modelos.crear(sesion.avion); aplicarCM(m);
+  // con el recorrido de la emisora (el del teclado no basta en un avion pequeno para corregir el par del motor al lanzarlo)
+  const m = Modelos.crear(sesion.avion); aplicarCM(m); aplicarCalibracion(m); aplicarRecorridos(m, true);
   if (masa_kg) m.configurar({ masa_kg });
   const a = m.estadoInicial(); colocarEnBase(a); a.gases = gas; m.lanzar(a);
   if (entorno.mundo) rumbo = (sesion.lanz ? sesion.lanz.rumbo : 0) * D2R;
   if (rumbo) { const [r, p] = Cuat.euler(a.q); a.q = Cuat.desdeEuler(r, p, rumbo); }
   const mm = { pitch: 0, yaw: 0, trim: trim !== undefined ? trim : (m.compensador_grados || 0) };
   for (let i = 0; i < LANZ.prueba_s / DT; i++) {
+    // el piloto no toca la profundidad pero si mantiene las alas niveladas (el par del motor alabea el avion al soltarlo)
+    const roll = Cuat.euler(a.q)[0]; mm.yaw = Math.max(-1, Math.min(1, -roll * 3 - a.w[0] * 0.4));
     m.servos(a, mm, DT);
     if (entorno.contactoSuelo(a, m.paso(a, viento, DT))) return false;
   }
@@ -1101,7 +1177,7 @@ function pintarObjetivos() {
 // =====================================================================
 function empezar() {
   modelo = Modelos.crear(sesion.avion);
-  aplicarCM(modelo);
+  aplicarCM(modelo); aplicarCalibracion(modelo);
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
@@ -1130,12 +1206,21 @@ function orientarLanzamiento() {
 function lanzar() {
   if (av.estado !== "en mano") return;
   modelo.lanzar(av); orientarLanzamiento(); aviso("");
+  if (sesion.lanzReal) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+    const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
+    const [r, p, y] = Cuat.euler(av.q);
+    av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
+  }
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, gasLanz: av.gases, hmax: 0 };
   cnContador = 0; grabarMuestra();
 }
 function paso(dt) {
-  const viento = entorno.actualizar(dt);
+  aplicarRecorridos();
+  let viento = entorno.actualizar(dt);
   modelo.servos(av, mando, dt);
+  av.agl = -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0);
+  viento = entorno.vientoA(viento, av.agl);
+  av.pg = entorno.rafagaAlabeo(modelo.b_m, av.agl);
   if (av.estado !== "volando") return;
   const pAnt = av.p.slice();
   const vn = modelo.paso(av, viento, dt);
@@ -1312,7 +1397,7 @@ document.getElementById("cnAuto").addEventListener("change", e => e.target.blur(
 //  TECLADO
 // =====================================================================
 const teclas = {};
-let mostrarHud = true;
+let mostrarHud = true, sinInstrumentos = false;   // I: quita horizonte, GPS y relojes (en el campo no los hay)
 window.addEventListener("keydown", e => {
   if (pantallaActual !== null || document.getElementById("modal").classList.contains("activa")) return;
   teclas[e.code] = true;
@@ -1327,6 +1412,7 @@ window.addEventListener("keydown", e => {
   if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
   if (e.code === "KeyH") mostrarHud = !mostrarHud;
+  if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
   if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
   if (e.code === "BracketLeft") mando.trim = Math.max(-6, mando.trim - 0.25);
@@ -1601,6 +1687,7 @@ function hud() {
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
+  if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) document.getElementById(id).style.display = "none";
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
 }

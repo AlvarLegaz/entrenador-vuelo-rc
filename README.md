@@ -286,6 +286,18 @@ Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30°
 
 **Aviones nuevos:** se dejan en `simulador/aviones/` (ver `aviones/LEEME.md`). Con el servidor aparecen solos.
 
+## Física del simulador: qué tiene en cuenta
+
+Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `ModeloAvion.paso()`), revisado en `analisis/REVISION_REALISMO.md`:
+
+- **Pérdida por semiala.** Cada semiala tiene su ángulo de ataque, que cambia con el alabeo (la que baja ve más) y con una pequeña asimetría de construcción, al azar en cada vuelo (0,2–0,6°). Si una entra antes en pérdida, el avión deja caer ese ala, y la que baja sigue en pérdida: autorrotación. En pérdida se pierde buena parte del amortiguamiento de alabeo. Con diedro (E1, E2) la caída de ala es suave (12–14° en una pérdida recta, unos 19 m para recuperar); con el ala plana (E3, T1) cae con fuerza y entra en espiral.
+- **Hélice.** Par de reacción (0,16 N·m a tope con la 9×4,7: alabea a la izquierda), la estela que gira empuja la deriva (guiñada a la izquierda a mucho gas), efecto P con el ángulo de ataque, efecto giroscópico (al encabritar, guiñada a la derecha) y el chorro sobre la cola, que da mando de profundidad y timón aunque el avión vaya despacio. La tensión de la batería cae un 10 % al vaciarse.
+- **Resistencia.** Parásita × factor de calibración, de perfil creciente con el CL, inducida (menor cerca del suelo: efecto suelo) y la de la hélice parada con el motor cortado.
+- **Aire y viento.** Densidad según la temperatura. El viento configurado es el de 10 m: más abajo frena con el perfil logarítmico de un campo de cultivo (70 % a 2 m, 45 % a 0,5 m). Las rachas tienen además una componente de alabeo (la racha no es igual en las dos semialas) con la intensidad del espectro de Dryden.
+- **Mandos.** Con teclado, recorridos reducidos y exponencial del simulador. Con mando, el recorrido mecánico del avión por el dual rate elegido en la pantalla del avión y la exponencial del mando, como en la emisora.
+- **Lanzamiento.** Con "Lanzamiento real", la velocidad, el cabeceo y el alabeo de salida varían al azar como al lanzar a mano.
+- **Calibración.** En la pantalla del avión: empuje estático medido con báscula, factor de resistencia (se ajusta con planeos a mano) y temperatura.
+
 ## Mundo real del Campo de Cartagena (`simulador/mundos/cartagena.js`)
 
 Se genera con los scripts de `analisis/mundo_cartagena/`, que no están atados al simulador (sirven para cualquier otra zona cambiando el origen y la extensión):

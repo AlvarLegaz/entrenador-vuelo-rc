@@ -50,6 +50,28 @@ Revisión del modelo físico del simulador (`simulador/js/modelos.js`, `entorno.
 
 Con gas a tope y las manos quietas, el E1 y el E2 hacen rizos seguidos (empuje/peso 0,93 compensado para 9,5 m/s). Es coherente con un entrenador con motor de sobra, pero conviene saberlo: a tope hay que empujar la palanca.
 
+## Estado tras las mejoras (mismo día)
+
+Implementado todo el orden propuesto, salvo cambiar el zoom automático, que se mantiene por decisión del usuario (se puede quitar el horizonte, el GPS y los relojes con la tecla **I**). Detalle de lo que tiene en cuenta la física en el README, sección "Física del simulador".
+
+| | E1 | E2 | E3 | T1 |
+|---|---|---|---|---|
+| Planeo sin motor | 9,5 m/s, −1,10 m/s, **L/D 8,7** | 9,5 m/s, −1,07 m/s, **L/D 8,9** | 9,5 m/s, −1,07 m/s, **L/D 8,9** | 13,6 m/s, −2,48 m/s, L/D 5,5 |
+| Vuelo nivelado | 9,5 m/s al 57 % | 9,5 m/s al 58 % | 9,4 m/s al 57 % | 13,6 m/s al 73 % |
+| Lanzado a tope, sin corregir, 1 s | **29° a la izquierda** | **32° a la izquierda** | **22° a la izquierda** | **106° a la izquierda** |
+| Gas mínimo para lanzarlo (corrigiendo el alabeo) | 75 % | 55 % | 55 % | 88 % |
+| Pérdida recta: caída de ala máxima | 12° | 14° | 122° (espiral) | 114° (espiral) |
+| Pérdida en viraje de 40°: alabeo máximo | 40° | 40° | 102° | 137° |
+| Fugoide (periodo, amortiguamiento) | — | 5,4 s, 0,06 | 5,4 s, 0,05 | 7,3 s, 0,15 |
+| Balanceo holandés | 1,5 s, 0,07 | 1,7 s, 0,08 | 3,3 s, 0,17 | 2,1 s, 0,10 |
+
+- Con diedro (E1, E2), la pérdida recta deja caer el ala 12–14° y se recupera en unos 19 m soltando la profundidad. Sin diedro (E3, T1), el ala cae con fuerza y el avión entra en espiral; el E3 recupera en unos 25 m nivelando y soltando la profundidad.
+- El T1 necesita unos 6° de elevón a la derecha al lanzarlo a tope. Con teclado (2,5° de alabeo) no hay recorrido para corregirlo: hay que volarlo con mando o emisora.
+- Con viento de 4 m/s con rachas, la turbulencia de alabeo es de unos 4 °/s eficaces en el E2 y 7 °/s en el T1, que es más pequeño.
+- La fugoide del E1 ya no es inestable: con la resistencia de perfil y la de la hélice parada queda amortiguada como en los demás.
+
+Sigue pendiente lo que solo se puede saber con el avión construido: masa y CG reales, empuje medido y planeo medido. Hay que meterlos en la pantalla del avión.
+
 ## Lo que hay que hacer antes del vuelo real (calibración)
 
 Con un solo intento, el simulador solo puede ser fiel si se alimenta con medidas del avión construido:
