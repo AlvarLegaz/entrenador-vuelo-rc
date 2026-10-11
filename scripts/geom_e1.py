@@ -484,12 +484,11 @@ def fuselage_segment(k):
             pared = solid(xd - 12, xd + 12) - solid(xd - 13, xd + 13, WALL_F + DOWEL_BOSS_T)
             body = body + (boss ^ pared)
             body = body - Manifold.cylinder(2 * w + 10, DOWEL_D / 2, center=True).rotate([90, 0, 0]).translate([xd, 0, zd])
-    if k == 0:     # bancada del motor: placa vertical de 4 mm maciza con los 4 agujeros de la cruz del X2212 (16 x 19,
-        # M3) y 4 respiraderos, sin agujero central (el eje trasero y su clip caben en el de la cuna); el downthrust lo
-        # da la pieza CUNA_MOTOR (cuna_motor), que va entre la cruz y la placa
+    if k == 0:     # bancada del motor: placa vertical de 4 mm maciza con solo los 4 respiraderos de las esquinas (sin el
+        # agujero central ni los de la cruz del X2212: se taladran al montar, con la cuna CUNA_MOTOR de plantilla); el
+        # downthrust lo da la cuna, que va entre la cruz y la placa
         body = body + solid(0.0, 4.0)
-        for (yy, zz, r) in [(8, 0, 1.7), (-8, 0, 1.7), (0, 9.5, 1.7), (0, -9.5, 1.7),
-                            (21, 24, 4.0), (-21, 24, 4.0), (21, -24, 4.0), (-21, -24, 4.0)]:
+        for (yy, zz, r) in [(21, 24, 4.0), (-21, 24, 4.0), (21, -24, 4.0), (-21, -24, 4.0)]:
             body = body - along_x(Manifold.cylinder(14, r)).translate([-5, yy, zz])
         # suelo: dos carriles que encajan la bateria (canal de 37 mm; el ESC, de 24, tambien cabe) y una fila de
         # ranuras transversales para pasar una cinta de velcro de 20 mm donde haga falta (ventilan ademas el ESC)
