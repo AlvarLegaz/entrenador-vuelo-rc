@@ -233,8 +233,9 @@ class Visor {
     this.avion = null;
     this.escena.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a5a3a, 0.72));     // cielo azul, rebote de la tierra rojiza
     const sol = new THREE.DirectionalLight(0xfff1dc, 1.05); sol.position.set(-350, 520, 260); this.escena.add(sol);
-    this._cielo(sol.position);
+    this._cielo(sol.position, this.escena, 2850);
     this._campo();
+    this.escenaIsla = this.escena; this.mundoId = "isla"; this.mundo = null; this.mundos = {};
     this.sombra = new THREE.Mesh(new THREE.CircleGeometry(0.6, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
     this.sombra.rotation.x = -Math.PI / 2; this.sombra.position.y = 0.05; this.escena.add(this.sombra);
     window.addEventListener("resize", () => this.redimensionar()); this.aplicarCalidad(this.calidad);
@@ -267,10 +268,11 @@ class Visor {
     this.renderer.setSize(w, h, false); this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
   }
 
-  /** Cupula de cielo con degradado, el sol y unas nubes lejanas. */
-  _cielo(posSol) {
-    const esc = this.escena;
-    const cielo = new THREE.Mesh(new THREE.SphereGeometry(2850, 32, 16), new THREE.ShaderMaterial({
+  /** Cupula de cielo con degradado, el sol y unas nubes lejanas. radio: el de la cupula (la isla, 2850 m; un mundo
+   *  real, mucho mas, y las nubes se escalan con el). */
+  _cielo(posSol, esc, radio) {
+    const k = radio / 2850;
+    const cielo = new THREE.Mesh(new THREE.SphereGeometry(radio, 32, 16), new THREE.ShaderMaterial({
       uniforms: { cima: { value: new THREE.Color(0x3f7fd0) }, horizonte: { value: new THREE.Color(0xd3dfe9) } },   // el horizonte, del color de la calima
       vertexShader: "varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: "uniform vec3 cima; uniform vec3 horizonte; varying vec3 vP; void main() { float t = pow(clamp(normalize(vP).y, 0.0, 1.0), 0.5); gl_FragColor = vec4(mix(horizonte, cima, t), 1.0); }",
@@ -280,7 +282,7 @@ class Visor {
     g.addColorStop(0, "rgba(255,252,240,1)"); g.addColorStop(0.18, "rgba(255,246,210,0.9)"); g.addColorStop(0.5, "rgba(255,235,190,0.25)"); g.addColorStop(1, "rgba(255,230,180,0)");
     gs.fillStyle = g; gs.fillRect(0, 0, 256, 256);
     const solSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cs), fog: false, depthWrite: false }));
-    solSprite.position.copy(posSol).normalize().multiplyScalar(2600); solSprite.scale.set(520, 520, 1); esc.add(solSprite);
+    solSprite.position.copy(posSol).normalize().multiplyScalar(2600 * k); solSprite.scale.set(520 * k, 520 * k, 1); esc.add(solSprite);
     const [cn, gn] = lienzo(256, 128), r = semilla(5);
     for (let i = 0; i < 26; i++) {
       const x = 40 + r() * 176, y = 50 + r() * 40, rad = 18 + r() * 26, gg = gn.createRadialGradient(x, y, 0, x, y, rad);
@@ -289,8 +291,8 @@ class Visor {
     }
     const mn = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cn), transparent: true, depthWrite: false, opacity: 0.9 });
     for (let i = 0; i < 14; i++) {
-      const a = r() * Math.PI * 2, d = 900 + r() * 1400, s = 260 + r() * 420, nube = new THREE.Sprite(mn);
-      nube.position.set(d * Math.cos(a), 420 + r() * 380, d * Math.sin(a)); nube.scale.set(s, s * 0.42, 1); esc.add(nube); this.prescindibles.push(nube);
+      const a = r() * Math.PI * 2, d = (900 + r() * 1400) * k, s = (260 + r() * 420) * k, nube = new THREE.Sprite(mn);
+      nube.position.set(d * Math.cos(a), (420 + r() * 380) * Math.min(k, 3), d * Math.sin(a)); nube.scale.set(s, s * 0.42, 1); esc.add(nube); this.prescindibles.push(nube);
     }
   }
 
@@ -464,6 +466,147 @@ class Visor {
     T.malla.instanceMatrix.needsUpdate = true;
   }
 
+  // =================== MUNDOS REALES (terreno SRTM + OpenStreetMap, carpeta mundos/) ===================
+  /** Cambia al mundo real (datos de Mundos, ya activado en el Entorno) o vuelve a la isla (null). Cada mundo se
+   *  construye una sola vez; el avion, su sombra y la manga pasan a la escena activa. */
+  ponerMundo(mundo) {
+    const id = mundo ? mundo.id : "isla";
+    if (this.mundoId === id) return;
+    if (!this.mundos[id]) this.mundos[id] = id === "isla" ? this.escenaIsla : this._construirMundo(mundo);
+    const vieja = this.escena, nueva = this.mundos[id];
+    for (const o of [this.avion && this.avion.grupo, this.sombra, this.manga]) if (o) { vieja.remove(o); nueva.add(o); }
+    this.escena = nueva; this.mundoId = id; this.mundo = mundo;
+    this.cam.far = mundo ? 16000 : 3000; this.cam.updateProjectionMatrix();
+    this.manga.position.set(-14, mundo ? this.entorno.altura(10, -14) + 3.8 : 3.8, -10);
+  }
+
+  /** Escena de un mundo real: cielo grande con niebla (calima a 2,5-10 km: asi no hay que dibujar 80 km), malla
+   *  del terreno con color por altura y pendiente, mar, carreteras en cinta, edificios en las zonas urbanas de OSM,
+   *  arboles en el campo hasta 9 km del origen y rotulos de los pueblos. Todo instanciado por celdas. */
+  _construirMundo(m) {
+    const esc = new THREE.Scene(), alt = this.entorno.altura, ent = this.entorno, h0 = m.terreno.h0;
+    esc.background = new THREE.Color(0xcfdbe6); esc.fog = new THREE.Fog(0xcfdbe6, 2500, 10500);
+    esc.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a6a4a, 0.75));
+    const sol = new THREE.DirectionalLight(0xfff1dc, 1.0); sol.position.set(-3500, 5200, 2600); esc.add(sol);
+    this._cielo(sol.position, esc, 15000);
+    const T = m.terreno, HT = ent.terreno.H, r = semilla(11);
+    // --- terreno: una malla con color por vertice ---
+    const nN = T.nN, nE = T.nE, pos = new Float32Array(nN * nE * 3), col = new Float32Array(nN * nE * 3);
+    const C = new THREE.Color(), cMar = new THREE.Color(0x1d4f85), cBajo = new THREE.Color(0xb77f55), cCultivo = new THREE.Color(0x8e9654),
+          cMonte = new THREE.Color(0x8a7a50), cRoca = new THREE.Color(0x7d7268), cAlto = new THREE.Color(0x6e6a66);
+    for (let i = 0; i < nN; i++) for (let j = 0; j < nE; j++) {
+      const k = i * nE + j, h = HT[k], N = T.N0 + i * T.paso, E = T.E0 + j * T.paso;
+      pos[3 * k] = E; pos[3 * k + 1] = (h <= 0 ? -7 : h) - h0; pos[3 * k + 2] = -N;
+      if (h <= 0) C.copy(cMar);
+      else {
+        const hx = (HT[k + (j < nE - 1 ? 1 : 0)] - HT[k - (j > 0 ? 1 : 0)]) / (2 * T.paso), hy = (HT[k + (i < nN - 1 ? nE : 0)] - HT[k - (i > 0 ? nE : 0)]) / (2 * T.paso);
+        const pend = Math.min(1, Math.hypot(hx, hy) * 2.2), ruido = 0.85 + 0.3 * r();
+        if (h < 80) C.copy(cBajo).lerp(cCultivo, Math.min(1, r() * 1.2)); else if (h < 250) C.copy(cCultivo).lerp(cMonte, (h - 80) / 170); else C.copy(cRoca).lerp(cAlto, Math.min(1, (h - 250) / 400));
+        C.lerp(cRoca, pend * 0.6); C.multiplyScalar(ruido * (1 - pend * 0.25));
+        if (h < 3) C.lerp(new THREE.Color(0xd9c9a0), 0.6);           // playas y saladares
+      }
+      col[3 * k] = C.r; col[3 * k + 1] = C.g; col[3 * k + 2] = C.b;
+    }
+    const idx = new Uint32Array((nN - 1) * (nE - 1) * 6); let q = 0;
+    for (let i = 0; i < nN - 1; i++) for (let j = 0; j < nE - 1; j++) { const a = i * nE + j, b = a + 1, c = a + nE, d = c + 1; idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = b; idx[q++] = d; idx[q++] = c; }
+    const gt = new THREE.BufferGeometry(); gt.setAttribute("position", new THREE.BufferAttribute(pos, 3)); gt.setAttribute("color", new THREE.BufferAttribute(col, 3)); gt.setIndex(new THREE.BufferAttribute(idx, 1)); gt.computeVertexNormals();
+    esc.add(new THREE.Mesh(gt, new THREE.MeshLambertMaterial({ vertexColors: true })));
+    // --- mar: plano al nivel del mar ---
+    const mar = new THREE.Mesh(new THREE.PlaneGeometry(300000, 300000), new THREE.MeshLambertMaterial({ color: 0x2b6fb3 }));
+    mar.rotation.x = -Math.PI / 2; mar.position.y = -h0 + 0.4; esc.add(mar);
+    // --- carreteras: cintas sobre el terreno, anchas segun el tipo (1 autovia .. 4 comarcal) ---
+    this._cintas(esc, m.carreteras, alt);
+    // --- zonas urbanas: edificios instanciados (cajas) repartidos por dentro de cada poligono ---
+    const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
+    const edificios = [], dentro = (P, x, y) => { let d = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) d = !d; } return d; };
+    for (const u of m.urbano) {
+      const P = []; for (let i = 1; i < u.length; i += 2) P.push([u[i], u[i + 1]]);
+      let e0 = 1e9, e1 = -1e9, n0 = 1e9, n1 = -1e9; for (const [e, n] of P) { e0 = Math.min(e0, e); e1 = Math.max(e1, e); n0 = Math.min(n0, n); n1 = Math.max(n1, n); }
+      const paso = u[0] === 1 ? 48 : 70;
+      for (let e = e0; e < e1; e += paso) for (let n = n0; n < n1; n += paso) {
+        const ee = e + (r() - 0.5) * paso * 0.7, nn = n + (r() - 0.5) * paso * 0.7;
+        if (edificios.length < 14000 && dentro(P, ee, nn) && !ent.enMar(nn, ee)) edificios.push([ee, nn, u[0] === 1 ? 8 + r() * 8 : 12 + r() * 14, u[0], r()]);
+      }
+    }
+    const caja = new THREE.BoxGeometry(1, 1, 1); caja.translate(0, 0.5, 0);
+    this._instanciarEn(esc, caja, lam(0xffffff), edificios, (it, M, Cc) => {
+      const [e, n, s, tipo, z] = it, h = tipo === 1 ? 4 + z * 7 : 6 + z * 6;
+      M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), z * 3.14), new THREE.Vector3(s, h, s * (0.7 + z * 0.5)));
+      Cc.setHex(tipo === 1 ? [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8][Math.floor(z * 4)] : [0xd0d4d8, 0xc3c7cc, 0xb9bec4][Math.floor(z * 3)]);
+    }, 1200);
+    // --- arboles: almendros y pinos por el campo, hasta 9 km del origen (mas lejos lo tapa la calima) ---
+    const arboles = [];
+    for (let n = -9000; n <= 9000; n += 70) for (let e = -9000; e <= 9000; e += 70) {
+      const ee = e + (r() - 0.5) * 60, nn = n + (r() - 0.5) * 60, d = Math.hypot(ee, nn);
+      if (d > 9000 || arboles.length >= 32000) continue;
+      const h = ent.alturaMar(nn, ee); if (h <= 2 || h > 450) continue;
+      const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
+      if (pend > 40) continue;
+      const prob = d < 3000 ? 0.55 : d < 6000 ? 0.35 : 0.2;
+      if (r() < prob) arboles.push([ee, nn, 0.6 + r() * 0.8, h > 200 ? 1 : 0]);
+    }
+    const copa = new THREE.ConeGeometry(2.2, 4.5, 5, 1, true); copa.translate(0, 2.25, 0);   // sin base: 5 triangulos por arbol
+    this._instanciarEn(esc, copa, lam(0xffffff), arboles, (it, M, Cc) => {
+      const [e, n, s, pino] = it;
+      M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion(), new THREE.Vector3(s, s * (pino ? 1.5 : 1), s));
+      Cc.setHex(pino ? 0x3d6336 : 0x6e8a44);
+    }, 1000, 4000);
+    // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
+    for (const [nombre, rango, e, n] of m.lugares) {
+      if (rango > 3) continue;
+      const [c, g] = lienzo(512, 128); g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, 30, 512, 68);
+      g.fillStyle = "#fff"; g.fillText(nombre, 256, 78);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
+      const s = rango === 1 ? 1600 : rango === 2 ? 1000 : 600; sp.scale.set(s, s / 4, 1); sp.position.set(e, alt(n, e) + s * 0.18, -n); esc.add(sp);
+    }
+    return esc;
+  }
+
+  /** Cintas de carretera: dos vertices por punto, a 1 m sobre el terreno, subdivididas a 120 m para seguirlo. */
+  _cintas(esc, carreteras, alt) {
+    const W = { 1: 11, 2: 6.5, 3: 5, 4: 4 }, CL = { 1: new THREE.Color(0xe6dfca), 2: new THREE.Color(0xd8d0b3), 3: new THREE.Color(0xc7c2ad), 4: new THREE.Color(0xb6b2a0) };
+    const pos = [], col = [], idx = [];
+    for (const c of carreteras) {
+      const t = c[0], w = W[t], color = CL[t], pts = [];
+      for (let i = 1; i < c.length; i += 2) pts.push([c[i], c[i + 1]]);
+      const P = [];
+      for (let i = 0; i < pts.length; i++) {
+        if (i) { const [e0, n0] = pts[i - 1], [e1, n1] = pts[i], k = Math.ceil(Math.hypot(e1 - e0, n1 - n0) / 120); for (let j = 1; j < k; j++) P.push([e0 + (e1 - e0) * j / k, n0 + (n1 - n0) * j / k]); }
+        P.push(pts[i]);
+      }
+      const base = pos.length / 3;
+      for (let i = 0; i < P.length; i++) {
+        const [e, n] = P[i], [ea, na] = P[Math.max(0, i - 1)], [eb, nb] = P[Math.min(P.length - 1, i + 1)];
+        let dx = eb - ea, dz = -(nb - na); const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+        const nx = -dz, nz = dx, y = alt(n, e) + 1.0;
+        pos.push(e + nx * w, y, -n + nz * w, e - nx * w, y, -n - nz * w);
+        col.push(color.r, color.g, color.b, color.r, color.g, color.b);
+        if (i) { const b = base + 2 * i; idx.push(b - 2, b - 1, b, b - 1, b + 1, b); }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    esc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
+  }
+
+  /** Como _instanciar, pero en la escena que se diga, con celdas de `celda` m, y las celdas a mas de lejos_m del
+   *  origen van a this.lejanos (solo con calidad 2). */
+  _instanciarEn(esc, geom, mat, lista, colocar, celda, lejos_m = Infinity) {
+    const celdas = new Map();
+    for (const it of lista) { const k = Math.floor(it[0] / celda) + "," + Math.floor(it[1] / celda); if (!celdas.has(k)) celdas.set(k, []); celdas.get(k).push(it); }
+    const M = new THREE.Matrix4(), C = new THREE.Color();
+    for (const items of celdas.values()) {
+      const g = geom.clone(), m = new THREE.InstancedMesh(g, mat, items.length);
+      let cx = 0, cz = 0, cy = 0;
+      items.forEach((it, i) => { colocar(it, M, C); m.setMatrixAt(i, M); m.setColorAt(i, C); cx += it[0]; cz -= it[1]; cy += M.elements[13]; });
+      cx /= items.length; cz /= items.length; cy /= items.length;
+      let rad = 0; for (const it of items) rad = Math.max(rad, Math.hypot(it[0] - cx, -it[1] - cz));
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), rad + 120);
+      esc.add(m);
+      if (Math.hypot(cx, cz) > lejos_m) this.lejanos.push(m);
+    }
+  }
+
   /** Pone en la escena el avion de un modelo (quita el anterior). */
   ponerAvion(datos) {
     if (this.avion) this.escena.remove(this.avion.grupo);
@@ -475,7 +618,8 @@ class Visor {
   /** Coloca el avion, sus mandos, la sombra, la manga y la camara segun el estado, y dibuja. */
   dibujar(av) {
     const ahora = performance.now(), dtReal = (ahora - (this._tAnt || ahora)) / 1000, dt = Math.min(0.1, dtReal); this._tAnt = ahora;
-    this._trafico(dt); this._vigilarCalidad(dtReal);
+    if (!this.mundo) this._trafico(dt);
+    this._vigilarCalidad(dtReal);
     const a = this.avion;
     if (a) {
       const q = av.q, ex = ned2three(Cuat.rot(q, [1, 0, 0])), ey = ned2three(Cuat.rot(q, [0, 1, 0])), ez = ned2three(Cuat.rot(q, [0, 0, 1]));
@@ -485,8 +629,9 @@ class Visor {
       a.timon.rotation.z = -av.dr;         // + = borde de fuga a la derecha
       for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * (av.da || 0) + (al.prof ? av.de : 0));   // + = aleron derecho arriba
       a.helice.visible = av.gases > 0.05;
-      this.sombra.position.set(t[0], 0.06, t[2]);
-      const s = Math.max(0.2, 1 - Math.max(0, -av.p[2]) / 60);
+      const suelo = this.entorno.altura ? this.entorno.altura(av.p[0], av.p[1]) : 0;
+      this.sombra.position.set(t[0], suelo + 0.06, t[2]);
+      const s = Math.max(0.2, 1 - Math.max(0, -av.p[2] - suelo) / 60);
       this.sombra.scale.set(s, s, s); this.sombra.material.opacity = 0.35 * s;
     }
     const v = this.entorno.viento, m = this.manga;
@@ -505,7 +650,7 @@ class Visor {
       // en proporcion a la distancia (hasta 9 grados), asi el avion se ve siempre del mismo tamano y no se pierde de
       // vista. Suavizado para que no de saltos al cambiar de camara
       cam.position.set(1.5, 1.7, 2);
-      const d = Math.hypot(t[0] - 1.5, t[1] - 1.7, t[2] - 2), fovObj = Math.max(9, Math.min(50, 50 * 40 / Math.max(d, 1)));
+      const d = Math.hypot(t[0] - 1.5, t[1] - 1.7, t[2] - 2), fovObj = Math.max(this.mundo ? 3 : 9, Math.min(50, 50 * 40 / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }

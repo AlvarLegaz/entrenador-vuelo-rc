@@ -302,9 +302,10 @@
   <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
 
 <script src="three.min.js"></script>
-<script src="js/modelos.js"></script>
-<script src="js/entorno.js"></script>
-<script src="js/visor.js"></script>
+<script src="js/modelos.js?v=5"></script>
+<script src="js/entorno.js?v=5"></script>
+<script src="js/visor.js?v=5"></script>
+<script src="mundos/cartagena.js?v=5"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -801,9 +802,15 @@ const ESCENARIOS = {
                 ["base", "3. Base: viraje a rumbo oeste (270°), bajando a 10–15 m"], ["final", "4. Final: rumbo norte, alineado con la pista, con poco gas"],
                 ["enPista", "Tocar tierra en la pista"], ["alineado", "Toma alineada con la pista (±25°)"],
                 ["suave", "Toma suave (menos de 1,5 m/s de descenso)"], ["aterrizar", "Aterrizar sin daños"]] },
+  // vuelo libre en un mundo real (terreno SRTM + OpenStreetMap, carpeta mundos/): se lanza a mano desde el origen del
+  // mundo con el rumbo mas despejado; sin limite de alcance; el suelo es el terreno real
+  libre_cartagena: { nombre: "Vuelo libre · Campo de Cartagena (mapa real)", mundo: "cartagena", zona: 3,
+    desc: "Mapa real de 78 × 38 km: Cartagena, el Mar Menor, La Manga, la sierra de la Muela, Cabo de Palos, Mazarrón y el Campo de Cartagena, con el relieve de verdad, las carreteras, los pueblos y los almendros. Sales desde el corazón del mapa (al oeste de Cartagena) y no hay límite de alcance. Sin objetivos: cuenta como horas de entrenamiento.",
+    objetivos: [] },
   libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones, en el sentido que quieras: se cronometra cada vuelta. También puedes darte la vuelta y practicar en la zona 2.", objetivos: [] },
 };
 const zonaDe = id => ESCENARIOS[id].zona || 1;
+const mundoDe = id => ESCENARIOS[id].mundo ? Mundos.datos(ESCENARIOS[id].mundo) : null;
 function irEscenario() {
   const g = sesion.alumno && sesion.alumno.progreso;
   document.getElementById("escSub").textContent = `${Modelos.datos(sesion.avion).nombre} · viento ${sesion.viento.vel} m/s` +
@@ -811,7 +818,8 @@ function irEscenario() {
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
   const titulos = { primer_vuelo: "Zona 1 · Circuito de pilones, delante del piloto (cuentan para el avión real)",
                     puerta: "Zona 2 · Precisión, detrás del piloto: date la vuelta, se lanza hacia el sur; mejor con viento del sur, que es lanzar de cara al viento (práctica)",
-                    aterrizaje: "Guiado · Empieza con el avión en el aire y la pantalla te dice qué hacer (práctica)", libre: "Libre" };
+                    aterrizaje: "Guiado · Empieza con el avión en el aire y la pantalla te dice qué hacer (práctica)",
+                    libre_cartagena: "Mundo real · Terreno y carreteras de verdad, sin límite de alcance (práctica)", libre: "Libre" };
   for (const [id, E] of Object.entries(ESCENARIOS)) {
     if (titulos[id]) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = titulos[id]; el.appendChild(t); }
     const st = g && g.escenarios[id];
@@ -993,6 +1001,13 @@ function textoOrden() {
 }
 function pintarObjetivos() {
   const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
+  if (E.mundo) {
+    const h = -av.p[2], suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
+    el.innerHTML = `<h3>${esc(E.nombre)}</h3><div>Altura sobre el terreno <b>${(h - suelo).toFixed(0)} m</b> · terreno a ${(suelo + mundoDe(sesion.escenario).terreno.h0).toFixed(0)} m sobre el mar</div>` +
+      `<div>Distancia al origen <b>${Math.hypot(av.p[0], av.p[1]).toFixed(0)} m</b> · sin límite de alcance</div>` +
+      `<div style="color:#aaa;font-size:12px;margin-top:4px">${esc(mundoDe(sesion.escenario).fuente || "")}</div>`;
+    return;
+  }
   if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
   const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
   el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.zona === 2 ? textoZona2() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
@@ -1009,6 +1024,8 @@ function empezar() {
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
   construirAnemometro(velPerdida());
+  const mundo = mundoDe(sesion.escenario);
+  entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
@@ -1022,9 +1039,10 @@ function reiniciar() {
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
 function orientarLanzamiento() {
-  if (zonaDe(sesion.escenario) !== 2) return;
+  const mundo = mundoDe(sesion.escenario);
+  if (zonaDe(sesion.escenario) !== 2 && !mundo) return;
   const [roll, pitch] = Cuat.euler(av.q);
-  av.q = Cuat.desdeEuler(roll, pitch, Math.PI);
+  av.q = Cuat.desdeEuler(roll, pitch, mundo ? (mundo.rumbo_despegue || 0) * D2R : Math.PI);
 }
 function lanzar() {
   if (av.estado !== "en mano") return;
@@ -1043,8 +1061,8 @@ function paso(dt) {
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
-  const su = ev && ev.zona !== 2 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
-  if (ev) zona2(pAnt);
+  const su = ev && ev.zona === 1 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
+  if (ev && ev.zona <= 2) zona2(pAnt);
   if (su) {
     const nom = entorno.circuito.colores[su.i].nombre, sen = ESCENARIOS[sesion.escenario].sentido;
     toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? `¡Por dentro del pilón ${nom}! Vuelta anulada` :
@@ -1112,7 +1130,7 @@ async function mostrarResultado(v) {
   const fin = v.lanzamiento ? `Lanzamiento fallido${v.final.startsWith("roto") ? " (se ha roto)" : ""}: ${v.lanzamiento.texto}`
     : v.final === "aterrizado" ? "Aterrizaje correcto" : v.final.startsWith("roto") ? "Accidente: " + v.final.slice(6, -1)
     : v.final === "fuera de límites" ? `Fuera de límites: a más de ${entorno.limites.distancia_m} m el avión ya no se ve` : "Vuelo terminado sin aterrizar";
-  document.getElementById("resFinal").textContent = `${fin} · tiempo de vuelo ${(v.tVuelo / 60).toFixed(1)} min · ` + textoVueltas().replace(/<[^>]+>/g, "");
+  document.getElementById("resFinal").textContent = `${fin} · tiempo de vuelo ${(v.tVuelo / 60).toFixed(1)} min` + (E.mundo ? "" : " · " + textoVueltas().replace(/<[^>]+>/g, ""));
   document.getElementById("resObjetivos").innerHTML = objs.length
     ? objs.map(o => `<tr><td class="${o.ok ? "ob-ok" : "ob-mal"}">${o.ok ? "✔" : "✘"}</td><td>${esc(o.texto)}</td></tr>`).join("")
     : `<tr><td>Sin objetivos: el tiempo cuenta para las horas de entrenamiento.</td></tr>`;
@@ -1325,6 +1343,7 @@ function pintarGPS(rumbo) {
   if (av.estado === "volando" && av.t - GPS.tUlt >= 0.5) { GPS.estela.push([N, E, av.t]); GPS.tUlt = av.t; }
   if (av.t < GPS.tUlt) { GPS.estela = []; GPS.tUlt = -1; }                         // vuelo nuevo
   while (GPS.estela.length && av.t - GPS.estela[0][2] > 60) GPS.estela.shift();
+  if (entorno.mundo) return pintarGPSMundo(cv, rumbo, N, E);
   const g = cv.getContext("2d"), W = cv.width, cN = N / 2, cE = E / 2;              // centro del mapa: entre piloto y avion
   const semi = Math.max(150, 0.62 * Math.max(Math.abs(N), Math.abs(E)) + 40), k = W / 2 / semi;
   const X = e => W / 2 + (e - cE) * k, Y = n => W / 2 - (n - cN) * k;
@@ -1349,6 +1368,52 @@ function pintarGPS(rumbo) {
   const esc = semi >= 400 ? 200 : 100; g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
   g.font = "10px sans-serif"; g.fillText(esc + " m", 10, W - 14);
   g.fillText(`${Math.hypot(N, E).toFixed(0)} m`, W - 48, W - 14);
+}
+/** GPS en un mundo real: el mapa entero (terreno, carreteras, pueblos) se pinta una vez en un lienzo a 2 px por nodo
+ *  de la malla y cada cuadro se recorta la zona de +-3 km alrededor del avion, con el origen marcado y, si queda
+ *  fuera, una flecha hacia el. */
+function pintarGPSMundo(cv, rumbo, N, E) {
+  const M = entorno.mundo, T = M.terreno, PX = 2, g = cv.getContext("2d"), W = cv.width;
+  if (!GPS.mapa) {
+    const c = document.createElement("canvas"); c.width = T.nE * PX; c.height = T.nN * PX; const m = c.getContext("2d"), H = entorno.terreno.H;
+    const img = m.createImageData(c.width, c.height), D = img.data;
+    for (let i = 0; i < T.nN; i++) for (let j = 0; j < T.nE; j++) {
+      const h = H[i * T.nE + j]; let r, gg, b;
+      if (h <= 0) { r = 29; gg = 79; b = 133; } else if (h < 80) { r = 196; gg = 150; b = 100; } else if (h < 250) { const t = (h - 80) / 170; r = 160 - 40 * t; gg = 150 - 30 * t; b = 90 - 10 * t; } else { r = 120; gg = 112; b = 104; }
+      for (let a = 0; a < PX; a++) for (let bb = 0; bb < PX; bb++) { const p = 4 * ((T.nN - 1 - i) * PX + a) * c.width + 4 * (j * PX + bb); D[p] = r; D[p + 1] = gg; D[p + 2] = b; D[p + 3] = 255; }
+    }
+    m.putImageData(img, 0, 0);
+    const X = e => (e - T.E0) / T.paso * PX, Y = n => (T.nN - 1 - (n - T.N0) / T.paso) * PX;
+    m.fillStyle = "rgba(230,230,230,0.75)";
+    for (const u of M.urbano) { m.beginPath(); for (let i = 1; i < u.length; i += 2) i === 1 ? m.moveTo(X(u[i]), Y(u[i + 1])) : m.lineTo(X(u[i]), Y(u[i + 1])); m.closePath(); m.fill(); }
+    for (const t of [4, 3, 2, 1]) {
+      m.strokeStyle = { 1: "#ffb74d", 2: "#fff176", 3: "#f5f5f5", 4: "#cfd8dc" }[t]; m.lineWidth = { 1: 2.2, 2: 1.6, 3: 1.1, 4: 0.8 }[t]; m.beginPath();
+      for (const cc of M.carreteras) { if (cc[0] !== t) continue; for (let i = 1; i < cc.length; i += 2) i === 1 ? m.moveTo(X(cc[i]), Y(cc[i + 1])) : m.lineTo(X(cc[i]), Y(cc[i + 1])); }
+      m.stroke();
+    }
+    GPS.mapa = c; GPS.X = X; GPS.Y = Y;
+  }
+  const semi = 3000, k = W / (2 * semi), mpx = PX / T.paso;                          // m -> px del mapa
+  g.clearRect(0, 0, W, W); g.fillStyle = "#0b0f14"; g.fillRect(0, 0, W, W);
+  const sx = GPS.X(E) - semi * mpx, sy = GPS.Y(N) - semi * mpx, sw = 2 * semi * mpx;
+  g.imageSmoothingEnabled = true; g.drawImage(GPS.mapa, sx, sy, sw, sw, 0, 0, W, W);
+  const X = e => W / 2 + (e - E) * k, Y = n => W / 2 - (n - N) * k;
+  g.fillStyle = "#fff"; g.font = "bold 10px sans-serif";
+  for (const [nombre, rango, e, n] of M.lugares) if (rango <= 3 && Math.abs(e - E) < semi && Math.abs(n - N) < semi) { g.fillText(nombre, X(e) + 3, Y(n) - 3); g.fillRect(X(e) - 1.5, Y(n) - 1.5, 3, 3); }
+  if (GPS.estela.length > 1) { g.strokeStyle = "rgba(255,213,79,0.8)"; g.lineWidth = 1.5; g.beginPath(); GPS.estela.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.lineTo(W / 2, W / 2); g.stroke(); }
+  const d = Math.hypot(N, E);                                                         // origen (casa)
+  if (Math.abs(E) < semi && Math.abs(N) < semi) { g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Y(0), 3.5, 0, 2 * Math.PI); g.fill(); }
+  else { const a = Math.atan2(-E, -N); g.save(); g.translate(W / 2 + Math.sin(a) * (W / 2 - 14), W / 2 - Math.cos(a) * (W / 2 - 14)); g.rotate(a); g.fillStyle = "#fff"; g.beginPath(); g.moveTo(0, -7); g.lineTo(5, 5); g.lineTo(-5, 5); g.closePath(); g.fill(); g.restore(); }
+  g.save(); g.translate(W / 2, W / 2); g.rotate(rumbo * D2R);
+  g.fillStyle = "#ffd54f"; g.strokeStyle = "#000"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
+  const vto = entorno.viento;
+  if (vto.base > 0.3) { g.save(); g.translate(W - 18, 18); g.rotate(vto.rumbo); g.strokeStyle = "#4fc3f7"; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 8); g.lineTo(0, -8); g.lineTo(-4, -3); g.moveTo(0, -8); g.lineTo(4, -3); g.stroke(); g.restore(); }
+  g.fillStyle = "#e6edf3"; g.font = "bold 11px sans-serif"; g.fillText("N", 6, 14);
+  const suelo = entorno.altura(N, E);
+  g.font = "bold 12px sans-serif"; g.fillText(`alt ${Math.max(0, -av.p[2] - suelo).toFixed(0)} m`, 6, 30);
+  if (av.motorRoto) { g.fillStyle = "#ff5252"; g.fillText("MOTOR PARADO", 6, 46); }
+  g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + 1000 * k, W - 10); g.stroke();
+  g.font = "10px sans-serif"; g.fillText("1 km", 10, W - 14); g.fillText(`casa ${d >= 1000 ? (d / 1000).toFixed(1) + " km" : d.toFixed(0) + " m"}`, W - 62, W - 14);
 }
 function pintarHorizonte(roll, pitch, rumbo) {
   const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
@@ -1377,14 +1442,14 @@ function hud() {
     `<b>${av.estado.toUpperCase()}</b>  t ${av.t.toFixed(1)} s${vuelo && av.estado === "volando" ? ' · <span style="color:#ff5252">● grabando</span>' : ""}` +
     `${av.motorRoto ? ' · <b style="color:#ff5252">MOTOR PARADO</b>' : ""}<br>` +
     `vel. aire <b>${av.V.toFixed(1)}</b> m/s · suelo ${Math.hypot(vn[0], vn[1]).toFixed(1)} m/s · asc. ${vs >= 0 ? "+" : ""}${vs.toFixed(1)} m/s<br>` +
-    `altura <b>${h.toFixed(1)}</b> m · distancia ${dist.toFixed(0)} m<br>` +
+    `altura <b>${h.toFixed(1)}</b> m${entorno.altura ? ` (sobre el terreno ${(h - entorno.altura(av.p[0], av.p[1])).toFixed(0)} m)` : ""} · distancia ${dist.toFixed(0)} m<br>` +
     `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
     `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
     `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
     `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú` +
     (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`);
   const L = entorno.limites, lejos = document.getElementById("lejos");
-  if (av.estado === "volando" && dist > L.aviso_m) {
+  if (av.estado === "volando" && !entorno.mundo && dist > L.aviso_m) {
     const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);
     lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";

@@ -6,8 +6,13 @@
 //
 //  Coordenadas NED en metros con origen en el piloto, que mira al norte. La pista va hacia el norte.
 // =====================================================================
+// Mundos reales (carpeta mundos/): cada fichero llama a Mundos.registrar({ id, nombre, origen, terreno, carreteras, urbano, lugares })
+const Mundos = { _datos: {}, registrar(m) { Mundos._datos[m.id] = m; }, datos(id) { return Mundos._datos[id]; }, ids() { return Object.keys(Mundos._datos); } };
+
 class Entorno {
   constructor() {
+    this.mundo = null;                 // mundo real activo (null = la isla del campo de pilones)
+    this.altura = null;                // altura del suelo (m sobre el origen) en (N, E) cuando hay terreno real
     this.pista = { n0: 10, n1: 70, ancho: 10 };                       // N 10 a 70, centrada en E = 0
     // circuito: rectangulo de 120 x 180 m delante del piloto, con la pista dentro. Pilones en las esquinas
     // (N, E), ordenados por angulo alrededor del centro: los indices consecutivos son esquinas vecinas
@@ -59,8 +64,10 @@ class Entorno {
 
   /** Contacto con el suelo: null si sigue en el aire; si no, "aterrizado" o "roto (motivo)". */
   contactoSuelo(av, vn) {
-    if (av.p[2] < 0) return null;
-    av.p[2] = 0;
+    const suelo = this.altura ? this.altura(av.p[0], av.p[1]) : 0;
+    if (-av.p[2] > suelo) return null;
+    av.p[2] = -suelo;
+    if (this.enMar && this.enMar(av.p[0], av.p[1])) return "roto (ha caído al mar)";
     const [roll, pitch] = Cuat.euler(av.q), vz = -vn[2], vel = Math.hypot(vn[0], vn[1]), L = this.limites;
     if (vz < -L.descenso_ms) return "roto (demasiado descenso)";
     if (Math.abs(roll) > L.alabeo_grados * D2R) return "roto (ala en el suelo)";
@@ -73,12 +80,33 @@ class Entorno {
   /** Los dos pilones de la puerta de la zona 2, (N, E). */
   pilonesPuerta() { const P = this.zona2.puerta; return [[P.n0, P.e], [P.n1, P.e]]; }
 
-  /** Distancia horizontal al piloto (m) y si esta fuera del campo. */
+  /** Distancia horizontal al piloto (m) y si esta fuera del campo. En un mundo real no hay limite. */
   distancia(p) { return Math.hypot(p[0], p[1]); }
-  fueraDeLimites(p) { return this.distancia(p) > this.limites.distancia_m; }
+  fueraDeLimites(p) { return !this.mundo && this.distancia(p) > this.limites.distancia_m; }
+
+  /** Activa un mundo real (datos de Mundos) o vuelve a la isla (null). El terreno viene como malla de alturas
+   *  int16 (base64) sobre el nivel del mar; aqui se guarda relativo al suelo del origen (h0), que es el 0 del
+   *  simulador. En el mar el suelo es la superficie del agua. */
+  ponerMundo(mundo) {
+    this.mundo = mundo || null;
+    if (!mundo) { this.altura = null; this.enMar = null; return; }
+    const T = mundo.terreno, bin = atob(T.alturas_b64), H = new Int16Array(bin.length / 2);
+    for (let i = 0; i < H.length; i++) H[i] = (bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) << 16 >> 16;
+    this.terreno = { H, paso: T.paso, N0: T.N0, E0: T.E0, nN: T.nN, nE: T.nE, h0: T.h0 };
+    const hMar = (N, E) => {                       // altura sobre el nivel del mar, bilineal
+      let i = (N - T.N0) / T.paso, j = (E - T.E0) / T.paso;
+      i = Math.max(0, Math.min(T.nN - 1.001, i)); j = Math.max(0, Math.min(T.nE - 1.001, j));
+      const i0 = Math.floor(i), j0 = Math.floor(j), fi = i - i0, fj = j - j0, k = i0 * T.nE + j0;
+      return H[k] * (1 - fi) * (1 - fj) + H[k + T.nE] * fi * (1 - fj) + H[k + 1] * (1 - fi) * fj + H[k + T.nE + 1] * fi * fj;
+    };
+    this.alturaMar = hMar;
+    this.altura = (N, E) => Math.max(0, hMar(N, E)) - T.h0;
+    this.enMar = (N, E) => hMar(N, E) <= 0.5;
+  }
 
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */
   chocaPilon(p, semi) {
+    if (this.mundo) return false;
     const h = -p[2], P = this.pilon;
     if (h > P.alto + 0.3) return false;
     const r = P.r0 + (P.r1 - P.r0) * Math.max(0, h) / P.alto;

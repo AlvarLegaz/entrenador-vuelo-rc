@@ -249,6 +249,7 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | 6 · Pasada baja (zona 2) | Recorrer la pista 2 de punta a punta entre 2 y 8 m, sin tocar ni salirse por los lados: una pasada hacia cada lado |
 | 7 · Diana (zona 2) | Aterrizar a menos de 10 m del centro de la diana |
 | 8 · Recorrido de precisión (zona 2) | En este orden: pasada baja válida, paso por la puerta y toma a menos de 10 m de la diana |
+| Vuelo libre · Campo de Cartagena (mapa real) | Mundo real de 78 × 38 km (`simulador/mundos/cartagena.js`): relieve SRTM de 90 m remuestreado a 150 m, mar y Mar Menor, carreteras de OpenStreetMap (autovías a comarcales) en cinta sobre el terreno, edificios repartidos por las zonas urbanas de OSM, almendros y pinos hasta 9 km del origen y rótulos de los pueblos. Se sale en la mano desde el origen (37,6128 N, 1,0499 O, al oeste de Cartagena, a 82 m sobre el mar) con rumbo este, que es el más despejado; el suelo es el terreno real (caer al mar rompe el avión) y no hay límite de alcance. Calima de 2,5 a 10,5 km para que el rendimiento aguante. El GPS pasa a modo mapa (±3 km alrededor del avión, con el origen marcado). Se regenera con `analisis/mundo_cartagena/` (ver abajo) |
 | 9 · Aterrizaje guiado (práctica) | **Empieza con el avión ya en el aire**, a 35 m sobre la pista y rumbo norte; no hay que lanzar. Una banda en pantalla dice qué hacer en cada tramo del circuito de aterrizaje (viraje a la derecha a rumbo sur, tramo de viento en cola por la derecha del piloto bajando a 20 m, base a rumbo oeste bajando a 10–15 m, final rumbo norte alineado con la pista con poco gas, y corte de gas a 2 m) y debajo las correcciones en vivo (velocidad, alabeo, rumbo, posición, altura, gas), dos como mucho. APTO si cumple los cuatro tramos y toma en la pista, alineado (±25°), con menos de 1,5 m/s de descenso y sin daños. No cuenta para la autorización del avión real |
 | Vuelo libre | Sin objetivos; cuenta horas, cronometra las vueltas al circuito y cuenta puertas, pasadas bajas y la toma en la diana |
 
@@ -282,6 +283,17 @@ Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30°
 | `simulador.html` | Pantallas, escenarios, caja negra y bucle |
 
 **Aviones nuevos:** se dejan en `simulador/aviones/` (ver `aviones/LEEME.md`). Con el servidor aparecen solos.
+
+## Mundo real del Campo de Cartagena (`simulador/mundos/cartagena.js`)
+
+Se genera con los scripts de `analisis/mundo_cartagena/`, que no están atados al simulador (sirven para cualquier otra zona cambiando el origen y la extensión):
+
+1. `georef.py`: georreferencia una captura de Google Maps a partir de los nombres de pueblo que se ven (los geocodifica en Nominatim y ajusta un cambio lineal píxel → lat/lon); da el origen del mundo (el corazón de la captura, 37,6128 N, 1,0499 O).
+2. Descargar `J30.zip` de viewfinderpanoramas.org (SRTM de 3", teselas N37W002 y N37W001) y, con Overpass (`overpass-api.de`), las carreteras (`highway` de motorway a tertiary), las zonas urbanas (`landuse` residential/industrial/commercial/retail) y los lugares (`place` de city a hamlet) de la caja 37,47–37,81 N, 1,39–0,50 O; las consultas están en el historial de esta sesión y tardan unos minutos (las de carreteras pueden dar 504: repetir).
+3. `terreno.py`: remuestrea el SRTM a 150 m en el plano local NED del origen → `terreno.json` (alturas int16 en base64).
+4. `mundo_cartagena.py <salida>`: simplifica carreteras (15 m) y polígonos urbanos (25 m, más de 1,5 ha), convierte a metros locales, elige el rumbo de despegue más despejado y escribe el fichero del mundo (`Mundos.registrar({...})`).
+
+En el simulador, `Entorno.ponerMundo()` activa el terreno (altura bilineal, suelo = terreno, mar = agua, sin límite de alcance) y `Visor.ponerMundo()` construye la escena una sola vez: malla del terreno con color por altura y pendiente, mar, carreteras en cinta a 1 m del suelo, edificios instanciados dentro de los polígonos urbanos (máximo 14.000), árboles instanciados hasta 9 km (máximo 32.000, los de más de 4 km solo con calidad 2) y rótulos de los pueblos. Unos 670.000 triángulos y 440 llamadas de dibujo; la calima de 2,5 a 10,5 km hace el resto. Otro mundo es otro fichero en `simulador/mundos/` y otro escenario con `mundo: "<id>"`.
 
 ## Servidor del aula
 
