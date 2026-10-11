@@ -105,7 +105,7 @@ for Vv in Vs:
     a_e, de_e, _ = equilibrio(mod, m_kg, Vv)
     cl_del.append(reparto(mod, a_e, de_e, Vv)["ala_del"])
 v_perd = float(np.interp(-CLMAX, -np.array(cl_del), Vs))          # cl_del decrece con V
-V_TRIM = 13.0
+V_TRIM = max(13.0, float(round(1.2 * np.sqrt(2 * m_kg * 9.81 / (1.225 * S * 1.0)))))   # 1,2 veces la perdida (CLmax 1,0 del conjunto), minimo 13
 a_trim, de_trim, _ = equilibrio(mod, m_kg, V_TRIM)
 xnp = V.punto_neutro()
 

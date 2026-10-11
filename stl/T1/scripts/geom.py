@@ -17,10 +17,10 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 os.makedirs(os.path.join(OUT, "stl"), exist_ok=True)
 
 # ---------------- Parámetros ----------------
-R = 25.0          # radio exterior fuselaje (Ø50)
-WALL = 1.2        # pared del tubo: 3 líneas de 0,4 (el E1 pasó a 1,6 por ser LW-PLA y de sección rectangular;
-                  # el tubo de 50 en PLA normal es mucho más rígido: con 1,6 pesaría 70 g más). Cambiar y regenerar
-RIN = R - WALL    # 23.8
+WALL = 5.0        # pared del tubo de 5 mm (petición del usuario, 2026-10-11, como los entrenadores E2/E3; antes 1,2)
+RIN = 23.8        # radio interior: el de siempre, para que la batería 3S 1300 (72 x 35 x 24), los suelos, los servos,
+                  # el cuello, las chavetas y las bridas no cambien
+R = RIN + WALL    # radio exterior: 28,8 (Ø57,6; antes Ø50). La pared crece hacia fuera
 SH = 30.0          # morro alargado 30 mm para centrar el CG
 L = 450.0 + SH
 SEG = [(0, 70+SH), (70+SH, 220+SH), (220+SH, 325+SH), (325+SH, L)]   # tramos fuselaje
@@ -158,10 +158,10 @@ def revolve_profile(pts):
     return along_x(Manifold.revolve(cs, 96))
 
 def r_out(X):
-    if X <= 9:    # cono del morro a 45° (imprimible desde la placa motor): r16 en X=0 -> r25 en X=9
+    if X <= R - 16:   # cono del morro a 45° (imprimible desde la placa motor): r16 en X=0 -> R en X = R-16
         return 16 + X
-    if X >= L - 12:
-        return 25 - 11*(X - (L - 12))/12
+    if X >= L - 12:   # remate de la cola: baja 11 mm en los últimos 12 (la misma inclinación de siempre)
+        return R - 11*(X - (L - 12))/12
     return R
 
 def annulus(a, b, r0a, r1a, r0b=None, r1b=None):

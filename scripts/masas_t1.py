@@ -50,6 +50,8 @@ for ang in GT.STR_ANG:
     y, z = GT.polar(ang, GT.STR_RC)
     COMP.append(("Larguerillo C 2 mm %d" % ang, 4.9 * (GT.STR_X1 - GT.STR_X0) / 1000, 0.5 * (GT.STR_X0 + GT.STR_X1), y, z))
 BATERIA = ("Bateria 3S 1300 mAh", 115.0)
+X_BAT_MIN = GT.FLOORS[1][0] + 36.0           # lo mas adelante que deja el suelo de F2 (bateria de 72 mm)
+X_LASTRE, Z_LASTRE = 30.0, -15.0             # lastre (plomo pegado) sobre el suelo de F1, si la bateria no basta
 Z_BAT = GT.FLOOR_Z + 12.0                     # sobre el suelo de F2 (Z -10), 24 mm de alto
 PIEZAS_WINGLET = [("Winglet izq", -1), ("Winglet der", +1)]
 
@@ -103,9 +105,15 @@ def calcular(x_bat=None, verbose=True):
             Itot += m / 12 * np.diag([h * h, c * c + h * h, c * c])
     m0 = sum(f[1] for f in filas) + sum(p[1] for p in puntos)
     mx0 = sum(f[1] * f[2] for f in filas) + sum(p[1] * p[2] for p in puntos)
+    lastre = 0.0
     if x_bat is None:   # bateria donde haga falta para el CG objetivo
         x_bat = (P.X_CG * (m0 + BATERIA[1]) - mx0) / BATERIA[1]
+        if x_bat < X_BAT_MIN:   # tan adelante no cabe (fuselaje de pared gruesa): al principio de su suelo y lastre en F1
+            x_bat = X_BAT_MIN
+            lastre = (P.X_CG * (m0 + BATERIA[1]) - mx0 - BATERIA[1] * x_bat) / (X_LASTRE - P.X_CG)
     puntos = puntos + [(BATERIA[0], BATERIA[1], x_bat, 0.0, Z_BAT)]
+    if lastre > 0:
+        puntos = puntos + [("Lastre en el morro (suelo de F1)", lastre, X_LASTRE, 0.0, Z_LASTRE)]
     for _, m, x, y, z in puntos:
         r = np.array([x, y, z]); Itot += m * (r @ r * np.eye(3) - np.outer(r, r))
     todo = filas + puntos
@@ -117,7 +125,7 @@ def calcular(x_bat=None, verbose=True):
     S = P.B * (P.C_F + P.C_R) / 1e4
     res = dict(masa_kg=mt / 1e3, cg_mm=cg.round(1).tolist(), x_bateria_mm=round(float(x_bat), 1),
                Ixx=Ib[0, 0], Iyy=Ib[1, 1], Izz=Ib[2, 2], Ixz=-Ib[0, 2],
-               masa_sin_bateria_g=round(m0, 1), cg_sin_bateria_mm=round(mx0 / m0, 1),
+               masa_sin_bateria_g=round(m0, 1), cg_sin_bateria_mm=round(mx0 / m0, 1), lastre_g=round(lastre, 1),
                impreso_g=round(sum(f[1] for f in filas) + 2 * m_w, 1))
     if verbose:
         grupos = {}
