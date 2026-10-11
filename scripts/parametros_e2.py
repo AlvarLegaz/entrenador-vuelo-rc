@@ -50,3 +50,7 @@ BARRIDO_DIEDRO = (4, 5, 6, 7, 8, 9)
 
 # simulador: clase de fisica propia (alerones en vez de timon), en scripts/clase_e2.js
 CLASE_JS = ("ModeloE2", "clase_e2.js")
+
+# Fuselaje (F1 a F5) con pared de 5 mm (peticion del usuario, 2026-10-11, como en el E3): crece hacia dentro, la forma
+# exterior y los encajes no cambian; sin larguerillos ni cuadernas; las fundas pasan por tuneles en la pared de la cola
+PARED_FUS = 5.0

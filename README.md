@@ -71,7 +71,7 @@ Las piezas de ala son cuerpos de pared única con celosía interior. Estabilizad
 9. **Timón.** Igual, con el pasador vertical de 180 mm: pegado al timón y libre en los nudillos de la deriva.
 10. **Servos.** Van de pie en la bandeja de F2, atornillados por sus orejetas: el de la profundidad delante y el del timón detrás.
 11. **Motor.** La cruz del X2212 se atornilla a la bancada de F1 con 4 tornillos M3 × 14 y tuercas por dentro (cruz 1,5 + cuña 2-3,2 + placa 4 + tuerca 2,4 mm), con la cuña `CUNA_MOTOR` entre medias (la parte gruesa arriba: así el eje apunta 2° hacia abajo). Los agujeros de la cuña son perpendiculares a su cara inclinada. La placa de F1 lleva impresos el agujero del eje y los 4 respiraderos de las esquinas, pero **no los 4 M3**: presenta la cuña centrada sobre ella (su agujero central sobre el de la placa), marca por sus agujeros y taladra los M3 a 3,2 mm.
-12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: a unos 56 mm; E2: a unos 94 mm; E3 con el fuselaje de 5 mm: a unos 60 mm, con el ESC detrás de ella porque delante no cabe) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
+12. **Batería y ESC.** Van en el canal entre los dos carriles del suelo de F1 (37 mm de ancho, de X 8 a 160). La batería se coloca donde diga la tabla de datos de su avión (E1: a unos 56 mm; E2 y E3, con el fuselaje de 5 mm: a unos 60 mm, con el ESC detrás de ella porque delante no cabe) y se sujeta con una **cinta de velcro de 20 mm** que pasa por dos de las ranuras del suelo (hay una cada 15 mm) y la rodea; el ESC va en el mismo canal (delante de la batería en E2/E3, detrás en E1) sujeto igual o con velcro adhesivo, y las ranuras bajo él hacen de rejilla de ventilación.
 11. **Transmisiones.** Las fundas pasan por los anillos guía de F3 a F5:
     - **Profundidad:** sale por el costado izquierdo de F5, por encima del estabilizador, y va al horn de encima de la profundidad.
     - **Timón:** sale por el lomo, a la derecha de la deriva, y va al horn del timón.
@@ -103,14 +103,14 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 | Alerones | 25 % de la cuerda, de 280 a 570 mm del plano de simetría. **Bisagra de nudillos** con pasador de carbono de 2 mm, que también une los dos tramos de cada alerón. Recorrido mecánico ±15° (comprobado: a ±20° no tocan el ala); en el simulador ±5°, porque con teclado la palanca va siempre a tope |
 | Servos | 3 de 9 g: profundidad en la bandeja de F2 y uno por alerón dentro del ala (cajeado abierto por el intradós en el centro de `ALA_E1`) |
 | Deriva | Fija, 120 × 145 mm (la parte fija de F5 con el borde de fuga afinado) |
-| Masa en vuelo | 903 g; carga alar 41,8 g/dm² |
+| Masa en vuelo | 1.227 g con el fuselaje de 5 mm (903 g con el de 1,6); carga alar 56,8 g/dm² (41,8) |
 | Centro de gravedad | 244 mm desde la bancada (33 % de la cuerda). Margen estático 18 % |
-| Batería | Centrada a unos 94 mm de la bancada (los servos del ala pesan detrás del CG), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va delante de ella, en el mismo canal, sobre las ranuras que lo ventilan |
-| Calado del estabilizador | −0,9° (vuela a ≈ 9,5 m/s con la profundidad neutra) |
+| Batería | Centrada a unos 60 mm de la bancada con el fuselaje de 5 mm (94 mm con el de 1,6), entre los carriles del suelo de F1 y con cinta de velcro por las ranuras; el ESC va detrás de ella (con el fuselaje de 1,6, delante), en el mismo canal, sobre las ranuras que lo ventilan |
+| Calado del estabilizador | −0,9° (vuela a ≈ 11 m/s con la profundidad neutra; a 9,5 con el fuselaje de 1,6 mm) |
 
 **Por qué 7°.** Con poliedro a 240 mm el VLM da: con 6° la espiral se duplica en ~40 s, con 7° se corrige a la mitad en ~90 s (casi neutra, como debe ser un avión de alerones: no vuelve solo al nivel, pero tampoco se cierra en espiral) y con 8° en ~20 s. La guiñada adversa de los alerones es pequeña (Cn_δa / Cl_δa ≈ −0,03). La V de 2,5° en la raíz que tenía antes se cerraba en espiral (doblaba en ~8 s).
 
-**Banco de pruebas del simulador** (física sola, sin viento): lanzado al 75 % de gas sin tocar los mandos sube a 1,6 m/s; planea a 9,9 m/s con 1,1 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
+**Banco de pruebas del simulador** (física sola, sin viento; con el fuselaje de 1,6 mm. Con el de 5 mm hace falta un 80 % de gas o más para lanzarlo y planea compensado a unos 11 m/s): lanzado al 75 % de gas sin tocar los mandos sube a 1,6 m/s; planea a 9,9 m/s con 1,1 m/s de descenso; inclinado 30° y soltando los mandos sigue a 12° a los 25 s; un segundo de alerón lo deja a ~21° y se mantiene inclinado.
 
 **Piezas (carpeta `stl/E2/`).** `F1`, `F4`, `ESTAB_izq`/`ESTAB_der` y `PROF_izq`/`PROF_der` son idénticas a las del E1; `F2` (bandeja con un solo servo útil), `F3` y `F5` (deriva fija, solo la salida de la profundidad) cambian. No hay `TIMON`.
 
@@ -138,13 +138,15 @@ La misma célula que el E1 (fuselaje, cola horizontal, motor y batería) con **a
 3. **Alerones:** cada uno se monta con sus dos tramos sobre el pasador de 2 mm, que entra por los nudillos del ala y se pega solo al alerón.
 4. **F5:** solo se usa la salida de la profundidad.
 
+**Fuselaje con pared de 5 mm (E2 y E3).** Como en el E3 (ver su sección): `PARED_FUS = 5.0` en `parametros_e2.py`, F1–F5 y `ALA_C` cambian, sin larguerillos ni cuadernas. 1.227 g, pérdida 9,1 m/s, empuje/peso 0,68.
+
 **Regenerar el E2:** los mismos scripts, con la variable de entorno `ENTRENADOR=E2` (escriben en `scripts/out_E2/` y en `simulador/aviones/E2.js`):
 
 ```
 $env:ENTRENADOR = "E2"             # PowerShell (en cmd: set ENTRENADOR=E2)
 python scripts/geom_e1.py          # piezas (scripts/out_E2/stl) y mallas montadas
 python scripts/masas_e1.py
-python analisis/vlm_e1.py 0.903 0.0395 0.0727
+python analisis/vlm_e1.py 1.227 0.0400 0.0868       # con el fuselaje de 5 mm
 python scripts/modelo_aero_e1.py   # -> simulador/aviones/E2.js, con la clase ModeloE2 de scripts/clase_e2.js
 python scripts/vistas_e1.py        # ENTRENADOR_E2_vistas.png
 ```
