@@ -303,7 +303,28 @@ Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `Mo
 Los dos simuladores comparten los **datos**: aviones (`simulador/aviones/*.js`), mundos reales (`simulador/mundos/`), zonas de detalle (`simulador/zonas/`) y la **física** (la de la v2 es una traducción de `simulador/js/modelos.js` y `entorno.js`, comprobada contra la de la v1 con trazas de referencia). Cambia solo el motor gráfico y la interfaz. Se elige cuál usar:
 
 - **v1, navegador** (`simulador/simulador.html`): Three.js r169 empaquetado como script global (`scripts/empaquetar_three.py` → `simulador/lib/`), con iluminación física y *tone mapping* ACES, cielo con dispersión atmosférica (`Sky`), sombras del sol que siguen al avión, agua con reflejos y oleaje (`Water`, solo con mar a menos de 2 km, porque redibuja la escena) y, en los mundos reales, la ortofoto real de toda la región y las zonas de detalle (`js/visor_real.js`). Funciona con el servidor del aula o cualquier servidor HTTP; abriendo el fichero con doble clic no se cargan la ortofoto ni las zonas.
-- **v2, Godot 4** (`simulador_godot/`): ver su sección.
+- **v2, Godot 4** (`simulador_godot/`): Godot 4.7 con Vulkan; ver la sección siguiente.
+
+### v2, Godot 4 (`simulador_godot/`)
+
+Vuelo libre sobre el Campo de Cartagena con el render de Godot 4.7 (Forward+, Vulkan). No se copia ningún dato: lee los `.js` de `simulador/aviones/` y `simulador/mundos/` (el JSON de dentro de `Modelos.registrar(...)` y `Mundos.registrar(...)`), la ortofoto de la región y `simulador/zonas/`. Se lanza desde la carpeta del repositorio con:
+
+```
+herramientas/godot/Godot_v4.7.2-stable_win64.exe --path simulador_godot
+```
+
+(Godot no va al repositorio: se descarga en `herramientas/godot/` desde godotengine.org, versión 4.7.2 estándar, sin .NET.)
+
+- **Menú**: avión, CG y peso, dual rate y exponencial del mando, lanzamiento real, empuje medido, resistencia, temperatura, viento y rachas, calidad gráfica y el punto de lanzamiento con clic en el mapa de la ortofoto (rueda: zoom; botón derecho: mover). Por defecto, el centro de la primera zona de detalle, lanzando hacia el rumbo más despejado. Los ajustes se guardan en `user://ajustes.cfg` de Godot.
+- **Vuelo**: el mismo bucle que `paso()` de `simulador.html` (500 pasos por segundo, viento con rachas, perfil junto al suelo, turbulencia de alabeo, efecto suelo, contacto con el suelo y el agua), las mismas tres cámaras (piloto con zoom automático, persecución y a bordo), los mismos instrumentos (texto en la cámara 1; horizonte con brújula, anemómetro, variómetro y GPS en las 2 y 3) y los mismos mandos de teclado y mando de consola. No tiene misiones ni aula: para eso está la v1.
+- **Imagen**: cielo y calima con perspectiva aérea, sombras en cascada, oclusión ambiental, mar con oleaje, la zona de detalle con la ortofoto ampliada y grano cercano, los edificios del Catastro, los árboles de la zona con copas irregulares (shader) y, fuera de la zona, árboles donde la ortofoto de la región es vegetación. La calidad *baja* y *media* recortan sombras y árboles lejanos.
+- **Física común comprobada**: `pruebas/referencia_js.json` son trazas de la v1 (los cuatro aviones, con datos de diseño y con otra masa, CG, temperatura, empuje y resistencia, 16 s de vuelo con mandos, gases y viento variables) y alturas del terreno con y sin zona. `pruebas/prueba_fisica.gd` repite todo en Godot; las diferencias son de 1e-10 m (redondeo). Si se cambia la física en un lado, hay que cambiarla igual en el otro y regenerar las trazas.
+
+```
+herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path simulador_godot --script res://pruebas/prueba_fisica.gd
+```
+
+Para pruebas sin menú: `-- --auto --avion=E3 --camara=2 --esperar=10 --captura=foto.png` (despega con un piloto automático que nivela las alas, mide el tiempo por cuadro y guarda la pantalla).
 
 ### Zonas de detalle (`simulador/zonas/<id>/`, no van al repositorio)
 
