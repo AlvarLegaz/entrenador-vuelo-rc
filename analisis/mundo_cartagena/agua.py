@@ -32,13 +32,38 @@ dist, idx = arbol.query(q)
 v = q - P[idx]; cruz = D[idx, 0] * v[:, 1] - D[idx, 1] * v[:, 0]      # > 0: a la izquierda del sentido = tierra
 # lejos de la costa (> 3 km) la linea cortada por la caja engana (quedan cunas de 'tierra' en alta mar): ahi vale h <= 0
 agua = np.zeros(H.shape, bool); agua[cand] = np.where(dist < 3000, cruz < 0, H[cand] <= 0)
-# una celda de agua rodeada de tierra (o al reves) en la orilla es ruido: mayoria de 3x3
-from scipy.ndimage import uniform_filter
-agua = uniform_filter(agua.astype(float), 3) > 0.5
+# (sin filtro de mayoria: se comia las franjas estrechas como La Manga, de 100-800 m, y su carretera quedaba en el agua)
+# donde pasa una carretera (que no sea puente) hay tierra: se fuerza la celda (y su altura a 3 m como minimo)
+carr = json.load(open("osm_carreteras.json", encoding="utf-8"))["elements"]
+forzadas = 0
+for w in carr:
+    if "geometry" not in w or w.get("tags", {}).get("bridge") in ("yes", "viaduct"): continue
+    pts = [NE(g["lat"], g["lon"]) for g in w["geometry"]]
+    for (n0, e0), (n1, e1) in zip(pts[:-1], pts[1:]):
+        k = max(1, int(np.hypot(n1 - n0, e1 - e0) // 30))
+        for t in np.linspace(0, 1, k + 1):
+            i = int(round((n0 + (n1 - n0) * t - T["N0"]) / T["paso"])); j = int(round((e0 + (e1 - e0) * t - T["E0"]) / T["paso"]))
+            if 0 <= i < T["nN"] and 0 <= j < T["nE"]:
+                if agua[i, j]: forzadas += 1
+                agua[i, j] = False; H[i, j] = max(H[i, j], 3)
+print("celdas de agua pasadas a tierra por una carretera:", forzadas)
 print("agua: %.1f %% de las celdas (antes, h<=0: %.1f %%)" % (100 * agua.mean(), 100 * (H <= 0).mean()))
 H[agua] = 0; H[~agua] = np.maximum(H[~agua], 1)
 T["alturas_b64"] = base64.b64encode(H.astype("<i2").tobytes()).decode("ascii")
 bits = np.packbits(agua.ravel()); T["agua_b64"] = base64.b64encode(bits.tobytes()).decode("ascii")
+# laguna (Mar Menor): el agua que queda separada del Mediterraneo al cerrar las golas (erosion de 2 celdas), y luego
+# devuelta a su tamano dentro del agua. Sirve para pintarla con su color, mas claro y verdoso
+from scipy.ndimage import binary_erosion, binary_dilation, label
+lab, n = label(binary_erosion(agua, iterations=2))
+def celda_ll(lat, lon):
+    n_, e_ = NE(lat, lon); return int(round((n_ - T["N0"]) / T["paso"])), int(round((e_ - T["E0"]) / T["paso"]))
+il, jl = celda_ll(37.70, -0.78)
+laguna = np.zeros_like(agua)
+if lab[il, jl]:
+    laguna = lab == lab[il, jl]
+    laguna = binary_dilation(laguna, iterations=3) & agua
+print("laguna: %.1f km2" % (laguna.sum() * T["paso"] ** 2 / 1e6))
+T["laguna_b64"] = base64.b64encode(np.packbits(laguna.ravel()).tobytes()).decode("ascii")
 T["nota_agua"] = "agua_b64: 1 bit por celda (packbits, orden de filas), agua segun la linea de costa de OSM; en esas celdas la altura es 0"
 json.dump(T, open("terreno.json", "w"))
 

@@ -106,6 +106,9 @@ class Entorno {
       for (let i = 0; i < A.length; i++) A[i] = (ab.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
     }
     this.agua = A;
+    let Lg = null;                                 // laguna (Mar Menor): solo para el color del agua
+    if (T.laguna_b64) { const lb = atob(T.laguna_b64); Lg = new Uint8Array(T.nN * T.nE); for (let i = 0; i < Lg.length; i++) Lg[i] = (lb.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1; }
+    this.laguna = Lg;
     const fAgua = (N, E) => {                      // fraccion de agua, bilineal, para una costa suave
       if (!A) return hMar(N, E) <= 0.5 ? 1 : 0;
       let i = (N - T.N0) / T.paso, j = (E - T.E0) / T.paso;
@@ -114,8 +117,10 @@ class Entorno {
       return A[k] * (1 - fi) * (1 - fj) + A[k + T.nE] * fi * (1 - fj) + A[k + 1] * (1 - fi) * fj + A[k + T.nE + 1] * fi * fj;
     };
     this.alturaMar = hMar; this.fraccionAgua = fAgua;
-    this.altura = (N, E) => (fAgua(N, E) > 0.5 ? 0 : Math.max(0, hMar(N, E))) - T.h0;
-    this.enMar = (N, E) => fAgua(N, E) > 0.5;
+    // umbral 0,7: el mismo que usa la textura; con la orilla de la malla (tierra >= 1 m, agua a -1,5 m junto a la
+    // costa) la superficie cruza el nivel del mar mas o menos ahi, asi el suelo fisico coincide con lo que se ve
+    this.altura = (N, E) => (fAgua(N, E) > 0.7 ? 0 : Math.max(0, hMar(N, E))) - T.h0;
+    this.enMar = (N, E) => fAgua(N, E) > 0.7;
   }
 
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */

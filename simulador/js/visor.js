@@ -518,10 +518,11 @@ class Visor {
         const pend = Math.min(1, (Math.abs(H[k + 1] - H[k]) + Math.abs(H[k + T.nE] - H[k])) / T.paso * 2.5);
         let r, gg, b;
         const fAgua = this.entorno.agua ? (this.entorno.agua[k] * (1 - fi) * (1 - fj) + this.entorno.agua[k + T.nE] * fi * (1 - fj) + this.entorno.agua[k + 1] * (1 - fi) * fj + this.entorno.agua[k + T.nE + 1] * fi * fj) : (h <= 0.2 ? 1 : 0);
-        const agua = fAgua > 0.5;
+        const agua = fAgua > 0.7;                                          // mismo umbral que Entorno.enMar
         if (agua) {                                                          // mar (segun la costa de OSM); el Mar Menor (laguna), mas claro y verdoso
-          const laguna = E > 15000 && E < 26200 && N > 1000 && N < 22000, n = ruido(E, N, 900) * 0.12;
-          if (laguna) { r = 60 + n * 80; gg = 150 + n * 60; b = 170; } else { r = 24 + n * 40; gg = 70 + n * 50; b = 125 + n * 30; }
+          const Lg = this.entorno.laguna, n = ruido(E, N, 900) * 0.12;
+          const fl = Lg ? Lg[k] * (1 - fi) * (1 - fj) + Lg[k + T.nE] * fi * (1 - fj) + Lg[k + 1] * (1 - fi) * fj + Lg[k + T.nE + 1] * fi * fj : 0;   // mezcla suave en las golas
+          r = (24 + n * 40) * (1 - fl) + (60 + n * 80) * fl; gg = (70 + n * 50) * (1 - fl) + (150 + n * 60) * fl; b = (125 + n * 30) * (1 - fl) + 170 * fl;
         } else if (h < 4 && fAgua > 0.04) { r = 215; gg = 200; b = 160; }   // playas y saladares: solo junto al agua
         else {
           const n1 = ruido(E, N, 140), n2 = ruido(E, N, 35), llano = h < 110 && pend < 0.35;
@@ -572,8 +573,16 @@ class Visor {
     const nN = T.nN, nE = T.nE, pos = new Float32Array(nN * nE * 3), col = new Float32Array(nN * nE * 3), uv = new Float32Array(nN * nE * 2);
     for (let i = 0; i < nN; i++) for (let j = 0; j < nE; j++) {
       const k = i * nE + j, h = HT[k], N = T.N0 + i * T.paso, E = T.E0 + j * T.paso;
+      // agua: junto a la costa a -1,5 m (la superficie cruza el nivel del mar dentro de la celda y una franja de tierra
+      // de una sola celda, como La Manga, sigue viendose); mar adentro, -7 m
       const agua = ent.agua ? ent.agua[k] : h <= 0;
-      pos[3 * k] = E; pos[3 * k + 1] = (agua ? -7 : Math.max(h, 1)) - h0; pos[3 * k + 2] = -N;
+      let y = Math.max(h, 1);
+      if (agua) {
+        let orilla = false;
+        for (let di = -1; di <= 1 && !orilla; di++) for (let dj = -1; dj <= 1; dj++) { const ii = i + di, jj = j + dj; if (ii >= 0 && ii < nN && jj >= 0 && jj < nE && !(ent.agua ? ent.agua[ii * nE + jj] : HT[ii * nE + jj] <= 0)) { orilla = true; break; } }
+        y = orilla ? -1.5 : -7;
+      }
+      pos[3 * k] = E; pos[3 * k + 1] = y - h0; pos[3 * k + 2] = -N;
       uv[2 * k] = j / (nE - 1); uv[2 * k + 1] = i / (nN - 1);
       const hx = (HT[k + (j < nE - 1 ? 1 : 0)] - HT[k - (j > 0 ? 1 : 0)]) / (2 * T.paso), hy = (HT[k + (i < nN - 1 ? nE : 0)] - HT[k - (i > 0 ? nE : 0)]) / (2 * T.paso);
       const pend = Math.min(1, Math.hypot(hx, hy) * 2.2), s = (1 - pend * 0.3) * (0.96 + 0.08 * r());

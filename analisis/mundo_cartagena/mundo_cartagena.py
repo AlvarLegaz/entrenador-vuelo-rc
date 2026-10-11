@@ -9,10 +9,12 @@ T = json.load(open("terreno.json"))
 LAT0, LON0 = T["origen"]["lat"], T["origen"]["lon"]
 M_LAT = 110574.0; M_LON = 111320.0 * np.cos(np.radians(LAT0))
 NE = lambda lat, lon: ((lat - LAT0) * M_LAT, (lon - LON0) * M_LON)
+# el simulador lee los puntos como (E, N): EN() es la que se usa para todo lo que se exporta
+EN = lambda lat, lon: ((lon - LON0) * M_LON, (lat - LAT0) * M_LAT)
 
 
 def rdp(p, tol):
-    """Simplificacion de Douglas-Peucker (p: lista de (E, N))."""
+    """Simplificacion de Douglas-Peucker (p: lista de puntos 2D)."""
     if len(p) < 3: return p
     a, b = np.array(p[0]), np.array(p[-1]); d = b - a; L = np.hypot(*d)
     if L < 1e-6: dist = [np.hypot(*(np.array(q) - a)) for q in p]
@@ -34,7 +36,7 @@ for w in leer("osm_carreteras.json"):
     if w.get("type") != "way" or "geometry" not in w: continue
     t = TIPOS.get(w["tags"].get("highway"), 0)
     if not t: continue
-    pts = rdp([NE(g["lat"], g["lon"]) for g in w["geometry"]], 15.0)
+    pts = rdp([EN(g["lat"], g["lon"]) for g in w["geometry"]], 15.0)
     if len(pts) < 2: continue
     carreteras.append([t] + [round(v) for q in pts for v in q]); npts += len(pts)
 print("carreteras:", len(carreteras), "tramos,", npts, "puntos")
@@ -45,7 +47,7 @@ for w in leer("osm_urbano.json"):
     if w.get("type") != "way" or "geometry" not in w: continue
     g = w["geometry"]
     if len(g) < 4 or (g[0]["lat"], g[0]["lon"]) != (g[-1]["lat"], g[-1]["lon"]): continue
-    pts = rdp([NE(p["lat"], p["lon"]) for p in g], 25.0)
+    pts = rdp([EN(p["lat"], p["lon"]) for p in g], 25.0)
     if len(pts) < 4: continue
     x = np.array([p[0] for p in pts]); y = np.array([p[1] for p in pts])
     area = 0.5 * abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
@@ -59,7 +61,7 @@ RANGO = {"city": 1, "town": 2, "village": 3, "suburb": 4, "hamlet": 5}   # en 3D
 lugares = []
 for n in leer("osm_lugares.json"):
     if n.get("type") != "node" or "name" not in n.get("tags", {}): continue
-    e, nn = NE(n["lat"], n["lon"]); lugares.append([n["tags"]["name"], RANGO.get(n["tags"].get("place"), 5), round(e), round(nn)])
+    e, nn = EN(n["lat"], n["lon"]); lugares.append([n["tags"]["name"], RANGO.get(n["tags"].get("place"), 5), round(e), round(nn)])
 print("lugares:", len(lugares))
 
 # ---- rumbo de despegue: el de los 8 con menos terreno por delante en 1,5 km ----
