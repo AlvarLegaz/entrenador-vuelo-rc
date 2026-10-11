@@ -477,7 +477,18 @@ class Visor {
     for (const o of [this.avion && this.avion.grupo, this.sombra, this.manga]) if (o) { vieja.remove(o); nueva.add(o); }
     this.escena = nueva; this.mundoId = id; this.mundo = mundo;
     this.cam.far = mundo ? 16000 : 3000; this.cam.updateProjectionMatrix();
-    this.manga.position.set(-14, mundo ? this.entorno.altura(10, -14) + 3.8 : 3.8, -10);
+    this.ponerBase(mundo ? (this.baseNE || [0, 0]) : [0, 0], true);
+  }
+
+  /** Punto de lanzamiento (N, E) en un mundo real: ahi van el piloto (camara 1), la manga y los arboles cercanos.
+   *  En la isla siempre es el origen. */
+  ponerBase(NE, forzar) {
+    const [N, E] = NE, mundo = this.mundo;
+    this.baseNE = NE;
+    const h = mundo ? this.entorno.altura(N, E) : 0;
+    this.base = [E, h, -N];
+    this.manga.position.set(E - 14, h + 3.8, -N - 10);
+    if (mundo && (forzar || !this.arbolesNE || Math.hypot(this.arbolesNE[0] - N, this.arbolesNE[1] - E) > 1500)) this._arbolesMundo(this.escena, mundo, N, E);
   }
 
   /** Parcela agricola en (E, N): el campo es un mosaico de parcelas rectangulares giradas 12 grados, de 220 m, cada
@@ -506,10 +517,12 @@ class Visor {
         const h = H[k] * (1 - fi) * (1 - fj) + H[k + T.nE] * fi * (1 - fj) + H[k + 1] * (1 - fi) * fj + H[k + T.nE + 1] * fi * fj;
         const pend = Math.min(1, (Math.abs(H[k + 1] - H[k]) + Math.abs(H[k + T.nE] - H[k])) / T.paso * 2.5);
         let r, gg, b;
-        if (h <= 0.2) {                                                      // mar; el Mar Menor (laguna), mas claro y verdoso
+        const fAgua = this.entorno.agua ? (this.entorno.agua[k] * (1 - fi) * (1 - fj) + this.entorno.agua[k + T.nE] * fi * (1 - fj) + this.entorno.agua[k + 1] * (1 - fi) * fj + this.entorno.agua[k + T.nE + 1] * fi * fj) : (h <= 0.2 ? 1 : 0);
+        const agua = fAgua > 0.5;
+        if (agua) {                                                          // mar (segun la costa de OSM); el Mar Menor (laguna), mas claro y verdoso
           const laguna = E > 15000 && E < 26200 && N > 1000 && N < 22000, n = ruido(E, N, 900) * 0.12;
           if (laguna) { r = 60 + n * 80; gg = 150 + n * 60; b = 170; } else { r = 24 + n * 40; gg = 70 + n * 50; b = 125 + n * 30; }
-        } else if (h < 2.5) { r = 215; gg = 200; b = 160; }                 // playas y saladares
+        } else if (h < 4 && fAgua > 0.04) { r = 215; gg = 200; b = 160; }   // playas y saladares: solo junto al agua
         else {
           const n1 = ruido(E, N, 140), n2 = ruido(E, N, 35), llano = h < 110 && pend < 0.35;
           if (llano) {
@@ -531,8 +544,10 @@ class Visor {
       }
     }
     g.putImageData(img, 0, 0);
-    const X = e => (e - T.E0) / mpx, Y = n => Hh - 1 - (n - T.N0) / mpx;                            // zonas urbanas
-    for (const u of m.urbano) {
+    const X = e => (e - T.E0) / mpx, Y = n => Hh - 1 - (n - T.N0) / mpx;
+    g.fillStyle = "rgb(58,110,150)";                                                                  // balsas de riego, lagunas, embalses (OSM)
+    for (const a of m.agua || []) { g.beginPath(); for (let i = 0; i < a.length; i += 2) i === 0 ? g.moveTo(X(a[i]), Y(a[i + 1])) : g.lineTo(X(a[i]), Y(a[i + 1])); g.closePath(); g.fill(); }
+    for (const u of m.urbano) {                                                                       // zonas urbanas
       g.fillStyle = u[0] === 1 ? "rgba(206,198,186,0.92)" : "rgba(190,190,188,0.92)"; g.beginPath();
       for (let i = 1; i < u.length; i += 2) i === 1 ? g.moveTo(X(u[i]), Y(u[i + 1])) : g.lineTo(X(u[i]), Y(u[i + 1]));
       g.closePath(); g.fill();
@@ -557,7 +572,8 @@ class Visor {
     const nN = T.nN, nE = T.nE, pos = new Float32Array(nN * nE * 3), col = new Float32Array(nN * nE * 3), uv = new Float32Array(nN * nE * 2);
     for (let i = 0; i < nN; i++) for (let j = 0; j < nE; j++) {
       const k = i * nE + j, h = HT[k], N = T.N0 + i * T.paso, E = T.E0 + j * T.paso;
-      pos[3 * k] = E; pos[3 * k + 1] = (h <= 0 ? -7 : h) - h0; pos[3 * k + 2] = -N;
+      const agua = ent.agua ? ent.agua[k] : h <= 0;
+      pos[3 * k] = E; pos[3 * k + 1] = (agua ? -7 : Math.max(h, 1)) - h0; pos[3 * k + 2] = -N;
       uv[2 * k] = j / (nE - 1); uv[2 * k + 1] = i / (nN - 1);
       const hx = (HT[k + (j < nE - 1 ? 1 : 0)] - HT[k - (j > 0 ? 1 : 0)]) / (2 * T.paso), hy = (HT[k + (i < nN - 1 ? nE : 0)] - HT[k - (i > 0 ? nE : 0)]) / (2 * T.paso);
       const pend = Math.min(1, Math.hypot(hx, hy) * 2.2), s = (1 - pend * 0.3) * (0.96 + 0.08 * r());
@@ -582,7 +598,7 @@ class Visor {
       const paso = u[0] === 1 ? 48 : 70;
       for (let e = e0; e < e1; e += paso) for (let n = n0; n < n1; n += paso) {
         const ee = e + (r() - 0.5) * paso * 0.7, nn = n + (r() - 0.5) * paso * 0.7;
-        if (edificios.length < 14000 && dentro(P, ee, nn) && !ent.enMar(nn, ee)) edificios.push([ee, nn, u[0] === 1 ? 8 + r() * 8 : 12 + r() * 14, u[0], r()]);
+        if (edificios.length < 14000 && dentro(P, ee, nn) && !ent.enMar(nn, ee) && ent.alturaMar(nn, ee) > 0) edificios.push([ee, nn, u[0] === 1 ? 8 + r() * 8 : 12 + r() * 14, u[0], r()]);
       }
     }
     const caja = new THREE.BoxGeometry(1, 1, 1); caja.translate(0, 0.5, 0);
@@ -591,24 +607,42 @@ class Visor {
       M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), z * 3.14), new THREE.Vector3(s, h, s * (0.7 + z * 0.5)));
       Cc.setHex(tipo === 1 ? [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8][Math.floor(z * 4)] : [0xd0d4d8, 0xc3c7cc, 0xb9bec4][Math.floor(z * 3)]);
     }, 1200);
-    // --- arboles: almendros y pinos por el campo, hasta 9 km del origen (mas lejos lo tapa la calima) ---
+    this._arbolesMundo(esc, m, 0, 0);
+    // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
+    for (const [nombre, rango, e, n] of m.lugares) {
+      if (rango > 3) continue;
+      const [c, g] = lienzo(512, 128); g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, 30, 512, 68);
+      g.fillStyle = "#fff"; g.fillText(nombre, 256, 78);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
+      const s = rango === 1 ? 1600 : rango === 2 ? 1000 : 600; sp.scale.set(s, s / 4, 1); sp.position.set(e, alt(n, e) + s * 0.18, -n); esc.add(sp);
+    }
+    return esc;
+  }
+
+  /** Arboles de un mundo real alrededor de (cN, cE): almendros en hileras en las parcelas de almendros hasta 2,2 km y
+   *  sueltos (pinos en el monte) hasta 9 km (mas lejos lo tapa la calima). Se rehacen al cambiar el punto de lanzamiento. */
+  _arbolesMundo(esc, m, cN, cE) {
+    for (const o of esc.userData.arboles || []) { esc.remove(o); o.geometry.dispose(); const i = this.lejanos.indexOf(o); if (i >= 0) this.lejanos.splice(i, 1); }
+    esc.userData.arboles = []; this.arbolesNE = [cN, cE];
+    const ent = this.entorno, alt = ent.altura, r = semilla(11 + Math.round(cN / 97) + Math.round(cE / 89)), antes = new Set(esc.children);
+    const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
     const arboles = [], apto = (nn, ee) => {
-      const h = ent.alturaMar(nn, ee); if (h <= 2 || h > 450) return 0;
+      const h = ent.alturaMar(nn, ee); if (h <= 1 || h > 450 || ent.enMar(nn, ee)) return 0;
       const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
       return pend > 40 ? 0 : h;
     };
     // hasta 2,2 km: almendros en hileras (14 m) dentro de las parcelas de almendros de la textura
     const c12 = 0.978, s12 = 0.208;
     for (let n = -2200; n <= 2200; n += 14) for (let e = -2200; e <= 2200; e += 14) {
-      const ee = e * c12 - n * s12, nn = e * s12 + n * c12;                 // la malla de plantacion va girada como las parcelas
-      if (Math.hypot(ee, nn) > 2200) continue;
+      const ee = cE + e * c12 - n * s12, nn = cN + e * s12 + n * c12;       // la malla de plantacion va girada como las parcelas
+      if (Math.hypot(ee - cE, nn - cN) > 2200) continue;
       const P = Visor.parcela(ee, nn); if (P.tipo !== 0 || P.u < 12 || P.v < 12) continue;
       const h = apto(nn, ee); if (!h || h > 110) continue;
       arboles.push([ee + (r() - 0.5) * 2, nn + (r() - 0.5) * 2, 0.75 + r() * 0.35, 0]);
     }
     // mas lejos: sueltos (almendros en la llanura, pinos en el monte), hasta 9 km (mas alla lo tapa la calima)
     for (let n = -9000; n <= 9000; n += 70) for (let e = -9000; e <= 9000; e += 70) {
-      const ee = e + (r() - 0.5) * 60, nn = n + (r() - 0.5) * 60, d = Math.hypot(ee, nn);
+      const ee = cE + e + (r() - 0.5) * 60, nn = cN + n + (r() - 0.5) * 60, d = Math.hypot(e, n);
       if (d > 9000 || d < 2200 || arboles.length >= 34000) continue;
       const h = apto(nn, ee); if (!h) continue;
       const P = Visor.parcela(ee, nn), monte = h > 110, prob = monte ? 0.3 : P.tipo === 0 ? 0.6 : 0.08;
@@ -619,16 +653,8 @@ class Visor {
       const [e, n, s, pino] = it;
       M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion(), new THREE.Vector3(s * (pino ? 0.8 : 1), s * (pino ? 2.2 : 1), s * (pino ? 0.8 : 1)));
       Cc.setHex(pino ? 0x3b5f34 : [0x6e8a44, 0x76924a, 0x66823e][Math.floor(s * 7) % 3]);
-    }, 1000, 4000);
-    // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
-    for (const [nombre, rango, e, n] of m.lugares) {
-      if (rango > 3) continue;
-      const [c, g] = lienzo(512, 128); g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, 30, 512, 68);
-      g.fillStyle = "#fff"; g.fillText(nombre, 256, 78);
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
-      const s = rango === 1 ? 1600 : rango === 2 ? 1000 : 600; sp.scale.set(s, s / 4, 1); sp.position.set(e, alt(n, e) + s * 0.18, -n); esc.add(sp);
-    }
-    return esc;
+    }, 1000, 4000, [cE, -cN]);
+    for (const o of esc.children) if (!antes.has(o)) esc.userData.arboles.push(o);
   }
 
   /** Cintas de carretera: dos vertices por punto, a 1 m sobre el terreno, subdivididas a 120 m para seguirlo. */
@@ -660,7 +686,7 @@ class Visor {
 
   /** Como _instanciar, pero en la escena que se diga, con celdas de `celda` m, y las celdas a mas de lejos_m del
    *  origen van a this.lejanos (solo con calidad 2). */
-  _instanciarEn(esc, geom, mat, lista, colocar, celda, lejos_m = Infinity) {
+  _instanciarEn(esc, geom, mat, lista, colocar, celda, lejos_m = Infinity, centro = [0, 0]) {
     const celdas = new Map();
     for (const it of lista) { const k = Math.floor(it[0] / celda) + "," + Math.floor(it[1] / celda); if (!celdas.has(k)) celdas.set(k, []); celdas.get(k).push(it); }
     const M = new THREE.Matrix4(), C = new THREE.Color();
@@ -672,7 +698,7 @@ class Visor {
       let rad = 0; for (const it of items) rad = Math.max(rad, Math.hypot(it[0] - cx, -it[1] - cz));
       g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), rad + 120);
       esc.add(m);
-      if (Math.hypot(cx, cz) > lejos_m) this.lejanos.push(m);
+      if (Math.hypot(cx - centro[0], cz - centro[1]) > lejos_m) this.lejanos.push(m);
     }
   }
 
@@ -718,8 +744,9 @@ class Visor {
       // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: a partir de 40 m el campo de vision se cierra
       // en proporcion a la distancia (hasta 9 grados), asi el avion se ve siempre del mismo tamano y no se pierde de
       // vista. Suavizado para que no de saltos al cambiar de camara
-      cam.position.set(1.5, 1.7, 2);
-      const d = Math.hypot(t[0] - 1.5, t[1] - 1.7, t[2] - 2), fovObj = Math.max(this.mundo ? 3 : 9, Math.min(50, 50 * 40 / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
+      const b = this.base || [0, 0, 0];
+      cam.position.set(b[0] + 1.5, b[1] + 1.7, b[2] + 2);
+      const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2), fovObj = Math.max(this.mundo ? 3 : 9, Math.min(50, 50 * 40 / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }

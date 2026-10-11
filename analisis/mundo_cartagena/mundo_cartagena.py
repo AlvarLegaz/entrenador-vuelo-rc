@@ -78,7 +78,10 @@ for r in range(0, 360, 45):
     if mejor is None or sube < mejor[1]: mejor = (r, sube)
 print("rumbo de despegue:", mejor[0])
 
-mundo = dict(id="cartagena", nombre="Campo de Cartagena (mapa real)", origen=T["origen"], terreno=T, carreteras=carreteras, urbano=urbano,
+try: agua = json.load(open("agua.json"))          # masas de agua interiores (agua.py): balsas de riego, lagunas
+except Exception: agua = []
+print("masas de agua:", len(agua))
+mundo = dict(id="cartagena", nombre="Campo de Cartagena (mapa real)", origen=T["origen"], terreno=T, carreteras=carreteras, urbano=urbano, agua=agua,
              lugares=lugares, rumbo_despegue=mejor[0], fuente="Terreno: SRTM 3\" (viewfinderpanoramas.org). Carreteras, zonas urbanas y lugares: OpenStreetMap (ODbL).")
 with open(SALIDA, "w", encoding="utf-8") as f:
     f.write("// Mundo real del Campo de Cartagena para el vuelo libre. Generado por mundo_cartagena.py: no editar a mano.\n")

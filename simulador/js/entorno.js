@@ -99,9 +99,23 @@ class Entorno {
       const i0 = Math.floor(i), j0 = Math.floor(j), fi = i - i0, fj = j - j0, k = i0 * T.nE + j0;
       return H[k] * (1 - fi) * (1 - fj) + H[k + T.nE] * fi * (1 - fj) + H[k + 1] * (1 - fi) * fj + H[k + T.nE + 1] * fi * fj;
     };
-    this.alturaMar = hMar;
-    this.altura = (N, E) => Math.max(0, hMar(N, E)) - T.h0;
-    this.enMar = (N, E) => hMar(N, E) <= 0.5;
+    // agua: mascara de 1 bit por celda segun la linea de costa de OSM (agua_b64); si el mundo no la trae, h <= 0,5
+    let A = null;
+    if (T.agua_b64) {
+      const ab = atob(T.agua_b64); A = new Uint8Array(T.nN * T.nE);
+      for (let i = 0; i < A.length; i++) A[i] = (ab.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
+    }
+    this.agua = A;
+    const fAgua = (N, E) => {                      // fraccion de agua, bilineal, para una costa suave
+      if (!A) return hMar(N, E) <= 0.5 ? 1 : 0;
+      let i = (N - T.N0) / T.paso, j = (E - T.E0) / T.paso;
+      i = Math.max(0, Math.min(T.nN - 1.001, i)); j = Math.max(0, Math.min(T.nE - 1.001, j));
+      const i0 = Math.floor(i), j0 = Math.floor(j), fi = i - i0, fj = j - j0, k = i0 * T.nE + j0;
+      return A[k] * (1 - fi) * (1 - fj) + A[k + T.nE] * fi * (1 - fj) + A[k + 1] * (1 - fi) * fj + A[k + T.nE + 1] * fi * fj;
+    };
+    this.alturaMar = hMar; this.fraccionAgua = fAgua;
+    this.altura = (N, E) => (fAgua(N, E) > 0.5 ? 0 : Math.max(0, hMar(N, E))) - T.h0;
+    this.enMar = (N, E) => fAgua(N, E) > 0.5;
   }
 
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */
