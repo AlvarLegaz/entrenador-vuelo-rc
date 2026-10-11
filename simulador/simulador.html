@@ -596,6 +596,9 @@ function pintarCM() {
   else { color = "#8be08f"; txt = `Margen estático ${margen.toFixed(0)} % (punto neutro al ${np.toFixed(0)} %): dentro de lo normal en un entrenador (10–30 %).`; }
   if (c.masa > d.masa * 1.15) txt += ` Con ${c.masa - d.masa} g más, pierde a ${vs.toFixed(1)} m/s: hay que lanzarlo más fuerte y aterrizar más rápido.`;
   else if (c.masa < d.masa * 0.9) txt += ` Más ligero: vuela más despacio, pero las rachas lo mueven más.`;
+  const gmin = gasMinimoLanzamiento({});
+  if (gmin === null) { color = "#ff6e66"; txt += ` ⚠ Con ${c.masa} g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano.`; }
+  else txt += ` Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el ${pctGas(gmin)} % de gas.`;
   const e = document.getElementById("cmEfecto"); e.textContent = txt; e.style.color = color;
   const dBat = (c.cg - d.cg) / 100 * C * c.masa / BATERIA_G;
   document.getElementById("cmBateria").textContent = c.cg === d.cg ? "En el avión real, el centro de gravedad se ajusta moviendo la batería." :
@@ -622,6 +625,76 @@ function aplicarCM(m) {
 function textoCM() {
   const c = cmActual(sesion.avion);
   return cmEsDiseno(sesion.avion) ? "CG y peso de diseño" : `CG ${c.cg} % de la cuerda · ${c.masa} g`;
+}
+
+// =====================================================================
+//  LANZAMIENTO A MANO. pruebaLanzamiento repite el lanzamiento aparte con la misma fisica (5 s, sin tocar los
+//  mandos, viento sin rachas): sale bien si no toca el suelo. Con ella se calcula el gas minimo para lanzarlo
+//  (avisa antes de lanzar) y, si un lanzamiento falla de verdad, por que: poco gas, demasiado peso o los mandos.
+// =====================================================================
+const LANZ = { prueba_s: 5, fallo_s: 6, fallo_h: 5 };   // un vuelo que acaba antes de 6 s sin pasar de 5 m es un lanzamiento fallido
+function pruebaLanzamiento(gas, { masa_kg, viento = [0, 0, 0], rumbo = 0, trim } = {}) {
+  const m = Modelos.crear(sesion.avion); aplicarCM(m);
+  if (masa_kg) m.configurar({ masa_kg });
+  const a = m.estadoInicial(); a.gases = gas; m.lanzar(a);
+  if (rumbo) { const [r, p] = Cuat.euler(a.q); a.q = Cuat.desdeEuler(r, p, rumbo); }
+  const mm = { pitch: 0, yaw: 0, trim: trim !== undefined ? trim : (m.compensador_grados || 0) };
+  for (let i = 0; i < LANZ.prueba_s / DT; i++) {
+    m.servos(a, mm, DT);
+    if (entorno.contactoSuelo(a, m.paso(a, viento, DT))) return false;
+  }
+  return true;
+}
+/** Gas minimo (0-1) para que salga de la mano, o null si no sale ni con todo el gas. */
+function gasMinimoLanzamiento(op) {
+  if (!pruebaLanzamiento(1, op)) return null;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 7; i++) { const g = (lo + hi) / 2; if (pruebaLanzamiento(g, op)) hi = g; else lo = g; }
+  return hi;
+}
+/** Masa maxima (kg) con la que sale de la mano con todo el gas (entre el 50 y el 150 % de la de diseno). */
+function masaMaximaLanzamiento(op) {
+  const d = Modelos.datos(sesion.avion).masa_kg;
+  let lo = 0.5 * d, hi = 1.5 * d;
+  if (!pruebaLanzamiento(1, Object.assign({}, op, { masa_kg: lo }))) return null;
+  for (let i = 0; i < 7; i++) { const mk = (lo + hi) / 2; if (pruebaLanzamiento(1, Object.assign({}, op, { masa_kg: mk }))) lo = mk; else hi = mk; }
+  return lo;
+}
+const pctGas = g => Math.ceil(g * 100 / 5) * 5;          // el gas minimo, redondeado hacia arriba al 5 %
+/** El lanzamiento con el avion, el CG, el peso, el viento y el compensador del vuelo en curso (en cache). */
+let cacheLanz = { clave: null };
+function lanzamientoActual() {
+  const vto = entorno.viento, rumbo = zonaDe(sesion.escenario) === 2 ? Math.PI : 0;
+  const op = { viento: [vto.base * Math.cos(vto.rumbo), vto.base * Math.sin(vto.rumbo), 0], rumbo, trim: mando.trim };
+  const clave = JSON.stringify([sesion.avion, modelo.masa_kg, modelo.dcg, op]);
+  if (cacheLanz.clave !== clave) cacheLanz = { clave, op, gmin: gasMinimoLanzamiento(op), mmax: undefined, gminDiseno: undefined };
+  return cacheLanz;
+}
+/** Si lleva peso de mas (5 %): el texto que compara con el gas que bastaria con el peso de diseno. */
+function textoPesoLanz(L) {
+  const d = Modelos.datos(sesion.avion).masa_kg, extra = Math.round((modelo.masa_kg - d) * 1000);
+  if (modelo.masa_kg < d * 1.05) return "";
+  if (L.gminDiseno === undefined) L.gminDiseno = gasMinimoLanzamiento(Object.assign({}, L.op, { masa_kg: d }));
+  return ` Es por el peso: lleva ${extra} g de más${L.gminDiseno !== null ? ` (con el peso de diseño bastaría el ${pctGas(L.gminDiseno)} %)` : ""}.`;
+}
+/** Aviso antes de lanzar ("" si sale bien con el gas puesto). */
+function avisoLanzamiento() {
+  const L = lanzamientoActual();
+  if (L.gmin === null) return `⚠ Pesa demasiado para lanzarlo a mano (${Math.round(modelo.masa_kg * 1000)} g): no saldría ni con todo el gas. Quítale peso en la pantalla del avión.`;
+  if (av.gases < L.gmin) return `⚠ Con el ${Math.round(av.gases * 100)} % de gas no saldría de la mano: sube el gas al menos al ${pctGas(L.gmin)} % (W).` + textoPesoLanz(L);
+  return "";
+}
+/** Por que fallo un lanzamiento: { corto, texto }. */
+function causaLanzamientoFallido(gas) {
+  const L = lanzamientoActual(), masa = Math.round(modelo.masa_kg * 1000);
+  if (L.gmin === null) {
+    if (L.mmax === undefined) L.mmax = masaMaximaLanzamiento(L.op);
+    return L.mmax ? { corto: "demasiado peso", texto: `pesa demasiado para lanzarlo a mano (${masa} g): no sale ni con todo el gas. Con el 100 % sale hasta unos ${Math.floor(L.mmax * 100) * 10} g.` }
+                  : { corto: "centro de gravedad", texto: "no sale de la mano ni con todo el gas ni con poco peso: revisa el centro de gravedad." };
+  }
+  if (gas < L.gmin) { const pp = textoPesoLanz(L);
+    return { corto: pp ? "poco gas para su peso" : "poco gas", texto: `con el ${Math.round(gas * 100)} % de gas no tiene empuje para salir de la mano con ${masa} g: lánzalo con al menos el ${pctGas(L.gmin)} %.` + pp }; }
+  return { corto: "mandos", texto: `con el ${Math.round(gas * 100)} % de gas salía bien sin tocar los mandos: el fallo fue de los mandos (tirar o empujar de más nada más lanzarlo) o una racha.` };
 }
 
 // =====================================================================
@@ -805,7 +878,7 @@ function orientarLanzamiento() {
 function lanzar() {
   if (av.estado !== "en mano") return;
   modelo.lanzar(av); orientarLanzamiento(); aviso("");
-  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario };
+  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, gasLanz: av.gases, hmax: 0 };
   cnContador = 0; grabarMuestra();
 }
 function paso(dt) {
@@ -814,7 +887,7 @@ function paso(dt) {
   if (av.estado !== "volando") return;
   const pAnt = av.p.slice();
   const vn = modelo.paso(av, viento, dt);
-  if (vuelo) vuelo.tVuelo += dt;
+  if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2]); }
   if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
@@ -849,12 +922,19 @@ function zona2(pAnt) {
 }
 function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;
+  // lanzamiento fallido: acaba en el suelo antes de LANZ.fallo_s sin haber subido de LANZ.fallo_h. No cuenta como
+  // aterrizaje; si se ha roto, si como accidente
+  if (vuelo && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
+    vuelo.lanzamiento = causaLanzamientoFallido(vuelo.gasLanz);
+    final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
+  }
   av.estado = final.startsWith("roto") ? "roto" : final === "aterrizado" ? "aterrizado" : "terminado";
   av.v = [0, 0, 0]; av.w = [0, 0, 0];
   if (!vuelo) return;
   vuelo.final = final; grabarMuestra();
   evaluarFinal(final, vn || [0, 0, 0]);
-  aviso(final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
+  aviso(vuelo.lanzamiento ? "LANZAMIENTO FALLIDO: " + vuelo.lanzamiento.corto
+        : final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
         : final === "fuera de límites" ? "FUERA DE LÍMITES: el avión se ha perdido de vista" : "");
   document.getElementById("lejos").textContent = "";
   ultimoVuelo = vuelo;
@@ -877,7 +957,8 @@ async function mostrarResultado(v) {
   document.getElementById("resTitulo").textContent = E.nombre;
   const ver = document.getElementById("resVeredicto");
   ver.textContent = libre ? "Vuelo libre" : resultado; ver.className = "grande " + (libre ? "libre" : apto ? "apto" : "noapto");
-  const fin = v.final === "aterrizado" ? "Aterrizaje correcto" : v.final.startsWith("roto") ? "Accidente: " + v.final.slice(6, -1)
+  const fin = v.lanzamiento ? `Lanzamiento fallido${v.final.startsWith("roto") ? " (se ha roto)" : ""}: ${v.lanzamiento.texto}`
+    : v.final === "aterrizado" ? "Aterrizaje correcto" : v.final.startsWith("roto") ? "Accidente: " + v.final.slice(6, -1)
     : v.final === "fuera de límites" ? `Fuera de límites: a más de ${entorno.limites.distancia_m} m el avión ya no se ve` : "Vuelo terminado sin aterrizar";
   document.getElementById("resFinal").textContent = `${fin} · tiempo de vuelo ${(v.tVuelo / 60).toFixed(1)} min · ` + textoVueltas().replace(/<[^>]+>/g, "");
   document.getElementById("resObjetivos").innerHTML = objs.length
@@ -1040,7 +1121,7 @@ function hud() {
   if (av.estado === "volando" && dist > L.aviso_m) {
     const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);
     lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
-  } else lejos.textContent = "";
+  } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
