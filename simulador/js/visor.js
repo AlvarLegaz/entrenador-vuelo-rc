@@ -480,6 +480,68 @@ class Visor {
     this.manga.position.set(-14, mundo ? this.entorno.altura(10, -14) + 3.8 : 3.8, -10);
   }
 
+  /** Parcela agricola en (E, N): el campo es un mosaico de parcelas rectangulares giradas 12 grados, de 220 m, cada
+   *  una con su uso (0 almendros en hileras, 1 secano, 2 regadio, 3 barbecho, 4 erial) y su tono, deterministas. */
+  static parcela(E, N) {
+    const S = 220, c = 0.978, s = 0.208, u = E * c + N * s, v = -E * s + N * c, i = Math.floor(u / S), j = Math.floor(v / S);
+    let h = (i * 73856093) ^ (j * 19349663); h = (h ^ (h >>> 13)) * 1274126177; h = (h ^ (h >>> 16)) >>> 0;
+    const r = (h % 1000) / 1000, r2 = ((h >>> 10) % 1000) / 1000;
+    return { tipo: r < 0.34 ? 0 : r < 0.62 ? 1 : r < 0.78 ? 2 : r < 0.9 ? 3 : 4, tono: r2, u: u - i * S, v: v - j * S, S };
+  }
+
+  /** Textura del suelo de un mundo real, pintada pixel a pixel (26 m por pixel) como una foto de satelite: mar (y el
+   *  Mar Menor mas claro), playas, parcelas en la llanura, monte bajo y roca con la altura y la pendiente, y las
+   *  zonas urbanas de OSM encima. Tambien es el fondo del GPS. */
+  _texturaMundo(m) {
+    const T = m.terreno, H = this.entorno.terreno.H, W = 3072, Hh = Math.round(W * (T.nN - 1) / (T.nE - 1));
+    const [c, g] = lienzo(W, Hh), img = g.createImageData(W, Hh), D = img.data, mpx = (T.nE - 1) * T.paso / W;
+    const hash = (x, y) => { let h = (x * 374761393) ^ (y * 668265263); h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const ruido = (E, N, esc) => { const x = E / esc, y = N / esc, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;   // ruido de valor bilineal
+      return hash(x0, y0) * (1 - fx) * (1 - fy) + hash(x0 + 1, y0) * fx * (1 - fy) + hash(x0, y0 + 1) * (1 - fx) * fy + hash(x0 + 1, y0 + 1) * fx * fy; };
+    const USOS = [[0x7f, 0x8e, 0x4a], [0xc8, 0xa0, 0x66], [0x6f, 0x96, 0x44], [0xb9, 0x8a, 0x5c], [0xc7, 0xb4, 0x8e]];   // almendros, secano, regadio, barbecho, erial
+    for (let y = 0; y < Hh; y++) {
+      const N = T.N0 + (Hh - 1 - y) * mpx, i = Math.min(T.nN - 1.001, (N - T.N0) / T.paso), i0 = Math.floor(i), fi = i - i0;
+      for (let x = 0; x < W; x++) {
+        const E = T.E0 + x * mpx, j = Math.min(T.nE - 1.001, (E - T.E0) / T.paso), j0 = Math.floor(j), fj = j - j0, k = i0 * T.nE + j0;
+        const h = H[k] * (1 - fi) * (1 - fj) + H[k + T.nE] * fi * (1 - fj) + H[k + 1] * (1 - fi) * fj + H[k + T.nE + 1] * fi * fj;
+        const pend = Math.min(1, (Math.abs(H[k + 1] - H[k]) + Math.abs(H[k + T.nE] - H[k])) / T.paso * 2.5);
+        let r, gg, b;
+        if (h <= 0.2) {                                                      // mar; el Mar Menor (laguna), mas claro y verdoso
+          const laguna = E > 15000 && E < 26200 && N > 1000 && N < 22000, n = ruido(E, N, 900) * 0.12;
+          if (laguna) { r = 60 + n * 80; gg = 150 + n * 60; b = 170; } else { r = 24 + n * 40; gg = 70 + n * 50; b = 125 + n * 30; }
+        } else if (h < 2.5) { r = 215; gg = 200; b = 160; }                 // playas y saladares
+        else {
+          const n1 = ruido(E, N, 140), n2 = ruido(E, N, 35), llano = h < 110 && pend < 0.35;
+          if (llano) {
+            const P = Visor.parcela(E, N), base = USOS[P.tipo], t = 0.82 + P.tono * 0.36;
+            r = base[0] * t; gg = base[1] * t; b = base[2] * t;
+            if (P.tipo === 0 && Math.floor(P.u / 14) % 2 === 0) { r *= 0.86; gg *= 0.86; b *= 0.86; }   // hileras de almendros
+            if (P.u < 12 || P.v < 12) { r *= 0.8; gg *= 0.8; b *= 0.8; }                           // lindes y caminos
+            const mezcla = Math.min(1, Math.max(0, (h - 70) / 40 + pend * 2));                      // hacia el monte en los bordes
+            r = r * (1 - mezcla) + 150 * mezcla; gg = gg * (1 - mezcla) + 135 * mezcla; b = b * (1 - mezcla) + 95 * mezcla;
+          } else {
+            const alto = Math.min(1, Math.max(0, (h - 250) / 350));                                 // monte bajo -> roca
+            r = 140 + alto * 30 - n1 * 40; gg = 128 - alto * 10 - n1 * 35; b = 85 + alto * 25 - n1 * 20;
+            if (n2 > 0.72 && alto < 0.6) { r -= 35; gg -= 15; b -= 20; }                           // manchas de pinar y matorral
+            const sombra = 1 - pend * 0.35; r *= sombra; gg *= sombra; b *= sombra;
+          }
+          const grano = 0.92 + n2 * 0.16; r *= grano; gg *= grano; b *= grano;
+        }
+        const p = 4 * (y * W + x); D[p] = r; D[p + 1] = gg; D[p + 2] = b; D[p + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const X = e => (e - T.E0) / mpx, Y = n => Hh - 1 - (n - T.N0) / mpx;                            // zonas urbanas
+    for (const u of m.urbano) {
+      g.fillStyle = u[0] === 1 ? "rgba(206,198,186,0.92)" : "rgba(190,190,188,0.92)"; g.beginPath();
+      for (let i = 1; i < u.length; i += 2) i === 1 ? g.moveTo(X(u[i]), Y(u[i + 1])) : g.lineTo(X(u[i]), Y(u[i + 1]));
+      g.closePath(); g.fill();
+    }
+    this.lienzoMundo = c; this.lienzoMundoX = X; this.lienzoMundoY = Y;
+    const tex = new THREE.CanvasTexture(c); tex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy()); tex.minFilter = THREE.LinearMipmapLinearFilter;
+    return tex;
+  }
+
   /** Escena de un mundo real: cielo grande con niebla (calima a 2,5-10 km: asi no hay que dibujar 80 km), malla
    *  del terreno con color por altura y pendiente, mar, carreteras en cinta, edificios en las zonas urbanas de OSM,
    *  arboles en el campo hasta 9 km del origen y rotulos de los pueblos. Todo instanciado por celdas. */
@@ -491,28 +553,23 @@ class Visor {
     this._cielo(sol.position, esc, 15000);
     const T = m.terreno, HT = ent.terreno.H, r = semilla(11);
     // --- terreno: una malla con color por vertice ---
-    const nN = T.nN, nE = T.nE, pos = new Float32Array(nN * nE * 3), col = new Float32Array(nN * nE * 3);
-    const C = new THREE.Color(), cMar = new THREE.Color(0x1d4f85), cBajo = new THREE.Color(0xb77f55), cCultivo = new THREE.Color(0x8e9654),
-          cMonte = new THREE.Color(0x8a7a50), cRoca = new THREE.Color(0x7d7268), cAlto = new THREE.Color(0x6e6a66);
+    // --- terreno: una malla con la textura de satelite sintetica y un sombreado por pendiente en los vertices ---
+    const nN = T.nN, nE = T.nE, pos = new Float32Array(nN * nE * 3), col = new Float32Array(nN * nE * 3), uv = new Float32Array(nN * nE * 2);
     for (let i = 0; i < nN; i++) for (let j = 0; j < nE; j++) {
       const k = i * nE + j, h = HT[k], N = T.N0 + i * T.paso, E = T.E0 + j * T.paso;
       pos[3 * k] = E; pos[3 * k + 1] = (h <= 0 ? -7 : h) - h0; pos[3 * k + 2] = -N;
-      if (h <= 0) C.copy(cMar);
-      else {
-        const hx = (HT[k + (j < nE - 1 ? 1 : 0)] - HT[k - (j > 0 ? 1 : 0)]) / (2 * T.paso), hy = (HT[k + (i < nN - 1 ? nE : 0)] - HT[k - (i > 0 ? nE : 0)]) / (2 * T.paso);
-        const pend = Math.min(1, Math.hypot(hx, hy) * 2.2), ruido = 0.85 + 0.3 * r();
-        if (h < 80) C.copy(cBajo).lerp(cCultivo, Math.min(1, r() * 1.2)); else if (h < 250) C.copy(cCultivo).lerp(cMonte, (h - 80) / 170); else C.copy(cRoca).lerp(cAlto, Math.min(1, (h - 250) / 400));
-        C.lerp(cRoca, pend * 0.6); C.multiplyScalar(ruido * (1 - pend * 0.25));
-        if (h < 3) C.lerp(new THREE.Color(0xd9c9a0), 0.6);           // playas y saladares
-      }
-      col[3 * k] = C.r; col[3 * k + 1] = C.g; col[3 * k + 2] = C.b;
+      uv[2 * k] = j / (nE - 1); uv[2 * k + 1] = i / (nN - 1);
+      const hx = (HT[k + (j < nE - 1 ? 1 : 0)] - HT[k - (j > 0 ? 1 : 0)]) / (2 * T.paso), hy = (HT[k + (i < nN - 1 ? nE : 0)] - HT[k - (i > 0 ? nE : 0)]) / (2 * T.paso);
+      const pend = Math.min(1, Math.hypot(hx, hy) * 2.2), s = (1 - pend * 0.3) * (0.96 + 0.08 * r());
+      col[3 * k] = s; col[3 * k + 1] = s; col[3 * k + 2] = s;
     }
     const idx = new Uint32Array((nN - 1) * (nE - 1) * 6); let q = 0;
     for (let i = 0; i < nN - 1; i++) for (let j = 0; j < nE - 1; j++) { const a = i * nE + j, b = a + 1, c = a + nE, d = c + 1; idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = b; idx[q++] = d; idx[q++] = c; }
-    const gt = new THREE.BufferGeometry(); gt.setAttribute("position", new THREE.BufferAttribute(pos, 3)); gt.setAttribute("color", new THREE.BufferAttribute(col, 3)); gt.setIndex(new THREE.BufferAttribute(idx, 1)); gt.computeVertexNormals();
-    esc.add(new THREE.Mesh(gt, new THREE.MeshLambertMaterial({ vertexColors: true })));
-    // --- mar: plano al nivel del mar ---
-    const mar = new THREE.Mesh(new THREE.PlaneGeometry(300000, 300000), new THREE.MeshLambertMaterial({ color: 0x2b6fb3 }));
+    const gt = new THREE.BufferGeometry(); gt.setAttribute("position", new THREE.BufferAttribute(pos, 3)); gt.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    gt.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); gt.setIndex(new THREE.BufferAttribute(idx, 1)); gt.computeVertexNormals();
+    esc.add(new THREE.Mesh(gt, new THREE.MeshLambertMaterial({ map: this._texturaMundo(m), vertexColors: true })));
+    // --- mar: plano al nivel del mar, con el brillo del sol ---
+    const mar = new THREE.Mesh(new THREE.PlaneGeometry(300000, 300000), new THREE.MeshPhongMaterial({ color: 0x2a6aa8, specular: 0x9fb8cc, shininess: 70 }));
     mar.rotation.x = -Math.PI / 2; mar.position.y = -h0 + 0.4; esc.add(mar);
     // --- carreteras: cintas sobre el terreno, anchas segun el tipo (1 autovia .. 4 comarcal) ---
     this._cintas(esc, m.carreteras, alt);
@@ -535,21 +592,33 @@ class Visor {
       Cc.setHex(tipo === 1 ? [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8][Math.floor(z * 4)] : [0xd0d4d8, 0xc3c7cc, 0xb9bec4][Math.floor(z * 3)]);
     }, 1200);
     // --- arboles: almendros y pinos por el campo, hasta 9 km del origen (mas lejos lo tapa la calima) ---
-    const arboles = [];
+    const arboles = [], apto = (nn, ee) => {
+      const h = ent.alturaMar(nn, ee); if (h <= 2 || h > 450) return 0;
+      const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
+      return pend > 40 ? 0 : h;
+    };
+    // hasta 2,2 km: almendros en hileras (14 m) dentro de las parcelas de almendros de la textura
+    const c12 = 0.978, s12 = 0.208;
+    for (let n = -2200; n <= 2200; n += 14) for (let e = -2200; e <= 2200; e += 14) {
+      const ee = e * c12 - n * s12, nn = e * s12 + n * c12;                 // la malla de plantacion va girada como las parcelas
+      if (Math.hypot(ee, nn) > 2200) continue;
+      const P = Visor.parcela(ee, nn); if (P.tipo !== 0 || P.u < 12 || P.v < 12) continue;
+      const h = apto(nn, ee); if (!h || h > 110) continue;
+      arboles.push([ee + (r() - 0.5) * 2, nn + (r() - 0.5) * 2, 0.75 + r() * 0.35, 0]);
+    }
+    // mas lejos: sueltos (almendros en la llanura, pinos en el monte), hasta 9 km (mas alla lo tapa la calima)
     for (let n = -9000; n <= 9000; n += 70) for (let e = -9000; e <= 9000; e += 70) {
       const ee = e + (r() - 0.5) * 60, nn = n + (r() - 0.5) * 60, d = Math.hypot(ee, nn);
-      if (d > 9000 || arboles.length >= 32000) continue;
-      const h = ent.alturaMar(nn, ee); if (h <= 2 || h > 450) continue;
-      const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
-      if (pend > 40) continue;
-      const prob = d < 3000 ? 0.55 : d < 6000 ? 0.35 : 0.2;
-      if (r() < prob) arboles.push([ee, nn, 0.6 + r() * 0.8, h > 200 ? 1 : 0]);
+      if (d > 9000 || d < 2200 || arboles.length >= 34000) continue;
+      const h = apto(nn, ee); if (!h) continue;
+      const P = Visor.parcela(ee, nn), monte = h > 110, prob = monte ? 0.3 : P.tipo === 0 ? 0.6 : 0.08;
+      if (r() < prob * (d < 6000 ? 1 : 0.55)) arboles.push([ee, nn, 0.6 + r() * 0.8, monte && r() < 0.7 ? 1 : 0]);
     }
-    const copa = new THREE.ConeGeometry(2.2, 4.5, 5, 1, true); copa.translate(0, 2.25, 0);   // sin base: 5 triangulos por arbol
+    const copa = new THREE.ConeGeometry(2.4, 3.6, 6, 1, true); copa.translate(0, 1.8, 0);     // sin base: 6 triangulos por arbol
     this._instanciarEn(esc, copa, lam(0xffffff), arboles, (it, M, Cc) => {
       const [e, n, s, pino] = it;
-      M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion(), new THREE.Vector3(s, s * (pino ? 1.5 : 1), s));
-      Cc.setHex(pino ? 0x3d6336 : 0x6e8a44);
+      M.compose(new THREE.Vector3(e, alt(n, e), -n), new THREE.Quaternion(), new THREE.Vector3(s * (pino ? 0.8 : 1), s * (pino ? 2.2 : 1), s * (pino ? 0.8 : 1)));
+      Cc.setHex(pino ? 0x3b5f34 : [0x6e8a44, 0x76924a, 0x66823e][Math.floor(s * 7) % 3]);
     }, 1000, 4000);
     // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
     for (const [nombre, rango, e, n] of m.lugares) {

@@ -60,7 +60,7 @@
                              filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   #anemometro { right: 226px; } #variometro { right: 366px; }
   /* GPS (mapa del campo visto desde arriba, norte arriba) abajo a la izquierda, encima de gases y palanca, camaras 2 y 3 */
-  #gps { position: absolute; left: 12px; bottom: 118px; width: 200px; height: 200px; pointer-events: none; display: none;
+  #gps { position: absolute; left: 12px; bottom: 118px; width: 200px; height: 200px; pointer-events: auto; cursor: zoom-in; display: none;
          border-radius: 8px; filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   body.cam1 #anemometro { right: 14px; } body.cam1 #variometro { right: 154px; }
   .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
@@ -302,10 +302,10 @@
   <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
 
 <script src="three.min.js"></script>
-<script src="js/modelos.js?v=5"></script>
-<script src="js/entorno.js?v=5"></script>
-<script src="js/visor.js?v=5"></script>
-<script src="mundos/cartagena.js?v=5"></script>
+<script src="js/modelos.js?v=6"></script>
+<script src="js/entorno.js?v=6"></script>
+<script src="js/visor.js?v=6"></script>
+<script src="mundos/cartagena.js?v=6"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -1334,7 +1334,10 @@ function pintarInstrumentos(V, vz) {
 // ---- GPS: mapa del campo visto desde arriba, norte arriba, centrado entre el piloto y el avion; la escala se abre
 // para que siempre se vean los dos (minimo +-150 m). Pista, pilones de colores, zona 2 (pista 2, diana y puerta),
 // el piloto (punto blanco), la estela del ultimo minuto y el avion (triangulo con su rumbo) ----
-const GPS = { estela: [], tUlt: -1 };
+const GPS = { estela: [], tUlt: -1, zoom: 1 };     // zoom: con la rueda del raton sobre el GPS (1 = escala automatica)
+document.getElementById("gps").addEventListener("wheel", e => { e.preventDefault(); GPS.zoom = Math.max(0.12, Math.min(8, GPS.zoom * (e.deltaY > 0 ? 1.25 : 0.8))); }, { passive: false });
+/** Barra de escala: una longitud redonda de un tercio del semiancho del mapa. */
+function escalaRedonda(semi) { const c = [50, 100, 200, 500, 1000, 2000, 5000, 10000]; return c.reduce((a, b) => Math.abs(b - semi / 3) < Math.abs(a - semi / 3) ? b : a, c[0]); }
 function pintarGPS(rumbo) {
   const cv = document.getElementById("gps"), ver = visor.camara === 2 || visor.camara === 3;
   cv.style.display = ver ? "block" : "none";
@@ -1345,7 +1348,7 @@ function pintarGPS(rumbo) {
   while (GPS.estela.length && av.t - GPS.estela[0][2] > 60) GPS.estela.shift();
   if (entorno.mundo) return pintarGPSMundo(cv, rumbo, N, E);
   const g = cv.getContext("2d"), W = cv.width, cN = N / 2, cE = E / 2;              // centro del mapa: entre piloto y avion
-  const semi = Math.max(150, 0.62 * Math.max(Math.abs(N), Math.abs(E)) + 40), k = W / 2 / semi;
+  const semi = Math.max(150, 0.62 * Math.max(Math.abs(N), Math.abs(E)) + 40) * GPS.zoom, k = W / 2 / semi;
   const X = e => W / 2 + (e - cE) * k, Y = n => W / 2 - (n - cN) * k;
   g.clearRect(0, 0, W, W);
   g.fillStyle = "rgba(11,15,20,0.85)"; g.fillRect(0, 0, W, W);
@@ -1365,8 +1368,8 @@ function pintarGPS(rumbo) {
   g.fillStyle = "#e6edf3"; g.font = "bold 11px sans-serif"; g.fillText("N", 6, 14);
   g.font = "bold 12px sans-serif"; g.fillText(`alt ${Math.max(0, -av.p[2]).toFixed(0)} m`, 6, 30);
   if (av.motorRoto) { g.fillStyle = "#ff5252"; g.fillText("MOTOR PARADO", 6, 46); }
-  const esc = semi >= 400 ? 200 : 100; g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
-  g.font = "10px sans-serif"; g.fillText(esc + " m", 10, W - 14);
+  const esc = escalaRedonda(semi); g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
+  g.font = "10px sans-serif"; g.fillText(esc >= 1000 ? esc / 1000 + " km" : esc + " m", 10, W - 14);
   g.fillText(`${Math.hypot(N, E).toFixed(0)} m`, W - 48, W - 14);
 }
 /** GPS en un mundo real: el mapa entero (terreno, carreteras, pueblos) se pinta una vez en un lienzo a 2 px por nodo
@@ -1375,17 +1378,10 @@ function pintarGPS(rumbo) {
 function pintarGPSMundo(cv, rumbo, N, E) {
   const M = entorno.mundo, T = M.terreno, PX = 2, g = cv.getContext("2d"), W = cv.width;
   if (!GPS.mapa) {
-    const c = document.createElement("canvas"); c.width = T.nE * PX; c.height = T.nN * PX; const m = c.getContext("2d"), H = entorno.terreno.H;
-    const img = m.createImageData(c.width, c.height), D = img.data;
-    for (let i = 0; i < T.nN; i++) for (let j = 0; j < T.nE; j++) {
-      const h = H[i * T.nE + j]; let r, gg, b;
-      if (h <= 0) { r = 29; gg = 79; b = 133; } else if (h < 80) { r = 196; gg = 150; b = 100; } else if (h < 250) { const t = (h - 80) / 170; r = 160 - 40 * t; gg = 150 - 30 * t; b = 90 - 10 * t; } else { r = 120; gg = 112; b = 104; }
-      for (let a = 0; a < PX; a++) for (let bb = 0; bb < PX; bb++) { const p = 4 * ((T.nN - 1 - i) * PX + a) * c.width + 4 * (j * PX + bb); D[p] = r; D[p + 1] = gg; D[p + 2] = b; D[p + 3] = 255; }
-    }
-    m.putImageData(img, 0, 0);
+    const c = document.createElement("canvas"); c.width = T.nE * PX; c.height = T.nN * PX; const m = c.getContext("2d");
     const X = e => (e - T.E0) / T.paso * PX, Y = n => (T.nN - 1 - (n - T.N0) / T.paso) * PX;
-    m.fillStyle = "rgba(230,230,230,0.75)";
-    for (const u of M.urbano) { m.beginPath(); for (let i = 1; i < u.length; i += 2) i === 1 ? m.moveTo(X(u[i]), Y(u[i + 1])) : m.lineTo(X(u[i]), Y(u[i + 1])); m.closePath(); m.fill(); }
+    if (visor.lienzoMundo) m.drawImage(visor.lienzoMundo, 0, 0, visor.lienzoMundo.width, visor.lienzoMundo.height, 0, Y(T.N0 + (T.nN - 1) * T.paso), (T.nE - 1) * PX, (T.nN - 1) * PX);
+    else { m.fillStyle = "#8a8a7a"; m.fillRect(0, 0, c.width, c.height); }
     for (const t of [4, 3, 2, 1]) {
       m.strokeStyle = { 1: "#ffb74d", 2: "#fff176", 3: "#f5f5f5", 4: "#cfd8dc" }[t]; m.lineWidth = { 1: 2.2, 2: 1.6, 3: 1.1, 4: 0.8 }[t]; m.beginPath();
       for (const cc of M.carreteras) { if (cc[0] !== t) continue; for (let i = 1; i < cc.length; i += 2) i === 1 ? m.moveTo(X(cc[i]), Y(cc[i + 1])) : m.lineTo(X(cc[i]), Y(cc[i + 1])); }
@@ -1393,13 +1389,13 @@ function pintarGPSMundo(cv, rumbo, N, E) {
     }
     GPS.mapa = c; GPS.X = X; GPS.Y = Y;
   }
-  const semi = 3000, k = W / (2 * semi), mpx = PX / T.paso;                          // m -> px del mapa
+  const semi = 3000 * GPS.zoom, k = W / (2 * semi), mpx = PX / T.paso;               // m -> px del mapa; la rueda cambia el zoom
   g.clearRect(0, 0, W, W); g.fillStyle = "#0b0f14"; g.fillRect(0, 0, W, W);
   const sx = GPS.X(E) - semi * mpx, sy = GPS.Y(N) - semi * mpx, sw = 2 * semi * mpx;
   g.imageSmoothingEnabled = true; g.drawImage(GPS.mapa, sx, sy, sw, sw, 0, 0, W, W);
   const X = e => W / 2 + (e - E) * k, Y = n => W / 2 - (n - N) * k;
   g.fillStyle = "#fff"; g.font = "bold 10px sans-serif";
-  for (const [nombre, rango, e, n] of M.lugares) if (rango <= 3 && Math.abs(e - E) < semi && Math.abs(n - N) < semi) { g.fillText(nombre, X(e) + 3, Y(n) - 3); g.fillRect(X(e) - 1.5, Y(n) - 1.5, 3, 3); }
+  for (const [nombre, rango, e, n] of M.lugares) if (rango <= (semi < 5000 ? 5 : 3) && Math.abs(e - E) < semi && Math.abs(n - N) < semi) { g.fillText(nombre, X(e) + 3, Y(n) - 3); g.fillRect(X(e) - 1.5, Y(n) - 1.5, 3, 3); }
   if (GPS.estela.length > 1) { g.strokeStyle = "rgba(255,213,79,0.8)"; g.lineWidth = 1.5; g.beginPath(); GPS.estela.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.lineTo(W / 2, W / 2); g.stroke(); }
   const d = Math.hypot(N, E);                                                         // origen (casa)
   if (Math.abs(E) < semi && Math.abs(N) < semi) { g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Y(0), 3.5, 0, 2 * Math.PI); g.fill(); }
@@ -1412,8 +1408,8 @@ function pintarGPSMundo(cv, rumbo, N, E) {
   const suelo = entorno.altura(N, E);
   g.font = "bold 12px sans-serif"; g.fillText(`alt ${Math.max(0, -av.p[2] - suelo).toFixed(0)} m`, 6, 30);
   if (av.motorRoto) { g.fillStyle = "#ff5252"; g.fillText("MOTOR PARADO", 6, 46); }
-  g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + 1000 * k, W - 10); g.stroke();
-  g.font = "10px sans-serif"; g.fillText("1 km", 10, W - 14); g.fillText(`casa ${d >= 1000 ? (d / 1000).toFixed(1) + " km" : d.toFixed(0) + " m"}`, W - 62, W - 14);
+  const esc = escalaRedonda(semi); g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
+  g.font = "10px sans-serif"; g.fillText(esc >= 1000 ? esc / 1000 + " km" : esc + " m", 10, W - 14); g.fillText(`casa ${d >= 1000 ? (d / 1000).toFixed(1) + " km" : d.toFixed(0) + " m"}`, W - 62, W - 14);
 }
 function pintarHorizonte(roll, pitch, rumbo) {
   const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
