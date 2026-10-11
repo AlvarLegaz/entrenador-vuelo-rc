@@ -66,7 +66,7 @@ func _texto(av: Dictionary, roll: float, pitch: float, yaw: float, vn: Array, vs
 		"alabeo %.0f° · cabeceo %.0f° · rumbo %.0f°" % [roll, pitch, fposmod(yaw, 360)],
 		"alfa %.1f°%s · carga %.1f g" % [av["alfa"], "  ¡PÉRDIDA!" if av["perdida"] > 0.5 else "", av["g_carga"]],
 		"gases %.0f %% · batería %.0f %%" % [av["gases"] * 100, p.modelo.bateria_pct(av)],
-		"viento %.0f m/s%s · compensador %.2f° · cámara %d · T: ayuda · Esc: menú" % [vto["base"], " con rachas" if vto["rachas"] else "", p.mando["trim"], p.camara],
+		("física fácil · " if p.modelo.facil else "") + "viento %.0f m/s%s · compensador %.2f° · cámara %d · T: ayuda · Esc: menú" % [vto["base"], " con rachas" if vto["rachas"] else "", p.mando["trim"], p.camara],
 	]
 	if p.texto_cm != "": l.append(p.texto_cm)
 	for i in l.size(): _txt(Vector2(16, 30 + 22 * i), l[i], 16)

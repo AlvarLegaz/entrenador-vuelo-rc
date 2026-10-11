@@ -1,5 +1,5 @@
 extends SceneTree
-## Prueba de que la fisica de los dos simuladores es la misma. pruebas/referencia_js.json son trazas del simulador
+## Prueba de que la fisica de los dos simuladores es la misma, en las dos dificultades (real y facil). pruebas/referencia_js.json son trazas del simulador
 ## del navegador (modelos.js y entorno.js) en un vuelo de 16 s con mandos, gases y viento variables, para los cuatro
 ## aviones con sus datos de diseno y con una configuracion distinta (masa, CG, temperatura, empuje, resistencia), y
 ## alturas del terreno, viento junto al suelo y turbulencia. Aqui se repite lo mismo con ModeloAvion y Entorno.
@@ -8,9 +8,10 @@ extends SceneTree
 
 const DT := 0.002
 
-func _traza(id: String, conf: Dictionary, ent: Entorno) -> Array:
+func _traza(id: String, conf: Dictionary, ent: Entorno, facil := false) -> Array:
 	var m := ModeloAvion.new(DatosComunes.avion(id))
 	if not conf.is_empty(): m.configurar(conf)
+	m.facil = facil; ent.facil = facil
 	var a := m.estado_inicial()
 	a["asim"] = 0.37; a["p"] = [0.0, 0.0, -80.0]; a["q"] = Cuat.desde_euler(0.05, 0.03, 0.2); a["v"] = [11.0, 0.3, 0.1]
 	a["w"] = [0.0, 0.0, 0.0]; a["estado"] = "volando"
@@ -26,6 +27,7 @@ func _traza(id: String, conf: Dictionary, ent: Entorno) -> Array:
 		m.servos(a, mm, DT)
 		a["agl"] = -a["p"][2]; a["pg"] = 0.05 * sin(3 * t)
 		m.paso(a, ent.viento_a([2.0, -1.0, 0.2], a["agl"]), DT)
+	ent.facil = false
 	return out
 
 func _e(x: float) -> String:
@@ -47,9 +49,10 @@ func _init() -> void:
 	print("Fisica del avion: diferencia maxima con el navegador (posicion m, velocidad m/s, giro rad/s, actitud, mandos rad)")
 	for id in ["E1", "E2", "E3", "T1"]:
 		var A := DatosComunes.avion(id)
-		var confs := { "normal": {}, "config": { "masa_kg": A["masa_kg"] * 1.1, "cg_mm": A["cg_mm"][0] + 5, "temperatura": 30.0, "empuje_gf": 800.0, "resistencia": 1.2 } }
+		var cf := { "masa_kg": A["masa_kg"] * 1.1, "cg_mm": A["cg_mm"][0] + 5, "temperatura": 30.0, "empuje_gf": 800.0, "resistencia": 1.2 }
+		var confs := { "normal": {}, "config": cf, "facil": cf }      # facil: la dificultad facil (la fisica de antes)
 		for nombre in confs:
-			var g := _traza(id, confs[nombre], ent); var r: Array = ref["aviones"][id][nombre]
+			var g := _traza(id, confs[nombre], ent, nombre == "facil"); var r: Array = ref["aviones"][id][nombre]
 			var dmax := {}; var t_primer := -1.0
 			for k in r.size():
 				for c in ["p", "v", "w", "q", "de", "da", "dr", "Wh", "T"]:
@@ -86,6 +89,12 @@ func _init() -> void:
 	var dr := 0.0
 	for f in ref["entorno"]["rafaga"]:
 		dr = maxf(dr, absf(ent.rafaga_alabeo(f[0], f[1]) - f[2]))
+	ent.facil = true
+	for f in ref["entorno"]["vientoA_facil"]:
+		dv = maxf(dv, _dif(ent.viento_a([4.0, -2.0, 0.5], f[0]), [f[1], f[2], f[3]]))
+	for f in ref["entorno"]["rafaga_facil"]:
+		dr = maxf(dr, absf(ent.rafaga_alabeo(f[0], f[1]) - f[2]))
+	ent.facil = false
 	if dv > 1e-9 or dr > 1e-9: fallos += 1
 	print("  viento junto al suelo %s m/s, turbulencia de alabeo %s rad/s  %s" % [_e(dv), _e(dr), "OK" if dv <= 1e-9 and dr <= 1e-9 else "MAL"])
 	print("RESULTADO: " + ("todo igual" if fallos == 0 else "%d casos distintos" % fallos))

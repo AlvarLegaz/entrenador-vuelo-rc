@@ -37,7 +37,7 @@ var volando_en_pantalla := false
 # ---- ajustes (se guardan en user://ajustes.cfg) ----
 var aj := { "avion": "", "cm_diseno": true, "cg_pct": 0.0, "masa_g": 0.0, "dr_alabeo": 100.0, "dr_prof": 100.0, "lanz_real": true,
 			"empuje_gf": 0.0, "resistencia": 100.0, "temperatura": 20.0, "viento": 2.0, "viento_desde": 90.0, "rachas": true,
-			"gas_mando": "incremental", "expo_mando": 30.0, "lanz": {}, "calidad": 2 }
+			"gas_mando": "incremental", "expo_mando": 30.0, "lanz": {}, "calidad": 2, "dificultad": "real" }
 var ids_aviones := []
 var indice_zonas := []
 var zonas_cache := {}
@@ -70,6 +70,7 @@ func _ready() -> void:
 	_cargar_ajustes()
 	if _args.has("avion"): aj["avion"] = _args["avion"]
 	if _args.has("calidad"): aj["calidad"] = int(_args["calidad"])
+	if _args.has("dificultad"): aj["dificultad"] = _args["dificultad"]
 	if not ids_aviones.has(aj["avion"]): aj["avion"] = ids_aviones[0]
 	mundo_datos = DatosComunes.mundo(MUNDO)
 	ent.poner_mundo(mundo_datos)
@@ -141,6 +142,15 @@ func _construir_ui() -> void:
 	var t := Label.new(); t.text = "Entrenador de vuelo RC · v2 (Godot)"; t.add_theme_font_size_override("font_size", 24); c.add_child(t)
 	var st := Label.new(); st.text = "Vuelo libre: Campo de Cartagena. Mismos aviones, mundo y física que el simulador del navegador (v1)."
 	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; st.add_theme_color_override("font_color", Color(0.7, 0.75, 0.8)); c.add_child(st)
+
+	_titulo(c, "Dificultad")
+	var od := OptionButton.new(); od.add_item("Real: como el avión de verdad (la más difícil)"); od.add_item("Fácil: la física sencilla de antes")
+	od.selected = 1 if aj["dificultad"] == "facil" else 0; w["dificultad"] = _fila(c, "Física", od)
+	var di := Label.new(); di.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; di.add_theme_color_override("font_color", Color(0.7, 0.75, 0.8)); c.add_child(di)
+	var info_dif := func(i: int) -> void:
+		di.text = ("Sin par ni estela de la hélice, sin efectos P ni giroscópico, pérdida simétrica, sin efecto suelo, el mismo viento a cualquier altura, rachas sin alabeo, aire estándar y lanzamiento perfecto. Para aprender." if i == 1
+			else "Par y estela de la hélice, efecto P y giroscópico, pérdida por semiala (cae de un ala), efecto suelo, viento más flojo junto al suelo, turbulencia que alabea, densidad según la temperatura, calibración y lanzamiento con dispersión.")
+	info_dif.call(od.selected); od.item_selected.connect(info_dif)
 
 	_titulo(c, "Avión")
 	var ob := OptionButton.new()
@@ -228,6 +238,7 @@ func _leer_menu() -> void:
 	for k in ["lanz_real", "rachas"]: aj[k] = w[k].button_pressed
 	aj["gas_mando"] = "incremental" if w["gas_mando"].selected == 0 else "absoluto"
 	aj["calidad"] = w["calidad"].selected
+	aj["dificultad"] = "facil" if w["dificultad"].selected == 1 else "real"
 	if w["cm_diseno"].button_pressed: aj.erase("cm_" + aj["avion"])
 	else: aj["cm_" + aj["avion"]] = { "cg": w["cg_pct"].value, "masa": w["masa_g"].value }
 	_guardar_ajustes()
@@ -270,6 +281,7 @@ func _empezar() -> void:
 		modelo.configurar({ "masa_kg": c["masa"] / 1000.0, "cg_mm": A["x_le_mm"] + c["cg"] / 100.0 * A["c_m"] * 1000 })
 		texto_cm = "CG %d %% de la cuerda · %d g" % [int(c["cg"]), int(c["masa"])]
 	modelo.configurar({ "temperatura": aj["temperatura"], "empuje_gf": aj["empuje_gf"], "resistencia": aj["resistencia"] / 100.0 })
+	modelo.facil = aj["dificultad"] == "facil"; ent.facil = modelo.facil      # dificultad (ver ModeloAvion.facil)
 	_mandos_base = modelo.mandos.duplicate(); _fuente_mandos = ""
 	if avion3d: avion3d.queue_free()
 	avion3d = Avion3D.new(A); add_child(avion3d)
@@ -300,7 +312,7 @@ func _orientar() -> void:
 func _lanzar() -> void:
 	if av.get("estado", "") != "en mano": return
 	modelo.lanzar(av); _orientar(); aviso = ""
-	if aj["lanz_real"]:          # un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+	if aj["lanz_real"] and not modelo.facil:          # un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
 		var gauss := func() -> float: return (randf() + randf() + randf() - 1.5) / 0.5
 		var e := Cuat.euler(av["q"])
 		av["v"][0] *= 1 + 0.08 * gauss.call()

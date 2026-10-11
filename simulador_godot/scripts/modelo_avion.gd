@@ -22,6 +22,11 @@ var TA := []; var TCL := []; var TCDI := []; var TCM := []; var DA := []; var DE
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
 var Qmax: float; var Ihelice: float; var CD_helice_parada: float; var k_perfil: float
 var chorro := {}; var brazoDeriva: float; var brazoPerdida: float
+var CD_helice_parada_datos := 0.0
+## DIFICULTAD: con facil = true, paso() es la fisica de antes de las mejoras de realismo (sin par del motor, estela, efecto
+## P ni giroscopico, sin perdida por semiala, efecto suelo ni resistencia de perfil, densidad estandar y sin calibracion),
+## como ModeloAvion.facil en modelos.js. El Entorno, con su propio facil, quita el viento junto al suelo y la turbulencia
+var facil := false
 
 func _init(d: Dictionary) -> void:
 	datos = d
@@ -41,6 +46,7 @@ func _init(d: Dictionary) -> void:
 	var pr := propulsion; var Dm: float = pr["D_m"]
 	Qmax = pr["P_max_W"] / (2 * PI * pr["n_max_rps"])
 	Ihelice = d["I_helice"] if d.has("I_helice") else 0.012 * pow(Dm / 0.2286, 3) * Dm * Dm / 12
+	CD_helice_parada_datos = d.get("CD_helice_parada", 0.0)
 	CD_helice_parada = d["CD_helice_parada"] if d.has("CD_helice_parada") else 0.0027 * pow(Dm / 0.2286, 2) / S_m2
 	k_perfil = d["k_perfil"] if d.has("k_perfil") else 0.02
 	var ch: Dictionary = d.get("chorro", {})
@@ -128,33 +134,33 @@ func mandos_coef(av: Dictionary, d: Callable, kman: float) -> Dictionary:
 ## Un paso de integracion. viento: velocidad del aire en NED (m/s). Opcionales en av: agl (efecto suelo) y pg
 ## (alabeo de la turbulencia). Devuelve la velocidad en NED.
 func paso(av: Dictionary, viento: Array, dt: float) -> Array:
-	var q: Array = av["q"]; var v: Array = av["v"]; var w: Array = av["w"]
+	var q: Array = av["q"]; var v: Array = av["v"]; var w: Array = av["w"]; var fac := facil; var dens: float = RHO if fac else rho
 	var wb := Cuat.rot(Cuat.inv(q), viento)
 	var va := [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]]
 	var V := maxf(0.3, sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2]))
 	var alfa := atan2(va[2], va[0]); var beta := asin(clampf(va[1] / V, -1.0, 1.0))
 	var ad := alfa * R2D
-	var qS := 0.5 * rho * V * V * S_m2; var b := b_m; var c := c_m
-	var ph: float = (w[0] - av.get("pg", 0.0)) * b / (2 * V); var qh: float = w[1] * c / (2 * V); var rh: float = w[2] * b / (2 * V)
+	var qS := 0.5 * dens * V * V * S_m2; var b := b_m; var c := c_m
+	var ph: float = (w[0] - (0.0 if fac else av.get("pg", 0.0))) * b / (2 * V); var qh: float = w[1] * c / (2 * V); var rh: float = w[2] * b / (2 * V)
 	# perdida por semiala
 	var P := perdida; var an: float = P["anchura_grados"] / 2
 	var aPerd: float = P["alfa_perdida_grados"]; var aNeg: float = P["alfa_perdida_neg_grados"]
 	var fPerd := func(a: float) -> float: return maxf(1 / (1 + exp(-(a - aPerd) / an)), 1 / (1 + exp((a - aNeg) / an)))
-	var yc := brazoPerdida * b; var dAp: float = w[0] * yc / V * R2D; var asim: float = av.get("asim", 0.0)
+	var yc := brazoPerdida * b; var dAp: float = 0.0 if fac else w[0] * yc / V * R2D; var asim: float = 0.0 if fac else av.get("asim", 0.0)
 	var fR: float = fPerd.call(ad + dAp + asim / 2); var fL: float = fPerd.call(ad - dAp - asim / 2); var f := 0.5 * (fR + fL)
 	var CLlin := interp(TA, TCL, ad); var Cmlin := interp(TA, TCM, ad)
 	var CDi := interp(TA, TCDI, ad)
 	var CLplaca: float = P["CL_placa_factor"] * 2 * sin(alfa) * cos(alfa)
 	# efecto suelo
 	var fiS := 1.0
-	if av.has("agl") and av["agl"] != null:
+	if not fac and av.has("agl") and av["agl"] != null:
 		var x16 := pow(16 * maxf(0.05, av["agl"]) / b, 2)
 		fiS = x16 / (1 + x16)
 	CDi *= fiS
 	var CL0 := ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS))
 	var pr := propulsion; var g: float = 0.0 if av["motorRoto"] else av["gases"]
-	var CDhel := CD_helice_parada if g < 0.05 else 0.0
-	var CD: float = CD0 * calib["resistencia"] + k_perfil * pow(CL0 - 0.3, 2) + (1 - f) * CDi + f * 2 * pow(sin(alfa), 2) + CDhel
+	var CDhel := (CD_helice_parada_datos if fac else CD_helice_parada) if g < 0.05 else 0.0
+	var CD: float = CD0 + CDhel + (1 - f) * CDi + f * 2 * pow(sin(alfa), 2) if fac else CD0 * calib["resistencia"] + k_perfil * pow(CL0 - 0.3, 2) + (1 - f) * CDi + f * 2 * pow(sin(alfa), 2) + CDhel
 	var aP: float = aPerd if ad > 0 else aNeg
 	var Cm0 := (1 - f) * Cmlin + f * (interp(TA, TCM, aP) - 0.5 * (alfa - aP * D2R))
 	var kman: float = 1 - f * (1 - P["mando_post_perdida"])
@@ -163,21 +169,21 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var M := mandos_coef(av, d, kman)
 	# motor y helice
 	if av["motorRoto"]: av["gases"] = 0.0
-	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1 - 0.10 * (1 - bat))
+	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1.0 if fac else 1 - 0.10 * (1 - bat))
 	var T := 0.0; var Q := 0.0; var J := 0.0
 	if g > 0.02:
 		J = V / (n * pr["D_m"])
-		T = pr["CT0"] * calib["empuje"] * maxf(0, 1 - J / pr["J0"]) * rho * n * n * pow(pr["D_m"], 4)
-		Q = Qmax * pow(n / pr["n_max_rps"], 2) * (0.6 + 0.4 * maxf(0, 1 - J / pr["J0"]))
+		T = pr["CT0"] * (1.0 if fac else calib["empuje"]) * maxf(0, 1 - J / pr["J0"]) * dens * n * n * pow(pr["D_m"], 4)
+		Q = 0.0 if fac else Qmax * pow(n / pr["n_max_rps"], 2) * (0.6 + 0.4 * maxf(0, 1 - J / pr["J0"]))
 		av["Wh"] += pr["P_max_W"] * g * g * g * dt / 3600
 	av["T"] = T; av["Q"] = Q; av["rpm"] = n * 60 if g > 0.02 else 0.0
 	# chorro de la helice sobre la cola
-	var Adisco: float = PI * pr["D_m"] * pr["D_m"] / 4; var rq := minf(6, 1 + 0.8 * 2 * T / (rho * Adisco) / (V * V))
+	var Adisco: float = PI * pr["D_m"] * pr["D_m"] / 4; var rq := 1.0 if fac else minf(6, 1 + 0.8 * 2 * T / (dens * Adisco) / (V * V))
 	var kProf: float = 1 + chorro["prof"] * (rq - 1); var kTimon: float = 1 + chorro["timon"] * (rq - 1)
 	M["CL"] *= kProf; M["Cm"] *= kProf
 	if mandos["timon_max_grados"] > 0:
 		M["CY"] *= kTimon; M["Cl"] *= kTimon; M["Cn"] *= kTimon
-	var ClpEf: float = d.call("Clp") * (1 - 0.6 * f)
+	var ClpEf: float = d.call("Clp") if fac else d.call("Clp") * (1 - 0.6 * f)
 	var CL: float = CL0 + d.call("CLq") * qh + M["CL"]
 	var CY: float = d.call("CYb") * beta + d.call("CYp") * ph + d.call("CYr") * rh + M["CY"]
 	var dCLside := maxf(0, minf(CLlin, interp(TA, TCL, aPerd)) - CLplaca); var yP := brazoPerdida * b
@@ -198,10 +204,10 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	Ma[0] += -s * Q + s * sw * Q
 	var Fsw := s * sw * Q / hFin
 	Fa[1] += Fsw; Ma[2] += -brazoDeriva * Fsw
-	if T > 0:
+	if T > 0 and not fac:
 		var e: float = 0.5 * (pr["D_m"] / 2) * V * sin(alfa) / (2 * PI * n * 0.75 * pr["D_m"] / 2 + 1e-3)
 		Ma[2] += -s * T * e
-	var Hx: float = s * Ihelice * 2 * PI * n
+	var Hx: float = 0.0 if fac else s * Ihelice * 2 * PI * n
 	Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx
 	var gb := Cuat.rot(Cuat.inv(q), [0.0, 0.0, G0]); var m := masa_kg
 	var F := [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]]

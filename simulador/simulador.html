@@ -246,6 +246,13 @@
       <h2 id="avNombre" style="margin-top:12px"></h2><p class="sub" id="avDesc" style="margin:0"></p></div>
     <div class="tarjeta"><table class="datos" id="avDatos"></table></div>
   </div>
+  <h2>Dificultad</h2>
+  <div class="tarjeta">
+    <div class="fila"><label for="dificultad">Física</label><select id="dificultad">
+      <option value="real">Real: como el avión de verdad (la más difícil)</option>
+      <option value="facil">Fácil: la física sencilla de antes</option></select></div>
+    <p class="sub" id="dificultadInfo" style="margin:6px 0 0"></p>
+  </div>
   <h2>Viento</h2>
   <div class="tarjeta">
     <div class="fila"><label for="vVel">Velocidad</label><input type="range" id="vVel" min="0" max="10" step="0.5" value="2" style="flex:1;max-width:340px">
@@ -339,8 +346,8 @@
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
-<script src="js/modelos.js?v=20"></script>
-<script src="js/entorno.js?v=21"></script>
+<script src="js/modelos.js?v=21"></script>
+<script src="js/entorno.js?v=22"></script>
 <script src="js/visor.js?v=24"></script>
 <script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
@@ -356,7 +363,8 @@ let visor = null, previa = null;
 let modelo = null, av = null;                 // ModeloAvion en uso y su estado
 const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0 };
 let vuelo = null;                             // registro del vuelo en curso (de L al final)
-const sesion = { aula: false, alumno: null, avion: null, escenario: "libre", viento: { vel: 2, desde: 0, rachas: true } };
+const sesion = { aula: false, alumno: null, avion: null, escenario: "libre", viento: { vel: 2, desde: 0, rachas: true }, dificultad: "real" };
+try { if (localStorage.getItem("sim_dificultad") === "facil") sesion.dificultad = "facil"; } catch (e) {}
 try { const g = JSON.parse(localStorage.getItem("sim_viento") || "null"); if (g) sesion.viento = g; } catch (e) {}
 
 let pantallaActual = null;
@@ -748,6 +756,22 @@ function leerCfgAvion() {
 }
 for (const id of ["drAlabeo", "drProf", "calRes", "calTemp"]) document.getElementById(id).addEventListener("input", leerCfgAvion);
 for (const id of ["lanzReal", "calEmpuje"]) document.getElementById(id).addEventListener("change", leerCfgAvion);
+// ---- dificultad: "real" (toda la fisica) o "facil" (la de antes de las mejoras de realismo; ModeloAvion.facil) ----
+const DIFICULTAD_INFO = {
+  real: "Par y estela de la hélice (el avión tiende a alabear y guiñar a la izquierda con gas), efecto P y giroscópico, pérdida por semiala (cae de un ala, puede entrar en barrena), efecto suelo, resistencia de perfil y de la hélice parada, viento más flojo junto al suelo, turbulencia que alabea, densidad según la temperatura, calibración con el avión real y lanzamiento con dispersión.",
+  facil: "Sin par ni estela de la hélice, sin efectos P ni giroscópico, pérdida simétrica, sin efecto suelo, el mismo viento a cualquier altura, rachas sin alabeo, aire estándar y lanzamiento perfecto. Para aprender; el avión real se parece más al modo real." };
+function pintarDificultad() {
+  document.getElementById("dificultad").value = sesion.dificultad;
+  document.getElementById("dificultadInfo").textContent = DIFICULTAD_INFO[sesion.dificultad];
+}
+document.getElementById("dificultad").addEventListener("change", e => {
+  sesion.dificultad = e.target.value === "facil" ? "facil" : "real";
+  try { localStorage.setItem("sim_dificultad", sesion.dificultad); } catch (er) {}
+  pintarDificultad();
+});
+pintarDificultad();
+/** Pone la dificultad elegida en un modelo de vuelo (y en el entorno). */
+function aplicarDificultad(m) { m.facil = sesion.dificultad === "facil"; entorno.facil = m.facil; }
 /** Calibracion y aire al modelo (al empezar el vuelo). */
 function aplicarCalibracion(m) {
   const c = cfgDe(sesion.avion);
@@ -795,7 +819,7 @@ function textoCM() {
 const LANZ = { prueba_s: 5, fallo_s: 6, fallo_h: 5 };   // un vuelo que acaba antes de 6 s sin pasar de 5 m es un lanzamiento fallido
 function pruebaLanzamiento(gas, { masa_kg, viento = [0, 0, 0], rumbo = 0, trim } = {}) {
   // con el recorrido de la emisora (el del teclado no basta en un avion pequeno para corregir el par del motor al lanzarlo)
-  const m = Modelos.crear(sesion.avion); aplicarCM(m); aplicarCalibracion(m); aplicarRecorridos(m, true);
+  const m = Modelos.crear(sesion.avion); aplicarCM(m); aplicarCalibracion(m); aplicarRecorridos(m, true); aplicarDificultad(m);
   if (masa_kg) m.configurar({ masa_kg });
   const a = m.estadoInicial(); colocarEnBase(a); a.gases = gas; m.lanzar(a);
   if (entorno.mundo) rumbo = (sesion.lanz ? sesion.lanz.rumbo : 0) * D2R;
@@ -1075,7 +1099,7 @@ function empezarEnVuelo() {
   const V0 = Math.max(modelo.lanzamiento.vel_ms + 1, 1.35 * vs);
   av.p = [C.N, C.E, -C.h]; av.q = Cuat.desdeEuler(0, 3 * D2R, C.rumbo * D2R); av.v = [V0, 0, 0]; av.w = [0, 0, 0];
   av.gases = C.gas; av.estado = "volando";
-  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, gasLanz: av.gases, hmax: C.h };
+  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: C.h };
   cnContador = 0; grabarMuestra();
   ev.guia = { i: 0, vs, vmin: Math.round(1.3 * vs * 10) / 10, avisado: false };
   aviso(""); guiar();
@@ -1228,7 +1252,7 @@ async function ponerZonaDeLanzamiento(mundo) {
 
 async function empezar() {
   modelo = Modelos.crear(sesion.avion);
-  aplicarCM(modelo); aplicarCalibracion(modelo);
+  aplicarCM(modelo); aplicarCalibracion(modelo); aplicarDificultad(modelo);
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
@@ -1257,12 +1281,12 @@ function orientarLanzamiento() {
 function lanzar() {
   if (av.estado !== "en mano") return;
   modelo.lanzar(av); orientarLanzamiento(); aviso("");
-  if (sesion.lanzReal) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+  if (sesion.lanzReal && !modelo.facil) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
     const [r, p, y] = Cuat.euler(av.q);
     av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
   }
-  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, gasLanz: av.gases, hmax: 0 };
+  vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: 0 };
   cnContador = 0; grabarMuestra();
 }
 function paso(dt) {
@@ -1362,7 +1386,8 @@ async function mostrarResultado(v) {
     avion: modelo.nombre, escenario: v.escenario, tiempo_vuelo_s: +v.tVuelo.toFixed(1),
     accidentes: v.final.startsWith("roto") ? 1 : 0, aterrizajes: v.final === "aterrizado" ? 1 : 0,
     objetivos: objs, resultado, final: v.final,
-    viento: Object.assign({}, E.viento || sesion.viento, cmEsDiseno(sesion.avion) ? {} : { cg_pct: cmActual(sesion.avion).cg, masa_g: cmActual(sesion.avion).masa }) });
+    viento: Object.assign({}, E.viento || sesion.viento, cmEsDiseno(sesion.avion) ? {} : { cg_pct: cmActual(sesion.avion).cg, masa_g: cmActual(sesion.avion).masa },
+                         v.dificultad === "facil" ? { fisica: "facil" } : {}) });
   if (r.estado === "ok") {
     g.textContent = sesion.modo === "local" ? "✔ Guardado en el registro local" + (AulaLocal.archivo ? ` y en ${AulaLocal.archivo.name}.` : " de este navegador.")
                                             : "✔ Guardado en el registro del aula.";
@@ -1729,7 +1754,7 @@ function hud() {
     `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
     `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
     `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
-    `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú` +
+    `${modelo.facil ? "<b>física fácil</b> · " : ""}viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú` +
     (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`);
   const L = entorno.limites, lejos = document.getElementById("lejos");
   if (av.estado === "volando" && !entorno.mundo && dist > L.aviso_m) {

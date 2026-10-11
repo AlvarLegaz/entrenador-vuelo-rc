@@ -61,6 +61,7 @@ class Entorno {
   /** Viento a la altura h sobre el suelo: el viento configurado es el de 10 m; mas abajo frena con el perfil
    *  logaritmico de un campo de cultivo (rugosidad 5 cm): a 2 m sopla un 70 % y a 0,5 m un 45 %. Las rachas, igual. */
   vientoA(vw, h) {
+    if (this.facil) return vw.slice();               // dificultad facil: el mismo viento a cualquier altura
     const z0 = 0.05, k = Math.max(0, Math.log(Math.max(h, 0.2) / z0) / Math.log(10 / z0));
     return [vw[0] * Math.min(1.25, k), vw[1] * Math.min(1.25, k), vw[2] * Math.min(1, k)];
   }
@@ -70,7 +71,7 @@ class Entorno {
    *  sigma_p^2 = sigma_w^2 (0,8 / L_w) (pi L_w / 4b)^(1/3) / (2 (4b / pi)), con L_w = h cerca del suelo. */
   rafagaAlabeo(b, h) {
     const v = this.viento;
-    if (!v.rachas || v.base < 0.01) return 0;
+    if (this.facil || !v.rachas || v.base < 0.01) return 0;
     const sw = 0.5 * (0.18 * v.base + 0.15), Lw = Math.max(3, Math.min(h, 300));
     return v.r[3] * sw * Math.sqrt(0.8 / Lw * Math.cbrt(Math.PI * Lw / (4 * b)) / (2 * 4 * b / Math.PI));
   }

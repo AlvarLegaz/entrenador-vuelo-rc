@@ -298,6 +298,10 @@ Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `Mo
 - **Lanzamiento.** Con "Lanzamiento real", la velocidad, el cabeceo y el alabeo de salida varían al azar como al lanzar a mano.
 - **Calibración.** En la pantalla del avión: empuje estático medido con báscula, factor de resistencia (se ajusta con planeos a mano) y temperatura.
 
+### Dificultad: real o fácil
+
+En la pantalla del avión (v1) y en el menú (v2) se elige la física. **Real** es todo lo de arriba. **Fácil** es la física de antes de estas mejoras: sin par ni estela de la hélice, sin efectos P ni giroscópico, pérdida simétrica de las dos semialas, sin efecto suelo ni resistencias de perfil y de hélice parada (salvo la que ya traían los datos del T1), el mismo viento a cualquier altura, rachas que no alabean, aire estándar, sin calibración y lanzamiento perfecto. Es un interruptor (`ModeloAvion.facil` y `Entorno.facil`): con él, `paso()` da exactamente lo mismo que el código antiguo (comprobado contra el `modelos.js` de antes del commit bde3acd, diferencias de 1e-13), y la v2 lo repite igual (`pruebas/prueba_fisica.gd` compara las dos dificultades). En el registro del aula, los vuelos en fácil llevan `fisica: "facil"` en sus condiciones.
+
 ## Dos simuladores con los mismos datos: v1 (navegador) y v2 (Godot)
 
 Los dos simuladores comparten los **datos**: aviones (`simulador/aviones/*.js`), mundos reales (`simulador/mundos/`), zonas de detalle (`simulador/zonas/`) y la **física** (la de la v2 es una traducción de `simulador/js/modelos.js` y `entorno.js`, comprobada contra la de la v1 con trazas de referencia). Cambia solo el motor gráfico y la interfaz. Se elige cuál usar:

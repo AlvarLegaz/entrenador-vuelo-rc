@@ -12,6 +12,7 @@ var mundo := {}
 var terreno := {}           # H (PackedInt32Array, m sobre el mar), paso, N0, E0, nN, nE, h0
 var agua := PackedByteArray(); var laguna := PackedByteArray()
 var zona := {}              # { meta, dem, base } o vacio
+var facil := false          # dificultad facil: el mismo viento a cualquier altura y rachas que no alabean
 
 ## vel en m/s; desde = de donde viene el viento (grados: 0 norte, 90 este...).
 func configurar_viento(vel: float, desde: float, rachas: bool) -> void:
@@ -20,12 +21,13 @@ func configurar_viento(vel: float, desde: float, rachas: bool) -> void:
 
 ## Viento a la altura h sobre el suelo (perfil logaritmico, rugosidad 5 cm; referencia a 10 m).
 func viento_a(vw: Array, h: float) -> Array:
+	if facil: return vw.duplicate()
 	var z0 := 0.05; var k := maxf(0, log(maxf(h, 0.2) / z0) / log(10 / z0))
 	return [vw[0] * minf(1.25, k), vw[1] * minf(1.25, k), vw[2] * minf(1, k)]
 
 ## Velocidad de alabeo de la turbulencia (Dryden) para un avion de envergadura b a la altura h.
 func rafaga_alabeo(b: float, h: float) -> float:
-	if not viento["rachas"] or viento["base"] < 0.01: return 0.0
+	if facil or not viento["rachas"] or viento["base"] < 0.01: return 0.0
 	var sw: float = 0.5 * (0.18 * viento["base"] + 0.15); var Lw := maxf(3, minf(h, 300))
 	return viento["r"][3] * sw * sqrt(0.8 / Lw * pow(PI * Lw / (4 * b), 1.0 / 3.0) / (2 * 4 * b / PI))
 

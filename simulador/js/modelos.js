@@ -65,6 +65,11 @@ class ModeloAvion {
     this.Qmax = pr.P_max_W / (2 * Math.PI * pr.n_max_rps);                         // par a tope (0,16 N m con el X2212 y la 9x4,7)
     this.Ihelice = datos.I_helice !== undefined ? datos.I_helice : 0.012 * (Dm / 0.2286) ** 3 * Dm * Dm / 12;   // helice de 12 g como varilla
     // helice parada: unos 27 cm2 de resistencia (palas de frente) para una 9", escalado con el diametro al cuadrado
+    this.CD_helice_parada_datos = this.CD_helice_parada || 0;    // la de los datos del avion (la usa el modo facil)
+    // DIFICULTAD: con facil = true, paso() es la fisica de antes de las mejoras de realismo (sin par del motor, estela,
+    // efecto P ni giroscopico, sin perdida por semiala, efecto suelo ni resistencia de perfil, densidad estandar y sin
+    // calibracion). El Entorno, con su propio facil, quita el viento junto al suelo y la turbulencia que alabea
+    this.facil = false;
     if (this.CD_helice_parada === undefined) this.CD_helice_parada = 0.0027 * (Dm / 0.2286) ** 2 / this.S_m2;
     this.k_perfil = datos.k_perfil !== undefined ? datos.k_perfil : 0.02;            // resistencia de perfil: k (CL - 0,3)^2, perfil a Re ~1e5
     // chorro de la helice: fraccion de la profundidad y del timon dentro de la estela, y fraccion del giro de la estela
@@ -132,14 +137,14 @@ class ModeloAvion {
    *  helice parada, efecto suelo, par del motor, giroscopico, efecto P, chorro de la helice sobre la cola y la deriva,
    *  caida de tension de la bateria y densidad del aire (configurar). */
   paso(av, viento, dt) {
-    const q = av.q, v = av.v, w = av.w, rho = this.rho;
+    const q = av.q, v = av.v, w = av.w, FAC = this.facil, rho = FAC ? RHO : this.rho;
     const wb = Cuat.rot(Cuat.inv(q), viento);
     const va = [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]];
     const V = Math.max(0.3, Math.hypot(...va));
     const alfa = Math.atan2(va[2], va[0]), beta = Math.asin(Math.max(-1, Math.min(1, va[1] / V)));
     const ad = alfa * R2D;
     const qS = 0.5 * rho * V * V * this.S_m2, b = this.b_m, c = this.c_m;
-    const ph = (w[0] - (av.pg || 0)) * b / (2 * V), qh = w[1] * c / (2 * V), rh = w[2] * b / (2 * V);
+    const ph = (w[0] - (FAC ? 0 : av.pg || 0)) * b / (2 * V), qh = w[1] * c / (2 * V), rh = w[2] * b / (2 * V);
     // ---- perdida POR SEMIALA: el angulo de ataque de cada semiala (a un 35 % de la envergadura) cambia con el
     // alabeo (la que baja ve mas alfa) y con una pequena asimetria de construccion (av.asim, grados, al azar en cada
     // vuelo). Si una entra antes, pierde sustentacion y el avion cae hacia ese lado; la que baja sigue en perdida:
@@ -147,20 +152,20 @@ class ModeloAvion {
     const P = this.perdida, an = P.anchura_grados / 2;
     const fPerd = a => Math.max(1 / (1 + Math.exp(-(a - P.alfa_perdida_grados) / an)), 1 / (1 + Math.exp((a - P.alfa_perdida_neg_grados) / an)));
     // la seccion que manda es donde empieza la perdida: en un ala rectangular, cerca de la raiz (brazoPerdida, 20 % de b)
-    const yc = this.brazoPerdida * b, dAp = w[0] * yc / V * R2D, asim = av.asim || 0;
+    const yc = this.brazoPerdida * b, dAp = FAC ? 0 : w[0] * yc / V * R2D, asim = FAC ? 0 : av.asim || 0;
     const fR = fPerd(ad + dAp + asim / 2), fL = fPerd(ad - dAp - asim / 2), f = 0.5 * (fR + fL);
     const CLlin = interp(this.TA, this.TCL, ad), Cmlin = interp(this.TA, this.TCM, ad);
     let CDi = interp(this.TA, this.TCDI, ad);
     const CLplaca = P.CL_placa_factor * 2 * Math.sin(alfa) * Math.cos(alfa);
     // efecto suelo (Wieselsberger): menos resistencia inducida y algo mas de sustentacion a menos de media envergadura
-    const x16 = av.agl === undefined ? Infinity : (16 * Math.max(0.05, av.agl) / b) ** 2, fiS = isFinite(x16) ? x16 / (1 + x16) : 1;
+    const x16 = FAC || av.agl === undefined ? Infinity : (16 * Math.max(0.05, av.agl) / b) ** 2, fiS = isFinite(x16) ? x16 / (1 + x16) : 1;
     CDi *= fiS;
     const CL0 = ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS));
     // resistencia: parasita (por el factor de calibracion), de perfil creciente con el CL, inducida, de la perdida y,
     // con el motor parado, la de la helice quieta
     const pr = this.propulsion, g = av.motorRoto ? 0 : av.gases;
-    const CDhel = g < 0.05 ? this.CD_helice_parada : 0;
-    const CD = this.CD0 * this.calib.resistencia + this.k_perfil * (CL0 - 0.3) ** 2 + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 + CDhel;
+    const CDhel = g < 0.05 ? (FAC ? this.CD_helice_parada_datos : this.CD_helice_parada) : 0;
+    const CD = FAC ? this.CD0 + CDhel + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 : this.CD0 * this.calib.resistencia + this.k_perfil * (CL0 - 0.3) ** 2 + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 + CDhel;
     const aP = ad > 0 ? P.alfa_perdida_grados : P.alfa_perdida_neg_grados;
     const Cm0 = (1 - f) * Cmlin + f * (interp(this.TA, this.TCM, aP) - 0.5 * (alfa - aP * D2R));
     const kman = 1 - f * (1 - P.mando_post_perdida);      // eficacia de los mandos tras la perdida
@@ -168,22 +173,22 @@ class ModeloAvion {
     const d = (n) => this.deriv(n, aD), M = this.mandosCoef(av, d, kman);
     // ---- motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gas * tension (la bateria cae ~10 % al vaciarse) ----
     if (av.motorRoto) av.gases = 0;
-    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (1 - 0.10 * (1 - bat));
+    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (FAC ? 1 : 1 - 0.10 * (1 - bat));
     let T = 0, Q = 0, J = 0;
     if (g > 0.02) {
       J = V / (n * pr.D_m);
-      T = pr.CT0 * this.calib.empuje * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4);
-      Q = this.Qmax * (n / pr.n_max_rps) ** 2 * (0.6 + 0.4 * Math.max(0, 1 - J / pr.J0));   // par que absorbe la helice
+      T = pr.CT0 * (FAC ? 1 : this.calib.empuje) * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4);
+      Q = FAC ? 0 : this.Qmax * (n / pr.n_max_rps) ** 2 * (0.6 + 0.4 * Math.max(0, 1 - J / pr.J0));   // par que absorbe la helice
       av.Wh += pr.P_max_W * g * g * g * dt / 3600;
     }
     av.T = T; av.Q = Q; av.rpm = g > 0.02 ? n * 60 : 0;
     // chorro de la helice sobre la cola (momento: velocidad en la estela V^2 + 2T/(rho A), ~80 % desarrollada en la
     // cola): da mando de profundidad y timon aunque el avion vaya despacio, como al lanzarlo a mano
-    const Adisco = Math.PI * pr.D_m * pr.D_m / 4, rq = Math.min(6, 1 + 0.8 * 2 * T / (rho * Adisco) / (V * V));
+    const Adisco = Math.PI * pr.D_m * pr.D_m / 4, rq = FAC ? 1 : Math.min(6, 1 + 0.8 * 2 * T / (rho * Adisco) / (V * V));
     const kProf = 1 + this.chorro.prof * (rq - 1), kTimon = 1 + this.chorro.timon * (rq - 1);
     M.CL *= kProf; M.Cm *= kProf;
     if (this.mandos.timon_max_grados > 0) { M.CY *= kTimon; M.Cl *= kTimon; M.Cn *= kTimon; }
-    const ClpEf = d("Clp") * (1 - 0.6 * f);                 // en perdida se pierde buena parte del amortiguamiento de alabeo
+    const ClpEf = FAC ? d("Clp") : d("Clp") * (1 - 0.6 * f);                 // en perdida se pierde buena parte del amortiguamiento de alabeo
     const CL = CL0 + d("CLq") * qh + M.CL;
     const CY = d("CYb") * beta + d("CYp") * ph + d("CYr") * rh + M.CY;
     // lo que pierde una semiala al entrar en perdida: del CL maximo (el de la tabla en el alfa de perdida) al de placa
@@ -211,8 +216,8 @@ class ModeloAvion {
     Ma[0] += -s * Q + s * sw * Q;
     const Fsw = s * sw * Q / hFin;
     Fa[1] += Fsw; Ma[2] += -this.brazoDeriva * Fsw;
-    if (T > 0) { const e = 0.5 * (pr.D_m / 2) * V * Math.sin(alfa) / (2 * Math.PI * n * 0.75 * pr.D_m / 2 + 1e-3); Ma[2] += -s * T * e; }
-    const Hx = s * this.Ihelice * 2 * Math.PI * n;
+    if (T > 0 && !FAC) { const e = 0.5 * (pr.D_m / 2) * V * Math.sin(alfa) / (2 * Math.PI * n * 0.75 * pr.D_m / 2 + 1e-3); Ma[2] += -s * T * e; }
+    const Hx = FAC ? 0 : s * this.Ihelice * 2 * Math.PI * n;
     Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx;
     const gb = Cuat.rot(Cuat.inv(q), [0, 0, G0]), m = this.masa_kg;
     const F = [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]];
