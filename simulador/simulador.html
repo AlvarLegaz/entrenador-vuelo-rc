@@ -255,6 +255,17 @@
     <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked></div>
     <p class="sub" style="margin:6px 0 0">Para empezar, menos de 3 m/s. El escenario de viento cruzado pone su propio viento.</p>
   </div>
+  <h2>Mando</h2>
+  <div class="tarjeta">
+    <p id="mandoEstado" style="margin:0 0 8px">Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.</p>
+    <div class="fila"><label for="mandoGas">Gas</label>
+      <select id="mandoGas"><option value="incremental">Palanca izquierda con muelle (mando de consola): arriba sube el gas, abajo lo baja, al centro se queda</option>
+        <option value="absoluto">Palanca izquierda sin muelle (emisora RC): la posición es el gas</option></select></div>
+    <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="60" step="5" style="flex:1;max-width:340px"><b id="mandoExpoTxt"></b></div>
+    <p class="sub" style="margin:4px 0 0">Palanca derecha: arriba/abajo, profundidad (hacia ti, morro arriba); izquierda/derecha, alerones o timón. Palanca izquierda: gas.
+      Botones: A / ✕ lanzar · B / ○ cortar gas · Y / △ cámara · X / □ empezar de nuevo · cruceta arriba/abajo compensador · Start terminar el vuelo.
+      Con mando la palanca es proporcional, como en la emisora: usa el mismo recorrido y la misma exponencial que vayas a poner en el avión real.</p>
+  </div>
   <h2>Centro de gravedad y peso</h2>
   <div class="tarjeta">
     <div class="fila"><label for="cmCg">Centro de gravedad</label>
@@ -311,10 +322,10 @@
   <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
 
 <script src="three.min.js"></script>
-<script src="js/modelos.js?v=11"></script>
-<script src="js/entorno.js?v=11"></script>
-<script src="js/visor.js?v=11"></script>
-<script src="mundos/cartagena.js?v=11"></script>
+<script src="js/modelos.js?v=12"></script>
+<script src="js/entorno.js?v=12"></script>
+<script src="js/visor.js?v=12"></script>
+<script src="mundos/cartagena.js?v=12"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -684,6 +695,7 @@ function leerCM() {
   pintarCM();
 }
 for (const id of ["cmCg", "cmMasa"]) document.getElementById(id).addEventListener("input", leerCM);
+setInterval(() => { if (pantallaActual === "pAvion") pintarMandoCfg(); }, 1000);   // el mando aparece al pulsar un boton
 document.getElementById("btnCmDiseno").onclick = () => {
   delete cmCfg[sesion.avion]; try { localStorage.setItem("sim_cm", JSON.stringify(cmCfg)); } catch (e) {} pintarCM();
 };
@@ -1325,13 +1337,80 @@ window.addEventListener("keydown", e => {
 });
 window.addEventListener("keyup", e => { teclas[e.code] = false; });
 window.addEventListener("blur", () => { for (const k in teclas) teclas[k] = false; });
+// =====================================================================
+//  MANDO (Gamepad API): palanca derecha = avion (profundidad y alerones/timon), palanca izquierda = gas.
+//  Proporcional, con zona muerta y exponencial propia. Sirve un mando de consola o una emisora RC por USB (que
+//  el sistema ve como joystick). Si el mando se mueve, manda el mando; si no, el teclado.
+// =====================================================================
+const MANDO = { gas: "incremental", expo: 0.3, zona: 0.06, botones: [], activo: false, id: "" };
+try { const g = JSON.parse(localStorage.getItem("sim_mando") || "{}"); if (g.gas) MANDO.gas = g.gas; if (g.expo !== undefined) MANDO.expo = g.expo; } catch (e) {}
+function guardarMando() { try { localStorage.setItem("sim_mando", JSON.stringify({ gas: MANDO.gas, expo: MANDO.expo })); } catch (e) {} }
+function pintarMandoCfg() {
+  document.getElementById("mandoGas").value = MANDO.gas;
+  document.getElementById("mandoExpo").value = Math.round(MANDO.expo * 100);
+  document.getElementById("mandoExpoTxt").textContent = Math.round(MANDO.expo * 100) + " %";
+  const p = mandoConectado();
+  document.getElementById("mandoEstado").innerHTML = p ? `<b style="color:#8be08f">Mando conectado:</b> ${esc(p.id)}` :
+    "Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.";
+}
+document.getElementById("mandoGas").addEventListener("change", e => { MANDO.gas = e.target.value; guardarMando(); });
+document.getElementById("mandoExpo").addEventListener("input", e => { MANDO.expo = +e.target.value / 100; guardarMando(); pintarMandoCfg(); });
+window.addEventListener("gamepadconnected", () => pintarMandoCfg());
+window.addEventListener("gamepaddisconnected", () => pintarMandoCfg());
+function mandoConectado() {
+  const gp = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of gp) if (p && p.connected && p.axes.length >= 4) return p;
+  return null;
+}
+const zonaMuerta = (x, z) => Math.abs(x) < z ? 0 : Math.sign(x) * (Math.abs(x) - z) / (1 - z);
+const expo = (x, e) => (1 - e) * x + e * x * x * x;
+/** Lee el mando en cada cuadro. Devuelve true si el mando manda (alguna palanca fuera de la zona muerta o gas absoluto). */
+function leerMando(dt) {
+  const p = mandoConectado();
+  MANDO.activo = !!p; if (!p) return false;
+  MANDO.id = p.id;
+  const ax = p.axes, rx = zonaMuerta(ax[2] || 0, MANDO.zona), ry = zonaMuerta(ax[3] || 0, MANDO.zona), ly = zonaMuerta(ax[1] || 0, MANDO.zona);
+  // botones: flanco de subida
+  const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
+  const pulsado = i => b(i) && !antes[i];
+  if (pantallaActual === null) {
+    if (pulsado(0)) lanzar();
+    if (pulsado(1)) av.gases = 0;
+    if (pulsado(3)) visor.camara = visor.camara % 3 + 1;
+    if (pulsado(2)) { if (av.estado === "volando") terminarVuelo("abandonado"); else reiniciar(); }
+    if (pulsado(9) && av.estado === "volando") terminarVuelo("abandonado");
+    if (pulsado(12)) mando.trim = Math.min(6, mando.trim + 0.25);
+    if (pulsado(13)) mando.trim = Math.max(-6, mando.trim - 0.25);
+  }
+  MANDO.botones = p.buttons.map(x => x.pressed);
+  // palanca derecha: hacia ti (eje Y positivo, abajo) = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
+  const moviendo = rx !== 0 || ry !== 0;
+  if (moviendo || MANDO.usado) {
+    mando.pitch = expo(ry, MANDO.expo); mando.yaw = expo(rx, MANDO.expo);
+    mando.pitchObj = mando.pitch; mando.yawObj = mando.yaw;
+  }
+  if (moviendo) MANDO.usado = true;
+  // palanca izquierda: gas (eje Y negativo = arriba)
+  if (!av.motorRoto) {
+    if (MANDO.gas === "absoluto") { if (MANDO.usado || ly !== 0) av.gases = Math.max(0, Math.min(1, (1 - (ax[1] || 0)) / 2)); }
+    else if (ly !== 0) av.gases = Math.max(0, Math.min(1, av.gases - ly * 0.7 * dt));
+  }
+  return moviendo || MANDO.usado;
+}
+
 function leerTeclado(dt) {
+  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"];
+  if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
+  if (leerMando(dt) && !teclaPalanca) { leerGasTeclado(dt); return; }
   mando.pitchObj = (teclas["ArrowDown"] ? 1 : 0) - (teclas["ArrowUp"] ? 1 : 0);    // +1 = tirar
   mando.yawObj = (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0);
   for (const k of ["pitch", "yaw"]) {         // la palanca va al tope a 5/s y vuelve al centro a 8/s
     const obj = mando[k + "Obj"], vel = obj === 0 ? 8 : 5, d = obj - mando[k];
     mando[k] += Math.sign(d) * Math.min(Math.abs(d), vel * dt);
   }
+  leerGasTeclado(dt);
+}
+function leerGasTeclado(dt) {
   if (av.motorRoto) return;
   if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + 0.8 * dt);
   if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - 0.8 * dt);

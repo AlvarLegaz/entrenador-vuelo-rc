@@ -237,6 +237,8 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | [ / ] | Compensador |
 | T | Ayuda |
 
+**Con mando** (mando de consola o emisora RC por USB, que el sistema vea como joystick): la palanca derecha lleva el avión (arriba/abajo profundidad, izquierda/derecha alerones o timón) y la izquierda el gas, de forma proporcional como en una emisora. En la pantalla del avión se elige si la palanca del gas tiene muelle (mando de consola: arriba sube el gas, al centro se queda) o no (emisora: la posición es el gas) y la exponencial. Botones: A/✕ lanzar, B/○ cortar gas, Y/△ cámara, X/□ empezar de nuevo, cruceta arriba/abajo compensador, Start terminar el vuelo. Si se tocan las flechas del teclado vuelve a mandar el teclado.
+
 **Escenarios** (se evalúan solos):
 
 | Escenario | Para ser APTO |
