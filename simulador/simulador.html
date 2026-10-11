@@ -59,6 +59,9 @@
   #anemometro, #variometro { position: absolute; bottom: 78px; width: 132px; height: 132px; pointer-events: none; display: none;
                              filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   #anemometro { right: 226px; } #variometro { right: 366px; }
+  /* GPS (mapa del campo visto desde arriba, norte arriba) encima del horizonte, camaras 2 y 3 */
+  #gps { position: absolute; right: 14px; bottom: 290px; width: 200px; height: 200px; pointer-events: none; display: none;
+         border-radius: 8px; filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   body.cam1 #anemometro { right: 14px; } body.cam1 #variometro { right: 154px; }
   .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
            position: relative; margin-right: 10px; background: rgba(0,0,0,.25); vertical-align: bottom; }
@@ -183,6 +186,7 @@
   <polygon points="150,3 143,16 157,16" fill="#f85149"/>
   <text id="hzRumbo" x="150" y="290" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">000°</text>
 </svg>
+<canvas id="gps" width="200" height="200" aria-label="GPS: mapa del campo"></canvas>
 <svg id="anemometro" viewBox="0 0 150 150" aria-label="Velocidad del aire">
   <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
   <g id="anBandas" fill="none" stroke-width="9"></g><g id="anEscala"></g>
@@ -1309,6 +1313,41 @@ function pintarInstrumentos(V, vz) {
   const vg = document.getElementById("vaAguja"); vg.setAttribute("x2", xv); vg.setAttribute("y2", yv);
   document.getElementById("vaTxt").textContent = (vz >= 0 ? "+" : "") + vz.toFixed(1);
 }
+// ---- GPS: mapa del campo visto desde arriba, norte arriba, centrado entre el piloto y el avion; la escala se abre
+// para que siempre se vean los dos (minimo +-150 m). Pista, pilones de colores, zona 2 (pista 2, diana y puerta),
+// el piloto (punto blanco), la estela del ultimo minuto y el avion (triangulo con su rumbo) ----
+const GPS = { estela: [], tUlt: -1 };
+function pintarGPS(rumbo) {
+  const cv = document.getElementById("gps"), ver = visor.camara === 2 || visor.camara === 3;
+  cv.style.display = ver ? "block" : "none";
+  if (!ver) return;
+  const N = av.p[0], E = av.p[1];
+  if (av.estado === "volando" && av.t - GPS.tUlt >= 0.5) { GPS.estela.push([N, E, av.t]); GPS.tUlt = av.t; }
+  if (av.t < GPS.tUlt) { GPS.estela = []; GPS.tUlt = -1; }                         // vuelo nuevo
+  while (GPS.estela.length && av.t - GPS.estela[0][2] > 60) GPS.estela.shift();
+  const g = cv.getContext("2d"), W = cv.width, cN = N / 2, cE = E / 2;              // centro del mapa: entre piloto y avion
+  const semi = Math.max(150, 0.62 * Math.max(Math.abs(N), Math.abs(E)) + 40), k = W / 2 / semi;
+  const X = e => W / 2 + (e - cE) * k, Y = n => W / 2 - (n - cN) * k;
+  g.clearRect(0, 0, W, W);
+  g.fillStyle = "rgba(11,15,20,0.85)"; g.fillRect(0, 0, W, W);
+  const P = entorno.pista, Z = entorno.zona2;
+  g.fillStyle = "#9e9e9e"; g.fillRect(X(-P.ancho / 2), Y(P.n1), P.ancho * k, (P.n1 - P.n0) * k);                     // pista 1
+  g.fillStyle = "#8d6e63"; g.fillRect(X(Z.pista.e0), Y(Z.pista.n + Z.pista.ancho / 2), (Z.pista.e1 - Z.pista.e0) * k, Z.pista.ancho * k);   // pista 2
+  g.strokeStyle = "#e0e0e0"; g.lineWidth = 1;
+  for (const [r] of Z.diana.anillos) { g.beginPath(); g.arc(X(Z.diana.e), Y(Z.diana.n), Math.max(1.5, r * k), 0, 2 * Math.PI); g.stroke(); }
+  for (const [n, e] of [[Z.puerta.n0, Z.puerta.e], [Z.puerta.n1, Z.puerta.e]]) { g.fillStyle = Z.puerta.color.hex; g.beginPath(); g.arc(X(e), Y(n), 3, 0, 2 * Math.PI); g.fill(); }
+  entorno.circuito.pilones.forEach(([n, e], i) => { g.fillStyle = entorno.circuito.colores[i].hex; g.beginPath(); g.arc(X(e), Y(n), 4, 0, 2 * Math.PI); g.fill(); g.strokeStyle = "#fff"; g.stroke(); });
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Y(0), 3.5, 0, 2 * Math.PI); g.fill();                              // piloto
+  if (GPS.estela.length > 1) { g.strokeStyle = "rgba(255,213,79,0.8)"; g.lineWidth = 1.5; g.beginPath(); GPS.estela.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.lineTo(X(E), Y(N)); g.stroke(); }
+  g.save(); g.translate(X(E), Y(N)); g.rotate(rumbo * D2R);                                                          // avion
+  g.fillStyle = "#ffd54f"; g.strokeStyle = "#000"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
+  const vto = entorno.viento;                                                                                         // viento: flecha hacia donde va
+  if (vto.base > 0.3) { g.save(); g.translate(W - 18, 18); g.rotate(vto.rumbo); g.strokeStyle = "#4fc3f7"; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 8); g.lineTo(0, -8); g.lineTo(-4, -3); g.moveTo(0, -8); g.lineTo(4, -3); g.stroke(); g.restore(); }
+  g.fillStyle = "#e6edf3"; g.font = "bold 11px sans-serif"; g.fillText("N", 6, 14);
+  const esc = semi >= 400 ? 200 : 100; g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
+  g.font = "10px sans-serif"; g.fillText(esc + " m", 10, W - 14);
+  g.fillText(`${Math.hypot(N, E).toFixed(0)} m`, W - 48, W - 14);
+}
 function pintarHorizonte(roll, pitch, rumbo) {
   const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
   el.style.display = ver ? "block" : "none";
@@ -1348,7 +1387,7 @@ function hud() {
     lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
-  pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs);
+  pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
 }
