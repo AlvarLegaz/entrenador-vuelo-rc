@@ -47,3 +47,7 @@ A[sin] = (28, 62, 96); img = Image.fromarray(A)
 sal = os.path.join(os.path.dirname(os.path.abspath(ruta)), M["id"] + "_orto.jpg")
 img.save(sal, quality=85)
 print("escrito", sal, W, "x", Hh, round(os.path.getsize(sal) / 1e6, 1), "MB")
+# la misma foto empaquetada en .js, para abrir simulador.html con doble clic (ver empaquetar_fichero.py)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import empaquetar_fichero
+empaquetar_fichero.ortofoto_mundo(sal)

@@ -26,7 +26,11 @@ Object.assign(Visor.prototype, {
       if (typeof GPS !== "undefined") GPS.mapa = null;
       if (typeof pintarMapaLanz === "function" && typeof pantallaActual !== "undefined" && pantallaActual === "pLanzamiento") pintarMapaLanz();
     };
-    img.src = "mundos/" + m.id + "_orto.jpg";
+    // con doble clic (file://) una imagen suelta no se puede subir a WebGL (el suelo saldria negro): se usa la misma foto
+    // empaquetada en data: dentro de mundos/<id>_orto.js. Si no esta, se queda la textura sintetica
+    if (ABIERTO_COMO_FICHERO) cargarScript("mundos/" + m.id + "_orto.js").then(() => { if (Mundos._ortos[m.id]) img.src = Mundos._ortos[m.id]; })
+                                .catch(e => console.warn("Sin la ortofoto de la region (falta mundos/" + m.id + "_orto.js):", e));
+    else img.src = "mundos/" + m.id + "_orto.jpg";
   },
 
   /** Carreteras de OSM en cinta, sin los tramos dentro de la zona de detalle (alli la ortofoto ya las muestra). */
@@ -120,7 +124,7 @@ Object.assign(Visor.prototype, {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
       geo.computeVertexNormals();
-      const tex = cargador.load(z.base + Z.orto.archivo.replace("{i}", ti).replace("{j}", tj));
+      const tex = cargador.load(z.datos ? z.datos.orto[ti + "_" + tj] : z.base + Z.orto.archivo.replace("{i}", ti).replace("{j}", tj));
       tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
       const malla = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
       malla.receiveShadow = true; g.add(malla);
@@ -130,7 +134,7 @@ Object.assign(Visor.prototype, {
   /** Edificios del Catastro: cada huella extruida a sus plantas (3 m por planta) desde la cota del terreno, con el
    *  tejado del color de la ortofoto y las fachadas claras. Todo en una sola malla. */
   _edificiosZona(g, z) {
-    fetch(z.base + z.meta.edificios.archivo).then(r => r.json()).then(lista => {
+    (z.datos ? Promise.resolve(z.datos.edificios) : fetch(z.base + z.meta.edificios.archivo).then(r => r.json())).then(lista => {
       const h0 = this.mundo.terreno.h0, pos = [], col = [], C = new THREE.Color(), Cw = new THREE.Color(), crema = new THREE.Color(0xeee6d8), r = semilla(5);
       for (const ed of lista) {
         const P = []; for (let i = 0; i < ed.p.length; i += 2) P.push(new THREE.Vector2(ed.p[i], ed.p[i + 1]));
@@ -157,8 +161,8 @@ Object.assign(Visor.prototype, {
   /** Arboles detectados en la ortofoto: los de copa grande con tronco y copa; los pequenos, como matorral bajo.
    *  Instanciados por celdas de 500 m; mas detalle en las copas cercanas al punto de salida. */
   _arbolesZona(g, z) {
-    fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(buf => {
-      const A = new Float32Array(buf), alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0];
+    (z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b))).then(A => {
+      const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0];
       const arboles = [], matas = [];
       for (let i = 0; i < A.length; i += 3) (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], A[i + 2]]);
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);

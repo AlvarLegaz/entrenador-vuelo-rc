@@ -340,9 +340,9 @@
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=20"></script>
-<script src="js/entorno.js?v=20"></script>
+<script src="js/entorno.js?v=21"></script>
 <script src="js/visor.js?v=24"></script>
-<script src="js/visor_real.js?v=24"></script>
+<script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script>
 "use strict";
@@ -1191,6 +1191,10 @@ function pintarObjetivos() {
 const ZONAS = { indice: null, cache: {} };
 async function indiceZonas() {
   if (ZONAS.indice) return ZONAS.indice;
+  if (ABIERTO_COMO_FICHERO) {               // con doble clic no hay fetch: el indice va empaquetado en un .js
+    try { await cargarScript("zonas/indice.js?" + Date.now()); ZONAS.indice = Zonas._indice || []; } catch (e) { ZONAS.indice = []; }
+    return ZONAS.indice;
+  }
   try { const r = await fetch("zonas/indice.json?" + Date.now()); ZONAS.indice = r.ok ? await r.json() : []; } catch (e) { ZONAS.indice = []; }
   return ZONAS.indice;
 }
@@ -1200,7 +1204,14 @@ function zonaEn(mundoId, N, E) {
 }
 async function cargarZona(meta) {
   if (ZONAS.cache[meta.id]) return ZONAS.cache[meta.id];
-  const base = "zonas/" + meta.id + "/", r = await fetch(base + meta.dem.archivo);
+  const base = "zonas/" + meta.id + "/";
+  if (ABIERTO_COMO_FICHERO) {                // con doble clic: la zona entera en zonas/<id>/zona.js (datos en base64)
+    await cargarScript(base + "zona.js");
+    const d = Zonas._datos[meta.id]; if (!d) throw new Error("sin " + base + "zona.js");
+    const datos = { edificios: d.edificios, arboles: new Float32Array(base64ABytes(d.arboles)), orto: d.orto };
+    return (ZONAS.cache[meta.id] = { meta, dem: new Int16Array(base64ABytes(d.dem)), base, datos });
+  }
+  const r = await fetch(base + meta.dem.archivo);
   if (!r.ok) throw new Error("sin " + base + meta.dem.archivo);
   return (ZONAS.cache[meta.id] = { meta, dem: new Int16Array(await r.arrayBuffer()), base });
 }

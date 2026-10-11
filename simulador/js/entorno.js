@@ -8,6 +8,16 @@
 // =====================================================================
 // Mundos reales (carpeta mundos/): cada fichero llama a Mundos.registrar({ id, nombre, origen, terreno, carreteras, urbano, lugares })
 const Mundos = { _datos: {}, registrar(m) { Mundos._datos[m.id] = m; }, datos(id) { return Mundos._datos[id]; }, ids() { return Object.keys(Mundos._datos); } };
+// Datos empaquetados en .js para abrir simulador.html con doble clic (file://): ortofotos de los mundos (mundos/<id>_orto.js)
+// y zonas de detalle (zonas/indice.js, zonas/<id>/zona.js). Ver analisis/mundo_cartagena/empaquetar_fichero.py
+Mundos._ortos = {}; Mundos.ortofoto = (id, url) => { Mundos._ortos[id] = url; };
+const Zonas = { _indice: null, _datos: {}, indice(l) { Zonas._indice = l; }, registrar(id, d) { Zonas._datos[id] = d; } };
+/** Carga un script y espera a que termine (o falle). */
+function cargarScript(src) {
+  return new Promise((ok, mal) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => mal(new Error("sin " + src)); document.head.appendChild(s); });
+}
+const ABIERTO_COMO_FICHERO = typeof location !== "undefined" && location.protocol === "file:";
+function base64ABytes(b64) { const t = atob(b64), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u.buffer; }
 
 class Entorno {
   constructor() {

@@ -177,6 +177,9 @@ def main():
     for f in os.listdir(salida):                                # los temporales de descarga no hacen falta en el simulador
         if f.startswith("_"): os.remove(os.path.join(salida, f))
     escribir_indice(os.path.dirname(os.path.abspath(salida)))
+    # la misma zona empaquetada en .js, para abrir simulador.html con doble clic (ver empaquetar_fichero.py)
+    import empaquetar_fichero
+    empaquetar_fichero.zona(salida); empaquetar_fichero.indice(os.path.dirname(os.path.abspath(salida)))
     print("zona escrita en", os.path.abspath(salida))
 
 

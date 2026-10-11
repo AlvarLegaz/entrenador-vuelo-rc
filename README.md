@@ -302,12 +302,12 @@ Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `Mo
 
 Los dos simuladores comparten los **datos**: aviones (`simulador/aviones/*.js`), mundos reales (`simulador/mundos/`), zonas de detalle (`simulador/zonas/`) y la **física** (la de la v2 es una traducción de `simulador/js/modelos.js` y `entorno.js`, comprobada contra la de la v1 con trazas de referencia). Cambia solo el motor gráfico y la interfaz. Se elige cuál usar:
 
-- **v1, navegador** (`simulador/simulador.html`): Three.js r169 empaquetado como script global (`scripts/empaquetar_three.py` → `simulador/lib/`), con iluminación física y *tone mapping* ACES, cielo con dispersión atmosférica (`Sky`), sombras del sol que siguen al avión, agua con reflejos y oleaje (`Water`, solo con mar a menos de 2 km, porque redibuja la escena) y, en los mundos reales, la ortofoto real de toda la región y las zonas de detalle (`js/visor_real.js`). Funciona con el servidor del aula o cualquier servidor HTTP; abriendo el fichero con doble clic no se cargan la ortofoto ni las zonas.
+- **v1, navegador** (`simulador/simulador.html`): Three.js r169 empaquetado como script global (`scripts/empaquetar_three.py` → `simulador/lib/`), con iluminación física y *tone mapping* ACES, cielo con dispersión atmosférica (`Sky`), sombras del sol que siguen al avión, agua con reflejos y oleaje (`Water`, solo con mar a menos de 2 km, porque redibuja la escena) y, en los mundos reales, la ortofoto real de toda la región y las zonas de detalle (`js/visor_real.js`). Funciona con el servidor del aula, con cualquier servidor HTTP o abriendo `simulador.html` con doble clic. Con doble clic el navegador no deja leer ficheros sueltos y rechaza las fotos sueltas en WebGL (el suelo salía negro), así que la ortofoto y las zonas se cargan de copias empaquetadas en `.js` (`mundos/<id>_orto.js`, `zonas/indice.js`, `zonas/<id>/zona.js`) que escriben `zona.py` y `orto_region.py` al terminar, o `python analisis/mundo_cartagena/empaquetar_fichero.py`.
 - **v2, Godot 4** (`simulador_godot/`): Godot 4.7 con Vulkan; ver la sección siguiente.
 
 ### v2, Godot 4 (`simulador_godot/`)
 
-Vuelo libre sobre el Campo de Cartagena con el render de Godot 4.7 (Forward+, Vulkan). No se copia ningún dato: lee los `.js` de `simulador/aviones/` y `simulador/mundos/` (el JSON de dentro de `Modelos.registrar(...)` y `Mundos.registrar(...)`), la ortofoto de la región y `simulador/zonas/`. Se lanza desde la carpeta del repositorio con:
+Vuelo libre sobre el Campo de Cartagena con el render de Godot 4.7 (Forward+, Vulkan). No se copia ningún dato: lee los `.js` de `simulador/aviones/` y `simulador/mundos/` (el JSON de dentro de `Modelos.registrar(...)` y `Mundos.registrar(...)`), la ortofoto de la región y `simulador/zonas/`. Se abre con doble clic en `SIMULADOR_V2_GODOT.bat` (en la carpeta del repositorio) o con:
 
 ```
 herramientas/godot/Godot_v4.7.2-stable_win64.exe --path simulador_godot
