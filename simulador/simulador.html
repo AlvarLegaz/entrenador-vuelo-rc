@@ -52,6 +52,9 @@
   #objetivos h3 { margin: 0 0 4px; font-size: 15px; color: var(--acento); }
   .ob-ok { color: #8be08f; } .ob-mal { color: #ff8a80; } .ob-pend { color: #ddd; } .ob-curso { color: #b3e5fc; }
   #barra { position: absolute; left: 12px; bottom: 12px; color: #fff; font-size: 13px; text-shadow: 0 0 3px #000; }
+  /* horizonte artificial con brujula (camaras 2 y 3), abajo a la derecha, como el del simulador del submarino */
+  #horizonte { position: absolute; right: 14px; bottom: 78px; width: 200px; height: 200px; pointer-events: none; display: none;
+               filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
            position: relative; margin-right: 10px; background: rgba(0,0,0,.25); vertical-align: bottom; }
   .mando i { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--acento); left: 50%; top: 50%; }
@@ -149,6 +152,27 @@
   <div class="gases"><i id="gasesBarra" style="height:0%"></i></div>
   <div class="mando"><i id="punto"></i></div>
 </div>
+<svg id="horizonte" viewBox="0 0 300 300" aria-label="Horizonte artificial y rumbo">
+  <defs><clipPath id="clipActitud"><circle cx="150" cy="150" r="98"/></clipPath></defs>
+  <circle cx="150" cy="150" r="148" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+  <g id="hzRosa"></g>
+  <g clip-path="url(#clipActitud)">
+    <g id="hzActitud">
+      <rect x="-600" y="-1400" width="1500" height="1550" fill="#1f7ae0"/>
+      <rect x="-600" y="150" width="1500" height="1550" fill="#6b4a1e"/>
+      <line x1="-600" y1="150" x2="900" y2="150" stroke="#fff" stroke-width="1.5"/>
+      <g id="hzEscalera"></g>
+    </g>
+  </g>
+  <circle cx="150" cy="150" r="98" fill="none" stroke="#3d4956" stroke-width="2"/>
+  <g id="hzBanco" fill="none" stroke="#fff" stroke-width="1.5"></g>
+  <polygon points="150,58 144,70 156,70" fill="#fff"/>
+  <circle cx="150" cy="150" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>
+  <line x1="100" y1="150" x2="132" y2="150" stroke="#fff" stroke-width="3"/>
+  <line x1="168" y1="150" x2="200" y2="150" stroke="#fff" stroke-width="3"/>
+  <polygon points="150,3 143,16 157,16" fill="#f85149"/>
+  <text id="hzRumbo" x="150" y="290" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">000°</text>
+</svg>
 <div id="cajaNegra">
   <label><input type="checkbox" id="cnAuto"> Descargar la caja negra (CSV) de cada vuelo</label><br>
   <button id="cnUltimo" disabled>Descargar el último</button>
@@ -1197,6 +1221,37 @@ function leerTeclado(dt) {
 //  HUD Y BUCLE
 // =====================================================================
 let tToast = 0;
+// ---- horizonte artificial con brujula (camaras 2 y 3): rosa de rumbos en el anillo exterior, que gira con el rumbo (el
+// norte queda donde apunta el morro), y bola de actitud que gira con el alabeo y se desplaza con el cabeceo ----
+const HZ_PX_GRADO = 3.2;
+(function construirHorizonte() {
+  const NS = "http://www.w3.org/2000/svg", mk = (t, a, tx) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (tx !== undefined) e.textContent = tx; return e; };
+  const rosa = document.getElementById("hzRosa"), card = { 0: "N", 90: "E", 180: "S", 270: "W" };
+  for (let a = 0; a < 360; a += 5) {
+    const mayor = a % 30 === 0;
+    rosa.appendChild(mk("line", { x1: 150, y1: 4, x2: 150, y2: mayor ? 18 : (a % 10 === 0 ? 13 : 10), stroke: "#e6edf3", "stroke-width": mayor ? 3 : 1.5, transform: `rotate(${a} 150 150)` }));
+    if (mayor) rosa.appendChild(mk("text", { x: 150, y: a in card ? 40 : 34, "text-anchor": "middle", fill: a === 0 ? "#f85149" : "#e6edf3",
+                                              "font-size": a in card ? 20 : 12, "font-weight": a in card ? 700 : 400, transform: `rotate(${a} 150 150)` }, a in card ? card[a] : String(a)));
+  }
+  const esc = document.getElementById("hzEscalera");
+  for (let p = -40; p <= 40; p += 5) {
+    if (p === 0) continue;
+    const y = 150 - p * HZ_PX_GRADO, medio = p % 10 === 0 ? 34 : 12;
+    esc.appendChild(mk("line", { x1: 150 - medio, y1: y, x2: 150 + medio, y2: y, stroke: "#fff", "stroke-width": 1.5 }));
+    if (p % 10 === 0) for (const lado of [-1, 1]) esc.appendChild(mk("text", { x: 150 + lado * (medio + 6), y: y + 4, fill: "#fff", "font-size": 11, "text-anchor": lado < 0 ? "end" : "start" }, String(p)));
+  }
+  const banco = document.getElementById("hzBanco");          // marcas de alabeo fijas a 0, +-10, 20, 30, 45, 60 grados
+  for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60])
+    banco.appendChild(mk("line", { x1: 150, y1: 52, x2: 150, y2: a % 30 === 0 ? 62 : 58, transform: `rotate(${a} 150 150)`, "stroke-width": a === 0 ? 3 : 1.5 }));
+})();
+function pintarHorizonte(roll, pitch, rumbo) {
+  const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
+  el.style.display = ver ? "block" : "none";
+  if (!ver) return;
+  document.getElementById("hzRosa").setAttribute("transform", `rotate(${-rumbo} 150 150)`);
+  document.getElementById("hzActitud").setAttribute("transform", `rotate(${-roll} 150 150) translate(0 ${pitch * HZ_PX_GRADO})`);
+  document.getElementById("hzRumbo").textContent = `${String(Math.round((rumbo + 360) % 360) % 360).padStart(3, "0")}°`;
+}
 function aviso(txt) { document.getElementById("aviso").textContent = txt; }
 function toast(txt) { const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
 function hud() {
@@ -1220,6 +1275,7 @@ function hud() {
     lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
+  pintarHorizonte(roll, pitch, yaw);
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
 }

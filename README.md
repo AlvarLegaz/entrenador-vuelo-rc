@@ -233,7 +233,7 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | L | Lanzar |
 | R | Empezar de nuevo |
 | Esc | Terminar el vuelo |
-| 1 / 2 / 3 | Cámaras: piloto (con zoom automático a partir de 40 m, para que el avión no se pierda de vista), persecución y a bordo |
+| 1 / 2 / 3 | Cámaras: piloto (con zoom automático a partir de 40 m, para que el avión no se pierda de vista), persecución y a bordo. En las cámaras 2 y 3 aparece abajo a la derecha un horizonte artificial (alabeo y cabeceo) con la rosa de rumbos en el anillo exterior, como el del simulador del submarino |
 | [ / ] | Compensador |
 | T | Ayuda |
 
