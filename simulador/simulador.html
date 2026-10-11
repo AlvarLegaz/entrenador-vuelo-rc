@@ -59,8 +59,8 @@
   #anemometro, #variometro { position: absolute; bottom: 78px; width: 132px; height: 132px; pointer-events: none; display: none;
                              filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   #anemometro { right: 226px; } #variometro { right: 366px; }
-  /* GPS (mapa del campo visto desde arriba, norte arriba) encima del horizonte, camaras 2 y 3 */
-  #gps { position: absolute; right: 14px; bottom: 290px; width: 200px; height: 200px; pointer-events: none; display: none;
+  /* GPS (mapa del campo visto desde arriba, norte arriba) abajo a la izquierda, encima de gases y palanca, camaras 2 y 3 */
+  #gps { position: absolute; left: 12px; bottom: 118px; width: 200px; height: 200px; pointer-events: none; display: none;
          border-radius: 8px; filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
   body.cam1 #anemometro { right: 14px; } body.cam1 #variometro { right: 154px; }
   .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
@@ -1344,6 +1344,8 @@ function pintarGPS(rumbo) {
   const vto = entorno.viento;                                                                                         // viento: flecha hacia donde va
   if (vto.base > 0.3) { g.save(); g.translate(W - 18, 18); g.rotate(vto.rumbo); g.strokeStyle = "#4fc3f7"; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 8); g.lineTo(0, -8); g.lineTo(-4, -3); g.moveTo(0, -8); g.lineTo(4, -3); g.stroke(); g.restore(); }
   g.fillStyle = "#e6edf3"; g.font = "bold 11px sans-serif"; g.fillText("N", 6, 14);
+  g.font = "bold 12px sans-serif"; g.fillText(`alt ${Math.max(0, -av.p[2]).toFixed(0)} m`, 6, 30);
+  if (av.motorRoto) { g.fillStyle = "#ff5252"; g.fillText("MOTOR PARADO", 6, 46); }
   const esc = semi >= 400 ? 200 : 100; g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
   g.font = "10px sans-serif"; g.fillText(esc + " m", 10, W - 14);
   g.fillText(`${Math.hypot(N, E).toFixed(0)} m`, W - 48, W - 14);
@@ -1368,10 +1370,10 @@ function aviso(txt) { document.getElementById("aviso").textContent = txt; }
 function toast(txt) { const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
 function hud() {
   const el = document.getElementById("hud");
-  if (!mostrarHud) { el.textContent = ""; return; }
   const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0], av.p[1]);
   const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento;
-  el.innerHTML =
+  // los datos de texto solo en la camara 1: en las camaras 2 y 3 los dan los instrumentos (horizonte, rosa, GPS, relojes)
+  el.innerHTML = (!mostrarHud || visor.camara !== 1) ? "" :
     `<b>${av.estado.toUpperCase()}</b>  t ${av.t.toFixed(1)} s${vuelo && av.estado === "volando" ? ' · <span style="color:#ff5252">● grabando</span>' : ""}` +
     `${av.motorRoto ? ' · <b style="color:#ff5252">MOTOR PARADO</b>' : ""}<br>` +
     `vel. aire <b>${av.V.toFixed(1)}</b> m/s · suelo ${Math.hypot(vn[0], vn[1]).toFixed(1)} m/s · asc. ${vs >= 0 ? "+" : ""}${vs.toFixed(1)} m/s<br>` +
