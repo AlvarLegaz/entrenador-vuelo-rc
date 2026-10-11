@@ -257,7 +257,7 @@ class Visor {
       const S = esc.userData.sol; S.castShadow = q >= 1; S.shadow.mapSize.set(q >= 2 ? 4096 : 2048, q >= 2 ? 4096 : 2048);
       if (S.shadow.map) { S.shadow.map.dispose(); S.shadow.map = null; }
     }
-    for (const a of this.aguas) { a.water.visible = q >= 2; a.plano.visible = q < 2; }
+    for (const a of this.aguas) if (a.water !== a.plano) { a.water.visible = q >= 2; a.plano.visible = q < 2; }
     this._aguaCerca = undefined;
     this.renderer.setPixelRatio(Math.min(q === 2 ? 1.5 : q === 1 ? 1 : 0.75, window.devicePixelRatio));
     for (const m of this.lejanos) m.visible = q >= 2;
@@ -294,7 +294,7 @@ class Visor {
 
   /** Mar: el agua de Three (reflejos del cielo y del sol, oleaje con un mapa de normales procedural) y, para la
    *  calidad baja, un plano simple. y: altura de la superficie; lado: tamano del plano. */
-  _mar(esc, y, lado, color = 0x1f5a86) {
+  _mar(esc, y, lado, color = 0x1f5a86, conReflejos = true) {
     if (!Visor._normalesAgua) {                       // mapa de normales periodico (suma de ondas enteras: se repite sin costura)
       const N = 512, [c, g] = lienzo(N, N), img = g.createImageData(N, N), r = semilla(91), ondas = [];
       for (let k = 0; k < 24; k++) ondas.push([Math.round((r() - 0.5) * 24), Math.round((r() - 0.5) * 24), 0.6 / (1 + k * 0.25), r() * 6.28]);
@@ -307,10 +307,12 @@ class Visor {
       const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; Visor._normalesAgua = t;
     }
     const geo = new THREE.PlaneGeometry(lado, lado);
-    const plano = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color, specular: 0x9fb8cc, shininess: 70 }));
+    // sin reflejos: oleaje con el mismo mapa de normales (repetido cada 40 m) y el brillo del sol
+    const nm = Visor._normalesAgua.clone(); nm.needsUpdate = true; nm.repeat.set(lado / 40, lado / 40);
+    const plano = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color, specular: 0x9fb8cc, shininess: 70, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35) }));
     plano.rotation.x = -Math.PI / 2; plano.position.y = y; esc.add(plano);
     let water = plano;
-    if (THREE.Water) {
+    if (THREE.Water && conReflejos) {
       const sol = esc.userData.sol;
       water = new THREE.Water(geo, { textureWidth: 1024, textureHeight: 1024, waterNormals: Visor._normalesAgua, sunDirection: sol ? sol.userData.dir.clone() : new THREE.Vector3(0.4, 0.8, 0.3),
                                      sunColor: 0xfff4e0, waterColor: color, distortionScale: 2.2, fog: !!esc.fog, alpha: 1.0 });
@@ -655,7 +657,9 @@ class Visor {
     gt.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); gt.setIndex(new THREE.BufferAttribute(idx, 1)); gt.computeVertexNormals();
     esc.add(new THREE.Mesh(gt, new THREE.MeshLambertMaterial({ map: this._texturaMundo(m), vertexColors: true })));
     // --- mar: plano al nivel del mar, con el brillo del sol ---
-    this._mar(esc, -h0 + 0.4, 300000, 0x1d5580);
+    // sin agua de espejo: en costas bajas como La Manga tapaba la tierra a ratos (redibuja la escena y alternaba cada
+    // segundo con el plano). El agua, 0,3 m bajo el nivel del mar: la tierra va a 1 m como minimo, sin pelearse con ella
+    this._mar(esc, -h0 - 0.3, 300000, 0x1d5580, false);
     // --- carreteras (cintas) y edificios genericos de las zonas urbanas de OSM: visor_real.js los rehace sin la
     // zona de detalle, donde ya estan los de verdad ---
     this.zonaBBox = null;
@@ -733,11 +737,13 @@ class Visor {
         const nx = -dz, nz = dx, y = alt(n, e) + 1.0;
         pos.push(e + nx * w, y, -n + nz * w, e - nx * w, y, -n - nz * w);
         col.push(color.r, color.g, color.b, color.r, color.g, color.b);
-        if (i) { const b = base + 2 * i; idx.push(b - 2, b - 1, b, b - 1, b + 1, b); }
+        if (i) { const b = base + 2 * i; idx.push(b - 2, b, b - 1, b - 1, b, b + 1); }
       }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    const nor = new Float32Array(pos.length); for (let i = 1; i < nor.length; i += 3) nor[i] = 1;      // hacia arriba: sin normales la luz las pinta negras
+    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
     const malla = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     malla.receiveShadow = true; esc.add(malla); return malla;
   }
