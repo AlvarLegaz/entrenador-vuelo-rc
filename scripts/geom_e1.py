@@ -33,7 +33,10 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUT_NOMBRE)
 
 # ---------------- construccion ----------------
 WALL = 1.0                    # pared de cierre y cajeado del servo de las piezas del ala
-WALL_F = 1.6                  # pared del fuselaje: 4 lineas de 0,4 mm (con 1,0, dos lineas, salia flojo al imprimir)
+WALL_F = getattr(P, "PARED_FUS", 1.6)   # pared del fuselaje: 1,6 = 4 lineas de 0,4 mm (con 1,0 salia flojo al imprimir);
+                              # un avion puede pedir otra (PARED_FUS): crece hacia dentro, la forma exterior no cambia
+PARED_F1 = getattr(P, "PARED_F1", WALL_F)   # pared del morro F1, si se quiere distinta del resto
+PARED_GRUESA = WALL_F >= 3.0  # con pared gruesa sobran los larguerillos de carbono y las cuadernas (y en la cola no caben)
 SPIGOT_L, SPIGOT_T = 15.0, 1.2   # cuello de union entre tramos (entra en el tramo siguiente); 15 mm suaviza el escalon donde rompe la pared
 FUS_SEG = [(0, 180), (180, 330), (330, 500), (500, 640), (640, P.L)]   # F1 llega a 180: el palillo delantero (X 171) y su taco caen dentro
 SPAR_D, SPAR2_D, SPAR2_X = 8.2, 3.2, 0.60   # tubo 8x6 al 25 % de la cuerda, varilla 3 mm al 60 %
@@ -444,7 +447,8 @@ def saddle_cutter(up=True):
 def fuselage_segment(k):
     a, b = FUS_SEG[k]
     last = k == len(FUS_SEG) - 1
-    body = solid(a, b) - solid(a - 1, b + 1, WALL_F)
+    pared_k = PARED_F1 if k == 0 else WALL_F    # crece hacia dentro: la forma exterior y el cuello hacia F2 no cambian
+    body = solid(a, b) - solid(a - 1, b + 1, pared_k)
     xa, xb = P.X_LE, P.X_LE + P.C
     if not last:   # cuello hacia el tramo siguiente: encaja dentro de su pared, holgura 0,15
         # anclaje dentro de este tramo: un anillo pegado a la pared (se mete 0,2 mm en ella) con el canto de
@@ -489,13 +493,14 @@ def fuselage_segment(k):
         # lo da la cuna, que va entre la cruz y la placa
         body = body + solid(0.0, 4.0)
         for (yy, zz, r) in [(0, 0, 5.0), (21, 24, 4.0), (-21, 24, 4.0), (21, -24, 4.0), (-21, -24, 4.0)]:
-            body = body - along_x(Manifold.cylinder(14, r)).translate([-5, yy, zz])
+            body = body - along_x(Manifold.cylinder(9.5, r)).translate([-5, yy, zz])     # solo la placa (con pared gruesa no muerde la pared)
         # suelo: dos carriles que encajan la bateria (canal de 37 mm; el ESC, de 24, tambien cabe) y una fila de
         # ranuras transversales para pasar una cinta de velcro de 20 mm donde haga falta (ventilan ademas el ESC)
+        suelo = -P.FUS_H / 2 + pared_k           # cara de arriba del suelo de F1
         for sy in (-1, 1):
-            body = body + Manifold.cube([CARRIL_L, 1.2, 4.0]).translate([CARRIL_X0, sy * 18.5 - (0.0 if sy > 0 else 1.2), SUELO_Z - 0.2])
+            body = body + Manifold.cube([CARRIL_L, 1.2, 4.0]).translate([CARRIL_X0, sy * 18.5 - (0.0 if sy > 0 else 1.2), suelo - 0.2])
         for xr in RANURAS_X:
-            body = body - Manifold.cube([2.6, 24.0, 10.0]).translate([xr, -12.0, -P.FUS_H / 2 - 5])
+            body = body - Manifold.cube([2.6, 24.0, 10.0 + pared_k]).translate([xr, -12.0, -P.FUS_H / 2 - 5])
     if a < SERVO_X[0] < b:     # bandeja de los servos (bajo la escotilla del ala)
         body = body + bandeja_servos()
     if last:
@@ -511,7 +516,8 @@ def fuselage_segment(k):
             body = body - salida("timon")
     # cuaderna, guias de las transmisiones y vainas de los larguerillos: al final, porque en F5 el hueco interior
     # se vacia otra vez al poner la deriva (antes se llevaba por delante la guia de X 675)
-    body = body + cuaderna(k)
+    if pared_k < 1.6 + CUAD_T:     # con pared gruesa la cuaderna quedaria dentro de la pared
+        body = body + cuaderna(k)
     if last:
         body = body - ranura_estab() - salida("prof")
         if CON_TIMON:
@@ -635,6 +641,7 @@ def guias_agujeros(a, b):
 LARG_D, LARG_R = 2.3, 2.6          # agujero de la varilla de 2 mm y radio exterior de la vaina
 LARG_TRAMOS = [(-1, P.X_LE + 30.0, P.X_TAPER - 1.0), (-1, P.X_TAPER + 1.0, P.HT_XLE - 5.0),   # (abajo -1 / arriba +1, desde, hasta)
                (1, max(P.X_TAPER + 8.0, DOWELS[1][0] + 10.0), P.HT_XLE - 5.0)]       # las de arriba, detras del taco del palillo
+if PARED_GRUESA: LARG_TRAMOS = []
 
 
 def larg_centro(X, sy, sz=-1):
@@ -679,6 +686,7 @@ def agujeros_larguerillos(a, b):
         for sy in (-1, 1):
             h = _cil_entre(larg_centro(x0 - 1.0, sy, sz), larg_centro(x1 + 1.0, sy, sz), LARG_D / 2)
             out = h if out is None else out + h
+    if out is None: return Manifold()
     return out ^ Manifold.cube([b - a + 40, 200, 200]).translate([a - 20, -100, -100])
 
 

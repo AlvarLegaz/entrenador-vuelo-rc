@@ -13,3 +13,8 @@ DESCRIPCION = ("Entrenador de ala alta con alerones y profundidad (2 canales), d
                "sin diedro. Impreso en LW-PLA. No nivela las alas solo: hay que llevarlo con los alerones.")
 DIEDRO = 0.0            # ala plana (el quiebro de la pieza ALA_Q queda a 0 grados)
 BARRIDO_DIEDRO = (0, 1, 2, 3)
+
+# Fuselaje (F1 a F5) con pared de 5 mm (peticion del usuario, 2026-10-11: la de 1,6 mm le parecia demasiado fina para
+# imprimir). Crece hacia dentro: la forma exterior y los encajes son los mismos; sin larguerillos ni cuadernas (sobran
+# con esta pared y en la cola no caben). Las fundas de las transmisiones pasan por tuneles en la pared de la cola
+PARED_FUS = 5.0
