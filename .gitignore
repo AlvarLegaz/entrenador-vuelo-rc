@@ -9,3 +9,5 @@ aula_prueba/
 # temporales
 *.tmp
 ~$*
+# salida regenerable del generador del T1 (python stl/T1/scripts/geom.py): las STL buenas van en stl/T1/stl/
+stl/T1/scripts/out/

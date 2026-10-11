@@ -31,12 +31,14 @@ def geo_por_defecto():
 
 
 # ----------------------- paneles -----------------------
-def superficie_h(nombre, xle, zle, c, semi, inc, diedro, perfil, hinge=None, ns=16, nc=6, hinge_y=None, mando="prof"):
+def superficie_h(nombre, xle, zle, c, semi, inc, diedro, perfil, hinge=None, ns=16, nc=6, hinge_y=None, mando="prof",
+                 washout=0.0):
     """Superficie horizontal de dos mitades desde y = 0 hasta y = semi, con diedro (giro sobre la
     linea del borde de ataque en y = 0). Devuelve paneles en mm (A, B, punto de control) e info.
     hinge: bisagra de la superficie movil (fraccion de la cuerda); hinge_y = (y0, y1) la limita a ese
-    tramo de la semienvergadura (alerones); mando: "prof" (de, las dos mitades igual) o "aleron" (da,
-    antisimetrico)."""
+    tramo de la semienvergadura (alerones); mando: "prof" (de, las dos mitades igual), "aleron" (da,
+    antisimetrico) o "elevon" (de y da a la vez, ala tandem); washout: torsion lineal de la raiz a la punta
+    (grados, negativo = punta con menos calado), que solo entra en la condicion de contorno."""
     m, p, _ = perfil
     yb = semi * np.sin(np.linspace(0, np.pi / 2, ns + 1))          # mas paneles en la punta
     if hinge_y is not None:                                         # que el aleron empiece y acabe en un borde de panel
@@ -64,29 +66,55 @@ def superficie_h(nombre, xle, zle, c, semi, inc, diedro, perfil, hinge=None, ns=
                 ya, yb_ = (y0, y1) if lado > 0 else (y1, y0)
                 A.append(punto(ya, sq)); Bv.append(punto(yb_, sq)); Cp.append(punto(0.5 * (y0 + y1), s3))
                 en_y = hinge_y is None or (y0 >= hinge_y[0] - 1e-9 and y1 <= hinge_y[1] + 1e-9)
-                info.append(dict(sup=nombre, tipo="H", lado=lado, inc=inc, die=d_in if 0.5 * (y0 + y1) < yq else d_out,
+                info.append(dict(sup=nombre, tipo="H", lado=lado, inc=inc + washout * 0.5 * (y0 + y1) / semi,
+                                 die=d_in if 0.5 * (y0 + y1) < yq else d_out,
                                  slope=float(camber_slope(s3, m, p)) if m > 0 else 0.0,
                                  mando=mando if (hinge is not None and s0 >= hinge - 1e-9 and en_y) else None))
     return A, Bv, Cp, info
 
 
-def superficie_v(xle, z0, c, h, hinge, nz=8, nc=6):
-    """Deriva vertical en y = 0, perfil simetrico, de z0 a z0 + h."""
+def superficie_v(xle, z0, c, h, hinge, nz=8, nc=6, y=0.0, c_punta=None, nombre="deriva"):
+    """Superficie vertical en el plano y, perfil simetrico, de z0 a z0 + h. Si c_punta se da, la cuerda se
+    estrecha linealmente de c (en z0) a c_punta (en z0 + h) con el borde de fuga recto (winglets)."""
     zb = z0 + h * np.linspace(0, 1, nz + 1)
     sc = np.unique(np.r_[0.5 * (1 - np.cos(np.linspace(0, np.pi, nc + 1))), hinge])
+    cz = lambda z: c if c_punta is None else c + (c_punta - c) * (z - z0) / h
+    xz = lambda z: xle + c - cz(z)                      # borde de ataque en z (el de fuga queda en xle + c)
     A, Bv, Cp, info = [], [], [], []
     for j in range(nz):
+        za, zb_, zm = zb[j], zb[j + 1], 0.5 * (zb[j] + zb[j + 1])
         for i in range(len(sc) - 1):
             s0, s1 = sc[i], sc[i + 1]
-            xq, x3 = xle + (s0 + 0.25 * (s1 - s0)) * c, xle + (s0 + 0.75 * (s1 - s0)) * c
-            A.append(np.array([xq, 0.0, zb[j]])); Bv.append(np.array([xq, 0.0, zb[j + 1]]))
-            Cp.append(np.array([x3, 0.0, 0.5 * (zb[j] + zb[j + 1])]))
-            info.append(dict(sup="deriva", tipo="V", lado=0, inc=0.0, die=0.0, slope=0.0,
-                             mando="timon" if s0 >= hinge - 1e-9 else None))
+            sq, s3 = s0 + 0.25 * (s1 - s0), s0 + 0.75 * (s1 - s0)
+            A.append(np.array([xz(za) + sq * cz(za), y, za])); Bv.append(np.array([xz(zb_) + sq * cz(zb_), y, zb_]))
+            Cp.append(np.array([xz(zm) + s3 * cz(zm), y, zm]))
+            info.append(dict(sup=nombre, tipo="V", lado=0, inc=0.0, die=0.0, slope=0.0,
+                             mando="timon" if (hinge < 1.0 and s0 >= hinge - 1e-9) else None))
     return A, Bv, Cp, info
 
 
+def construir_tandem(g):
+    """Ala tandem (T1): ala delantera baja con torsion, ala trasera alta con elevones (de y da a la vez) y dos
+    derivas verticales sobre el ala trasera (en y = +-WINGLET["y"]: junto al fuselaje en el T1). Sin cola horizontal."""
+    el, wl = g["ELEVON"], g["WINGLET"]
+    partes = [
+        superficie_h("ala_del", g["X_LE_F"], g["Z_LE_F"], g["C_F"], g["B"] / 2, g["INC_F"], 0.0, g["PERFIL"],
+                     washout=g.get("WASHOUT", 0.0)),
+        superficie_h("ala_tras", g["X_LE_R"], g["Z_LE_R"], g["C_R"], g["B"] / 2, g["INC_R"], 0.0, g["PERFIL"],
+                     hinge=el["bisagra"], hinge_y=(el["y0"], el["y1"]), mando="elevon"),
+    ]
+    for lado in (+1, -1):
+        partes.append(superficie_v(wl["x_te"] - wl["c_raiz"], wl["z0"], wl["c_raiz"], wl["h"], 1.0, nz=5, nc=4,
+                                   y=lado * wl["y"], c_punta=wl["c_punta"], nombre="winglet"))
+    A, Bv, Cp, info = [], [], [], []
+    for a, b, c, i in partes:
+        A += a; Bv += b; Cp += c; info += i
+    return np.array(A) / 1e3, np.array(Bv) / 1e3, np.array(Cp) / 1e3, info
+
+
 def construir(g):
+    if g.get("TANDEM"):
+        return construir_tandem(g)
     al = g.get("ALERON")
     partes = [
         superficie_h("ala", g["X_LE"], g["Z_ALA"] + 0.0, g["C"], g["B"] / 2, g["INC"],
@@ -108,7 +136,8 @@ def normales(info, de=0.0, dr=0.0, da=0.0):
         if k["tipo"] == "V":
             d = np.radians(dr) if k["mando"] else 0.0       # borde de fuga a la derecha (+Y)
             N.append([-np.sin(d), np.cos(d), 0.0]); continue
-        d = de if k["mando"] == "prof" else (-k["lado"] * da if k["mando"] == "aleron" else 0.0)   # aleron derecho arriba con da > 0
+        d = (de if k["mando"] == "prof" else -k["lado"] * da if k["mando"] == "aleron"
+             else de - k["lado"] * da if k["mando"] == "elevon" else 0.0)   # aleron/elevon derecho arriba con da > 0
         a = np.radians(k["inc"] + d) - np.arctan(k["slope"])
         gm = np.radians(k["die"])
         N.append([np.sin(a), -k["lado"] * np.cos(a) * np.sin(gm), np.cos(a) * np.cos(gm)])
@@ -136,13 +165,18 @@ class Modelo:
         self.g = geo_por_defecto(); self.g.update(cambios)
         g = self.g
         self.S, self.b, self.c = g["B"] * g["C"] / 1e6, g["B"] / 1e3, g["C"] / 1e3
+        if g.get("TANDEM"):   # dos alas: S es la suma y C la cuerda media (referencia de Cm)
+            self.S = g["B"] * (g["C_F"] + g["C_R"]) / 1e6
         self.A, self.B, self.Cp, self.info = construir(g)
+        self.sup = np.array([k["sup"] for k in self.info])
         self.AIC = herradura(self.Cp, self.A, self.B)
         self.mid = 0.5 * (self.A + self.B)
         self.AICm = herradura(self.mid, self.A, self.B)
         self.cg = np.array([x_cg_mm, 0.0, z_cg_mm]) / 1e3
 
-    def resolver(self, alfa, beta=0.0, p=0.0, q=0.0, r=0.0, de=0.0, dr=0.0, da=0.0, V=10.0):
+    def resolver(self, alfa, beta=0.0, p=0.0, q=0.0, r=0.0, de=0.0, dr=0.0, da=0.0, V=10.0, por_sup=False):
+        """Coeficientes del avion entero; con por_sup=True anade `sup`: CL, CDi y Cm de cada superficie
+        (referidos a S y c del avion), para ver que ala carga mas (tandem) o donde entra la perdida."""
         a, b = np.radians(alfa), np.radians(beta)
         Vinf = V * np.array([np.cos(a) * np.cos(b), -np.sin(b), np.sin(a) * np.cos(b)])   # aire en ejes del proyecto
         w = np.array([-p, q, -r])
@@ -157,8 +191,13 @@ class Modelo:
         Fb, Mb = F.sum(0) @ Rt.T, M.sum(0) @ Rt.T
         qS = 0.5 * RHO * V ** 2 * self.S
         ca, sa = np.cos(a), np.sin(a)
-        return dict(CL=(-Fb[2] * ca + Fb[0] * sa) / qS, CDi=(-Fb[0] * ca - Fb[2] * sa) / qS, CY=Fb[1] / qS,
-                    Cl=Mb[0] / (qS * self.b), Cm=Mb[1] / (qS * self.c), Cn=Mb[2] / (qS * self.b))
+        coef = lambda Fb, Mb: dict(CL=(-Fb[2] * ca + Fb[0] * sa) / qS, CDi=(-Fb[0] * ca - Fb[2] * sa) / qS, CY=Fb[1] / qS,
+                                   Cl=Mb[0] / (qS * self.b), Cm=Mb[1] / (qS * self.c), Cn=Mb[2] / (qS * self.b))
+        res = coef(Fb, Mb)
+        if por_sup:
+            res["sup"] = {nm: coef(F[self.sup == nm].sum(0) @ Rt.T, M[self.sup == nm].sum(0) @ Rt.T)
+                          for nm in dict.fromkeys(self.sup)}
+        return res
 
 
 # --------------- correcciones empiricas del fuselaje (vaina) ---------------
@@ -182,8 +221,16 @@ def fus_Cn_beta(m):
 
 
 def fus_Cl_beta(m):
-    """DATCOM simplificado: ala alta estabiliza. z_wf < 0 para ala por encima del eje."""
+    """DATCOM simplificado: ala alta estabiliza. z_wf < 0 para ala por encima del eje. En el tandem, cada ala
+    aporta lo suyo en proporcion a su superficie (la delantera baja desestabiliza, la trasera alta estabiliza)."""
     g = m.g
+    if g.get("TANDEM"):
+        D = 0.5 * (g["FUS_W"] + g["FUS_H"]) / 1e3
+        tot = 0.0
+        for zle, c in ((g["Z_LE_F"], g["C_F"]), (g["Z_LE_R"], g["C_R"])):
+            zwf = -(zle + 0.06 * c) / 1e3
+            tot += 1.2 * np.sqrt(g["B"] / c) * (zwf / m.b) * (2 * D / m.b) * (g["B"] * c / 1e6) / m.S
+        return tot
     A = g["B"] / g["C"]
     zwf = -(g["Z_ALA"] + 0.06 * g["C"]) / 1e3
     D = 0.5 * (g["FUS_W"] + g["FUS_H"]) / 1e3
@@ -209,7 +256,7 @@ def derivadas(m, alfa0, V=10.0, h=1.0):
              CYr=(rr["CY"] - r0["CY"]) / 0.1, Clr=(rr["Cl"] - r0["Cl"]) / 0.1, Cnr=(rr["Cn"] - r0["Cn"]) / 0.1,
              Cmde=(re["Cm"] - r0["Cm"]) / hr, CLde=(re["CL"] - r0["CL"]) / hr,
              CYdr=(rt["CY"] - r0["CY"]) / hr, Cldr=(rt["Cl"] - r0["Cl"]) / hr, Cndr=(rt["Cn"] - r0["Cn"]) / hr)
-    if any(k["mando"] == "aleron" for k in m.info):
+    if any(k["mando"] in ("aleron", "elevon") for k in m.info):
         rd = m.resolver(alfa0, da=h, V=V)
         D.update(CLda=(rd["CL"] - r0["CL"]) / hr, CYda=(rd["CY"] - r0["CY"]) / hr,
                  Clda=(rd["Cl"] - r0["Cl"]) / hr, Cnda=(rd["Cn"] - r0["Cn"]) / hr)

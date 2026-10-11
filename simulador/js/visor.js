@@ -26,9 +26,10 @@ function construirAvion(datos) {
   };
   const prof = K.prof ? pivote(K.prof, K.bisagra_prof) : new THREE.Group();
   const timon = K.timon ? pivote(K.timon, K.bisagra_timon) : new THREE.Group();
-  // alerones (si la malla los trae): cada uno gira sobre su bisagra, cuyo eje lleva el diedro y el calado del ala
+  // alerones (si la malla los trae): cada uno gira sobre su bisagra, cuyo eje lleva el diedro y el calado del ala.
+  // Con prof: true es un elevon: ademas del alabeo (signo * da) gira con la profundidad (de)
   const alerones = (K.alerones || []).map(a => {
-    const p = pivote(a, a.bisagra); p.eje = new THREE.Vector3(...a.eje).normalize(); p.signo = a.signo; return p;
+    const p = pivote(a, a.bisagra); p.eje = new THREE.Vector3(...a.eje).normalize(); p.signo = a.signo; p.prof = !!a.prof; return p;
   });
   const helice = new THREE.Mesh(new THREE.CircleGeometry(K.helice_r, 24),
     new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
@@ -482,7 +483,7 @@ class Visor {
       a.grupo.matrix.set(ex[0], ey[0], ez[0], t[0], ex[1], ey[1], ez[1], t[1], ex[2], ey[2], ez[2], t[2], 0, 0, 0, 1);
       a.prof.rotation.y = av.de;           // + = borde de fuga abajo
       a.timon.rotation.z = -av.dr;         // + = borde de fuga a la derecha
-      for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * (av.da || 0));   // + = aleron derecho arriba
+      for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * (av.da || 0) + (al.prof ? av.de : 0));   // + = aleron derecho arriba
       a.helice.visible = av.gases > 0.05;
       this.sombra.position.set(t[0], 0.06, t[2]);
       const s = Math.max(0.2, 1 - Math.max(0, -av.p[2]) / 60);
@@ -499,7 +500,15 @@ class Visor {
 
   _camara(av) {
     const cam = this.cam, t = ned2three(av.p);
-    if (this.camara === 1) { cam.position.set(1.5, 1.7, 2); cam.fov = 50; cam.lookAt(t[0], t[1], t[2]); }
+    if (this.camara === 1) {
+      // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: a partir de 40 m el campo de vision se cierra
+      // en proporcion a la distancia (hasta 9 grados), asi el avion se ve siempre del mismo tamano y no se pierde de
+      // vista. Suavizado para que no de saltos al cambiar de camara
+      cam.position.set(1.5, 1.7, 2);
+      const d = Math.hypot(t[0] - 1.5, t[1] - 1.7, t[2] - 2), fovObj = Math.max(9, Math.min(50, 50 * 40 / Math.max(d, 1)));
+      this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
+      cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
+    }
     else if (this.camara === 2) {
       const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * 5, -Math.sin(yaw) * 5, -1.5]);
       cam.position.set(t[0] + back[0], t[1] + back[1], t[2] + back[2]); cam.fov = 60; cam.lookAt(t[0], t[1], t[2]);
@@ -544,7 +553,7 @@ class VistaPrevia {
     }
     this.actual.base.rotation.y = t * 0.0004;
     this.actual.av.timon.rotation.z = 0.3 * Math.sin(t * 0.002); this.actual.av.prof.rotation.y = 0.2 * Math.sin(t * 0.0017);
-    for (const al of this.actual.av.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * 0.25 * Math.sin(t * 0.0023));
+    for (const al of this.actual.av.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * 0.25 * Math.sin(t * 0.0023) + (al.prof ? 0.2 * Math.sin(t * 0.0017) : 0));
     this.renderer.render(this.escena, this.cam);
   }
 }

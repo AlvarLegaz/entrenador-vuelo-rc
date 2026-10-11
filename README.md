@@ -161,6 +161,57 @@ El E2 con el ala **totalmente plana, sin diedro**. Es el paso siguiente para qui
 
 **Regenerar el E3:** los mismos scripts con `ENTRENADOR=E3` (escriben en `scripts/out_E3/` y en `simulador/aviones/E3.js`; el VLM con `python analisis/vlm_e1.py 0.903 0.0394 0.0729`).
 
+## Tándem T1: dos alas en tándem, elevones, PLA normal
+
+Avión aparte de los entrenadores: dos alas de 600 mm en tándem (la delantera baja, con calado +2° y torsión −1,5° en la punta; la trasera alta, con los elevones y dos derivas sobre ella, junto al fuselaje), fuselaje tubular de 50 mm en cuatro tramos y sin cola. El diseño y sus STL están en `stl/T1/` (`stl/T1/scripts/geom.py` genera las piezas; `stl/T1/ALFA-T_planos.pdf`, los planos del diseño original). Se calcula **todo impreso en PLA normal** y con **el motor y la batería del E1** (X2212 KV980, APC 9×4,7, ESC 30 A, 3S 1300), que es como se quiere construir. Los números que no están en la geometría (material, componentes, CG, mandos) están en `scripts/parametros_t1.py`.
+
+![Vistas del T1](TANDEM_T1_vistas.png)
+
+| | |
+|---|---|
+| Alas | 2 × 600 × 85 mm (delantera) y 600 × 95 mm (trasera), NACA 3407, 10,8 dm² en total. Sin diedro |
+| Derivas | Dos placas de 80 × 75 mm (`WINGLET_x2`) sobre el ala trasera, a ±20 mm del centro, con el borde de fuga en el final del fuselaje |
+| Masa en vuelo | **680 g** (401 g impresos: fuselaje 220, alas 148, elevones 13, derivas 22). El diseño original, en LW-PLA y con motor 1404 y 2S 450, pesaba 247 g |
+| Carga alar | 63 g/dm² (el E1: 41) |
+| Centro de gravedad | X 221 mm desde la placa del motor. Punto neutro (VLM) X 235 (el plano original decía 234): margen estático 15 % de la cuerda media (90 mm) |
+| Batería | Sobre el suelo de F2, centrada en X 146 (de X 110 a 182). Con el motor de 57 g en el morro y la cola en PLA, el ESC va al suelo de F3 (delante de los servos) y el receptor al de F4 |
+| Pérdida | **12,0 m/s**: entra el ala delantera (más calada y sin el downwash de la otra). La trasera entra a 14° de fuselaje. La pérdida "del conjunto" con CLmax 1 serían 10 m/s, pero el ala delantera llega a su CLmax mucho antes |
+| Crucero | ≈ 13 m/s con −2,3° de elevón (compensador por defecto del simulador). Vuelo nivelado con el 65–70 % de gas |
+| Elevones | 2 por lado, 25 % de la cuerda, de 26 a 297 mm, en una sola pieza `ELEVON_x4`. Recorrido mecánico ±15° (comprobado a ±20° sin tocar el ala); en el simulador 10° de profundidad y 2,5° de alabeo (Ixx 0,0057 kg·m² y sin derivas en las puntas que frenen el alabeo: con 4°, un segundo de palanca lo ponía a 120°; con 2,5°, a unos 70°) |
+
+**Mejoras de los entrenadores aplicadas al T1** (`geom.py`, revisión 2026-10-11; las STL de `stl/T1/stl/` son las regeneradas):
+- **Pared del tubo de 1,2 mm** (3 líneas de 0,4; `WALL`) en vez de 0,8. El E1 pasó a 1,6, pero es LW-PLA y de sección rectangular; el tubo de 50 en PLA normal es mucho más rígido y con 1,6 pesaría 70 g más. Cuesta 25 g.
+- **Cuello F1|F2 de 15 mm** (antes 10), con los radios del cuello y de las chavetas derivados de la pared.
+- **Bancada para el X2212**: cruz de 16 × 19 mm, M3 con tuerca por dentro, paso del eje de 9 mm. Sin cuña de downthrust: el eje del motor pasa por el centro de gravedad (Z +2 mm), no hay momento que compensar.
+- **Bisagras de nudillos** en los elevones, como los alerones del E2 pero a la escala de un perfil de 3,5 mm: eje en la línea de bisagra sobre la línea media, nudillos de radio 2,1 y 8 mm de largo (cuatro por elevón, a ±16 y ±48 mm de su centro: simétricos, así la misma pieza vale para los dos lados y los nudillos no cruzan las juntas de los tramos del ala), pasador de carbono de 2 mm pegado al elevón y libre en el ala, que además une los dos elevones de cada lado. El canto delantero del elevón es un redondo de Ø4,2 alrededor del pasador, con 0,6 mm de holgura a la pared de cierre del ala. Los nudillos asoman 0,4 mm por encima y por debajo del perfil.
+- **Palillos de las gomas de carbono macizo de 4 mm** (`DOWEL_D`); el delantero se adelanta 2 mm para no cortar el labio del cuello.
+- **Suelos con ranuras para cinta de velcro de 20 mm**, a Z −12: en F2 para la batería (X 108–222, ranuras en X 130, 160, 190 y 215), en F3 para el ESC (X 262–290) y en F4 para el receptor (X 365–395). Los anillos de refuerzo de F2 se mueven a X 106 y 232 para dejar libre la zona de la batería (sus esquinas tocaban el anillo que había en X 150, y a Z −10 tocaban las vainas de los larguerillos de arriba). Los suelos de F1 (batería 2S y ESC del diseño original) se mantienen, acortados por el cuello.
+- No se aplica el **poliedro/diedro** (el tándem va con las alas planas por decisión de diseño) ni el canal de cables dentro del ala (los servos van en el fuselaje).
+
+Comprobado al regenerar: 0 interferencias ala-fuselaje y entre tramos; los elevones giran ±20° sin tocar el ala; la batería 3S 1300 (72 × 35 × 24), el ESC (45 × 24 × 8) y el receptor (36 × 21 × 12) caben sobre sus suelos sin tocar nada (la batería en cualquier sitio entre X 110 y 222).
+
+**Cómo vuela (VLM y banco de pruebas del simulador, sin viento).** Reparto de sustentación muy desigual: a 12 m/s el ala delantera va a CL 0,9 y la trasera a 0,45, por eso la pérdida la fija la delantera y, al entrar, el morro cae solo (la tabla CL/Cm del modelo lleva la pérdida progresiva de cada ala, `scripts/modelo_aero_t1.py`). Sin motor planea a 13–14 m/s bajando unos 2,3 m/s (L/D ≈ 6, con la hélice de 9" parada, que suma 0,025 de CD). Las derivas son imprescindibles: sin ellas Cn_β es negativo (inestable en guiñada); con ellas Cn_β 0,033. Junto al fuselaje no dan efecto diedro (Cl_β −0,006, frente a −0,08 si estuvieran en las puntas), así que **la espiral es inestable: inclinado y con las manos quietas, la inclinación se duplica cada 3 s** según el modelo lineal (en el banco del simulador, de 30° pasa a 43° en 12 s mientras acelera a 18 m/s); hay que llevarlo siempre con los elevones. Balanceo holandés a 0,5 Hz, amortiguamiento 0,13. Tirando a tope sin motor no se desploma: se queda a 14° de ataque bajando 10 m/s a 15 m/s, y recupera solo al soltar.
+
+**Lo que sigue pendiente para construirlo** (lo dice el análisis, no el simulador):
+- La hélice de 9" (Ø229 mm) baja 90 mm por debajo del ala delantera: solo se puede aterrizar con el motor parado y, aun así, toca. La de 4" del diseño original ya sobresalía 26 mm.
+- Los servos de 3,7 g del diseño se mantienen (los elevones son pequeños); las ventanas de F3 son para ese tamaño. El ESC se mete por el morro (F1 es desmontable) hasta su suelo en F3, a 26 cm; conviene pegarle el velcro antes.
+- Con PLA normal, 680 g y 63 g/dm² vuela a 13–15 m/s: es un avión rápido, no un entrenador. El simulador lo muestra tal cual.
+
+**Piezas (carpeta `stl/T1/stl/`).** `F1_morro_motor` (placa del motor en la cama), `F2_central_ala_del`, `F3_central` (brida trasera en la cama), `F4_cola_ala_tras` (tapa de cola en la cama), `AD1..AD3_izq/der` y `AT1..AT3_izq/der` (tramos de ala de 100 mm, de pie; los `AT` llevan los nudillos), `ELEVON_x4` (tumbado; la pieza es simétrica y vale para los dos lados), `WINGLET_x2` (tumbado). **Compras respecto al diseño original:** 4 varillas de carbono macizo de 4 mm × 60 (palillos), 2 pasadores de carbono de 2 mm × 271 (elevones), 4 tornillos M3 × 12 con tuerca (motor) y cinta de velcro de 20 mm.
+
+**Regenerar el T1:**
+
+```
+$env:ENTRENADOR = "T1"
+python stl/T1/scripts/geom.py      # piezas (stl/T1/scripts/out/stl) y mallas montadas; copiar a stl/T1/stl
+python scripts/masas_t1.py         # masa, CG, posicion de la bateria, inercias (PLA, X2212, 3S 1300)
+python analisis/vlm_t1.py          # punto neutro, equilibrio, reparto entre alas, derivadas, modos, derivas
+python scripts/modelo_aero_t1.py   # modelo de vuelo -> simulador/aviones/T1.js (clase ModeloT1 de scripts/clase_t1.js)
+python scripts/vistas_t1.py        # TANDEM_T1_vistas.png
+```
+
+El VLM es el mismo de los entrenadores (`analisis/vlm_e1.py`), que ahora admite la configuración tándem (dos alas, torsión, elevones que son profundidad y alerón a la vez, derivas fuera del plano de simetría) y devuelve las fuerzas por superficie; los resultados del E1, E2 y E3 no cambian.
+
 ## Simulador
 
 `simulador/simulador.html` (Entrenador Vuelo RC). Funciona de tres formas, a elección del usuario:
@@ -169,20 +220,20 @@ El E2 con el ala **totalmente plana, sin diedro**. Es el paso siguiente para qui
 - **Registro local**, abriendo `simulador.html` con doble clic y pulsando "Registro local en este ordenador". Alumnos, vuelos y progreso se guardan en el navegador de ese ordenador y, si se quiere, en un **archivo JSON** ("Guardar en un archivo…": en Chrome y Edge el archivo se reescribe solo tras cada vuelo; "Exportar copia" / "Importar copia" valen en cualquier navegador y para llevar el registro a otro ordenador). El progreso se calcula igual que en el servidor; no hay panel del profesor ni autorización de la maqueta real.
 - **Volar sin registrar**: sin servidor y sin registro local. Se vuela igual, pero los vuelos no se guardan.
 
-Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → escenario o vuelo libre → volar → resultado APTO / NO APTO guardado → progreso.
+Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → escenario o vuelo libre → volar → resultado APTO / NO APTO guardado → progreso. Los escenarios con `enVuelo` (el aterrizaje guiado) empiezan con el avión volando; los demás, en la mano del piloto.
 
 **Teclas:**
 
 | Tecla | Qué hace |
 |---|---|
 | Flechas ↑ ↓ | Profundidad (↓ tira, morro arriba) |
-| Flechas ← → | Timón (E1) o alerones (E2 y E3) |
+| Flechas ← → | Timón (E1), alerones (E2 y E3) o elevones (T1) |
 | W / S | Gases |
 | Espacio | Cortar gases |
 | L | Lanzar |
 | R | Empezar de nuevo |
 | Esc | Terminar el vuelo |
-| 1 / 2 / 3 | Cámaras |
+| 1 / 2 / 3 | Cámaras: piloto (con zoom automático a partir de 40 m, para que el avión no se pierda de vista), persecución y a bordo |
 | [ / ] | Compensador |
 | T | Ayuda |
 
@@ -198,6 +249,7 @@ Flujo: elegir alumno → avión y viento (con vista 3D y ficha del avión) → e
 | 6 · Pasada baja (zona 2) | Recorrer la pista 2 de punta a punta entre 2 y 8 m, sin tocar ni salirse por los lados: una pasada hacia cada lado |
 | 7 · Diana (zona 2) | Aterrizar a menos de 10 m del centro de la diana |
 | 8 · Recorrido de precisión (zona 2) | En este orden: pasada baja válida, paso por la puerta y toma a menos de 10 m de la diana |
+| 9 · Aterrizaje guiado (práctica) | **Empieza con el avión ya en el aire**, a 35 m sobre la pista y rumbo norte; no hay que lanzar. Una banda en pantalla dice qué hacer en cada tramo del circuito de aterrizaje (viraje a la derecha a rumbo sur, tramo de viento en cola por la derecha del piloto bajando a 20 m, base a rumbo oeste bajando a 10–15 m, final rumbo norte alineado con la pista con poco gas, y corte de gas a 2 m) y debajo las correcciones en vivo (velocidad, alabeo, rumbo, posición, altura, gas), dos como mucho. APTO si cumple los cuatro tramos y toma en la pista, alineado (±25°), con menos de 1,5 m/s de descenso y sin daños. No cuenta para la autorización del avión real |
 | Vuelo libre | Sin objetivos; cuenta horas, cronometra las vueltas al circuito y cuenta puertas, pasadas bajas y la toma en la diana |
 
 Los escenarios 1 a 4 (zona 1) son los que cuentan para autorizar la maqueta real; los de la zona 2 son práctica de precisión: se guardan en el historial pero no son requisito.
