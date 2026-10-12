@@ -269,6 +269,7 @@ class Visor {
   /** Si dos tandas seguidas de 120 fotogramas van a menos de 35 fps, baja un nivel de calidad. No cuenta la
    *  pestana oculta, los parones ni los primeros 5 s (carga de texturas). */
   _vigilarCalidad(dt) {
+    if (this.calidadFija) return;                  // el usuario ha fijado la calidad en Ajustes
     const f = this._frames, ahora = performance.now();
     if (!this._t0) this._t0 = ahora;
     if (document.hidden || dt > 0.2 || dt <= 0 || ahora - this._t0 < 5000) { f.length = 0; this._lentas = 0; return; }
@@ -844,11 +845,13 @@ class Visor {
 
 /** Vista previa de la pantalla de eleccion: el avion girando despacio y moviendo los mandos. */
 class VistaPrevia {
-  constructor(lienzo) {
+  /** opciones.transparente: fondo transparente (el avion flota sobre la pantalla de inicio y el hangar). */
+  constructor(lienzo, opciones = {}) {
     this.lienzo = lienzo;
-    this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true, alpha: !!opciones.transparente });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    this.escena = new THREE.Scene(); this.escena.background = new THREE.Color(0x9fc8ea);
+    this.escena = new THREE.Scene(); this.escena.background = opciones.transparente ? null : new THREE.Color(0x9fc8ea);
+    if (opciones.transparente) this.renderer.setClearColor(0x000000, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.escena.add(new THREE.HemisphereLight(0xffffff, 0x557755, 0.95 * Math.PI));
     const sol = new THREE.DirectionalLight(0xffffff, 0.8 * Math.PI); sol.position.set(3, 5, 4); this.escena.add(sol);
@@ -856,13 +859,14 @@ class VistaPrevia {
     this.actual = null;
   }
 
-  mostrar(datos) {
+  /** factor: distancia de la camara respecto a la envergadura (1 = la pantalla de eleccion antigua; mas = avion mas pequeno). */
+  mostrar(datos, factor = 1) {
     if (this.actual) this.escena.remove(this.actual.base);
     const av = construirAvion(datos), base = new THREE.Group();
     av.grupo.matrixAutoUpdate = false;
     av.grupo.matrix.set(0, 1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0, 1);     // cuerpo NED -> Three (morro hacia -z)
     base.add(av.grupo); this.escena.add(base); this.actual = { base, av };
-    const r = datos.b_m * 0.9; this.cam.position.set(r * 0.9, r * 0.5, r * 1.1); this.cam.lookAt(0, 0, 0);
+    const r = datos.b_m * 0.9 * factor; this.cam.position.set(r * 0.9, r * 0.45, r * 1.1); this.cam.lookAt(0, 0, 0);
   }
 
   pintar(t) {

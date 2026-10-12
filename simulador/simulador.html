@@ -7,7 +7,10 @@
 <!--
   ENTRENADOR VUELO RC: simulador de entrenamiento RC del aula. Fisica de 6 grados de libertad y visor 3D en el navegador.
 
-  FLUJO: alumno -> avion (y viento) -> escenario o vuelo libre -> volar -> resultado guardado -> progreso.
+  FLUJO: inicio -> (pilotos, si hay aula) -> vuelo libre / entrenamientos / hangar / ajustes -> volar -> resultado -> progreso.
+  Pantallas: pInicio, pAlumno, pHangar, pEntrenamientos, pVolar, pLanzamiento, pAjustes, pResultado, pProgreso; capas:
+  pausa (Esc), carga (mundos reales) y modal. En vuelo: HUD con lecturas abajo, relojes y horizonte; repeticion del vuelo
+  desde la caja negra; sonido con Web Audio (Sonido).
 
   Con el servidor del aula (aula/servidor_aula.py) los alumnos y los vuelos se guardan en la base de
   datos comun. Sin servidor (doble clic en este fichero) se puede elegir el REGISTRO LOCAL (AulaLocal:
@@ -22,333 +25,542 @@
   TECLAS (en vuelo)
     Flechas  arriba/abajo = profundidad (abajo = tirar = morro arriba), izq/der = timon (alerones en el E2)
     W / S    gases + / -        Espacio: cortar gases       L: lanzar a mano
-    R        volver a empezar   Esc: terminar el vuelo y volver al menu
+    R        volver a empezar   Esc: pausa
     1 / 2 / 3 camara: piloto / persecucion / a bordo         [ / ]: compensador de profundidad
     H        datos   T: ayuda   G: rachas (solo vuelo libre)  + / -: viento (solo vuelo libre)
 -->
 <style>
-  :root { --fondo: #0d1b2a; --panel: #13263b; --borde: #2c4a6b; --texto: #e8eef5; --suave: #9fb3c8;
-          --acento: #ffd34d; --ok: #4caf50; --mal: #ef5350; --azul: #42a5f5; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; color: var(--texto); }
+  :root { --fondo: #0b1521; --panel: rgba(16, 30, 46, .86); --panel2: rgba(22, 40, 60, .92); --borde: #2a4766; --texto: #e8eef5; --suave: #9fb3c8;
+          --acento: #ffc83d; --ok: #58d06a; --mal: #ff6e66; --azul: #4fb3ff; --radio: 14px; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--texto); }
+  * { box-sizing: border-box; }
   #vista { width: 100%; height: 100%; display: block; }
-  #hud { position: absolute; left: 12px; top: 10px; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000;
-         font-size: 15px; line-height: 1.45; pointer-events: none; }
+  h1, h2, h3 { font-weight: 700; letter-spacing: -.01em; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: #2a4766; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- HUD de vuelo ---------- */
+  .hudCapa { position: absolute; pointer-events: none; }
+  #hud { left: 16px; top: 14px; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; font-size: 14px; line-height: 1.45;
+         background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 10px; display: none; }
   #hud b { color: var(--acento); }
-  #aviso { position: absolute; left: 0; right: 0; top: 34%; text-align: center; color: #fff; font-size: 34px;
-           font-weight: bold; text-shadow: 0 0 10px #000; pointer-events: none; }
-  #lejos { position: fixed; left: 50%; top: 15%; transform: translateX(-50%); color: #ff5252; font-weight: 700; font-size: 18px; text-align: center; text-shadow: 0 0 6px #000; max-width: 80%; pointer-events: none; }
-  #guia { position: absolute; left: 12px; top: 150px; max-width: min(520px, 55%); background: rgba(0,0,0,.62); color: #fff;
-          font-size: 18px; line-height: 1.3; padding: 8px 14px; border-radius: 8px; text-align: left; border-left: 5px solid var(--acento); pointer-events: none; }
+  #estado { left: 16px; top: 14px; display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; letter-spacing: .04em;
+            text-shadow: 0 0 6px #000; }
+  #estado .pill { background: rgba(0,0,0,.5); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.15); }
+  #estado .rec { color: #ff5252; }
+  #aviso { left: 0; right: 0; top: 30%; text-align: center; color: #fff; font-size: 34px; font-weight: 700; text-shadow: 0 2px 12px #000; }
+  #lejos { left: 50%; top: 40%; transform: translateX(-50%); color: #ffb74d; font-weight: 600; font-size: 17px; text-align: center; text-shadow: 0 0 6px #000;
+           max-width: 70%; background: rgba(0,0,0,.45); padding: 6px 14px; border-radius: 10px; }
+  #lejos:empty { display: none; }
+  #guia { left: 16px; top: 60px; max-width: min(520px, 55%); background: rgba(0,0,0,.62); color: #fff; font-size: 17px; line-height: 1.3;
+          padding: 10px 14px; border-radius: 10px; text-align: left; border-left: 5px solid var(--acento); }
   #guia:empty { display: none; }
-  #guia small { display: block; color: #ffb74d; font-size: 15px; margin-top: 5px; }
+  #guia small { display: block; color: #ffb74d; font-size: 14px; margin-top: 5px; }
   #guia small.peligro { color: #ff5252; font-weight: 700; }
-  #toast { position: absolute; left: 0; right: 0; top: 22%; text-align: center; color: var(--acento); font-size: 26px;
-           font-weight: bold; text-shadow: 0 0 8px #000; pointer-events: none; }
-  #ayuda { position: absolute; right: 12px; top: 10px; color: #ddd; background: rgba(0,0,0,.55); padding: 10px 14px;
-           border-radius: 8px; font-size: 13px; line-height: 1.5; max-width: 330px; display: none; }
-  #ayuda h3 { margin: 0 0 6px; font-size: 14px; color: var(--acento); }
-  #objetivos { position: absolute; right: 12px; top: 10px; background: rgba(0,0,0,.55); padding: 10px 14px; border-radius: 8px;
-               font-size: 14px; line-height: 1.6; min-width: 260px; max-width: 340px; }
-  #objetivos h3 { margin: 0 0 4px; font-size: 15px; color: var(--acento); }
+  #toast { left: 0; right: 0; top: 20%; text-align: center; color: var(--acento); font-size: 26px; font-weight: 700; text-shadow: 0 2px 8px #000; }
+  #objetivos { right: 16px; top: 14px; background: rgba(0,0,0,.5); padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.55;
+               min-width: 240px; max-width: 320px; border: 1px solid rgba(255,255,255,.1); }
+  #objetivos h3 { margin: 0 0 4px; font-size: 14px; color: var(--acento); }
+  #objetivos:empty { display: none; }
   .ob-ok { color: #8be08f; } .ob-mal { color: #ff8a80; } .ob-pend { color: #ddd; } .ob-curso { color: #b3e5fc; }
-  #barra { position: absolute; left: 12px; bottom: 12px; color: #fff; font-size: 13px; text-shadow: 0 0 3px #000; }
-  /* horizonte artificial con brujula (camaras 2 y 3), abajo a la derecha, como el del simulador del submarino */
-  #horizonte { position: absolute; right: 14px; bottom: 78px; width: 200px; height: 200px; pointer-events: none; display: none;
-               filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
-  /* anemometro (con las bandas de perdida y aproximacion del avion) y variometro: en todas las camaras */
-  #anemometro, #variometro { position: absolute; bottom: 78px; width: 132px; height: 132px; pointer-events: none; display: none;
-                             filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
-  #anemometro { right: 226px; } #variometro { right: 366px; }
-  /* GPS (mapa del campo visto desde arriba, norte arriba) abajo a la izquierda, encima de gases y palanca, camaras 2 y 3 */
-  #gps { position: absolute; left: 12px; bottom: 118px; width: 200px; height: 200px; pointer-events: auto; cursor: zoom-in; display: none;
-         border-radius: 8px; filter: drop-shadow(0 0 6px rgba(0,0,0,.6)); }
-  body.cam1 #anemometro { right: 14px; } body.cam1 #variometro { right: 154px; }
-  .mando { display: inline-block; width: 90px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 6px;
-           position: relative; margin-right: 10px; background: rgba(0,0,0,.25); vertical-align: bottom; }
-  .mando i { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--acento); left: 50%; top: 50%; }
-  .gases { display: inline-block; width: 18px; height: 90px; border: 1px solid rgba(255,255,255,.5); border-radius: 4px;
-           position: relative; background: rgba(0,0,0,.25); vertical-align: bottom; margin-right: 10px; }
-  .gases i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--ok); }
-  #cajaNegra { position: absolute; right: 12px; bottom: 12px; color: #ddd; background: rgba(0,0,0,.55); padding: 8px 12px;
-               border-radius: 8px; font-size: 12px; }
-  #cajaNegra button { font-size: 12px; margin: 4px 6px 0 0; }
+  /* panel de instrumentos: abajo, de izquierda a derecha GPS, gases y palanca, lecturas, relojes y horizonte */
+  #panelVuelo { left: 16px; right: 16px; bottom: 14px; display: flex; align-items: flex-end; gap: 12px; pointer-events: none; }
+  #panelVuelo .esp { flex: 1; }
+  #lecturas { display: flex; gap: 8px; align-items: flex-end; }
+  .lect { background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 6px 12px; min-width: 86px; text-align: center; }
+  .lect b { display: block; font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .lect span { font-size: 10px; color: var(--suave); letter-spacing: .08em; text-transform: uppercase; }
+  .lect.rojo b { color: #ff5252; } .lect.ambar b { color: #ffb300; }
+  .mando { display: inline-block; width: 84px; height: 84px; border: 1px solid rgba(255,255,255,.35); border-radius: 10px; position: relative;
+           background: rgba(0,0,0,.4); vertical-align: bottom; }
+  .mando::before, .mando::after { content: ""; position: absolute; background: rgba(255,255,255,.15); }
+  .mando::before { left: 50%; top: 6px; bottom: 6px; width: 1px; } .mando::after { top: 50%; left: 6px; right: 6px; height: 1px; }
+  .mando i { position: absolute; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: var(--acento); left: 50%; top: 50%; box-shadow: 0 0 6px #000; }
+  .gases { display: inline-block; width: 16px; height: 84px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; position: relative;
+           background: rgba(0,0,0,.4); vertical-align: bottom; margin-right: 8px; }
+  .gases i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #58d06a, #ffc83d); border-radius: 0 0 5px 5px; }
+  #horizonte { width: 190px; height: 190px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #anemometro, #variometro { width: 124px; height: 124px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #gps { width: 190px; height: 190px; pointer-events: auto; cursor: zoom-in; display: none; border-radius: 10px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #ayuda { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #ddd; background: rgba(8,14,22,.92); padding: 18px 22px;
+           border-radius: var(--radio); font-size: 14px; line-height: 1.6; max-width: 560px; display: none; border: 1px solid var(--borde); z-index: 35; }
+  #ayuda h3 { margin: 0 0 8px; font-size: 16px; color: var(--acento); }
+  #ayuda b { color: #fff; background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 5px; }
+  #repBarra { left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+              padding: 8px 16px; font-size: 14px; display: none; min-width: 420px; text-align: center; }
+  #repBarra .pista { height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  #repBarra .pista i { display: block; height: 100%; background: var(--acento); width: 0; }
+  #repBarra b { color: var(--acento); }
 
   /* ---------- pantallas ---------- */
-  .pantalla { position: absolute; inset: 0; background: radial-gradient(ellipse at top, #1d3557 0%, var(--fondo) 70%);
-              overflow-y: auto; display: none; z-index: 10; }
-  .pantalla.activa { display: block; }
-  .caja { max-width: 980px; margin: 0 auto; padding: 28px 16px 40px; }
-  .pantalla h1 { margin: 0 0 4px; font-size: 28px; }
-  .pantalla h2 { margin: 26px 0 10px; font-size: 19px; color: var(--acento); }
-  .sub { color: var(--suave); margin: 0 0 18px; }
-  .barraSup { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-  .barraSup .esp { flex: 1; }
-  input[type=text], input[type=search], input[type=password], select { background: #0b1726; color: var(--texto); border: 1px solid var(--borde);
-      border-radius: 8px; padding: 9px 12px; font-size: 15px; }
-  button { background: #1e3a5a; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 9px 16px;
-           font-size: 15px; cursor: pointer; }
-  button:hover { background: #26486e; }
-  button.prim { background: #f5b301; color: #1a1a1a; border-color: #f5b301; font-weight: 600; }
-  button.prim:hover { background: #ffc832; }
-  button.peligro { background: #5a1e1e; border-color: #8a2c2c; }
-  button:disabled { opacity: .45; cursor: default; }
-  .lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
-  .alumno { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px; display: flex;
-            align-items: center; gap: 10px; cursor: pointer; }
-  .alumno:hover { border-color: var(--acento); }
-  .alumno .nom { font-size: 17px; font-weight: 600; }
-  .alumno .det { color: var(--suave); font-size: 13px; margin-top: 2px; }
-  .alumno .crece { flex: 1; min-width: 0; }
-  .alumno .borrar { background: transparent; border: none; color: #c98; font-size: 18px; padding: 4px 8px; }
-  .alumno .borrar:hover { color: var(--mal); }
-  .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #24405f; margin-right: 4px; }
-  .chip.ok { background: #1f4d2a; color: #9be59f; } .chip.mal { background: #4d1f1f; color: #ffb4ab; }
-  .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 16px; }
-  .avionCaja { display: grid; grid-template-columns: minmax(280px, 1.2fr) 1fr; gap: 16px; }
-  @media (max-width: 760px) { .avionCaja { grid-template-columns: 1fr; } }
-  #vistaPrevia { width: 100%; height: 300px; display: block; border-radius: 10px; background: #9fc8ea; }
+  .pantalla { position: absolute; inset: 0; display: none; z-index: 10; overflow: hidden; background: var(--fondo); }
+  .pantalla.activa { display: flex; flex-direction: column; }
+  .pantalla.conFoto { background: #0b1521 url("mundos/cartagena_orto.jpg") center / cover no-repeat; }
+  .pantalla.conFoto::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,14,22,.94) 0%, rgba(8,14,22,.78) 45%, rgba(8,14,22,.35) 100%),
+                              linear-gradient(0deg, rgba(8,14,22,.9) 0%, rgba(8,14,22,0) 40%); }
+  .pantalla > * { position: relative; }
+  .cabecera { display: flex; align-items: center; gap: 14px; padding: 18px 28px 12px; }
+  .cabecera h1 { margin: 0; font-size: 26px; }
+  .cabecera .sub { margin: 2px 0 0; color: var(--suave); font-size: 14px; }
+  .cabecera .esp { flex: 1; }
+  .cuerpo { flex: 1; overflow: auto; padding: 0 28px 24px; }
+  .pie { display: flex; gap: 12px; align-items: center; padding: 14px 28px; border-top: 1px solid rgba(255,255,255,.08); background: rgba(8,14,22,.6); }
+  .pie .esp { flex: 1; }
+  .sub { color: var(--suave); }
+  .capa { background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 16px 18px; backdrop-filter: blur(6px); }
+  .capa h2 { margin: 0 0 10px; font-size: 15px; color: var(--acento); text-transform: uppercase; letter-spacing: .08em; }
+  .dos { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .dos { grid-template-columns: 1fr; } }
+  .btn { background: rgba(255,255,255,.08); color: var(--texto); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 10px 18px; font-size: 15px;
+         cursor: pointer; transition: background .12s, transform .08s; }
+  .btn:hover { background: rgba(255,255,255,.14); } .btn:active { transform: translateY(1px); }
+  .btn.prim { background: var(--acento); color: #1a1400; border-color: var(--acento); font-weight: 700; }
+  .btn.prim:hover { background: #ffd666; }
+  .btn.grande { font-size: 18px; padding: 14px 28px; border-radius: 12px; }
+  .btn.peligro { background: #5a1e1e; border-color: #8a2c2c; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.ico { display: flex; align-items: center; gap: 10px; }
+  .btn.ico svg { width: 22px; height: 22px; }
+  input[type=text], input[type=search], input[type=password], input[type=number], select { background: rgba(0,0,0,.35); color: var(--texto); border: 1px solid var(--borde);
+      border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; }
+  input[type=range] { accent-color: var(--acento); }
+  input[type=checkbox] { accent-color: var(--acento); width: 16px; height: 16px; }
+  .fila { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .fila label { min-width: 140px; color: var(--suave); font-size: 14px; }
+  .fila input[type=range] { flex: 1; min-width: 120px; max-width: 320px; }
+  .fila b { font-size: 14px; }
+  .chip { display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 12px; background: rgba(255,255,255,.1); margin-right: 4px; }
+  .chip.ok { background: rgba(88,208,106,.2); color: #9be59f; } .chip.mal { background: rgba(255,110,102,.2); color: #ffb4ab; } .chip.acento { background: rgba(255,200,61,.2); color: var(--acento); }
+  details.avanzado { margin-top: 12px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 8px; }
+  details.avanzado > summary { cursor: pointer; color: var(--suave); font-size: 14px; list-style: none; display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  details.avanzado > summary::before { content: "▸"; font-size: 12px; } details.avanzado[open] > summary::before { content: "▾"; }
+  details.avanzado > summary::-webkit-details-marker { display: none; }
+  .pestanas { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 14px; }
+  .pestanas button { background: none; border: none; color: var(--suave); padding: 10px 16px; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .pestanas button.sel { color: var(--texto); border-bottom-color: var(--acento); }
+  .panelPestana { display: none; } .panelPestana.sel { display: block; }
+  .err { color: #ff8a80; min-height: 1.3em; font-size: 14px; }
   table.datos { border-collapse: collapse; width: 100%; font-size: 14px; }
-  table.datos td, table.datos th { padding: 5px 8px; border-bottom: 1px solid #22394f; text-align: left; vertical-align: top; }
-  table.datos th { color: var(--suave); font-weight: 500; }
-  #resObjetivos td:first-child { width: 28px; }
-  .fila { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
-  .fila label { min-width: 120px; color: var(--suave); }
-  .escenarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
-  .escenario { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; cursor: pointer; }
-  .escenario:hover { border-color: var(--acento); }
-  .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 0; font-size: 15px; color: var(--suave); font-weight: 600; letter-spacing: .02em; }
+  table.datos td, table.datos th { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+  table.datos th { color: var(--suave); font-weight: 500; width: 42%; }
+  .estadisticas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .estadisticas div { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+  .estadisticas b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .estadisticas span { color: var(--suave); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .progreso { height: 14px; background: rgba(0,0,0,.4); border: 1px solid var(--borde); border-radius: 7px; overflow: hidden; }
+  .progreso i { display: block; height: 100%; background: linear-gradient(90deg, #ffc83d, #58d06a); }
+  .aviso-aula { background: rgba(255,200,61,.1); border: 1px solid rgba(255,200,61,.35); color: #ffe6a6; border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; }
+
+  /* ---------- inicio ---------- */
+  #pInicio .cuerpo { display: flex; align-items: stretch; padding: 0; overflow: hidden; }
+  #inicioIzq { width: min(460px, 46%); padding: 48px 40px 24px 48px; display: flex; flex-direction: column; gap: 10px; }
+  #inicioIzq .titulo { margin: 0 0 26px; }
+  #inicioIzq .titulo small { display: block; color: var(--acento); letter-spacing: .3em; text-transform: uppercase; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  #inicioIzq .titulo h1 { margin: 0; font-size: 44px; line-height: 1.02; }
+  #inicioIzq .titulo p { color: var(--suave); margin: 10px 0 0; font-size: 15px; }
+  .menu-btn { display: flex; align-items: center; gap: 16px; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+              border-radius: 14px; padding: 14px 18px; cursor: pointer; transition: background .12s, border-color .12s, transform .08s; }
+  .menu-btn:hover { background: rgba(255,200,61,.14); border-color: rgba(255,200,61,.5); transform: translateX(4px); }
+  .menu-btn svg { width: 34px; height: 34px; flex: none; color: var(--acento); }
+  .menu-btn b { display: block; font-size: 19px; }
+  .menu-btn span { display: block; color: var(--suave); font-size: 13px; margin-top: 2px; }
+  #inicioDer { flex: 1; position: relative; }
+  #previaSlotInicio { position: absolute; inset: 0; }
+  #vistaPrevia { width: 100%; height: 100%; display: block; }
+  #inicioAvion { position: absolute; right: 36px; bottom: 90px; text-align: right; }
+  #inicioAvion b { display: block; font-size: 26px; } #inicioAvion span { color: var(--suave); font-size: 14px; }
+  #inicioPie { display: flex; gap: 10px; align-items: center; padding: 12px 48px 18px; color: var(--suave); font-size: 13px; }
+  #inicioPie .chip { font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  #inicioPie .chip:hover { background: rgba(255,255,255,.18); }
+
+  /* ---------- hangar ---------- */
+  #hangarCuerpo { display: grid; grid-template-columns: 220px 1fr 420px; gap: 16px; height: 100%; }
+  @media (max-width: 1100px) { #hangarCuerpo { grid-template-columns: 200px 1fr; } #hangarCuerpo > .capa:last-child { grid-column: 1 / -1; } }
+  .avCarta { display: block; width: 100%; text-align: left; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+             border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .avCarta:hover { background: rgba(255,255,255,.1); }
+  .avCarta.sel { border-color: var(--acento); background: rgba(255,200,61,.12); }
+  .avCarta b { display: block; font-size: 16px; } .avCarta span { color: var(--suave); font-size: 12px; }
+  #previaSlotHangar { position: relative; min-height: 360px; height: 100%; border-radius: var(--radio); overflow: hidden;
+                      background: radial-gradient(ellipse at 50% 70%, #35546f 0%, #142434 60%, #0b1521 100%); border: 1px solid var(--borde); }
+  #previaSlotHangar::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: 18%; height: 2px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent); }
+  #hangarNombre { position: absolute; left: 20px; top: 16px; } #hangarNombre b { display: block; font-size: 24px; } #hangarNombre span { color: var(--suave); font-size: 13px; max-width: 420px; display: block; }
+  #hangarFicha { overflow: auto; max-height: 100%; }
+
+  /* ---------- entrenamientos y vuelo libre ---------- */
+  .misiones { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; color: var(--suave); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   .zonaTitulo:first-child { margin-top: 0; }
-  .escenario h3 { margin: 0 0 6px; font-size: 18px; }
-  .escenario p { margin: 4px 0 8px; color: var(--suave); font-size: 14px; }
-  .escenario ul { margin: 0; padding-left: 18px; font-size: 13px; color: #cfd8e3; }
-  .grande { font-size: 44px; font-weight: 800; margin: 6px 0; }
+  .mision { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; overflow: hidden; cursor: pointer; transition: border-color .12s, transform .08s; }
+  .mision:hover { border-color: rgba(255,200,61,.5); transform: translateY(-2px); }
+  .mision.sel { border-color: var(--acento); box-shadow: 0 0 0 2px rgba(255,200,61,.3); }
+  .mision .img { height: 110px; background: linear-gradient(180deg, #1d3a56, #0f2235); display: flex; align-items: center; justify-content: center; }
+  .mision .img svg { width: 100%; height: 100%; }
+  .mision .txt { padding: 10px 12px 12px; }
+  .mision h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+  .mision p { margin: 0 0 6px; color: var(--suave); font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mision .meta { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--suave); }
+  .estrellas { color: var(--acento); letter-spacing: 2px; }
+  .mision .hecha { color: var(--ok); font-weight: 700; }
+  #fichaMision h2 { text-transform: none; letter-spacing: 0; font-size: 20px; color: var(--texto); }
+  #fichaMision ul { padding-left: 18px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
+  .sitios { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sitio { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; overflow: hidden; cursor: pointer; }
+  .sitio:hover { border-color: rgba(255,200,61,.5); } .sitio.sel { border-color: var(--acento); box-shadow: 0 0 0 2px rgba(255,200,61,.3); }
+  .sitio .img { height: 160px; background-size: cover; background-position: center; overflow: hidden; }
+  .sitio .img svg { width: 100%; height: 100%; display: block; }
+  #sitioCampoImg { background: linear-gradient(180deg, #1d3a56, #0f2235); }
+  .sitio .txt { padding: 12px 14px; } .sitio h3 { margin: 0 0 4px; font-size: 17px; } .sitio p { margin: 0; color: var(--suave); font-size: 13px; }
+  #condiciones .fila { margin: 6px 0; }
+
+  /* ---------- mapa de lanzamiento ---------- */
+  #pLanzamiento .cuerpo { display: flex; flex-direction: column; padding-bottom: 0; }
+  #mapaCaja { flex: 1; position: relative; border-radius: var(--radio); overflow: hidden; border: 1px solid var(--borde); background: #0b0f14; min-height: 300px; }
+  #mapaLanz { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; display: block; }
+  #lanzInfo { position: absolute; left: 14px; bottom: 12px; right: 14px; background: rgba(8,14,22,.78); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+
+  /* ---------- ajustes ---------- */
+  #ajustesCuerpo { display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+  #ajustesMenu button { display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent; color: var(--suave); padding: 10px 14px; font-size: 15px;
+                        border-radius: 10px; cursor: pointer; }
+  #ajustesMenu button.sel { background: rgba(255,255,255,.08); color: var(--texto); border-color: rgba(255,255,255,.12); }
+  .teclas td:first-child { white-space: nowrap; } .teclas kbd { background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 5px; font-family: inherit; font-size: 13px; }
+
+  /* ---------- resultado ---------- */
+  .grande { font-size: 40px; font-weight: 800; margin: 2px 0 6px; }
   .apto { color: #66d36e; } .noapto { color: #ff6e66; } .libre { color: var(--azul); }
-  .progreso { height: 18px; background: #0b1726; border: 1px solid var(--borde); border-radius: 9px; overflow: hidden; }
-  .progreso i { display: block; height: 100%; background: linear-gradient(90deg, #f5b301, #66d36e); }
-  .estadisticas { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-  .estadisticas div { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; }
-  .estadisticas b { display: block; font-size: 24px; }
-  .estadisticas span { color: var(--suave); font-size: 13px; }
-  .aviso-aula { background: #3b2f12; border: 1px solid #7a5d16; color: #ffe6a6; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
-  #modal { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 30; align-items: center; justify-content: center; }
-  #modal.activa { display: flex; }
-  #modal .tarjeta { max-width: 420px; margin: 16px; }
+  #resGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { #resGrid { grid-template-columns: 1fr; } }
+  #resTraza { width: 100%; height: 300px; display: block; border-radius: 10px; background: #0b0f14; }
+  #resObjetivos td:first-child { width: 28px; }
+
+  /* ---------- alumnos ---------- */
+  .lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .alumno { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .alumno:hover { border-color: var(--acento); }
+  .alumno .nom { font-size: 16px; font-weight: 600; } .alumno .det { color: var(--suave); font-size: 12px; margin-top: 2px; } .alumno .crece { flex: 1; min-width: 0; }
+  .alumno .borrar { background: transparent; border: none; color: #c98; font-size: 18px; padding: 4px 8px; cursor: pointer; } .alumno .borrar:hover { color: var(--mal); }
+
+  /* ---------- capas: pausa, carga, modal ---------- */
+  .velo { position: absolute; inset: 0; display: none; z-index: 30; align-items: center; justify-content: center; background: rgba(5,10,16,.55); backdrop-filter: blur(3px); }
+  .velo.activa { display: flex; }
+  #pausa .capa { width: 420px; padding: 24px 26px; }
+  #pausa h2 { font-size: 22px; text-transform: none; letter-spacing: 0; color: var(--texto); margin-bottom: 14px; }
+  #pausa .btn { display: block; width: 100%; margin-bottom: 8px; text-align: left; }
+  #pausa .fila { margin: 10px 0 0; }
+  #carga { background: rgba(5,10,16,.92); flex-direction: column; gap: 14px; z-index: 40; }
+  #carga h2 { font-size: 22px; margin: 0; } #carga p { color: var(--suave); margin: 0; }
+  #carga .progreso { width: 360px; }
+  #modal .capa { max-width: 440px; margin: 16px; }
   #modal h3 { margin: 0 0 8px; }
   #modal .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
-  .err { color: #ff8a80; min-height: 1.3em; font-size: 14px; }
+  body:not(.enVuelo) .hudCapa { display: none !important; }
 </style>
 </head>
 <body>
 <canvas id="vista"></canvas>
-<div id="hud"></div>
-<div id="aviso"></div>
-<div id="guia"></div>
-<div id="lejos"></div>
-<div id="toast"></div>
-<div id="objetivos"></div>
+<!-- ============ HUD DE VUELO ============ -->
+<div id="estado" class="hudCapa"></div>
+<div id="hud" class="hudCapa"></div>
+<div id="aviso" class="hudCapa"></div>
+<div id="lejos" class="hudCapa"></div>
+<div id="guia" class="hudCapa"></div>
+<div id="toast" class="hudCapa"></div>
+<div id="objetivos" class="hudCapa"></div>
+<div id="repBarra" class="hudCapa"><div><b>REPETICIÓN</b> · <span id="repTiempo">0 s</span> · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir</div><div class="pista"><i id="repProgreso"></i></div></div>
 <div id="ayuda">
-  <h3>Teclas</h3>
-  <b>Flechas</b>: ↓ tira (morro arriba), ↑ empuja, ← → <span id="ayudaLR">timón</span><br>
-  <b>W / S</b>: gases · <b>Espacio</b>: cortar gases · <b>L</b>: lanzar<br>
-  <b>R</b>: empezar de nuevo · <b>Esc</b>: terminar y volver al menú<br>
-  <b>1 / 2 / 3</b>: cámara piloto / persecución / a bordo<br>
-  <b>[ / ]</b>: compensador de profundidad · <b>H</b>: datos · <b>I</b>: instrumentos · <b>T</b>: ayuda<br>
-  <b>Mando</b>: palanca derecha el avión, izquierda el gas (ver la pantalla del avión)<br>
+  <h3>Controles</h3>
+  <b>↓ ↑</b> profundidad (↓ tira: morro arriba) · <b>← →</b> <span id="ayudaLR">timón</span><br>
+  <b>W</b> / <b>S</b> gases · <b>Espacio</b> cortar gases · <b>L</b> lanzar · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / a bordo · <b>[</b> <b>]</b> compensador<br>
+  <b>H</b> datos de vuelo · <b>I</b> instrumentos · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa<br>
   <span style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.</span><br>
-  <span style="color:#aaa">En vuelo libre: <b>+ / −</b> viento, <b>G</b> rachas.<br>
+  <span style="color:#aaa">En vuelo libre: <b>+</b> <b>−</b> viento, <b>G</b> rachas.
   <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
 </div>
-<div id="barra">
-  <div class="gases"><i id="gasesBarra" style="height:0%"></i></div>
-  <div class="mando"><i id="punto"></i></div>
-</div>
-<svg id="horizonte" viewBox="0 0 300 300" aria-label="Horizonte artificial y rumbo">
-  <defs><clipPath id="clipActitud"><circle cx="150" cy="150" r="98"/></clipPath></defs>
-  <circle cx="150" cy="150" r="148" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
-  <g id="hzRosa"></g>
-  <g id="hzMarcas">
-    <polygon id="hzCasa" points="150,20 142,34 158,34" fill="#ffd54f" stroke="#000" stroke-width="1"/>
-    <g id="hzPista" stroke="#ff4fd8" stroke-width="5"><line x1="150" y1="104" x2="150" y2="118"/><line x1="150" y1="182" x2="150" y2="196"/></g>
-    <polygon id="hzViento" points="150,24 141,12 159,12" fill="#4fc3f7" stroke="#000" stroke-width="1"/>
-  </g>
-  <g clip-path="url(#clipActitud)">
-    <g id="hzActitud">
-      <rect x="-600" y="-1400" width="1500" height="1550" fill="#1f7ae0"/>
-      <rect x="-600" y="150" width="1500" height="1550" fill="#6b4a1e"/>
-      <line x1="-600" y1="150" x2="900" y2="150" stroke="#fff" stroke-width="1.5"/>
-      <g id="hzEscalera"></g>
+<div id="panelVuelo" class="hudCapa">
+  <canvas id="gps" width="200" height="200" aria-label="GPS: mapa del campo"></canvas>
+  <div id="barra">
+    <div class="gases"><i id="gasesBarra" style="height:0%"></i></div>
+    <div class="mando"><i id="punto"></i></div>
+  </div>
+  <div class="esp"></div>
+  <div id="lecturas"></div>
+  <div class="esp"></div>
+  <svg id="variometro" viewBox="0 0 150 150" aria-label="Ascenso y descenso">
+    <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="vaEscala"></g>
+    <line id="vaAguja" x1="75" y1="75" x2="22" y2="75" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="75" cy="75" r="5" fill="#fff"/>
+    <text id="vaTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">+0.0</text>
+    <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · asc. / desc.</text>
+  </svg>
+  <svg id="anemometro" viewBox="0 0 150 150" aria-label="Velocidad del aire">
+    <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="anBandas" fill="none" stroke-width="9"></g><g id="anEscala"></g>
+    <line id="anAguja" x1="75" y1="75" x2="75" y2="22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="75" cy="75" r="5" fill="#fff"/>
+    <text id="anTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">0.0</text>
+    <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · vel. aire</text>
+  </svg>
+  <svg id="horizonte" viewBox="0 0 300 300" aria-label="Horizonte artificial y rumbo">
+    <defs><clipPath id="clipActitud"><circle cx="150" cy="150" r="98"/></clipPath></defs>
+    <circle cx="150" cy="150" r="148" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="hzRosa"></g>
+    <g id="hzMarcas">
+      <polygon id="hzCasa" points="150,20 142,34 158,34" fill="#ffd54f" stroke="#000" stroke-width="1"/>
+      <g id="hzPista" stroke="#ff4fd8" stroke-width="5"><line x1="150" y1="104" x2="150" y2="118"/><line x1="150" y1="182" x2="150" y2="196"/></g>
+      <polygon id="hzViento" points="150,24 141,12 159,12" fill="#4fc3f7" stroke="#000" stroke-width="1"/>
     </g>
-  </g>
-  <circle cx="150" cy="150" r="98" fill="none" stroke="#3d4956" stroke-width="2"/>
-  <g id="hzBanco" fill="none" stroke="#fff" stroke-width="1.5"></g>
-  <polygon points="150,58 144,70 156,70" fill="#fff"/>
-  <circle cx="150" cy="150" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>
-  <line x1="100" y1="150" x2="132" y2="150" stroke="#fff" stroke-width="3"/>
-  <line x1="168" y1="150" x2="200" y2="150" stroke="#fff" stroke-width="3"/>
-  <polygon points="150,3 143,16 157,16" fill="#f85149"/>
-  <text id="hzRumbo" x="150" y="290" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">000°</text>
-</svg>
-<canvas id="gps" width="200" height="200" aria-label="GPS: mapa del campo"></canvas>
-<svg id="anemometro" viewBox="0 0 150 150" aria-label="Velocidad del aire">
-  <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
-  <g id="anBandas" fill="none" stroke-width="9"></g><g id="anEscala"></g>
-  <line id="anAguja" x1="75" y1="75" x2="75" y2="22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="75" cy="75" r="5" fill="#fff"/>
-  <text id="anTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">0.0</text>
-  <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · vel. aire</text>
-</svg>
-<svg id="variometro" viewBox="0 0 150 150" aria-label="Ascenso y descenso">
-  <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
-  <g id="vaEscala"></g>
-  <line id="vaAguja" x1="75" y1="75" x2="22" y2="75" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="75" cy="75" r="5" fill="#fff"/>
-  <text id="vaTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">+0.0</text>
-  <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · asc. / desc.</text>
-</svg>
-<div id="cajaNegra">
-  <label><input type="checkbox" id="cnAuto"> Descargar la caja negra (CSV) de cada vuelo</label><br>
-  <button id="cnUltimo" disabled>Descargar el último</button>
+    <g clip-path="url(#clipActitud)">
+      <g id="hzActitud">
+        <rect x="-600" y="-1400" width="1500" height="1550" fill="#1f7ae0"/>
+        <rect x="-600" y="150" width="1500" height="1550" fill="#6b4a1e"/>
+        <line x1="-600" y1="150" x2="900" y2="150" stroke="#fff" stroke-width="1.5"/>
+        <g id="hzEscalera"></g>
+      </g>
+    </g>
+    <circle cx="150" cy="150" r="98" fill="none" stroke="#3d4956" stroke-width="2"/>
+    <g id="hzBanco" fill="none" stroke="#fff" stroke-width="1.5"></g>
+    <polygon points="150,58 144,70 156,70" fill="#fff"/>
+    <circle cx="150" cy="150" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <line x1="100" y1="150" x2="132" y2="150" stroke="#fff" stroke-width="3"/>
+    <line x1="168" y1="150" x2="200" y2="150" stroke="#fff" stroke-width="3"/>
+    <polygon points="150,3 143,16 157,16" fill="#f85149"/>
+    <text id="hzRumbo" x="150" y="290" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">000°</text>
+  </svg>
 </div>
 
-<!-- ============ 1. ALUMNO ============ -->
-<div class="pantalla" id="pAlumno"><div class="caja">
-  <div class="barraSup"><div><h1>¿Quién vuela?</h1><p class="sub" id="aulaInfo">Conectando con el aula…</p></div>
-    <div class="esp"></div><button id="btnProfesor">Profesor</button></div>
+<!-- ============ INICIO ============ -->
+<div class="pantalla conFoto" id="pInicio">
+  <div class="cuerpo">
+    <div id="inicioIzq">
+      <div class="titulo"><small>Simulador de vuelo RC</small><h1>Entrenador de vuelo</h1><p>Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.</p></div>
+      <button class="menu-btn" id="mnVolar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg><div><b>Vuelo libre</b><span>El campo de vuelo del club o el Campo de Cartagena con mapa real</span></div></button>
+      <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Nueve misiones con objetivos: desde el primer vuelo hasta el aterrizaje de precisión</span></div></button>
+      <button class="menu-btn" id="mnHangar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg><div><b>Hangar</b><span>Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora</span></div></button>
+      <button class="menu-btn" id="mnAjustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><div><b>Ajustes</b><span>Mando, gráficos, sonido, dificultad y registro de vuelos</span></div></button>
+    </div>
+    <div id="inicioDer">
+      <div id="previaSlotInicio"><canvas id="vistaPrevia"></canvas></div>
+      <div id="inicioAvion"><b id="inicioAvionNombre"></b><span id="inicioAvionDesc"></span></div>
+    </div>
+  </div>
+  <div id="inicioPie"><span class="chip" id="chipPiloto" title="Cambiar de piloto">Piloto</span><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>Entrenador de vuelo RC · v1 navegador</span></div>
+</div>
+
+<!-- ============ PILOTOS (aula o registro local) ============ -->
+<div class="pantalla" id="pAlumno">
+  <div class="cabecera"><div><h1>¿Quién vuela?</h1><p class="sub" id="aulaInfo">Conectando con el aula…</p></div><div class="esp"></div>
+    <button class="btn" id="btnProfesor">Panel del profesor</button><button class="btn" id="btnAlumnoInicio">← Inicio</button></div>
+  <div class="cuerpo">
   <div id="sinAula" class="aviso-aula" style="display:none">
     No hay servidor del aula. Elige cómo guardar los vuelos:
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="prim" id="btnAulaLocal">Registro local en este ordenador</button>
-      <button id="btnSinAlumno">Volar sin registrar</button></div>
+      <button class="btn prim" id="btnAulaLocal">Registro local en este ordenador</button>
+      <button class="btn" id="btnSinAlumno">Volar sin registrar</button></div>
     <p class="sub" style="margin:8px 0 0">El registro local guarda alumnos, vuelos y progreso en este navegador y, si quieres, en un
     archivo JSON que puedes copiar a otro ordenador. Para un aula con varios ordenadores y panel del profesor, arranca
     <code>aula/servidor_aula.py</code> y abre la dirección que indica.</p>
   </div>
   <div id="conAula">
-    <div class="barraSup">
+    <div class="fila" style="margin:0 0 10px">
       <input type="search" id="buscar" placeholder="Buscar alumno…" style="flex:1;min-width:200px" autocomplete="off">
       <input type="text" id="nuevoNombre" placeholder="Nombre del alumno nuevo" maxlength="60" style="min-width:220px" autocomplete="off">
-      <button id="btnAnadir">Añadir</button>
+      <button class="btn" id="btnAnadir">Añadir</button>
+      <button class="btn" id="btnSinAlumno2">Volar sin registrar</button>
     </div>
     <div class="err" id="errAlumno"></div>
     <div class="lista" id="listaAlumnos"></div>
     <p class="sub" id="pendientes" style="margin-top:14px"></p>
     <div id="barraLocal" class="sub" style="display:none;margin-top:12px"></div>
   </div>
-</div></div>
+  </div>
+</div>
 
-<!-- ============ 2. AVION ============ -->
-<div class="pantalla" id="pAvion"><div class="caja">
-  <div class="barraSup"><div><h1>Elige el avión</h1><p class="sub" id="saludo"></p></div><div class="esp"></div>
-    <button id="btnCambiarAlumno">Cambiar de alumno</button><button id="btnVerProgreso">Mi progreso</button></div>
-  <div class="fila" id="selAviones"></div>
-  <div class="avionCaja">
-    <div class="tarjeta"><canvas id="vistaPrevia"></canvas>
-      <h2 id="avNombre" style="margin-top:12px"></h2><p class="sub" id="avDesc" style="margin:0"></p></div>
-    <div class="tarjeta"><table class="datos" id="avDatos"></table></div>
-  </div>
-  <h2>Dificultad</h2>
-  <div class="tarjeta">
-    <div class="fila"><label for="dificultad">Física</label><select id="dificultad">
-      <option value="real">Real: como el avión de verdad (la más difícil)</option>
-      <option value="facil">Fácil: la física sencilla de antes</option></select></div>
-    <p class="sub" id="dificultadInfo" style="margin:6px 0 0"></p>
-  </div>
-  <h2>Viento</h2>
-  <div class="tarjeta">
-    <div class="fila"><label for="vVel">Velocidad</label><input type="range" id="vVel" min="0" max="10" step="0.5" value="2" style="flex:1;max-width:340px">
-      <b id="vVelTxt">2 m/s</b></div>
-    <div class="fila"><label for="vDir">Viene del</label><select id="vDir">
-      <option value="0">norte (de cara al piloto: la pista va contra el viento)</option><option value="45">nordeste</option>
-      <option value="90">este (cruzado)</option><option value="135">sudeste</option><option value="180">sur (de cola en la pista)</option>
-      <option value="225">sudoeste</option><option value="270">oeste (cruzado)</option><option value="315">noroeste</option></select></div>
-    <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked></div>
-    <p class="sub" style="margin:6px 0 0">Para empezar, menos de 3 m/s. El escenario de viento cruzado pone su propio viento.</p>
-  </div>
-  <h2>Mando</h2>
-  <div class="tarjeta">
-    <p id="mandoEstado" style="margin:0 0 8px">Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.</p>
-    <div class="fila"><label for="mandoGas">Gas</label>
-      <select id="mandoGas"><option value="incremental">Palanca izquierda con muelle (mando de consola): arriba sube el gas, abajo lo baja, al centro se queda</option>
-        <option value="absoluto">Palanca izquierda sin muelle (emisora RC): la posición es el gas</option></select></div>
-    <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="60" step="5" style="flex:1;max-width:340px"><b id="mandoExpoTxt"></b></div>
-    <p class="sub" style="margin:4px 0 0">Palanca derecha: arriba/abajo, profundidad (hacia ti, morro arriba); izquierda/derecha, alerones o timón. Palanca izquierda: gas.
-      Botones: A / ✕ lanzar · B / ○ cortar gas · Y / △ cámara · X / □ empezar de nuevo · cruceta arriba/abajo compensador · Start terminar el vuelo.
-      Con mando la palanca es proporcional, como en la emisora: usa el mismo recorrido y la misma exponencial que vayas a poner en el avión real.</p>
-  </div>
-  <h2>Recorridos (como en la emisora)</h2>
-  <div class="tarjeta">
-    <p class="sub" style="margin:0 0 8px">Con mando, la palanca a tope mueve las superficies el recorrido mecánico del avión por este porcentaje, igual que el <b>dual rate</b> de la emisora: pon aquí lo mismo que vayas a programar. Con teclado se usan siempre recorridos reducidos, porque la tecla va a tope.</p>
-    <div class="fila"><label for="drAlabeo">Alabeo</label><input type="range" id="drAlabeo" min="20" max="100" step="5" style="flex:1;max-width:340px"><b id="drAlabeoTxt"></b></div>
-    <div class="fila"><label for="drProf">Profundidad</label><input type="range" id="drProf" min="20" max="100" step="5" style="flex:1;max-width:340px"><b id="drProfTxt"></b></div>
-    <div class="fila" style="margin-bottom:0"><label for="lanzReal">Lanzamiento real</label><input type="checkbox" id="lanzReal" checked> <span class="sub">velocidad, cabeceo y alabeo al azar, como al lanzar a mano</span></div>
-  </div>
-  <h2>Calibración con el avión real y aire</h2>
-  <div class="tarjeta">
-    <div class="fila"><label for="calEmpuje">Empuje estático medido</label><input type="number" id="calEmpuje" min="200" max="2000" step="10" placeholder="del fabricante" style="width:120px"> <span class="sub">gramos, con báscula de cocina y batería cargada (vacío = tabla del fabricante)</span></div>
-    <div class="fila"><label for="calRes">Resistencia</label><input type="range" id="calRes" min="70" max="160" step="5" style="flex:1;max-width:340px"><b id="calResTxt"></b></div>
-    <div class="fila" style="margin-bottom:0"><label for="calTemp">Temperatura del aire</label><input type="range" id="calTemp" min="0" max="40" step="1" style="flex:1;max-width:340px"><b id="calTempTxt"></b></div>
-    <p class="sub" id="calInfo" style="margin:6px 0 0"></p>
-  </div>
-  <h2>Centro de gravedad y peso</h2>
-  <div class="tarjeta">
-    <div class="fila"><label for="cmCg">Centro de gravedad</label>
-      <span class="sub">morro</span><input type="range" id="cmCg" min="15" max="60" step="1" style="flex:1;max-width:340px"><span class="sub">cola</span>
-      <b id="cmCgTxt"></b></div>
-    <div class="fila"><label for="cmMasa">Peso</label>
-      <span class="sub">ligero</span><input type="range" id="cmMasa" step="10" style="flex:1;max-width:340px"><span class="sub">pesado</span>
-      <b id="cmMasaTxt"></b></div>
-    <p id="cmEfecto" style="margin:8px 0 0"></p>
-    <p class="sub" id="cmBateria" style="margin:4px 0 0"></p>
-    <div class="fila" style="margin-bottom:0"><button id="btnCmDiseno">Volver a los valores de diseño</button></div>
-  </div>
-  <div class="fila" style="justify-content:flex-end;margin-top:20px"><button class="prim" id="btnAEscenario">Siguiente: escenario →</button></div>
-</div></div>
+<!-- ============ HANGAR ============ -->
+<div class="pantalla" id="pHangar">
+  <div class="cabecera"><div><h1>Hangar</h1><p class="sub" id="saludo"></p></div><div class="esp"></div>
+    <button class="btn" id="btnVerProgreso">Mi progreso</button><button class="btn" id="btnHangarVolver">← Inicio</button><button class="btn prim" id="btnHangarVolar">Volar con este avión →</button></div>
+  <div class="cuerpo"><div id="hangarCuerpo">
+    <div id="selAviones"></div>
+    <div id="previaSlotHangar"><div id="hangarNombre"><b id="avNombre"></b><span id="avDesc"></span></div></div>
+    <div class="capa" id="hangarFicha">
+      <div class="pestanas"><button class="sel" data-p="ficha">Ficha</button><button data-p="ajustes">Ajustes del avión</button></div>
+      <div class="panelPestana sel" data-p="ficha"><table class="datos" id="avDatos"></table></div>
+      <div class="panelPestana" data-p="ajustes">
+        <details class="avanzado" id="secCM" open><summary>Centro de gravedad y peso</summary>
+          <div class="fila"><label for="cmCg">Centro de gravedad</label><span class="sub">morro</span><input type="range" id="cmCg" min="15" max="60" step="1"><span class="sub">cola</span></div>
+          <b id="cmCgTxt" style="display:block;margin:-4px 0 8px"></b>
+          <div class="fila"><label for="cmMasa">Peso</label><span class="sub">ligero</span><input type="range" id="cmMasa" step="10"><span class="sub">pesado</span></div>
+          <b id="cmMasaTxt" style="display:block;margin:-4px 0 8px"></b>
+          <p id="cmEfecto" style="margin:6px 0 0;font-size:13px"></p>
+          <p class="sub" id="cmBateria" style="margin:4px 0 8px;font-size:13px"></p>
+          <button class="btn" id="btnCmDiseno">Volver a los valores de diseño</button>
+        </details>
+        <details class="avanzado"><summary>Emisora: recorridos y lanzamiento</summary>
+          <p class="sub" style="margin:0 0 8px;font-size:13px">Con mando, la palanca a tope mueve las superficies el recorrido mecánico del avión por este porcentaje, igual que el <b>dual rate</b> de la emisora. Con teclado se usan recorridos reducidos.</p>
+          <div class="fila"><label for="drAlabeo">Alabeo</label><input type="range" id="drAlabeo" min="20" max="100" step="5"></div><b id="drAlabeoTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="drProf">Profundidad</label><input type="range" id="drProf" min="20" max="100" step="5"></div><b id="drProfTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="lanzReal">Lanzamiento real</label><input type="checkbox" id="lanzReal" checked> <span class="sub" style="font-size:13px">velocidad, cabeceo y alabeo al azar, como al lanzar a mano</span></div>
+        </details>
+        <details class="avanzado"><summary>Calibración con el avión real y aire</summary>
+          <div class="fila"><label for="calEmpuje">Empuje estático medido</label><input type="number" id="calEmpuje" min="200" max="2000" step="10" placeholder="del fabricante" style="width:130px"> <span class="sub" style="font-size:13px">gramos, con báscula</span></div>
+          <div class="fila"><label for="calRes">Resistencia</label><input type="range" id="calRes" min="70" max="160" step="5"></div><b id="calResTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="calTemp">Temperatura del aire</label><input type="range" id="calTemp" min="0" max="40" step="1"></div><b id="calTempTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <p class="sub" id="calInfo" style="margin:6px 0 0;font-size:13px"></p>
+        </details>
+      </div>
+    </div>
+  </div></div>
+</div>
 
-<!-- ============ 3. ESCENARIO ============ -->
-<div class="pantalla" id="pEscenario"><div class="caja">
-  <div class="barraSup"><div><h1>Elige el entrenamiento</h1><p class="sub" id="escSub"></p></div><div class="esp"></div>
-    <button id="btnVolverAvion">← Avión y viento</button></div>
-  <div class="escenarios" id="listaEscenarios"></div>
-</div></div>
+<!-- ============ ENTRENAMIENTOS ============ -->
+<div class="pantalla" id="pEntrenamientos">
+  <div class="cabecera"><div><h1>Entrenamientos</h1><p class="sub" id="escSub"></p></div><div class="esp"></div><button class="btn" id="btnEntrenarVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div class="misiones" id="listaEscenarios"></div>
+    <div>
+      <div class="capa" id="fichaMision"></div>
+      <div id="condicionesSlotEntrenar" style="margin-top:12px"></div>
+      <button class="btn prim grande" id="btnMisionVolar" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
 
-<!-- ============ 3b. PUNTO DE LANZAMIENTO (mundo real) ============ -->
-<div class="pantalla" id="pLanzamiento"><div class="caja">
-  <div class="barraSup"><div><h1>¿Desde dónde sales?</h1><p class="sub" id="lanzSub">Haz clic en el mapa para elegir el punto de lanzamiento. Se despega hacia el lado más despejado. El GPS y la distancia a casa se refieren a ese punto.</p></div><div class="esp"></div>
-    <button id="btnLanzVolver">← Entrenamientos</button></div>
-  <canvas id="mapaLanz" width="1040" height="500" style="width:100%;max-width:1040px;cursor:crosshair;border-radius:8px;display:block"></canvas>
-  <p class="sub" id="lanzInfo" style="margin:8px 0"></p>
-  <button id="btnLanzAqui" class="principal">Despegar aquí →</button>
-</div></div>
+<!-- ============ VUELO LIBRE ============ -->
+<div class="pantalla" id="pVolar">
+  <div class="cabecera"><div><h1>Vuelo libre</h1><p class="sub">Sin objetivos: cuenta como horas de entrenamiento.</p></div><div class="esp"></div><button class="btn" id="btnVolarVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div>
+      <div class="sitios">
+        <div class="sitio" id="sitioCampo"><div class="img" id="sitioCampoImg"></div><div class="txt"><h3>Campo de vuelo</h3><p>El campo del club: pista, circuito de pilones, zona de precisión detrás del piloto y límite de alcance de 400 m. Se cronometra cada vuelta.</p></div></div>
+        <div class="sitio" id="sitioCartagena"><div class="img" style="background-image:url('mundos/cartagena_orto.jpg')"></div><div class="txt"><h3>Campo de Cartagena · mapa real</h3><p>78 × 38 km reales: Cartagena, el Mar Menor, La Manga, la sierra y los pueblos. Eliges el punto de lanzamiento en el mapa. Sin límite de alcance.</p></div></div>
+      </div>
+      <p class="sub" id="volarNota" style="margin:14px 0 0;font-size:13px"></p>
+    </div>
+    <div>
+      <div id="condicionesSlotVolar"></div>
+      <button class="btn prim grande" id="btnVolarYa" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
+<div class="capa" id="condiciones" style="display:none">
+  <h2>Condiciones</h2>
+  <div class="fila"><label for="vVel">Viento</label><input type="range" id="vVel" min="0" max="10" step="0.5" value="2"><b id="vVelTxt">2 m/s</b></div>
+  <div class="fila"><label for="vDir">Viene del</label><select id="vDir" style="flex:1">
+    <option value="0">norte (de cara al piloto)</option><option value="45">nordeste</option><option value="90">este (cruzado)</option><option value="135">sudeste</option>
+    <option value="180">sur (de cola en la pista)</option><option value="225">sudoeste</option><option value="270">oeste (cruzado)</option><option value="315">noroeste</option></select></div>
+  <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked><span class="sub" style="font-size:13px">y turbulencia</span></div>
+  <p class="sub" id="condNota" style="margin:6px 0 0;font-size:13px"></p>
+</div>
 
-<!-- ============ 4. RESULTADO ============ -->
-<div class="pantalla" id="pResultado"><div class="caja">
-  <h1 id="resTitulo"></h1>
-  <div class="grande" id="resVeredicto"></div>
-  <p class="sub" id="resFinal"></p>
-  <div class="tarjeta"><table class="datos" id="resObjetivos"></table></div>
-  <p class="sub" id="resGuardado" style="margin-top:12px"></p>
-  <div class="fila" style="margin-top:18px">
-    <button class="prim" id="btnRepetir">Volar otra vez</button>
-    <button id="btnOtroEscenario">Otro escenario</button>
-    <button id="btnResProgreso">Ver mi progreso</button>
+<!-- ============ PUNTO DE LANZAMIENTO (mundo real) ============ -->
+<div class="pantalla" id="pLanzamiento">
+  <div class="cabecera"><div><h1>¿Desde dónde sales?</h1><p class="sub">Haz clic en el mapa para elegir el punto de lanzamiento. Se despega hacia el lado más despejado.</p></div><div class="esp"></div>
+    <button class="btn" id="btnLanzVolver">← Vuelo libre</button><button class="btn prim grande" id="btnLanzAqui">Despegar aquí →</button></div>
+  <div class="cuerpo"><div id="mapaCaja"><canvas id="mapaLanz" width="1400" height="700"></canvas><div id="lanzInfo"></div></div></div>
+</div>
+
+<!-- ============ AJUSTES ============ -->
+<div class="pantalla" id="pAjustes">
+  <div class="cabecera"><div><h1>Ajustes</h1><p class="sub">Se guardan en este navegador.</p></div><div class="esp"></div><button class="btn" id="btnAjustesVolver">← Inicio</button></div>
+  <div class="cuerpo"><div id="ajustesCuerpo">
+    <div id="ajustesMenu">
+      <button class="sel" data-a="controles">Controles</button><button data-a="graficos">Gráficos</button><button data-a="sonido">Sonido</button>
+      <button data-a="dificultad">Dificultad</button><button data-a="datos">Registro y aula</button>
+    </div>
+    <div>
+      <div class="capa panelPestana sel" data-a="controles">
+        <h2>Mando o emisora por USB</h2>
+        <p id="mandoEstado" style="margin:0 0 8px;font-size:14px">Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.</p>
+        <div class="fila"><label for="mandoGas">Gas</label><select id="mandoGas" style="flex:1"><option value="incremental">Palanca con muelle (mando de consola): arriba sube el gas, abajo lo baja</option>
+          <option value="absoluto">Palanca sin muelle (emisora RC): la posición es el gas</option></select></div>
+        <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="60" step="5"><b id="mandoExpoTxt"></b></div>
+        <p class="sub" style="font-size:13px">Palanca derecha: profundidad (hacia ti, morro arriba) y alerones o timón. Palanca izquierda: gas. Botones: A lanzar · B cortar gas · Y cámara · X empezar de nuevo · cruceta compensador · Start pausa.</p>
+        <h2 style="margin-top:18px">Teclado</h2>
+        <table class="datos teclas">
+          <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Profundidad: ↓ tira (morro arriba), ↑ empuja</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Timón o alerones</td></tr>
+          <tr><td><kbd>W</kbd> <kbd>S</kbd></td><td>Gases más / menos · <kbd>Espacio</kbd> cortar gases</td></tr>
+          <tr><td><kbd>L</kbd></td><td>Lanzar a mano · <kbd>R</kbd> empezar de nuevo</td></tr>
+          <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Cámara piloto / persecución / a bordo</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Compensador de profundidad</td></tr>
+          <tr><td><kbd>H</kbd> <kbd>I</kbd></td><td>Datos de vuelo en texto · instrumentos sí/no</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Pausa</td></tr>
+        </table>
+      </div>
+      <div class="capa panelPestana" data-a="graficos">
+        <h2>Calidad gráfica</h2>
+        <div class="fila"><label for="calidad">Calidad</label><select id="calidad" style="flex:1">
+          <option value="auto">Automática: alta, y baja sola si no llega a 35 fps</option><option value="2">Alta: sombras, agua con reflejos, vegetación lejana</option>
+          <option value="1">Media: sin vegetación lejana ni reflejos</option><option value="0">Baja: tres cuartos de resolución, sin matas ni nubes</option></select></div>
+        <p class="sub" id="calidadInfo" style="font-size:13px"></p>
+      </div>
+      <div class="capa panelPestana" data-a="sonido">
+        <h2>Sonido</h2>
+        <div class="fila"><label for="sonidoOn">Sonido</label><input type="checkbox" id="sonidoOn" checked><span class="sub" style="font-size:13px">motor, viento y aviso de pérdida</span></div>
+        <div class="fila"><label for="sonidoVol">Volumen</label><input type="range" id="sonidoVol" min="0" max="100" step="5"><b id="sonidoVolTxt"></b></div>
+        <p class="sub" style="font-size:13px">En la cámara del piloto el motor suena más lejano cuanto más se aleja el avión, como en el campo.</p>
+      </div>
+      <div class="capa panelPestana" data-a="dificultad">
+        <h2>Física</h2>
+        <div class="fila"><label for="dificultad">Dificultad</label><select id="dificultad" style="flex:1">
+          <option value="real">Real: como el avión de verdad (la más difícil)</option><option value="facil">Fácil: la física sencilla</option></select></div>
+        <p class="sub" id="dificultadInfo" style="font-size:13px"></p>
+      </div>
+      <div class="capa panelPestana" data-a="datos">
+        <h2>Caja negra</h2>
+        <div class="fila"><label for="cnAuto">Descarga automática</label><input type="checkbox" id="cnAuto"><span class="sub" style="font-size:13px">un CSV a 20 Hz de cada vuelo (también se puede bajar desde el resultado)</span></div>
+        <h2 style="margin-top:18px">Pilotos y registro de vuelos</h2>
+        <p class="sub" id="datosAula" style="font-size:13px"></p>
+        <div class="fila"><button class="btn" id="btnDatosPilotos">Pilotos y registro…</button><button class="btn" id="btnDatosProfesor">Panel del profesor</button></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ RESULTADO ============ -->
+<div class="pantalla" id="pResultado">
+  <div class="cabecera"><div><h1 id="resTitulo"></h1><div class="grande" id="resVeredicto"></div><p class="sub" id="resFinal" style="margin:0"></p></div></div>
+  <div class="cuerpo"><div id="resGrid">
+    <div class="capa"><h2>Resumen del vuelo</h2><div class="estadisticas" id="resStats"></div><canvas id="resTraza" width="800" height="300" style="margin-top:12px"></canvas></div>
+    <div class="capa"><h2>Objetivos</h2><table class="datos" id="resObjetivos"></table><p class="sub" id="resGuardado" style="margin:12px 0 0;font-size:13px"></p></div>
+  </div></div>
+  <div class="pie">
+    <button class="btn prim grande" id="btnRepetir">Volar otra vez</button><button class="btn" id="btnRepeticion">Ver la repetición</button>
+    <button class="btn" id="btnOtroEscenario">Otro entrenamiento</button><button class="btn" id="btnResProgreso">Mi progreso</button>
+    <button class="btn" id="cnUltimo" disabled>Caja negra (CSV)</button><span class="esp"></span><button class="btn" id="btnResInicio">Menú principal</button>
   </div>
-</div></div>
+</div>
 
-<!-- ============ 5. PROGRESO ============ -->
-<div class="pantalla" id="pProgreso"><div class="caja">
-  <div class="barraSup"><div><h1 id="progNombre"></h1><p class="sub">Progreso del entrenamiento</p></div><div class="esp"></div>
-    <button id="btnProgVolver">← Volver</button></div>
-  <div id="progContenido"></div>
-</div></div>
+<!-- ============ PROGRESO ============ -->
+<div class="pantalla" id="pProgreso">
+  <div class="cabecera"><div><h1 id="progNombre"></h1><p class="sub">Progreso del entrenamiento</p></div><div class="esp"></div><button class="btn" id="btnProgVolver">← Volver</button></div>
+  <div class="cuerpo"><div id="progContenido"></div></div>
+</div>
 
-<div id="modal"><div class="tarjeta"><h3 id="modTitulo"></h3><div id="modTexto"></div>
-  <div class="botones"><button id="modNo">Cancelar</button><button class="peligro" id="modSi">Sí</button></div></div></div>
+<!-- ============ CAPAS ============ -->
+<div class="velo" id="pausa"><div class="capa"><h2>Pausa</h2>
+  <button class="btn prim" id="btnPausaSeguir">Continuar</button>
+  <button class="btn" id="btnPausaReiniciar">Empezar el vuelo de nuevo</button>
+  <button class="btn" id="btnPausaCamara">Cámara: piloto</button>
+  <button class="btn" id="btnPausaInstr">Instrumentos: sí</button>
+  <button class="btn" id="btnPausaAyuda">Controles</button>
+  <button class="btn" id="btnPausaTerminar">Terminar el vuelo</button>
+  <button class="btn peligro" id="btnPausaSalir">Salir al menú principal</button>
+  <div class="fila"><label for="pausaSonido" style="min-width:0">Sonido</label><input type="checkbox" id="pausaSonido"><span class="sub" style="flex:1"></span><span class="sub" id="pausaInfo" style="font-size:12px"></span></div>
+</div></div>
+<div class="velo" id="carga"><h2 id="cargaTitulo">Preparando el vuelo…</h2><div class="progreso"><i id="cargaBarra" style="width:0"></i></div><p id="cargaTexto"></p></div>
+<div class="velo" id="modal"><div class="capa"><h3 id="modTitulo"></h3><div id="modTexto"></div>
+  <div class="botones"><button class="btn" id="modNo">Cancelar</button><button class="btn peligro" id="modSi">Sí</button></div></div></div>
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=21"></script>
 <script src="js/entorno.js?v=22"></script>
-<script src="js/visor.js?v=26"></script>
+<script src="js/visor.js?v=28"></script>
 <script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script>
@@ -372,9 +584,13 @@ function mostrar(id) {
   document.querySelectorAll(".pantalla").forEach(p => p.classList.toggle("activa", p.id === id));
   pantallaActual = id;
   const enVuelo = id === null;
-  for (const k of ["hud", "objetivos", "barra", "cajaNegra", "lejos"]) document.getElementById(k).style.display = enVuelo ? "" : "none";
-  if (!enVuelo) document.getElementById("ayuda").style.display = "none";
+  document.body.classList.toggle("enVuelo", enVuelo);
+  if (!enVuelo) { document.getElementById("ayuda").style.display = "none"; ponerPausa(false); Sonido.silenciar(true); }
+  else Sonido.silenciar(false);
   if (enVuelo && document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  // la vista previa 3D del avion (un solo lienzo) vive en el inicio y en el hangar
+  const slot = id === "pInicio" ? "previaSlotInicio" : id === "pHangar" ? "previaSlotHangar" : null;
+  if (slot) { const c = document.getElementById("vistaPrevia"), sl = document.getElementById(slot); if (c.parentElement !== sl) sl.insertBefore(c, sl.firstChild); }
 }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function confirmar(titulo, html, textoSi) {
@@ -605,7 +821,7 @@ function pintarAlumnos() {
       <div class="det">${fmtHoras(g.horas)} · ${g.vuelos} vuelos · ${g.escenarios_superados}/4 escenarios
       ${a.habilitado ? '<span class="chip ok">avión real</span>' : ""}</div></div>
       <button class="borrar" title="Quitar de la lista">🗑</button>`;
-    d.onclick = () => { sesion.alumno = a; irAvion(); };
+    d.onclick = () => elegirPiloto(a);
     d.querySelector(".borrar").onclick = async e => {
       e.stopPropagation();
       const ok = await confirmar("¿Quitar a " + a.nombre + "?",
@@ -628,36 +844,10 @@ async function anadirAlumno() {
 document.getElementById("btnAnadir").onclick = anadirAlumno;
 document.getElementById("nuevoNombre").addEventListener("keydown", e => { if (e.key === "Enter") anadirAlumno(); });
 document.getElementById("btnProfesor").onclick = () => window.open("profesor.html", "_blank");
-document.getElementById("btnSinAlumno").onclick = () => { sesion.alumno = null; irAvion(); };
 
 // =====================================================================
 //  2. AVION Y VIENTO
 // =====================================================================
-function irAvion() {
-  document.getElementById("saludo").textContent = sesion.alumno ? `Hola, ${sesion.alumno.nombre}.` : "Modo sin aula: los vuelos no se guardan.";
-  document.getElementById("btnVerProgreso").style.display = sesion.alumno ? "" : "none";
-  const sel = document.getElementById("selAviones"); sel.innerHTML = "";
-  for (const id of Modelos.ids()) {
-    const b = document.createElement("button"); b.textContent = Modelos.datos(id).nombre;
-    if (id === sesion.avion) b.className = "prim";
-    b.onclick = () => { sesion.avion = id; irAvion(); };
-    sel.appendChild(b);
-  }
-  const A = Modelos.datos(sesion.avion);
-  document.getElementById("avNombre").textContent = A.nombre;
-  document.getElementById("avDesc").textContent = A.descripcion || "";
-  // ficha: lo que trae el fichero del avion y, si no lo trae ya, la cuerda (de c_m) y el perfil alar (campo perfil)
-  const filas = (A.caracteristicas || []).slice(), tiene = n => filas.some(([k]) => k.toLowerCase().startsWith(n));
-  if (A.c_m && !tiene("cuerda")) filas.splice(1, 0, ["Cuerda", `${(A.c_m * 1000).toFixed(0)} mm`]);
-  if (A.perfil && !tiene("perfil")) filas.splice(2, 0, ["Perfil alar", A.perfil]);
-  document.getElementById("avDatos").innerHTML = filas.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
-  const v = sesion.viento;
-  document.getElementById("vVel").value = v.vel; document.getElementById("vDir").value = String(v.desde);
-  document.getElementById("vRachas").checked = v.rachas; document.getElementById("vVelTxt").textContent = v.vel + " m/s";
-  previa.mostrar(A);
-  pintarCM();
-  mostrar("pAvion");
-}
 function leerViento() {
   sesion.viento = { vel: +document.getElementById("vVel").value, desde: +document.getElementById("vDir").value,
                     rachas: document.getElementById("vRachas").checked };
@@ -665,11 +855,7 @@ function leerViento() {
   try { localStorage.setItem("sim_viento", JSON.stringify(sesion.viento)); } catch (e) {}
 }
 for (const id of ["vVel", "vDir", "vRachas"]) document.getElementById(id).addEventListener("input", leerViento);
-document.getElementById("btnCambiarAlumno").onclick = () => { mostrar("pAlumno"); iniciarAula(); };
-document.getElementById("btnVerProgreso").onclick = () => irProgreso("pAvion");
-document.getElementById("btnAEscenario").onclick = () => {
-  leerViento(); try { localStorage.setItem("sim_avion", sesion.avion); } catch (e) {} irEscenario();
-};
+document.getElementById("btnVerProgreso").onclick = () => irProgreso("pHangar");
 
 // ---- centro de gravedad y peso: por avion, por defecto los de diseno (para aprender sus efectos) ----
 // cg en % de la cuerda desde el borde de ataque; masa en gramos. Se guardan en el navegador por avion.
@@ -683,10 +869,9 @@ function cmActual(id) { const A = Modelos.datos(id); return cmCfg[id] || cmDisen
 function cmEsDiseno(id) { const a = cmActual(id), d = cmDiseno(Modelos.datos(id)); return a.cg === d.cg && a.masa === d.masa; }
 function pintarCM() {
   pintarCfgAvion();
-  const A = Modelos.datos(sesion.avion), caja = document.getElementById("cmCg").closest(".tarjeta");
-  const titulo = caja.previousElementSibling;
-  if (A.x_le_mm === undefined || !A.punto_neutro_mm) { caja.style.display = titulo.style.display = "none"; return; }
-  caja.style.display = titulo.style.display = "";
+  const A = Modelos.datos(sesion.avion), caja = document.getElementById("secCM");
+  if (A.x_le_mm === undefined || !A.punto_neutro_mm) { caja.style.display = "none"; return; }
+  caja.style.display = "";
   const C = A.c_m * 1000, d = cmDiseno(A), c = cmActual(sesion.avion);
   const sCg = document.getElementById("cmCg"), sM = document.getElementById("cmMasa");
   // rango de la barra del CG: 15-60 % de la cuerda, salvo que el avion traiga el suyo (tandem: % de la cuerda media
@@ -722,7 +907,7 @@ function leerCM() {
   pintarCM();
 }
 for (const id of ["cmCg", "cmMasa"]) document.getElementById(id).addEventListener("input", leerCM);
-setInterval(() => { if (pantallaActual === "pAvion") pintarMandoCfg(); }, 1000);   // el mando aparece al pulsar un boton
+setInterval(() => { if (pantallaActual === "pAjustes") pintarMandoCfg(); }, 1000);   // el mando aparece al pulsar un boton
 document.getElementById("btnCmDiseno").onclick = () => {
   delete cmCfg[sesion.avion]; try { localStorage.setItem("sim_cm", JSON.stringify(cmCfg)); } catch (e) {} pintarCM();
 };
@@ -935,28 +1120,6 @@ const ESCENARIOS = {
 };
 const zonaDe = id => ESCENARIOS[id].zona || 1;
 const mundoDe = id => ESCENARIOS[id].mundo ? Mundos.datos(ESCENARIOS[id].mundo) : null;
-function irEscenario() {
-  const g = sesion.alumno && sesion.alumno.progreso;
-  document.getElementById("escSub").textContent = `${Modelos.datos(sesion.avion).nombre} · viento ${sesion.viento.vel} m/s` +
-    (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : "");
-  const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
-  const titulos = { primer_vuelo: "Zona 1 · Circuito de pilones, delante del piloto (cuentan para el avión real)",
-                    puerta: "Zona 2 · Precisión, detrás del piloto: date la vuelta, se lanza hacia el sur; mejor con viento del sur, que es lanzar de cara al viento (práctica)",
-                    aterrizaje: "Guiado · Empieza con el avión en el aire y la pantalla te dice qué hacer (práctica)",
-                    libre_cartagena: "Mundo real · Terreno y carreteras de verdad, sin límite de alcance (práctica)", libre: "Libre" };
-  for (const [id, E] of Object.entries(ESCENARIOS)) {
-    if (titulos[id]) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = titulos[id]; el.appendChild(t); }
-    const st = g && g.escenarios[id];
-    const d = document.createElement("div"); d.className = "escenario";
-    d.innerHTML = `<h3>${esc(E.nombre)} ${st ? (st.superado ? '<span class="chip ok">superado</span>' : st.intentos ? `<span class="chip">${st.intentos} intentos</span>` : "") : ""}</h3>
-      <p>${esc(E.desc)}</p>${E.sentido ? `<p>Orden de los pilones: ${ordenHTML(E.sentido)}</p>` : ""}${E.objetivos.length ? "<ul>" + E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("") + "</ul>" : ""}`;
-    d.onclick = () => { sesion.escenario = id; if (E.mundo) irLanzamiento(); else empezar(); };
-    el.appendChild(d);
-  }
-  mostrar("pEscenario");
-}
-document.getElementById("btnVolverAvion").onclick = irAvion;
-
 // ---- punto de lanzamiento en un mundo real: se elige en un mapa (textura del terreno + carreteras + pueblos) ----
 const LANZ_MAPA = { k: 1, x0: 0, y0: 0 };
 function casa() { return entorno.mundo && sesion.lanz ? sesion.lanz : { N: 0, E: 0 }; }
@@ -979,10 +1142,13 @@ async function irLanzamiento() {
     sesion.lanz = z0 ? { mundo: mundo.id, N: Math.round(z0.centro.N), E: Math.round(z0.centro.E), rumbo: rumboDespejado(z0.centro.N, z0.centro.E) }
                      : { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
   }
-  pintarMapaLanz(); mostrar("pLanzamiento");
+  mostrar("pLanzamiento"); pintarMapaLanz();
 }
+window.addEventListener("resize", () => { if (pantallaActual === "pLanzamiento") pintarMapaLanz(); });
 function pintarMapaLanz() {
   const cv = document.getElementById("mapaLanz"), g = cv.getContext("2d"), M = entorno.mundo, T = M.terreno, L = sesion.lanz;
+  const caja = cv.parentElement;          // el lienzo llena su caja sin deformar el mapa (se dibuja a su tamano real)
+  if (caja.clientWidth > 50 && (cv.width !== caja.clientWidth || cv.height !== caja.clientHeight)) { cv.width = caja.clientWidth; cv.height = caja.clientHeight; }
   const anchoM = (T.nE - 1) * T.paso, altoM = (T.nN - 1) * T.paso, k = Math.min(cv.width / anchoM, cv.height / altoM);
   LANZ_MAPA.k = k; LANZ_MAPA.x0 = (cv.width - anchoM * k) / 2; LANZ_MAPA.y0 = (cv.height - altoM * k) / 2;
   const X = e => LANZ_MAPA.x0 + (e - T.E0) * k, Y = n => LANZ_MAPA.y0 + (T.N0 + altoM - n) * k;
@@ -1019,7 +1185,7 @@ document.getElementById("mapaLanz").addEventListener("click", e => {
   sesion.lanz = { mundo: entorno.mundo.id, N: Math.round(N), E: Math.round(E), rumbo: rumboDespejado(N, E) };
   pintarMapaLanz();
 });
-document.getElementById("btnLanzVolver").onclick = irEscenario;
+document.getElementById("btnLanzVolver").onclick = () => irVolar();
 document.getElementById("btnLanzAqui").onclick = () => empezar();
 /** Coloca un estado recien creado en el punto de lanzamiento del mundo real (en la isla, en el origen). */
 function colocarEnBase(a) {
@@ -1197,9 +1363,7 @@ function pintarObjetivos() {
   const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
   if (E.mundo) {
     const h = -av.p[2], suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
-    el.innerHTML = `<h3>${esc(E.nombre)}</h3><div>Altura sobre el terreno <b>${(h - suelo).toFixed(0)} m</b> · terreno a ${(suelo + mundoDe(sesion.escenario).terreno.h0).toFixed(0)} m sobre el mar</div>` +
-      `<div>Distancia a casa <b>${Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E).toFixed(0)} m</b> · sin límite de alcance</div>` +
-      `<div style="color:#aaa;font-size:12px;margin-top:4px">${esc(mundoDe(sesion.escenario).fuente || "")}</div>`;
+    el.innerHTML = `<h3>${esc(E.nombre)}</h3><div>Terreno a ${(suelo + mundoDe(sesion.escenario).terreno.h0).toFixed(0)} m sobre el mar · casa a <b>${Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E).toFixed(0)} m</b></div>`;
     return;
   }
   if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
@@ -1251,25 +1415,33 @@ async function ponerZonaDeLanzamiento(mundo) {
 }
 
 async function empezar() {
+  const mundo = mundoDe(sesion.escenario), carga = !!mundo;      // los mundos reales tardan unos segundos: pantalla de carga
+  Sonido.iniciar();
+  if (carga) await mostrarCarga(mundo.nombre, "Avión y física…", 0.1);
   modelo = Modelos.crear(sesion.avion);
   aplicarCM(modelo); aplicarCalibracion(modelo); aplicarDificultad(modelo);
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
   construirAnemometro(velPerdida());
-  const mundo = mundoDe(sesion.escenario);
+  if (carga) await mostrarCarga(mundo.nombre, "Terreno, mar, carreteras y pueblos…", 0.3);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
-  if (mundo) { await ponerZonaDeLanzamiento(mundo); const c = casa(); visor.ponerBase([c.N, c.E], true); }
+  if (mundo) {
+    await mostrarCarga(mundo.nombre, "Zona de detalle: ortofoto, edificios y árboles…", 0.6);
+    await ponerZonaDeLanzamiento(mundo); const c = casa(); visor.ponerBase([c.N, c.E], true);
+    await mostrarCarga(mundo.nombre, "Listo", 1);
+  }
+  ocultarCarga();
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
   av = modelo.estadoInicial(); colocarEnBase(av); orientarLanzamiento();
   mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
-  nuevoEvaluador(); vuelo = null;
-  document.getElementById("guia").innerHTML = "";
+  nuevoEvaluador(); vuelo = null; ponerPausa(false);
+  document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
   if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
-  aviso("Pulsa L para lanzar (pon antes gases con W)");
+  aviso("Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
 function orientarLanzamiento() {
@@ -1341,7 +1513,7 @@ function terminarVuelo(final, vn) {
     final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
   }
   av.estado = final.startsWith("roto") ? "roto" : final === "aterrizado" ? "aterrizado" : "terminado";
-  av.v = [0, 0, 0]; av.w = [0, 0, 0];
+  av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.rpm = 0;
   document.getElementById("guia").innerHTML = "";
   if (!vuelo) return;
   vuelo.final = final; grabarMuestra();
@@ -1353,20 +1525,36 @@ function terminarVuelo(final, vn) {
   ultimoVuelo = vuelo;
   document.getElementById("cnUltimo").disabled = false;
   if (document.getElementById("cnAuto").checked) descargarVuelo(vuelo);
+  if (final === "aterrizado" || final.startsWith("roto")) Sonido.evento(final.startsWith("roto") ? "roto" : "toque");
   const v = vuelo;
+  if (salirTras) { salirTras = false; guardarVuelo(v, datosResultado(v)); irInicio(); return; }
   setTimeout(() => mostrarResultado(v), final === "abandonado" ? 0 : 1800);
 }
 
 // =====================================================================
 //  4. RESULTADO Y GUARDADO
 // =====================================================================
+/** Objetivos y veredicto de un vuelo (lo que se guarda). */
+function datosResultado(v) {
+  const E = ESCENARIOS[v.escenario], libre = !E.objetivos.length;
+  const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
+  const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
+  return { E, libre, objs, apto, resultado: libre ? "LIBRE" : apto ? "APTO" : "NO APTO" };
+}
+async function guardarVuelo(v, d) {
+  if (!sesion.alumno || v.guardado) return { estado: "sin_aula" };
+  v.guardado = true;
+  return enviarVuelo({ id: v.id, alumno_id: sesion.alumno.id, inicio: v.inicio.toISOString(), fin: new Date().toISOString(),
+    avion: modelo.nombre, escenario: v.escenario, tiempo_vuelo_s: +v.tVuelo.toFixed(1),
+    accidentes: v.final.startsWith("roto") ? 1 : 0, aterrizajes: v.final === "aterrizado" ? 1 : 0,
+    objetivos: d.objs, resultado: d.resultado, final: v.final,
+    viento: Object.assign({}, d.E.viento || sesion.viento, cmEsDiseno(sesion.avion) ? {} : { cg_pct: cmActual(sesion.avion).cg, masa_g: cmActual(sesion.avion).masa },
+                         v.dificultad === "facil" ? { fisica: "facil" } : {}) });
+}
 async function mostrarResultado(v) {
   if (v.mostrado) { mostrar("pResultado"); return; }
   v.mostrado = true;
-  const E = ESCENARIOS[v.escenario], libre = v.escenario === "libre";
-  const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
-  const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
-  const resultado = libre ? "LIBRE" : apto ? "APTO" : "NO APTO";
+  const { E, libre, objs, apto, resultado } = datosResultado(v);
   document.getElementById("resTitulo").textContent = E.nombre;
   const ver = document.getElementById("resVeredicto");
   ver.textContent = libre ? "Vuelo libre" : resultado; ver.className = "grande " + (libre ? "libre" : apto ? "apto" : "noapto");
@@ -1378,16 +1566,13 @@ async function mostrarResultado(v) {
     ? objs.map(o => `<tr><td class="${o.ok ? "ob-ok" : "ob-mal"}">${o.ok ? "✔" : "✘"}</td><td>${esc(o.texto)}</td></tr>`).join("")
     : `<tr><td>Sin objetivos: el tiempo cuenta para las horas de entrenamiento.</td></tr>`;
   document.getElementById("btnResProgreso").style.display = sesion.alumno ? "" : "none";
+  document.getElementById("btnOtroEscenario").textContent = libre ? "Otro vuelo" : "Otro entrenamiento";
+  pintarResumen(v);
   const g = document.getElementById("resGuardado");
   mostrar("pResultado");
-  if (!sesion.alumno) { g.textContent = "Modo sin aula: este vuelo no se ha guardado."; return; }
+  if (!sesion.alumno) { g.textContent = "Sin piloto registrado: este vuelo no se ha guardado."; return; }
   g.textContent = "Guardando…";
-  const r = await enviarVuelo({ id: v.id, alumno_id: sesion.alumno.id, inicio: v.inicio.toISOString(), fin: new Date().toISOString(),
-    avion: modelo.nombre, escenario: v.escenario, tiempo_vuelo_s: +v.tVuelo.toFixed(1),
-    accidentes: v.final.startsWith("roto") ? 1 : 0, aterrizajes: v.final === "aterrizado" ? 1 : 0,
-    objetivos: objs, resultado, final: v.final,
-    viento: Object.assign({}, E.viento || sesion.viento, cmEsDiseno(sesion.avion) ? {} : { cg_pct: cmActual(sesion.avion).cg, masa_g: cmActual(sesion.avion).masa },
-                         v.dificultad === "facil" ? { fisica: "facil" } : {}) });
+  const r = await guardarVuelo(v, { E, objs, resultado });
   if (r.estado === "ok") {
     g.textContent = sesion.modo === "local" ? "✔ Guardado en el registro local" + (AulaLocal.archivo ? ` y en ${AulaLocal.archivo.name}.` : " de este navegador.")
                                             : "✔ Guardado en el registro del aula.";
@@ -1397,8 +1582,10 @@ async function mostrarResultado(v) {
   else g.textContent = "No se pudo guardar: " + (r.msg || "");
 }
 document.getElementById("btnRepetir").onclick = empezar;
-document.getElementById("btnOtroEscenario").onclick = irEscenario;
+document.getElementById("btnOtroEscenario").onclick = () => ESCENARIOS[sesion.escenario].objetivos.length ? irEntrenamientos() : irVolar();
 document.getElementById("btnResProgreso").onclick = () => irProgreso("pResultado");
+document.getElementById("btnResInicio").onclick = irInicio;
+document.getElementById("btnRepeticion").onclick = () => verRepeticion(ultimoVuelo);
 
 // =====================================================================
 //  5. PROGRESO
@@ -1437,7 +1624,7 @@ async function irProgreso(desde) {
         <td>${esc(v.final || "")}</td><td class="${v.resultado === "APTO" ? "ob-ok" : v.resultado === "NO APTO" ? "ob-mal" : ""}">${v.resultado}</td></tr>`).join("")
         : '<tr><td colspan="7">Todavía no hay vuelos.</td></tr>'}</table></div>`;
 }
-document.getElementById("btnProgVolver").onclick = () => volverDesde === "pResultado" ? mostrar("pResultado") : irAvion();
+document.getElementById("btnProgVolver").onclick = () => volverDesde === "pResultado" ? mostrar("pResultado") : irHangar();
 
 // =====================================================================
 //  CAJA NEGRA (CSV de cada vuelo, a 20 Hz)
@@ -1470,21 +1657,376 @@ document.getElementById("cnUltimo").addEventListener("click", e => { if (ultimoV
 document.getElementById("cnAuto").addEventListener("change", e => e.target.blur());
 
 // =====================================================================
+//  PANTALLAS: inicio, pilotos, hangar, entrenamientos, vuelo libre y ajustes
+// =====================================================================
+let trasPiloto = null;                        // a donde ir despues de elegir piloto
+function irPilotos(luego) { trasPiloto = luego || null; mostrar("pAlumno"); iniciarAula(); }
+function elegirPiloto(a) {
+  sesion.alumno = a; sesion.sinRegistrar = !a;
+  const f = trasPiloto; trasPiloto = null;
+  if (f) f(); else irInicio();
+}
+/** Con aula (servidor o registro local) y sin piloto elegido, pasa primero por la pantalla de pilotos. */
+function conPiloto(luego) { if (sesion.aula && !sesion.alumno && !sesion.sinRegistrar) irPilotos(luego); else luego(); }
+document.getElementById("btnSinAlumno").onclick = () => elegirPiloto(null);
+document.getElementById("btnSinAlumno2").onclick = () => elegirPiloto(null);
+document.getElementById("btnAlumnoInicio").onclick = irInicio;
+
+function irInicio() {
+  const A = Modelos.datos(sesion.avion);
+  document.getElementById("inicioAvionNombre").textContent = A.nombre;
+  document.getElementById("inicioAvionDesc").textContent = (A.descripcion || "").split(". ")[0];
+  document.getElementById("chipPiloto").textContent = "Piloto: " + (sesion.alumno ? sesion.alumno.nombre : "sin registrar");
+  document.getElementById("chipAula").textContent = sesion.aula ? (sesion.modo === "local" ? "Registro local de este ordenador" : "Aula: " + sesion.nombreAula) : "Sin aula: los vuelos no se guardan";
+  previa.mostrar(A, 1.75); mostrar("pInicio");
+}
+document.getElementById("mnVolar").onclick = () => conPiloto(irVolar);
+document.getElementById("mnEntrenar").onclick = () => conPiloto(irEntrenamientos);
+document.getElementById("mnHangar").onclick = irHangar;
+document.getElementById("mnAjustes").onclick = () => irAjustes();
+document.getElementById("chipPiloto").onclick = () => irPilotos(irInicio);
+
+// ---- hangar ----
+function elegirAvion(id) { sesion.avion = id; try { localStorage.setItem("sim_avion", id); } catch (e) {} }
+function irHangar() {
+  document.getElementById("saludo").textContent = sesion.alumno ? `Piloto: ${sesion.alumno.nombre}` : "Elige el avión y, si quieres, ajústalo como el tuyo.";
+  document.getElementById("btnVerProgreso").style.display = sesion.alumno ? "" : "none";
+  const sel = document.getElementById("selAviones"); sel.innerHTML = "";
+  for (const id of Modelos.ids()) {
+    const A = Modelos.datos(id), b = document.createElement("button"); b.className = "avCarta" + (id === sesion.avion ? " sel" : "");
+    const masa = (A.caracteristicas || []).find(r => r[0].toLowerCase().startsWith("masa"));
+    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${esc((A.mandos && A.mandos.izq_der) || "timón")} y profundidad${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
+    b.onclick = () => { elegirAvion(id); irHangar(); };
+    sel.appendChild(b);
+  }
+  pintarFichaAvion(); previa.mostrar(Modelos.datos(sesion.avion), 1.4); pintarCM();
+  mostrar("pHangar");
+}
+const irAvion = irHangar;
+function pintarFichaAvion() {
+  const A = Modelos.datos(sesion.avion);
+  document.getElementById("avNombre").textContent = A.nombre;
+  document.getElementById("avDesc").textContent = A.descripcion || "";
+  // ficha: lo que trae el fichero del avion y, si no lo trae ya, la cuerda (de c_m) y el perfil alar (campo perfil)
+  const filas = (A.caracteristicas || []).slice(), tiene = n => filas.some(([k]) => k.toLowerCase().startsWith(n));
+  if (A.c_m && !tiene("cuerda")) filas.splice(1, 0, ["Cuerda", `${(A.c_m * 1000).toFixed(0)} mm`]);
+  if (A.perfil && !tiene("perfil")) filas.splice(2, 0, ["Perfil alar", A.perfil]);
+  document.getElementById("avDatos").innerHTML = filas.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+}
+document.querySelectorAll("#hangarFicha .pestanas button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#hangarFicha .pestanas button").forEach(x => x.classList.toggle("sel", x === b));
+  document.querySelectorAll("#hangarFicha .panelPestana").forEach(p => p.classList.toggle("sel", p.dataset.p === b.dataset.p));
+});
+document.getElementById("btnHangarVolver").onclick = irInicio;
+document.getElementById("btnHangarVolar").onclick = () => conPiloto(irVolar);
+
+// ---- condiciones (viento): un solo panel que se mueve a la pantalla que lo use ----
+function montarCondiciones(slotId, E) {
+  const c = document.getElementById("condiciones"), s = document.getElementById(slotId);
+  if (c.parentElement !== s) s.appendChild(c);
+  c.style.display = "";
+  const fijo = E && E.viento, v = fijo || sesion.viento;
+  document.getElementById("vVel").value = v.vel; document.getElementById("vDir").value = String(v.desde);
+  document.getElementById("vRachas").checked = v.rachas; document.getElementById("vVelTxt").textContent = v.vel + " m/s";
+  for (const id of ["vVel", "vDir", "vRachas"]) document.getElementById(id).disabled = !!fijo;
+  document.getElementById("condNota").textContent = fijo ? "Este entrenamiento fija su propio viento." :
+    `Para empezar, menos de 3 m/s. Física ${sesion.dificultad === "facil" ? "fácil" : "real"} (se cambia en Ajustes).`;
+}
+
+// ---- entrenamientos: tarjetas con icono, dificultad y estado; la ficha de la elegida a la derecha ----
+let misionSel = null;
+const DIFICULTAD_MISION = { primer_vuelo: 1, orientacion: 1, aterrizaje: 2, puerta: 2, viento_cruzado: 2, emergencia: 3, pasada_baja: 3, diana: 3, recorrido: 3 };
+function irEntrenamientos() {
+  const g = sesion.alumno && sesion.alumno.progreso;
+  document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : " · sin registro");
+  const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
+  const titulos = { primer_vuelo: "Zona 1 · Circuito de pilones (cuentan para el avión real)", puerta: "Zona 2 · Precisión, detrás del piloto (práctica)", aterrizaje: "Guiado (práctica)" };
+  if (!misionSel || !ESCENARIOS[misionSel] || !ESCENARIOS[misionSel].objetivos.length) misionSel = "primer_vuelo";
+  for (const [id, E] of Object.entries(ESCENARIOS)) {
+    if (!E.objetivos.length) continue;             // los vuelos libres tienen su pantalla
+    if (titulos[id]) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = titulos[id]; el.appendChild(t); }
+    const st = g && g.escenarios[id], dif = DIFICULTAD_MISION[id] || 1;
+    const d = document.createElement("div"); d.className = "mision" + (id === misionSel ? " sel" : "");
+    d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre.replace(/^\d · /, ""))}${st && st.superado ? ' <span class="hecha" title="superado">✔</span>' : ""}</h3>
+      <p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span>${st && st.intentos ? `<span>· ${st.intentos} intento${st.intentos > 1 ? "s" : ""}</span>` : ""}</div></div>`;
+    d.onclick = () => { misionSel = id; irEntrenamientos(); };
+    el.appendChild(d);
+  }
+  const E = ESCENARIOS[misionSel];
+  document.getElementById("fichaMision").innerHTML = `<h2>${esc(E.nombre)}</h2><p class="sub" style="font-size:14px;margin:0 0 8px">${esc(E.desc)}</p>` +
+    (E.sentido ? `<p style="font-size:14px;margin:0 0 8px">Orden de los pilones: ${ordenHTML(E.sentido)}</p>` : "") +
+    `<b style="font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.08em">Objetivos</b><ul>${E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("")}</ul>`;
+  montarCondiciones("condicionesSlotEntrenar", E);
+  mostrar("pEntrenamientos");
+}
+const irEscenario = irEntrenamientos;
+document.getElementById("btnEntrenarVolver").onclick = irInicio;
+document.getElementById("btnMisionVolar").onclick = () => { leerViento(); sesion.escenario = misionSel; empezar(); };
+/** Icono esquematico de cada mision (SVG). */
+function iconoMision(id) {
+  const avion = (x, y, a, c = "#fff") => `<g transform="translate(${x} ${y}) rotate(${a})"><path d="M-9 0H9M-2 -7V7M6 -3V3" stroke="${c}" stroke-width="2.6" stroke-linecap="round" fill="none"/></g>`;
+  const pil = (x, y, c) => `<circle cx="${x}" cy="${y}" r="5" fill="${c}" stroke="#000" stroke-width="1"/>`;
+  const P = ["#4caf50", "#ffeb3b", "#f44336", "#42a5f5"], tr = "#ffc83d", pista = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#8a8a8a" rx="2"/>`;
+  const flecha = (x, y, a) => `<g transform="translate(${x} ${y}) rotate(${a})"><path d="M-5 -4L2 0-5 4z" fill="${tr}"/></g>`;
+  const ini = `<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">`, fin = `</svg>`;
+  switch (id) {
+    case "primer_vuelo": return ini + pista(96, 70, 8, 30) + `<path d="M60 35 Q100 10 140 35 Q165 55 140 80 Q100 100 60 80 Q35 55 60 35z" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
+      pil(60, 35, P[0]) + pil(140, 35, P[1]) + pil(140, 80, P[2]) + pil(60, 80, P[3]) + flecha(100, 21, 0) + avion(100, 55, -10) + fin;
+    case "orientacion": return ini + `<path d="M100 55 C60 15 20 25 40 55 C60 85 100 95 100 55 C100 15 140 25 160 55 C180 85 140 95 100 55" fill="none" stroke="${tr}" stroke-width="2.5"/>` +
+      flecha(62, 26, -20) + flecha(140, 84, 160) + avion(100, 55, 30) + fin;
+    case "viento_cruzado": return ini + pista(92, 15, 16, 80) + `<g stroke="#4fc3f7" stroke-width="2.5" stroke-linecap="round" fill="none"><path d="M20 35h30M20 55h40M20 75h30"/><path d="M44 29l6 6-6 6M54 49l6 6-6 6M44 69l6 6-6 6"/></g>` +
+      avion(140, 55, -70) + `<path d="M140 80 L140 100" stroke="${tr}" stroke-width="2" stroke-dasharray="4 3"/>` + fin;
+    case "emergencia": return ini + `<path d="M40 25 C80 30 120 55 170 90" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/><path d="M10 92h180" stroke="#6b4a1e" stroke-width="3"/>` +
+      avion(40, 25, 20) + `<g stroke="#ff5252" stroke-width="3" stroke-linecap="round"><path d="M58 12l10 10M68 12l-10 10"/></g>` + fin;
+    case "puerta": return ini + `<rect x="70" y="20" width="6" height="70" fill="#ff8f00"/><rect x="124" y="20" width="6" height="70" fill="#ff8f00"/>` +
+      `<path d="M20 60 H180" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` + flecha(170, 60, 0) + flecha(30, 72, 180) + avion(100, 60, 0) + fin;
+    case "pasada_baja": return ini + `<rect x="20" y="78" width="160" height="12" fill="#8d6e63" rx="2"/><path d="M15 60 H185" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
+      `<path d="M30 48 H60" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><text x="64" y="51" fill="#fff" font-size="9">2–8 m</text>` + avion(100, 60, 0) + flecha(175, 60, 0) + fin;
+    case "diana": return ini + `<g fill="none" stroke="#e0e0e0" stroke-width="1.5"><circle cx="100" cy="68" r="34"/><circle cx="100" cy="68" r="22"/><circle cx="100" cy="68" r="10"/></g><circle cx="100" cy="68" r="3" fill="#ff5252"/>` +
+      `<path d="M30 15 Q70 30 96 62" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` + avion(36, 18, 35) + fin;
+    case "recorrido": return ini + `<rect x="10" y="80" width="60" height="9" fill="#8d6e63" rx="2"/><rect x="92" y="30" width="4" height="40" fill="#ff8f00"/><rect x="118" y="30" width="4" height="40" fill="#ff8f00"/>` +
+      `<g fill="none" stroke="#e0e0e0" stroke-width="1.5"><circle cx="165" cy="80" r="18"/><circle cx="165" cy="80" r="8"/></g>` +
+      `<path d="M15 70 H70 Q90 60 105 50 L130 50 Q150 55 162 76" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
+      `<g fill="${tr}" font-size="12" font-weight="700"><text x="36" y="72">1</text><text x="102" y="24">2</text><text x="148" y="106">3</text></g>` + fin;
+    case "aterrizaje": return ini + pista(28, 20, 12, 70) + `<path d="M34 25 C34 10 170 10 170 25 L170 85 C170 100 34 100 34 90" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
+      flecha(102, 15, 0) + flecha(170, 55, 90) + flecha(102, 95, 180) + avion(34, 60, -90) + `<text x="46" y="60" fill="#fff" font-size="9">final</text>` + fin;
+    case "campo": return ini + pista(96, 25, 8, 55) + pil(70, 30, P[0]) + pil(130, 30, P[1]) + pil(130, 75, P[2]) + pil(70, 75, P[3]) +
+      `<circle cx="100" cy="95" r="4" fill="#fff"/><text x="108" y="98" fill="#fff" font-size="9">piloto</text>` + avion(150, 50, -30) + fin;
+  }
+  return ini + avion(100, 55, 0) + fin;
+}
+
+// ---- vuelo libre: sitio y condiciones ----
+let sitioSel = "libre";
+function irVolar() {
+  document.getElementById("sitioCampoImg").innerHTML = iconoMision("campo");
+  document.getElementById("sitioCampo").classList.toggle("sel", sitioSel === "libre");
+  document.getElementById("sitioCartagena").classList.toggle("sel", sitioSel === "libre_cartagena");
+  document.getElementById("volarNota").textContent = sitioSel === "libre"
+    ? "Lanzas desde el aparcamiento, de cara al norte; la pista va hacia delante. En vuelo, + y − cambian el viento y G las rachas."
+    : "El siguiente paso es el mapa: eliges dónde lanzar y se despega hacia el lado más despejado. En la zona de detalle hay ortofoto a 0,5 m, edificios y árboles reales.";
+  document.getElementById("btnVolarYa").textContent = sitioSel === "libre" ? "Volar →" : "Elegir el punto de lanzamiento →";
+  montarCondiciones("condicionesSlotVolar", null);
+  mostrar("pVolar");
+}
+document.getElementById("sitioCampo").onclick = () => { sitioSel = "libre"; irVolar(); };
+document.getElementById("sitioCartagena").onclick = () => { sitioSel = "libre_cartagena"; irVolar(); };
+document.getElementById("btnVolarVolver").onclick = irInicio;
+document.getElementById("btnVolarYa").onclick = () => { leerViento(); sesion.escenario = sitioSel; if (sitioSel === "libre_cartagena") irLanzamiento(); else empezar(); };
+
+// ---- ajustes ----
+function irAjustes(seccion) {
+  pintarMandoCfg(); pintarDificultad(); pintarCalidad(); pintarSonidoCfg();
+  document.getElementById("datosAula").textContent = sesion.aula
+    ? (sesion.modo === "local" ? "Registro local: los alumnos y los vuelos se guardan en este navegador (y en un archivo, si lo eliges)." : `Aula «${sesion.nombreAula}»: los vuelos se guardan en el servidor.`)
+    : "Sin aula ni registro: los vuelos no se guardan. Desde «Pilotos y registro» puedes activar el registro local.";
+  if (seccion) seleccionarAjuste(seccion);
+  mostrar("pAjustes");
+}
+function seleccionarAjuste(a) {
+  document.querySelectorAll("#ajustesMenu button").forEach(b => b.classList.toggle("sel", b.dataset.a === a));
+  document.querySelectorAll("#pAjustes .panelPestana").forEach(p => p.classList.toggle("sel", p.dataset.a === a));
+}
+document.querySelectorAll("#ajustesMenu button").forEach(b => b.onclick = () => seleccionarAjuste(b.dataset.a));
+document.getElementById("btnAjustesVolver").onclick = irInicio;
+document.getElementById("btnDatosPilotos").onclick = () => irPilotos(() => irAjustes("datos"));
+document.getElementById("btnDatosProfesor").onclick = () => window.open("profesor.html", "_blank");
+// calidad grafica: automatica (baja sola si no llega a 35 fps) o fija
+function pintarCalidad() {
+  let m = "auto"; try { m = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
+  document.getElementById("calidad").value = m;
+  document.getElementById("calidadInfo").textContent = `Ahora: ${["baja", "media", "alta"][visor.calidad]}${m === "auto" ? " (automática)" : ""}. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel.`;
+}
+function aplicarModoCalidad(m) { if (m === "auto") { visor.calidadFija = false; visor.aplicarCalidad(2); } else { visor.calidadFija = true; visor.aplicarCalidad(+m); } }
+document.getElementById("calidad").addEventListener("change", e => { const m = e.target.value; try { localStorage.setItem("sim_calidad_modo", m); } catch (er) {} aplicarModoCalidad(m); pintarCalidad(); });
+
+// =====================================================================
+//  SONIDO (Web Audio): motor segun las revoluciones y el gas, viento segun la velocidad, aviso de perdida y toque
+// =====================================================================
+const Sonido = {
+  on: true, vol: 0.6, ctx: null, _n: null, _silencio: false,
+  cargarCfg() { try { const s = JSON.parse(localStorage.getItem("sim_sonido") || "{}"); if (s.on !== undefined) this.on = !!s.on; if (s.vol !== undefined) this.vol = +s.vol; } catch (e) {} },
+  guardarCfg() { try { localStorage.setItem("sim_sonido", JSON.stringify({ on: this.on, vol: this.vol })); } catch (e) {} this.aplicarVolumen(); },
+  /** Crea el contexto (hace falta un gesto del usuario: se llama al pulsar Volar y al pulsar teclas). */
+  iniciar() {
+    if (!this.on) return;
+    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const C = this.ctx = new AC(), master = C.createGain(); master.gain.value = 0; master.connect(C.destination);
+    // motor: diente de sierra (fundamental) + cuadrada (paso de pala, 2 palas), por un filtro paso bajo que se abre con el gas
+    const fMotor = C.createBiquadFilter(); fMotor.type = "lowpass"; fMotor.frequency.value = 800; fMotor.Q.value = 0.9;
+    const gMotor = C.createGain(); gMotor.gain.value = 0; fMotor.connect(gMotor); gMotor.connect(master);
+    const o1 = C.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = 60; const g1 = C.createGain(); g1.gain.value = 0.7; o1.connect(g1); g1.connect(fMotor); o1.start();
+    const o2 = C.createOscillator(); o2.type = "square"; o2.frequency.value = 120; const g2 = C.createGain(); g2.gain.value = 0.22; o2.connect(g2); g2.connect(fMotor); o2.start();
+    // viento: ruido blanco por un paso banda cuya frecuencia y ganancia suben con la velocidad
+    const buf = C.createBuffer(1, C.sampleRate * 2, C.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const ruido = C.createBufferSource(); ruido.buffer = buf; ruido.loop = true;
+    const fViento = C.createBiquadFilter(); fViento.type = "bandpass"; fViento.frequency.value = 400; fViento.Q.value = 0.5;
+    const gViento = C.createGain(); gViento.gain.value = 0; ruido.connect(fViento); fViento.connect(gViento); gViento.connect(master); ruido.start();
+    // aviso de perdida: pitido intermitente
+    const oP = C.createOscillator(); oP.type = "sine"; oP.frequency.value = 880; const gP = C.createGain(); gP.gain.value = 0; oP.connect(gP); gP.connect(master); oP.start();
+    this._n = { master, fMotor, gMotor, o1, o2, fViento, gViento, gP, buf }; this.aplicarVolumen();
+  },
+  aplicarVolumen() { if (this._n) this._n.master.gain.setTargetAtTime(this.on && !this._silencio ? this.vol : 0, this.ctx.currentTime, 0.05); },
+  silenciar(s) { this._silencio = s; this.aplicarVolumen(); },
+  actualizar(av) {
+    if (!this._n) return;
+    const n = this._n, t = this.ctx.currentTime, k = 0.08, rpm = av.rpm || 0, f = Math.max(25, rpm / 60);
+    // en la camara del piloto el motor llega de lejos: cae con la distancia al piloto
+    let lejos = 1;
+    if (visor.camara === 1) { const b = visor.base || [0, 0, 0], p = ned2three(av.p); lejos = 1 / (1 + Math.hypot(p[0] - b[0], p[1] - b[1], p[2] - b[2]) / 45); }
+    n.o1.frequency.setTargetAtTime(f, t, k); n.o2.frequency.setTargetAtTime(2 * f, t, k);
+    n.fMotor.frequency.setTargetAtTime(500 + 2600 * av.gases, t, k);
+    n.gMotor.gain.setTargetAtTime(rpm > 0 ? (0.06 + 0.3 * Math.pow(av.gases, 1.3)) * lejos : 0, t, k);
+    const V = av.estado === "volando" ? (av.V || 0) : 0;
+    n.fViento.frequency.setTargetAtTime(250 + 30 * V, t, k);
+    n.gViento.gain.setTargetAtTime(Math.min(0.45, 0.0011 * V * V) * (visor.camara === 1 ? 0.35 * lejos : 1), t, k);
+    const perdida = av.estado === "volando" && av.perdida > 0.5 && -av.p[2] > 2;
+    n.gP.gain.setTargetAtTime(perdida && Math.floor(t * 4) % 2 === 0 ? 0.1 : 0, t, 0.015);
+  },
+  /** "toque" (aterrizaje) o "roto" (accidente). */
+  evento(tipo) {
+    if (!this._n) return;
+    const C = this.ctx, n = this._n, t = C.currentTime, s = C.createBufferSource(); s.buffer = n.buf;
+    const f = C.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = tipo === "roto" ? 350 : 900;
+    const g = C.createGain(); g.gain.setValueAtTime(tipo === "roto" ? 0.9 : 0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + (tipo === "roto" ? 0.7 : 0.18));
+    s.connect(f); f.connect(g); g.connect(n.master); s.start(t); s.stop(t + 0.8);
+  },
+};
+function pintarSonidoCfg() {
+  document.getElementById("sonidoOn").checked = Sonido.on; document.getElementById("sonidoVol").value = Math.round(Sonido.vol * 100);
+  document.getElementById("sonidoVolTxt").textContent = Math.round(Sonido.vol * 100) + " %";
+}
+document.getElementById("sonidoOn").addEventListener("change", e => { Sonido.on = e.target.checked; Sonido.guardarCfg(); Sonido.iniciar(); });
+document.getElementById("sonidoVol").addEventListener("input", e => { Sonido.vol = +e.target.value / 100; Sonido.guardarCfg(); pintarSonidoCfg(); });
+document.getElementById("pausaSonido").addEventListener("change", e => { Sonido.on = e.target.checked; Sonido.guardarCfg(); Sonido.iniciar(); });
+
+// =====================================================================
+//  PAUSA, CARGA Y REPETICION
+// =====================================================================
+let pausado = false, salirTras = false;
+function ponerPausa(p) {
+  if (p === pausado) return;
+  pausado = p; document.getElementById("pausa").classList.toggle("activa", p);
+  if (p) {
+    document.getElementById("btnPausaCamara").textContent = "Cámara: " + ["", "piloto", "persecución", "a bordo"][visor.camara];
+    document.getElementById("btnPausaInstr").textContent = "Instrumentos: " + (sinInstrumentos ? "no" : "sí");
+    document.getElementById("pausaSonido").checked = Sonido.on;
+    document.getElementById("pausaInfo").textContent = `${Modelos.datos(sesion.avion).nombre} · ${ESCENARIOS[sesion.escenario].nombre}`;
+    Sonido.silenciar(true);
+  } else { Sonido.silenciar(false); tAnterior = performance.now(); for (const k in teclas) teclas[k] = false; }
+}
+document.getElementById("btnPausaSeguir").onclick = () => ponerPausa(false);
+document.getElementById("btnPausaReiniciar").onclick = () => { ponerPausa(false); reiniciar(); };
+document.getElementById("btnPausaCamara").onclick = () => { visor.camara = visor.camara % 3 + 1; document.getElementById("btnPausaCamara").textContent = "Cámara: " + ["", "piloto", "persecución", "a bordo"][visor.camara]; };
+document.getElementById("btnPausaInstr").onclick = () => { sinInstrumentos = !sinInstrumentos; document.getElementById("btnPausaInstr").textContent = "Instrumentos: " + (sinInstrumentos ? "no" : "sí"); };
+document.getElementById("btnPausaAyuda").onclick = () => { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; };
+document.getElementById("btnPausaTerminar").onclick = () => { ponerPausa(false); if (av.estado === "volando") terminarVuelo("abandonado"); else if (vuelo && vuelo.final) mostrarResultado(vuelo); else irInicio(); };
+document.getElementById("btnPausaSalir").onclick = salirAlMenu;
+/** Sale al menu principal: si habia un vuelo en marcha se guarda (si hay piloto) sin pasar por la pantalla de resultado. */
+function salirAlMenu() {
+  ponerPausa(false);
+  if (av && av.estado === "volando" && vuelo) { salirTras = true; terminarVuelo("abandonado"); } else irInicio();
+}
+/** Pantalla de carga: titulo, texto del paso y fraccion; espera un cuadro para que se pinte antes del trabajo pesado. */
+async function mostrarCarga(titulo, texto, frac) {
+  const c = document.getElementById("carga"); c.classList.add("activa");
+  document.getElementById("cargaTitulo").textContent = titulo; document.getElementById("cargaTexto").textContent = texto;
+  document.getElementById("cargaBarra").style.width = (frac * 100) + "%";
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r, 40)));
+}
+function ocultarCarga() { document.getElementById("carga").classList.remove("activa"); }
+
+// ---- repeticion: el vuelo grabado en la caja negra (20 Hz), interpolado, con las mismas camaras e instrumentos ----
+const Repeticion = { activa: false, filas: null, t: 0, dur: 0, pausa: false, i: 0, vuelo: null };
+function verRepeticion(v) {
+  if (!v || !v.filas || v.filas.length < 2) return;
+  Object.assign(Repeticion, { activa: true, filas: v.filas, t: 0, dur: v.filas[v.filas.length - 1][0], pausa: false, i: 0, vuelo: v });
+  av = modelo.estadoInicial(); av.estado = "repetición"; colocarEnBase(av);
+  document.getElementById("repBarra").style.display = "block";
+  mostrar(null); document.getElementById("objetivos").innerHTML = ""; aviso("");
+}
+function pasoRepeticion(dt) {
+  const R = Repeticion, f = R.filas;
+  if (!R.pausa) R.t = Math.min(R.dur, R.t + dt);
+  let i = R.i; while (i < f.length - 2 && f[i + 1][0] <= R.t) i++; while (i > 0 && f[i][0] > R.t) i--; R.i = i;
+  const a = f[i], b = f[Math.min(f.length - 1, i + 1)], u = b[0] > a[0] ? Math.min(1, Math.max(0, (R.t - a[0]) / (b[0] - a[0]))) : 0;
+  const L = j => a[j] + (b[j] - a[j]) * u, ang = j => { let d = b[j] - a[j]; if (d > 180) d -= 360; if (d < -180) d += 360; return a[j] + d * u; };
+  av.p = [L(1), L(2), -L(3)]; av.q = Cuat.desdeEuler(ang(7) * D2R, ang(8) * D2R, ang(9) * D2R);
+  av.V = L(4); av.alfa = L(10); av.g_carga = L(12); av.gases = L(13) / 100; av.rpm = L(14); av.Wh = L(16); av.perdida = L(26); av.t = R.t;
+  av.de = L(21) * D2R; av.dr = L(22) * D2R; av.da = L(23) * D2R; av.v = [av.V, 0, 0];
+  mando.pitch = L(18); mando.yaw = L(19);
+  document.getElementById("repTiempo").textContent = `${R.t.toFixed(1)} s de ${R.dur.toFixed(1)}` + (R.pausa ? " · pausa" : "");
+  document.getElementById("repProgreso").style.width = (100 * R.t / Math.max(0.1, R.dur)) + "%";
+  if (R.t >= R.dur) R.pausa = true;
+}
+function salirRepeticion() { Repeticion.activa = false; document.getElementById("repBarra").style.display = "none"; mostrarResultado(Repeticion.vuelo); }
+
+// =====================================================================
+//  RESUMEN DEL VUELO: cifras y traza (planta coloreada por altura y perfil de altura)
+// =====================================================================
+function fmtMin(s) { return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`; }
+function pintarResumen(v) {
+  const f = v.filas, st = document.getElementById("resStats"), cv = document.getElementById("resTraza"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  g.fillStyle = "#0b0f14"; g.fillRect(0, 0, W, H);
+  document.getElementById("btnRepeticion").disabled = f.length < 2;
+  if (f.length < 2) { st.innerHTML = ""; return; }
+  const col = i => f.map(r => r[i]), C = casa(), ult = f[f.length - 1];
+  const hs = col(3), vs = col(4), gs = col(12), ns = col(1).map(x => x - C.N), es = col(2).map(x => x - C.E), ds = ns.map((n, i) => Math.hypot(n, es[i]));
+  const toma = v.final === "aterrizado" ? `${Math.max(0, -ult[6]).toFixed(1)} m/s` : "—";
+  st.innerHTML = [[fmtMin(v.tVuelo), "tiempo de vuelo"], [(v.hmax || 0).toFixed(0) + " m", "altura máxima"], [Math.max(...vs).toFixed(1) + " m/s", "velocidad máxima"],
+    [Math.max(...ds).toFixed(0) + " m", "distancia máxima"], [Math.max(...gs).toFixed(1) + " g", "carga máxima"], [toma, "descenso en la toma"]]
+    .map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join("");
+  // planta: norte arriba, cuadrada, a la izquierda; traza coloreada por altura (azul bajo, amarillo alto)
+  const S = H, semi = Math.max(60, ...ds) * 1.15, k = (S - 30) / (2 * semi), X = e => S / 2 + e * k, Y = n => S / 2 - n * k;
+  const hmax = Math.max(1, ...hs), color = h => `hsl(${210 - 160 * Math.min(1, Math.max(0, h) / hmax)} 90% 60%)`;
+  g.lineWidth = 1; g.font = "10px sans-serif";
+  for (const r of [50, 100, 200, 500, 1000, 2000, 5000]) if (r < semi && r * k > 18) {
+    g.strokeStyle = "rgba(255,255,255,.12)"; g.beginPath(); g.arc(X(0), Y(0), r * k, 0, 2 * Math.PI); g.stroke();
+    g.fillStyle = "rgba(255,255,255,.4)"; g.fillText(r >= 1000 ? r / 1000 + " km" : r + " m", X(0) + r * k * 0.71 + 3, Y(0) - r * k * 0.71 - 2);
+  }
+  if (!entorno.mundo) {
+    const P = entorno.pista; g.fillStyle = "#777"; g.fillRect(X(-P.ancho / 2), Y(P.n1), P.ancho * k, (P.n1 - P.n0) * k);
+    entorno.circuito.pilones.forEach(([n, e], i) => { g.fillStyle = entorno.circuito.colores[i].hex; g.beginPath(); g.arc(X(e), Y(n), 3.5, 0, 2 * Math.PI); g.fill(); });
+  }
+  g.lineWidth = 2;
+  for (let i = 1; i < f.length; i++) { g.strokeStyle = color(hs[i]); g.beginPath(); g.moveTo(X(es[i - 1]), Y(ns[i - 1])); g.lineTo(X(es[i]), Y(ns[i])); g.stroke(); }
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Y(0), 4, 0, 2 * Math.PI); g.fill();
+  g.fillStyle = "#e6edf3"; g.font = "bold 11px sans-serif"; g.fillText("N ↑", 8, 14); g.fillText("piloto", X(0) + 6, Y(0) + 12);
+  const fin = v.final || ""; g.fillStyle = fin.startsWith("roto") ? "#ff5252" : "#8be08f"; g.beginPath(); g.arc(X(es[es.length - 1]), Y(ns[ns.length - 1]), 4, 0, 2 * Math.PI); g.fill();
+  // perfil de altura
+  const x0 = S + 44, x1 = W - 14, y0 = H - 26, y1 = 18, T = Math.max(0.1, ult[0]);
+  g.strokeStyle = "rgba(255,255,255,.25)"; g.lineWidth = 1; g.beginPath(); g.moveTo(x0, y1); g.lineTo(x0, y0); g.lineTo(x1, y0); g.stroke();
+  g.fillStyle = "rgba(255,255,255,.5)"; g.font = "10px sans-serif";
+  g.fillText(hmax.toFixed(0) + " m", x0 + 4, y1 + 10); g.fillText("0", x0 - 10, y0 + 4); g.fillText(fmtMin(T), x1 - 30, y0 + 14); g.fillText("altura · tiempo", x0 + 4, y0 + 14);
+  g.beginPath();
+  for (let i = 0; i < f.length; i++) { const x = x0 + (x1 - x0) * f[i][0] / T, y = y0 - (y0 - y1) * Math.max(0, hs[i]) / hmax; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.strokeStyle = "#ffc83d"; g.lineWidth = 2; g.stroke();
+}
+
+// =====================================================================
 //  TECLADO
 // =====================================================================
 const teclas = {};
-let mostrarHud = true, sinInstrumentos = false;   // I: quita horizonte, GPS y relojes (en el campo no los hay)
+let mostrarHud = false, sinInstrumentos = false;   // H: datos en texto; I: quita horizonte, GPS y relojes (en el campo no los hay)
 window.addEventListener("keydown", e => {
   if (pantallaActual !== null || document.getElementById("modal").classList.contains("activa")) return;
-  teclas[e.code] = true;
-  const libre = sesion.escenario === "libre", vto = entorno.viento;
-  if (e.code === "KeyL") lanzar();
-  if (e.code === "KeyR") { if (av.estado === "volando") terminarVuelo("abandonado"); else reiniciar(); }
-  if (e.code === "Escape") {
-    if (av.estado === "volando") terminarVuelo("abandonado");
-    else if (vuelo && vuelo.final) mostrarResultado(vuelo);
-    else irEscenario();
+  Sonido.iniciar();
+  if (Repeticion.activa) {        // repeticion: espacio pausa, flechas 5 s, 1/2/3 camara, Esc sale
+    if (e.code === "Escape") salirRepeticion();
+    if (e.code === "Space") { Repeticion.pausa = !Repeticion.pausa; e.preventDefault(); }
+    if (e.code === "ArrowLeft") Repeticion.t = Math.max(0, Repeticion.t - 5);
+    if (e.code === "ArrowRight") Repeticion.t = Math.min(Repeticion.dur, Repeticion.t + 5);
+    if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
+    if (e.code.startsWith("Arrow")) e.preventDefault();
+    return;
   }
+  if (e.code === "Escape") { ponerPausa(!pausado); return; }
+  if (pausado) return;
+  teclas[e.code] = true;
+  const libre = !ESCENARIOS[sesion.escenario].objetivos.length, vto = entorno.viento;
+  if (e.code === "KeyL") lanzar();
+  if (e.code === "KeyR") reiniciar();
   if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
   if (e.code === "KeyH") mostrarHud = !mostrarHud;
@@ -1535,16 +2077,17 @@ function leerMando(dt) {
   // botones: flanco de subida
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
   const pulsado = i => b(i) && !antes[i];
-  if (pantallaActual === null) {
+  if (pantallaActual === null && pulsado(9)) ponerPausa(!pausado);
+  if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
     if (pulsado(1)) av.gases = 0;
     if (pulsado(3)) visor.camara = visor.camara % 3 + 1;
-    if (pulsado(2)) { if (av.estado === "volando") terminarVuelo("abandonado"); else reiniciar(); }
-    if (pulsado(9) && av.estado === "volando") terminarVuelo("abandonado");
+    if (pulsado(2)) reiniciar();
     if (pulsado(12)) mando.trim = Math.min(6, mando.trim + 0.25);
     if (pulsado(13)) mando.trim = Math.max(-6, mando.trim - 0.25);
   }
   MANDO.botones = p.buttons.map(x => x.pressed);
+  if (pausado) return false;
   // palanca derecha: hacia ti (eje Y positivo, abajo) = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
   const moviendo = rx !== 0 || ry !== 0;
   if (moviendo || MANDO.usado) {
@@ -1744,22 +2287,31 @@ function toast(txt) { const el = document.getElementById("toast"); el.textConten
 function hud() {
   const el = document.getElementById("hud");
   const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E);
-  const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento;
-  // los datos de texto solo en la camara 1: en las camaras 2 y 3 los dan los instrumentos (horizonte, rosa, GPS, relojes)
-  el.innerHTML = (!mostrarHud || visor.camara !== 1) ? "" :
-    `<b>${av.estado.toUpperCase()}</b>  t ${av.t.toFixed(1)} s${vuelo && av.estado === "volando" ? ' · <span style="color:#ff5252">● grabando</span>' : ""}` +
-    `${av.motorRoto ? ' · <b style="color:#ff5252">MOTOR PARADO</b>' : ""}<br>` +
+  const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento, suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
+  // estado (arriba a la izquierda) y lecturas (abajo, en el centro): lo que importa en un vuelo RC
+  document.getElementById("estado").innerHTML = `<span class="pill">${Repeticion.activa ? "REPETICIÓN" : esc(av.estado.toUpperCase())} · ${av.t.toFixed(0)} s</span>` +
+    (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
+    (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : "");
+  const bat = modelo.bateriaPct(av), vClase = av.V < 1.1 * AN.vs ? "rojo" : av.V < 1.3 * AN.vs ? "ambar" : "";
+  document.getElementById("lecturas").innerHTML = (av.estado === "en mano" && !vuelo) ? "" :
+    `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
+    `<div class="lect"><b>${vs >= 0 ? "+" : ""}${vs.toFixed(1)}</b><span>asc. m/s</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
+    `<div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div><div class="lect ${bat < 20 ? "rojo" : ""}"><b>${bat.toFixed(0)}%</b><span>batería</span></div>` +
+    (av.perdida > 0.5 ? `<div class="lect rojo"><b>¡PÉRDIDA!</b><span>alfa ${av.alfa.toFixed(0)}°</span></div>` : "");
+  // datos completos en texto (tecla H)
+  el.style.display = mostrarHud ? "block" : "none";
+  if (mostrarHud) el.innerHTML =
     `vel. aire <b>${av.V.toFixed(1)}</b> m/s · suelo ${Math.hypot(vn[0], vn[1]).toFixed(1)} m/s · asc. ${vs >= 0 ? "+" : ""}${vs.toFixed(1)} m/s<br>` +
     `altura <b>${h.toFixed(1)}</b> m${entorno.altura ? ` (sobre el terreno ${(h - entorno.altura(av.p[0], av.p[1])).toFixed(0)} m)` : ""} · distancia ${dist.toFixed(0)} m<br>` +
     `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
     `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
     `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
-    `${modelo.facil ? "<b>física fácil</b> · " : ""}viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara} · T: ayuda · Esc: menú` +
+    `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara}` +
     (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`);
   const L = entorno.limites, lejos = document.getElementById("lejos");
   if (av.estado === "volando" && !entorno.mundo && dist > L.aviso_m) {
     const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);
-    lejos.textContent = `¡DEMASIADO LEJOS! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión (R: empezar de nuevo)`;
+    lejos.textContent = `¡Demasiado lejos! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión.`;
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
@@ -1771,14 +2323,18 @@ let tAnterior = performance.now(), acumulado = 0, tObj = 0;
 function bucle(ahora) {
   const dtReal = Math.min(0.1, (ahora - tAnterior) / 1000); tAnterior = ahora;
   if (pantallaActual === null) {
-    leerTeclado(dtReal);
-    acumulado += dtReal;
-    while (acumulado >= DT) { paso(DT); acumulado -= DT; }
-    visor.dibujar(av); hud();
-    if ((tObj += dtReal) > 0.2) { tObj = 0; pintarObjetivos(); }
+    if (Repeticion.activa) { pasoRepeticion(dtReal); visor.dibujar(av); hud(); }
+    else if (pausado) { leerMando(dtReal); visor.dibujar(av); hud(); }        // en pausa se sigue dibujando (la camara puede cambiar)
+    else {
+      leerTeclado(dtReal);
+      acumulado += dtReal;
+      while (acumulado >= DT) { paso(DT); acumulado -= DT; }
+      visor.dibujar(av); hud(); Sonido.actualizar(av);
+      if ((tObj += dtReal) > 0.2) { tObj = 0; pintarObjetivos(); }
+    }
   } else {
     acumulado = 0;
-    if (pantallaActual === "pAvion") previa.pintar(ahora);
+    if (pantallaActual === "pInicio" || pantallaActual === "pHangar") previa.pintar(ahora);
   }
   requestAnimationFrame(bucle);
 }
@@ -1789,9 +2345,12 @@ function bucle(ahora) {
   let guardado = null; try { guardado = localStorage.getItem("sim_avion"); } catch (e) {}
   sesion.avion = ids.includes(guardado) ? guardado : ids[0];
   visor = new Visor(document.getElementById("vista"), entorno);
-  previa = new VistaPrevia(document.getElementById("vistaPrevia"));
-  mostrar("pAlumno");
+  previa = new VistaPrevia(document.getElementById("vistaPrevia"), { transparente: true });
+  let modoCal = "auto"; try { modoCal = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
+  if (modoCal !== "auto") aplicarModoCalidad(modoCal);
+  Sonido.cargarCfg();
   await iniciarAula();
+  irInicio();
   requestAnimationFrame(bucle);
 })();
 </script>
