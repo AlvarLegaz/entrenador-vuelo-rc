@@ -33,12 +33,19 @@ function construirAvion(datos) {
   const alerones = (K.alerones || []).map(a => {
     const p = pivote(a, a.bisagra); p.eje = new THREE.Vector3(...a.eje).normalize(); p.signo = a.signo; p.prof = !!a.prof; return p;
   });
-  const helice = new THREE.Mesh(new THREE.CircleGeometry(K.helice_r, 24),
-    new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-  helice.rotation.y = Math.PI / 2; helice.position.set(...K.helice); grupo.add(helice);
-  const cono = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.04, 12), mat(0x333333));
-  cono.rotation.z = -Math.PI / 2; cono.position.set(K.helice[0] + 0.02, 0, K.helice[2]); grupo.add(cono);
-  grupo.traverse(o => { if (o.isMesh && o !== helice) o.castShadow = true; });
+  const matHelice = () => new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
+  let helice;
+  if (K.helices) {          // multicoptero: un disco horizontal por rotor (en ejes cuerpo el plano x-y ya es horizontal)
+    helice = new THREE.Group();
+    for (const hp of K.helices) { const d = new THREE.Mesh(new THREE.CircleGeometry(K.helice_r, 24), matHelice()); d.position.set(...hp); helice.add(d); }
+    grupo.add(helice);
+  } else {
+    helice = new THREE.Mesh(new THREE.CircleGeometry(K.helice_r, 24), matHelice());
+    helice.rotation.y = Math.PI / 2; helice.position.set(...K.helice); grupo.add(helice);
+    const cono = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.04, 12), mat(0x333333));
+    cono.rotation.z = -Math.PI / 2; cono.position.set(K.helice[0] + 0.02, 0, K.helice[2]); grupo.add(cono);
+  }
+  grupo.traverse(o => { if (o.isMesh && o !== helice && o.parent !== helice) o.castShadow = true; });
   return { grupo, prof, timon, alerones, helice };
 }
 

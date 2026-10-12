@@ -253,7 +253,7 @@ El VLM es el mismo de los entrenadores (`analisis/vlm_e1.py`), que ahora admite 
 | Escenario | Para ser APTO |
 |---|---|
 | 1 · Primer vuelo | Subir a 20 m, dos vueltas al circuito por fuera de los 4 pilones en orden verde → amarillo → rojo → azul y aterrizar sin daños |
-| 2 · Orientación | Subir a 20 m y hacer dos ochos (vuelta completa a un lado y luego al otro), sin pasar de 200 m de distancia ni entrar en pérdida, y aterrizar |
+| 2 · Orientación | Subir a 20 m y hacer dos ochos alrededor de los pilones: por fuera del rojo y el azul, cruzar el centro, por fuera del amarillo y el verde, cruzar y volver al rojo (se sigue por pasos con la posición; el panel dice qué toca), sin pasar de 200 m ni entrar en pérdida, y aterrizar |
 | 3 · Viento cruzado | Con 4 m/s del oeste: una vuelta por fuera de los pilones en orden azul → rojo → amarillo → verde (al revés que el primer vuelo) y una toma en la pista, alineada con ella (±25°), sin daños |
 | 4 · Emergencia | Subir a 40 m. El motor se para entre 8 y 20 s después: mantener el control sin pérdida y aterrizar a menos de 100 m del piloto |
 | 5 · Puerta (zona 2) | Cruzar la puerta naranja 3 veces de lado a lado, por debajo de lo alto de los pilones (20 m), y aterrizar |
@@ -294,6 +294,8 @@ Un aterrizaje es "sin daños" si desciende a menos de 2,5 m/s, con menos de 30°
 | `simulador.html` | Pantallas (inicio, pilotos, hangar, entrenamientos, vuelo libre, mapa, ajustes, resultado, progreso), pausa, carga, escenarios, caja negra, repetición, sonido (`Sonido`) y bucle |
 
 **Aviones nuevos:** se dejan en `simulador/aviones/` (ver `aviones/LEEME.md`). Con el servidor aparecen solos.
+
+**Cuadricóptero DJI Mini 4K** (`aviones/DJI_MINI.js`, clase `ModeloCuadricoptero`, solo en la v1): dron de 249 g para practicar los mandos del DJI antes de volar el de verdad. A diferencia de los aviones lleva un **controlador de vuelo** como el del DJI (modo estabilizado con retención de posición y altura, como con GPS): la palanca derecha pide velocidad horizontal (hasta 10 m/s, inclinación máxima 25°), la izquierda velocidad vertical (5 m/s subiendo, 3,5 bajando; cerca del suelo la bajada se limita a 0,6 m/s, como la protección de aterrizaje del DJI) y giro sobre sí mismo (100°/s). Con las palancas en el centro frena y se queda quieto, también con viento (se inclina contra él). El controlador manda inclinación y pares con sus topes (empuje máximo 2 veces el peso, par máximo de los motores) y el dron responde con su inercia, su resistencia aerodinámica y el viento; la batería (17 Wh) se gasta con la potencia inducida de los rotores. **Mandos del DJI, modo 2:** palanca izquierda gas (con muelle: velocidad vertical) y guiñada; derecha inclinación. **Teclado:** flechas inclinan (↑ adelante), W/S suben y bajan, A/D giran. L arma los motores en el suelo; para aterrizar, posarlo y mantener S (o la palanca izquierda abajo) hasta que paren. Vale para todas las misiones (los objetivos son de posición y altura). Godot lo omite (`datos_comunes.gd`).
 
 ## Física del simulador: qué tiene en cuenta
 

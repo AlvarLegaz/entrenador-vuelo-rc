@@ -560,7 +560,7 @@
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=21"></script>
 <script src="js/entorno.js?v=22"></script>
-<script src="js/visor.js?v=28"></script>
+<script src="js/visor.js?v=29"></script>
 <script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script>
@@ -573,7 +573,7 @@
 const entorno = new Entorno();
 let visor = null, previa = null;
 let modelo = null, av = null;                 // ModeloAvion en uso y su estado
-const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0 };
+const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0, guinada: 0, vz: 0, guinadaObj: 0, vzObj: 0 };   // guinada y vz: cuadricoptero (A/D, W/S o palanca izquierda)
 let vuelo = null;                             // registro del vuelo en curso (de L al final)
 const sesion = { aula: false, alumno: null, avion: null, escenario: "libre", viento: { vel: 2, desde: 0, rachas: true }, dificultad: "real" };
 try { if (localStorage.getItem("sim_dificultad") === "facil") sesion.dificultad = "facil"; } catch (e) {}
@@ -1006,7 +1006,7 @@ function pruebaLanzamiento(gas, { masa_kg, viento = [0, 0, 0], rumbo = 0, trim }
   // con el recorrido de la emisora (el del teclado no basta en un avion pequeno para corregir el par del motor al lanzarlo)
   const m = Modelos.crear(sesion.avion); aplicarCM(m); aplicarCalibracion(m); aplicarRecorridos(m, true); aplicarDificultad(m);
   if (masa_kg) m.configurar({ masa_kg });
-  const a = m.estadoInicial(); colocarEnBase(a); a.gases = gas; m.lanzar(a);
+  const a = m.estadoInicial(); colocarEnBase(a, m); a.gases = gas; m.lanzar(a);
   if (entorno.mundo) rumbo = (sesion.lanz ? sesion.lanz.rumbo : 0) * D2R;
   if (rumbo) { const [r, p] = Cuat.euler(a.q); a.q = Cuat.desdeEuler(r, p, rumbo); }
   const mm = { pitch: 0, yaw: 0, trim: trim !== undefined ? trim : (m.compensador_grados || 0) };
@@ -1020,6 +1020,7 @@ function pruebaLanzamiento(gas, { masa_kg, viento = [0, 0, 0], rumbo = 0, trim }
 }
 /** Gas minimo (0-1) para que salga de la mano, o null si no sale ni con todo el gas. */
 function gasMinimoLanzamiento(op) {
+  if (modelo && modelo.esCuadricoptero) return 0;          // el dron despega desde el suelo con el gas que haga falta
   if (!pruebaLanzamiento(1, op)) return null;
   let lo = 0, hi = 1;
   for (let i = 0; i < 7; i++) { const g = (lo + hi) / 2; if (pruebaLanzamiento(g, op)) hi = g; else lo = g; }
@@ -1078,8 +1079,8 @@ const ESCENARIOS = {
     desc: "Lanza el avión, da dos vueltas al circuito rodeando por fuera los 4 pilones en el orden indicado (subes por la izquierda y vuelves por la derecha) y aterriza.",
     objetivos: [["subir", "Lanzar y subir a 20 m"], ["circ1", "Primera vuelta por fuera de los 4 pilones, en orden"],
                 ["circ2", "Segunda vuelta por fuera de los 4 pilones, en orden"], ["aterrizar", "Aterrizar sin daños"]] },
-  orientacion: { nombre: "2 · Orientación", desc: "Dos figuras de ocho delante de ti, sin alejarte y sin entrar en pérdida.",
-    objetivos: [["subir", "Subir a 20 m"], ["ocho1", "Primer ocho (vuelta a un lado y luego al otro)"], ["ocho2", "Segundo ocho"],
+  orientacion: { nombre: "2 · Orientación", desc: "Dos ochos alrededor de los pilones: por fuera del rojo y el azul, cruzas el centro, por fuera del amarillo y el verde, y vuelta al rojo. Sin alejarte y sin entrar en pérdida.",
+    objetivos: [["subir", "Subir a 20 m"], ["ocho1", "Primer ocho: por fuera del rojo y el azul, por fuera del amarillo y el verde, vuelta al rojo"], ["ocho2", "Segundo ocho igual"],
                 ["cerca", "No alejarse más de 200 m"], ["sinPerdida", "Sin entrar en pérdida"], ["aterrizar", "Aterrizar sin daños"]] },
   viento_cruzado: { nombre: "3 · Viento cruzado", sentido: -1,
     desc: "Viento de 4 m/s del oeste, de lado a la pista. Una vuelta al circuito en el orden indicado (al revés que en el primer vuelo: subes por la derecha), corrige la deriva y aterriza en la pista.",
@@ -1188,9 +1189,9 @@ document.getElementById("mapaLanz").addEventListener("click", e => {
 document.getElementById("btnLanzVolver").onclick = () => irVolar();
 document.getElementById("btnLanzAqui").onclick = () => empezar();
 /** Coloca un estado recien creado en el punto de lanzamiento del mundo real (en la isla, en el origen). */
-function colocarEnBase(a) {
+function colocarEnBase(a, m = modelo) {
   if (!entorno.mundo) return;
-  const c = casa(); a.p = [c.N, c.E, -(entorno.altura(c.N, c.E) + 1.6)];
+  const c = casa(); a.p = [c.N, c.E, -(entorno.altura(c.N, c.E) + (m && m.esCuadricoptero ? 0.02 : 1.6))];   // en la mano (avion) o en el suelo (dron)
 }
 
 let ev = null;     // evaluador del vuelo en curso
@@ -1214,13 +1215,9 @@ function evaluar(dt) {
   for (let i = 1; i <= 3; i++) if (ev.puertas >= i) marcar("puerta" + i, "ok");
   if (ev.pasadas.oeste) marcar("pasadaO", "ok"); if (ev.pasadas.este) marcar("pasadaE", "ok");
   if (ev.pasadas.oeste + ev.pasadas.este) marcar("pasada", "ok");
-  // ochos: vueltas completas de rumbo (330 grados) alternando el sentido
-  const rumbo = Cuat.euler(av.q)[2];
-  if (ev.rumboPrev !== null) ev.acumRumbo += desenrollar(rumbo - ev.rumboPrev);
-  ev.rumboPrev = rumbo;
-  if (Math.abs(ev.acumRumbo) >= 330 * D2R) { ev.giros.push(Math.sign(ev.acumRumbo)); ev.acumRumbo = 0; }
-  let ochos = 0; for (let i = 1; i < ev.giros.length; i++) if (ev.giros[i] !== ev.giros[i - 1]) { ochos++; i++; }
-  if (ochos >= 1) marcar("ocho1", "ok"); if (ochos >= 2) marcar("ocho2", "ok");
+  // ochos alrededor de los pilones: por fuera del par derecho (rojo y azul), por el centro, por fuera del par izquierdo
+  // (amarillo y verde), por el centro y vuelta al rojo. Se sigue por pasos con la posicion (N, E)
+  if (ev.obj.ocho1) { const o = pasoOcho(N, E); if (o >= 1) marcar("ocho1", "ok"); if (o >= 2) marcar("ocho2", "ok"); }
   if (dist > 200) marcar("cerca", "mal");
   // perdida: mas de 0,3 s seguidos con perdida > 0,6 (despues del lanzamiento)
   ev.perdidaT = av.perdida > 0.6 && t > 3 ? ev.perdidaT + dt : 0;
@@ -1231,6 +1228,28 @@ function evaluar(dt) {
     aviso("¡FALLO DE MOTOR!"); setTimeout(() => { if (av.estado === "volando") aviso(""); }, 2500);
   }
   if (ev.guia) guiar();
+}
+
+/** Pasos del ocho de la mision de orientacion con la posicion del avion; devuelve los ochos completos. */
+const OCHO_PASOS = ["por fuera del rojo y el azul", "cruzar el centro", "por fuera del amarillo y el verde", "cruzar el centro", "volver al pilón rojo"];
+function pasoOcho(N, E) {
+  const P = entorno.circuito.pilones, es = P.map(p => p[1]), ns = P.map(p => p[0]);
+  const eDer = Math.max(...es), eIzq = Math.min(...es), nMin = Math.min(...ns) - 15, nMax = Math.max(...ns) + 15, rojo = P[2];
+  const enFranja = N > nMin && N < nMax;
+  if (ev.ochoFase === undefined) { ev.ochoFase = 0; ev.ochos = 0; }
+  const f = ev.ochoFase;
+  if (f === 0 && enFranja && E > eDer + 5) ev.ochoFase = 1;                                   // por fuera del par derecho
+  else if (f === 1 && Math.abs(E) < 15) ev.ochoFase = 2;                                      // cruza el centro
+  else if (f === 2 && enFranja && E < eIzq - 5) ev.ochoFase = 3;                              // por fuera del par izquierdo
+  else if (f === 3 && Math.abs(E) < 15) ev.ochoFase = 4;                                      // cruza el centro
+  else if (f === 4 && Math.hypot(N - rojo[0], E - rojo[1]) < 45) { ev.ochoFase = 0; ev.ochos++; toast(`¡Ocho ${ev.ochos}!`); }   // vuelta al rojo
+  if (ev.ochoFase !== f && ev.ochoFase) toast(OCHO_PASOS[ev.ochoFase].replace(/^./, c => c.toUpperCase()));
+  return ev.ochos;
+}
+function textoOcho() {
+  if (ev.ochoFase === undefined) return "";
+  if (ev.ochos >= 2) return `<div style="margin:4px 0">Los dos ochos hechos · Ahora: <b>aterrizar</b></div>`;
+  return `<div style="margin:4px 0">Ocho ${ev.ochos + 1} de 2 · Ahora: <b>${OCHO_PASOS[ev.ochoFase]}</b></div>`;
 }
 
 // ---- aterrizaje guiado: tramos del circuito, con lo que hay que hacer en cada uno y las pistas en vivo ----
@@ -1368,7 +1387,7 @@ function pintarObjetivos() {
   }
   if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
   const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
-  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.zona === 2 ? textoZona2() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.obj.ocho1 ? textoOcho() : "") + (ev.zona === 2 ? textoZona2() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
     (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
 }
 
@@ -1441,7 +1460,7 @@ function reiniciar() {
   nuevoEvaluador(); vuelo = null; ponerPausa(false);
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
   if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
-  aviso("Pulsa L para lanzar");
+  aviso(modelo.esCuadricoptero ? "Pulsa L para armar los motores" : "Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
 function orientarLanzamiento() {
@@ -1452,8 +1471,9 @@ function orientarLanzamiento() {
 }
 function lanzar() {
   if (av.estado !== "en mano") return;
-  modelo.lanzar(av); orientarLanzamiento(); aviso("");
-  if (sesion.lanzReal && !modelo.facil) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+  modelo.lanzar(av); orientarLanzamiento(); aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : "");
+  if (modelo.esCuadricoptero) setTimeout(() => { if (av.estado === "volando" && av.posado) aviso(""); }, 3000);
+  if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
     const [r, p, y] = Cuat.euler(av.q);
     av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
@@ -1508,7 +1528,7 @@ function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;
   // lanzamiento fallido: acaba en el suelo antes de LANZ.fallo_s sin haber subido de LANZ.fallo_h. No cuenta como
   // aterrizaje; si se ha roto, si como accidente
-  if (vuelo && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
+  if (vuelo && !modelo.esCuadricoptero && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
     vuelo.lanzamiento = causaLanzamientoFallido(vuelo.gasLanz);
     final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
   }
@@ -1695,7 +1715,7 @@ function irHangar() {
   for (const id of Modelos.ids()) {
     const A = Modelos.datos(id), b = document.createElement("button"); b.className = "avCarta" + (id === sesion.avion ? " sel" : "");
     const masa = (A.caracteristicas || []).find(r => r[0].toLowerCase().startsWith("masa"));
-    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${esc((A.mandos && A.mandos.izq_der) || "timón")} y profundidad${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
+    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos DJI" : esc((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad"}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
     b.onclick = () => { elegirAvion(id); irHangar(); };
     sel.appendChild(b);
   }
@@ -1772,8 +1792,8 @@ function iconoMision(id) {
   switch (id) {
     case "primer_vuelo": return ini + pista(96, 70, 8, 30) + `<path d="M60 35 Q100 10 140 35 Q165 55 140 80 Q100 100 60 80 Q35 55 60 35z" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
       pil(60, 35, P[0]) + pil(140, 35, P[1]) + pil(140, 80, P[2]) + pil(60, 80, P[3]) + flecha(100, 21, 0) + avion(100, 55, -10) + fin;
-    case "orientacion": return ini + `<path d="M100 55 C60 15 20 25 40 55 C60 85 100 95 100 55 C100 15 140 25 160 55 C180 85 140 95 100 55" fill="none" stroke="${tr}" stroke-width="2.5"/>` +
-      flecha(62, 26, -20) + flecha(140, 84, 160) + avion(100, 55, 30) + fin;
+    case "orientacion": return ini + `<path d="M100 55 C70 20 25 25 25 55 C25 85 70 90 100 55 C130 20 175 25 175 55 C175 85 130 90 100 55" fill="none" stroke="${tr}" stroke-width="2.5"/>` +
+      pil(140, 35, P[2]) + pil(140, 75, P[3]) + pil(60, 35, P[1]) + pil(60, 75, P[0]) + flecha(173, 45, -80) + flecha(27, 65, 100) + avion(100, 55, 30) + fin;
     case "viento_cruzado": return ini + pista(92, 15, 16, 80) + `<g stroke="#4fc3f7" stroke-width="2.5" stroke-linecap="round" fill="none"><path d="M20 35h30M20 55h40M20 75h30"/><path d="M44 29l6 6-6 6M54 49l6 6-6 6M44 69l6 6-6 6"/></g>` +
       avion(140, 55, -70) + `<path d="M140 80 L140 100" stroke="${tr}" stroke-width="2" stroke-dasharray="4 3"/>` + fin;
     case "emergencia": return ini + `<path d="M40 25 C80 30 120 55 170 90" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/><path d="M10 92h180" stroke="#6b4a1e" stroke-width="3"/>` +
@@ -2073,7 +2093,8 @@ function leerMando(dt) {
   const p = mandoConectado();
   MANDO.activo = !!p; if (!p) return false;
   MANDO.id = p.id;
-  const ax = p.axes, rx = zonaMuerta(ax[2] || 0, MANDO.zona), ry = zonaMuerta(ax[3] || 0, MANDO.zona), ly = zonaMuerta(ax[1] || 0, MANDO.zona);
+  const ax = p.axes, rx = zonaMuerta(ax[2] || 0, MANDO.zona), ry = zonaMuerta(ax[3] || 0, MANDO.zona), ly = zonaMuerta(ax[1] || 0, MANDO.zona), lx = zonaMuerta(ax[0] || 0, MANDO.zona);
+  const cuad = modelo && modelo.esCuadricoptero;
   // botones: flanco de subida
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
   const pulsado = i => b(i) && !antes[i];
@@ -2089,14 +2110,15 @@ function leerMando(dt) {
   MANDO.botones = p.buttons.map(x => x.pressed);
   if (pausado) return false;
   // palanca derecha: hacia ti (eje Y positivo, abajo) = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
-  const moviendo = rx !== 0 || ry !== 0;
+  const moviendo = rx !== 0 || ry !== 0 || (cuad && (lx !== 0 || ly !== 0));
   if (moviendo || MANDO.usado) {
     mando.pitch = expo(ry, MANDO.expo); mando.yaw = expo(rx, MANDO.expo);
     mando.pitchObj = mando.pitch; mando.yawObj = mando.yaw;
+    if (cuad) { mando.guinada = expo(lx, MANDO.expo); mando.vz = -ly; mando.guinadaObj = mando.guinada; mando.vzObj = mando.vz; }   // DJI modo 2: izquierda gas (con muelle) y guinada
   }
   if (moviendo) MANDO.usado = true;
   // palanca izquierda: gas (eje Y negativo = arriba)
-  if (!av.motorRoto) {
+  if (!av.motorRoto && !cuad) {
     if (MANDO.gas === "absoluto") { if (MANDO.usado || ly !== 0) av.gases = Math.max(0, Math.min(1, (1 - (ax[1] || 0)) / 2)); }
     else if (ly !== 0) av.gases = Math.max(0, Math.min(1, av.gases - ly * 0.7 * dt));
   }
@@ -2104,19 +2126,22 @@ function leerMando(dt) {
 }
 
 function leerTeclado(dt) {
-  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"];
+  const cuad = modelo && modelo.esCuadricoptero;
+  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || (cuad && (teclas["KeyA"] || teclas["KeyD"] || teclas["KeyW"] || teclas["KeyS"]));
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
   if (leerMando(dt) && !teclaPalanca) { leerGasTeclado(dt); return; }
   mando.pitchObj = (teclas["ArrowDown"] ? 1 : 0) - (teclas["ArrowUp"] ? 1 : 0);    // +1 = tirar
   mando.yawObj = (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0);
-  for (const k of ["pitch", "yaw"]) {         // la palanca va al tope a 5/s y vuelve al centro a 8/s
+  mando.guinadaObj = (teclas["KeyD"] ? 1 : 0) - (teclas["KeyA"] ? 1 : 0);                 // cuadricoptero: giro sobre si mismo
+  mando.vzObj = (teclas["KeyW"] ? 1 : 0) - (teclas["KeyS"] ? 1 : 0);                      // cuadricoptero: subir / bajar
+  for (const k of ["pitch", "yaw", "guinada", "vz"]) {         // la palanca va al tope a 5/s y vuelve al centro a 8/s
     const obj = mando[k + "Obj"], vel = obj === 0 ? 8 : 5, d = obj - mando[k];
     mando[k] += Math.sign(d) * Math.min(Math.abs(d), vel * dt);
   }
   leerGasTeclado(dt);
 }
 function leerGasTeclado(dt) {
-  if (av.motorRoto) return;
+  if (av.motorRoto || (modelo && modelo.esCuadricoptero)) return;      // en el dron W/S son velocidad vertical (leerTeclado)
   if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + 0.8 * dt);
   if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - 0.8 * dt);
 }
@@ -2157,14 +2182,14 @@ const vaAng = vz => -90 + 135 * Math.max(-1, Math.min(1, vz / VA_MAX));         
 const vaPt = (vz, r) => [75 + r * Math.sin(vaAng(vz) * D2R), 75 - r * Math.cos(vaAng(vz) * D2R)];
 function construirAnemometro(vs) {
   const NS = "http://www.w3.org/2000/svg", mk = (t, a, tx) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (tx !== undefined) e.textContent = tx; return e; };
-  AN.vs = vs; AN.vmax = Math.ceil(2.6 * vs / 5) * 5;
+  AN.vs = vs; AN.vmax = vs > 0 ? Math.ceil(2.6 * vs / 5) * 5 : 20;      // sin velocidad de perdida (dron): escala fija, sin bandas
   const bandas = document.getElementById("anBandas"), esc = document.getElementById("anEscala");
   bandas.innerHTML = ""; esc.innerHTML = "";
   const arco = (v0, v1, color) => {
     const [x0, y0] = anPt(v0, 62), [x1, y1] = anPt(v1, 62), grande = anAng(v1) - anAng(v0) > 180 ? 1 : 0;
     bandas.appendChild(mk("path", { d: `M ${x0} ${y0} A 62 62 0 ${grande} 1 ${x1} ${y1}`, stroke: color }));
   };
-  arco(0, 1.1 * vs, "#e53935"); arco(1.1 * vs, 1.3 * vs, "#ffb300"); arco(1.3 * vs, Math.min(2.0 * vs, AN.vmax), "#43a047");
+  if (vs > 0) { arco(0, 1.1 * vs, "#e53935"); arco(1.1 * vs, 1.3 * vs, "#ffb300"); arco(1.3 * vs, Math.min(2.0 * vs, AN.vmax), "#43a047"); }
   if (2.0 * vs < AN.vmax) arco(2.0 * vs, AN.vmax, "#e6edf3");
   for (let v = 0; v <= AN.vmax; v += 1) {
     const mayor = v % 5 === 0, [xa, ya] = anPt(v, 56), [xb, yb] = anPt(v, mayor ? 46 : 51);
@@ -2289,10 +2314,12 @@ function hud() {
   const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E);
   const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento, suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
   // estado (arriba a la izquierda) y lecturas (abajo, en el centro): lo que importa en un vuelo RC
-  document.getElementById("estado").innerHTML = `<span class="pill">${Repeticion.activa ? "REPETICIÓN" : esc(av.estado.toUpperCase())} · ${av.t.toFixed(0)} s</span>` +
+  const estadoTxt = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" && modelo.esCuadricoptero ? "EN EL SUELO" : av.estado.toUpperCase();
+  document.getElementById("estado").innerHTML = `<span class="pill">${esc(estadoTxt)} · ${av.t.toFixed(0)} s</span>` +
     (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
     (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : "");
-  const bat = modelo.bateriaPct(av), vClase = av.V < 1.1 * AN.vs ? "rojo" : av.V < 1.3 * AN.vs ? "ambar" : "";
+  if (modelo.esCuadricoptero && av.estado === "volando" && !av.posado && document.getElementById("aviso").textContent.startsWith("Sube el gas")) aviso("");
+  const bat = modelo.bateriaPct(av), vClase = AN.vs > 0 && av.V < 1.1 * AN.vs ? "rojo" : AN.vs > 0 && av.V < 1.3 * AN.vs ? "ambar" : "";
   document.getElementById("lecturas").innerHTML = ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
     `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
     `<div class="lect"><b>${vs >= 0 ? "+" : ""}${vs.toFixed(1)}</b><span>asc. m/s</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +

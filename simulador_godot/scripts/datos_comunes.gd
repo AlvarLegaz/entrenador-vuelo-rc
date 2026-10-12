@@ -28,7 +28,10 @@ static func aviones() -> Array:
 	var i := t.find("Modelos.indice(")
 	var lista = JSON.parse_string(t.substr(i + 15, t.rfind("]") - i - 14))
 	var ids := []
-	for f in lista: ids.append(String(f).get_basename())
+	for f in lista:
+		# el cuadricoptero (controlador de vuelo propio, clase ModeloCuadricoptero en JS) aun no esta portado a Godot
+		if FileAccess.get_file_as_string(carpeta().path_join("aviones/%s" % f)).contains('"tipo": "cuadricoptero"'): continue
+		ids.append(String(f).get_basename())
 	return ids
 
 static func avion(id: String) -> Dictionary:
