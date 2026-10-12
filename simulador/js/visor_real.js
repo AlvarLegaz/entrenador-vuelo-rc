@@ -167,25 +167,25 @@ Object.assign(Visor.prototype, {
       const arboles = [], matas = [];
       for (let i = 0; i < A.length; i += 3) {
         if (Math.hypot(A[i] - base[1], A[i + 1] - base[0]) < 8) continue;        // claro de 8 m alrededor del piloto (como en Godot)
-        (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], A[i + 2]]);
+        (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], Math.min(3.5, A[i + 2])]);     // mas de 3,5 m de radio es un grupo de copas pegadas, no un arbol
       }
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), mTronco = new THREE.MeshLambertMaterial({ color: 0x5b4632 });
       const antes = new Set(g.children);
       // copas con 80 triangulos a menos de 600 m del punto de salida; mas lejos, 20. Tronco en todos (es lo que se ve desde abajo)
-      const tronco = rc => rc < 2.5 ? 0.7 + 0.25 * rc : 1.2 + 0.4 * rc;           // altura del tronco: almendro corto, algarrobo mas alto
+      const tronco = rc => rc < 2.5 ? 1.0 + 0.3 * rc : 1.5 + 0.4 * rc;            // altura del tronco (visible entera): almendro 1,4-1,7 m, algarrobo 2,5-2,9
       const cerca = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) < 600), lejos = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) >= 600);
       for (const [lista, det] of [[cerca, 1], [lejos, 0]]) {
         this._instanciarEn(g, new THREE.IcosahedronGeometry(1, det), mat, lista, ([e, n, rc], M, C) => {
           const ht = tronco(rc), alm = rc < 2.5, sy = alm ? 0.55 + 0.15 * r() : 0.8 + 0.2 * r();     // almendro: copa aplanada
-          P.set(e, alt(n, e) + ht + rc * sy * 0.75, -n); S.set(rc * (0.9 + 0.2 * r()), rc * sy, rc * (0.9 + 0.2 * r())); Q.setFromAxisAngle(eje, r() * 6.28);
+          P.set(e, alt(n, e) + ht + rc * sy * 0.85, -n); S.set(rc * (0.9 + 0.2 * r()), rc * sy, rc * (0.9 + 0.2 * r())); Q.setFromAxisAngle(eje, r() * 6.28);
           M.compose(P, Q, S);
           if (alm) C.setHSL(0.21 + 0.04 * r(), 0.2 + 0.1 * r(), 0.27 + 0.08 * r());    // verde grisaceo, mas claro
           else C.setHSL(0.24 + 0.04 * r(), 0.3 + 0.12 * r(), 0.14 + 0.06 * r());       // algarrobo / pino: verde oscuro
         }, 500);
       }
       this._instanciarEn(g, new THREE.CylinderGeometry(0.13, 0.22, 1, 6), mTronco, arboles, ([e, n, rc], M, C) => {
-        const ht = tronco(rc), gr = rc < 2.5 ? 0.9 : 1.6; P.set(e, alt(n, e) + ht / 2, -n); S.set(gr, ht * 1.15, gr); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
+        const ht = tronco(rc), gr = rc < 2.5 ? 1.7 : 2.8; P.set(e, alt(n, e) + ht / 2, -n); S.set(gr, ht * 1.1, gr); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
       }, 500);
       this._instanciarEn(g, new THREE.IcosahedronGeometry(1, 0), mat, matas, ([e, n, rc], M, C) => {
         P.set(e, alt(n, e) + rc * 0.3, -n); S.set(rc, rc * 0.55, rc); Q.setFromAxisAngle(eje, r() * 6.28); M.compose(P, Q, S);

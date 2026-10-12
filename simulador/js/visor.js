@@ -777,11 +777,14 @@ class Visor {
     const M = new THREE.Matrix4(), C = new THREE.Color();
     for (const items of celdas.values()) {
       const g = geom.clone(), m = new THREE.InstancedMesh(g, mat, items.length);
-      let cx = 0, cz = 0, cy = 0;
-      items.forEach((it, i) => { colocar(it, M, C); m.setMatrixAt(i, M); m.setColorAt(i, C); cx += it[0]; cz -= it[1]; cy += M.elements[13]; });
-      cx /= items.length; cz /= items.length; cy /= items.length;
+      let cx = 0, cz = 0, ymin = Infinity, ymax = -Infinity;
+      items.forEach((it, i) => { colocar(it, M, C); m.setMatrixAt(i, M); m.setColorAt(i, C); cx += it[0]; cz -= it[1]; ymin = Math.min(ymin, M.elements[13]); ymax = Math.max(ymax, M.elements[13]); });
+      cx /= items.length; cz /= items.length;
       let rad = 0; for (const it of items) rad = Math.max(rad, Math.hypot(it[0] - cx, -it[1] - cz));
-      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), rad + 120);
+      // esfera envolvente de la celda en el propio InstancedMesh (coordenadas del objeto = mundo, el padre no se mueve).
+      // OJO: no ponerla en la geometria: Three la multiplica por cada matriz de instancia y sale una esfera absurda, y
+      // segun la escala de las instancias el recorte de camara (frustum) oculta la malla entera (los troncos no se veian)
+      m.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, (ymin + ymax) / 2, cz), Math.hypot(rad, (ymax - ymin) / 2) + 120);
       esc.add(m);
       if (Math.hypot(cx - centro[0], cz - centro[1]) > lejos_m) this.lejanos.push(m);
     }
