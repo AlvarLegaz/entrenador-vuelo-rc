@@ -91,6 +91,41 @@
   #repBarra .pista { height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
   #repBarra .pista i { display: block; height: 100%; background: var(--acento); width: 0; }
   #repBarra b { color: var(--acento); }
+  /* ---------- pantalla de la app DJI Fly (cuadricoptero): sustituye al panel de instrumentos del avion ---------- */
+  #dji { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.dron #dji { display: block; } body.dron #panelVuelo, body.dron #estado { display: none !important; }
+  body.dron #objetivos { top: 50px; } body.dron #guia { top: 50px; }
+  #djiTop { position: absolute; left: 0; right: 0; top: 0; height: 42px; background: linear-gradient(rgba(0,0,0,.7), rgba(0,0,0,0)); display: flex; align-items: center;
+            gap: 16px; padding: 0 16px; font-size: 13px; text-shadow: 0 0 4px #000; }
+  #djiTop .modo { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.4); border-radius: 6px; padding: 2px 9px; font-weight: 700; letter-spacing: .05em;
+                  pointer-events: auto; cursor: pointer; min-width: 22px; text-align: center; }
+  #djiTop .modo.S { color: #ff5252; border-color: #ff5252; } #djiTop .modo.C { color: #4fc3f7; border-color: #4fc3f7; }
+  #djiTop .estado { flex: 1; text-align: center; font-weight: 600; color: #8be08f; }
+  #djiTop .estado.aviso { color: #ffb74d; } #djiTop .estado.rojo { color: #ff5252; }
+  #djiTop .bat { font-weight: 700; font-variant-numeric: tabular-nums; } #djiTop .bat.rojo { color: #ff5252; }
+  #djiTop .bat i { display: inline-block; width: 26px; height: 11px; border: 1px solid #fff; border-radius: 2px; vertical-align: -1px; margin-right: 5px; position: relative; }
+  #djiTop .bat i::after { content: ""; position: absolute; left: 1px; top: 1px; bottom: 1px; width: var(--w, 22px); background: #8be08f; }
+  #djiTop .bat.rojo i::after { background: #ff5252; }
+  #djiRec { font-weight: 700; color: #ff5252; font-variant-numeric: tabular-nums; } #djiRec:empty { display: none; }
+  #djiAbajo { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: flex-end; gap: 16px; }
+  #djiMapa { width: 130px; height: 130px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.5); }
+  #djiMapa canvas { width: 130px !important; height: 130px !important; border-radius: 0; display: block !important; filter: none; }
+  #djiTele { display: flex; gap: 22px; font-size: 12px; background: rgba(0,0,0,.5); border-radius: 8px; padding: 6px 14px; text-shadow: 0 0 4px #000; }
+  #djiTele span { color: var(--suave); margin-right: 5px; } #djiTele b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .djiBotones { position: absolute; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: auto; }
+  #djiIzq { left: 16px; } #djiLado { right: 16px; }
+  .djiBotones button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.55); color: #fff; font-size: 15px;
+                       font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .djiBotones button:hover { background: rgba(255,255,255,.22); } .djiBotones button.activo { background: #ffb74d; color: #000; border-color: #ffb74d; }
+  .djiBotones button.disparo { width: 60px; height: 60px; border: 3px solid #fff; background: rgba(0,0,0,.35); }
+  .djiBotones button.disparo i { width: 42px; height: 42px; border-radius: 50%; background: #fff; display: block; transition: all .15s; }
+  .djiBotones button.disparo.video i { background: #ff3d3d; } .djiBotones button.disparo.video.rec i { width: 22px; height: 22px; border-radius: 4px; }
+  .djiBotones .txt { font-size: 10px; color: var(--suave); letter-spacing: .08em; text-shadow: 0 0 4px #000; }
+  #djiGimbal { position: absolute; right: 94px; top: 50%; transform: translateY(-50%); width: 5px; height: 130px; background: rgba(255,255,255,.25); border-radius: 3px; }
+  #djiGimbal i { position: absolute; left: -6px; width: 17px; height: 4px; background: #fff; border-radius: 2px; margin-top: -2px; box-shadow: 0 0 4px #000; }
+  #djiGimbal span { position: absolute; right: 16px; font-size: 11px; color: #fff; margin-top: -7px; white-space: nowrap; text-shadow: 0 0 4px #000; }
+  #djiFlash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity .3s; }
+  #djiFlash.on { opacity: .75; transition: none; }
 
   /* ---------- pantallas ---------- */
   .pantalla { position: absolute; inset: 0; display: none; z-index: 10; overflow: hidden; background: var(--fondo); }
@@ -270,11 +305,19 @@
 <div id="repBarra" class="hudCapa"><div><b>REPETICIÓN</b> · <span id="repTiempo">0 s</span> · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir</div><div class="pista"><i id="repProgreso"></i></div></div>
 <div id="ayuda">
   <h3>Controles</h3>
+  <div id="ayudaTeclasDron" style="display:none">
+  <b>↓ ↑</b> atrás / adelante · <b>← →</b> laterales · <b>W</b> / <b>S</b> sube / baja · <b>A</b> / <b>D</b> gira sobre sí mismo<br>
+  <b>M</b> modo Cine / Normal / Sport · <b>Q</b> / <b>E</b> gimbal · <b>F</b> foto · <b>V</b> vídeo · <b>H</b> volver a casa · <b>L</b> armar · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / del dron · <b>I</b> pantalla de la app · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b> (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa<br>
+  </div>
+  <div id="ayudaTeclasAvion">
   <b>↓ ↑</b> profundidad (↓ tira: morro arriba) · <b>← →</b> <span id="ayudaLR">timón</span><br>
   <b>W</b> / <b>S</b> gases · <b>Espacio</b> cortar gases · <b>L</b> lanzar · <b>R</b> empezar de nuevo<br>
   <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / a bordo · <b>[</b> <b>]</b> compensador<br>
   <b>H</b> datos de vuelo · <b>I</b> instrumentos · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
   <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa<br>
+  </div>
   <span style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.</span><br>
   <span style="color:#aaa">En vuelo libre: <b>+</b> <b>−</b> viento, <b>G</b> rachas.
   <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
@@ -542,6 +585,17 @@
 </div>
 
 <!-- ============ CAPAS ============ -->
+<div id="dji" class="hudCapa">
+  <div id="djiTop"><span class="modo" id="djiModo" title="Modo de vuelo: Cine / Normal / Sport (M, LB)">N</span><span class="estado" id="djiEstado"></span><span id="djiRec"></span>
+    <span id="djiGps" title="Satélites GPS">GPS 18</span><span title="Señal del mando y del vídeo">RC ▮▮▮▮ · HD ▮▮▮▮</span><span class="bat" id="djiBat"><i></i>100 % · 30:00</span></div>
+  <div class="djiBotones" id="djiIzq"><button id="djiDespegar" title="Despegar / aterrizar (botón A del mando)">⇧</button><button id="djiRTH" title="Volver a casa (H, botón B)">H</button></div>
+  <div id="djiGimbal" title="Inclinación de la cámara (Q/E, gatillos)"><i id="djiGimbalMarca"></i><span id="djiGimbalTxt">−10°</span></div>
+  <div class="djiBotones" id="djiLado"><button class="disparo" id="djiDisparo" title="Disparar: foto o vídeo (F / V, botones Y / X)"><i></i></button>
+    <button id="djiCamModo" title="Cambiar entre foto y vídeo">⇄</button><span class="txt" id="djiCamTxt">FOTO</span></div>
+  <div id="djiAbajo"><div id="djiMapa"></div><div id="djiTele"><div><span>D</span><b id="djiD">0 m</b></div><div><span>H</span><b id="djiH">0 m</b></div>
+    <div><span>HS</span><b id="djiHS">0,0 m/s</b></div><div><span>VS</span><b id="djiVS">0,0 m/s</b></div></div></div>
+  <div id="djiFlash"></div>
+</div>
 <div class="velo" id="pausa"><div class="capa"><h2>Pausa</h2>
   <button class="btn prim" id="btnPausaSeguir">Continuar</button>
   <button class="btn" id="btnPausaReiniciar">Empezar el vuelo de nuevo</button>
@@ -573,7 +627,7 @@
 const entorno = new Entorno();
 let visor = null, previa = null;
 let modelo = null, av = null;                 // ModeloAvion en uso y su estado
-const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0, guinada: 0, vz: 0, guinadaObj: 0, vzObj: 0 };   // guinada y vz: cuadricoptero (A/D, W/S o palanca izquierda)
+const mando = { pitch: 0, yaw: 0, pitchObj: 0, yawObj: 0, trim: 0, guinada: 0, vz: 0, guinadaObj: 0, vzObj: 0, gimbal: 0 };   // guinada y vz: cuadricoptero (A/D, W/S o palanca izquierda)
 let vuelo = null;                             // registro del vuelo en curso (de L al final)
 const sesion = { aula: false, alumno: null, avion: null, escenario: "libre", viento: { vel: 2, desde: 0, rachas: true }, dificultad: "real" };
 try { if (localStorage.getItem("sim_dificultad") === "facil") sesion.dificultad = "facil"; } catch (e) {}
@@ -1134,14 +1188,19 @@ function rumboDespejado(N, E) {
   }
   return mejor;
 }
+// punto de lanzamiento por defecto de cada mundo real (si no, el centro de la primera zona de detalle)
+const LANZ_DEFECTO = { cartagena: { lat: 37.648889, lon: -1.193194, rumbo: 90 } };     // 37°38'56.0"N 1°11'35.5"W, despegue hacia el este
+/** (lat, lon) -> (N, E) en metros desde el origen del mundo, con la misma formula que los scripts de mundo_cartagena. */
+function latLonANE(mundo, lat, lon) { const o = mundo.origen; return [(lat - o.lat) * 110574, (lon - o.lon) * 111320 * Math.cos(o.lat * D2R)]; }
 async function irLanzamiento() {
   const mundo = mundoDe(sesion.escenario);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo);              // construye el mundo (y su textura) si hace falta
   await indiceZonas();
-  if (!sesion.lanz || sesion.lanz.mundo !== mundo.id) {           // por defecto, el centro de la primera zona de detalle
-    const z0 = (ZONAS.indice || []).find(z => z.mundo === mundo.id);
-    sesion.lanz = z0 ? { mundo: mundo.id, N: Math.round(z0.centro.N), E: Math.round(z0.centro.E), rumbo: rumboDespejado(z0.centro.N, z0.centro.E) }
-                     : { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
+  if (!sesion.lanz || sesion.lanz.mundo !== mundo.id) {
+    const d = LANZ_DEFECTO[mundo.id], z0 = (ZONAS.indice || []).find(z => z.mundo === mundo.id);
+    if (d) { const [N, E] = latLonANE(mundo, d.lat, d.lon); sesion.lanz = { mundo: mundo.id, N: Math.round(N), E: Math.round(E), rumbo: d.rumbo, defecto: true }; }
+    else sesion.lanz = z0 ? { mundo: mundo.id, N: Math.round(z0.centro.N), E: Math.round(z0.centro.E), rumbo: rumboDespejado(z0.centro.N, z0.centro.E) }
+                          : { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
   }
   mostrar("pLanzamiento"); pintarMapaLanz();
 }
@@ -1175,7 +1234,7 @@ function pintarMapaLanz() {
   const M_LAT = 110574, M_LON = 111320 * Math.cos(M.origen.lat * D2R), lat = M.origen.lat + L.N / M_LAT, lon = M.origen.lon + L.E / M_LON;
   const hMar = entorno.alturaMar(L.N, L.E), mar = entorno.enMar(L.N, L.E);
   document.getElementById("lanzInfo").innerHTML = mar ? `<b style="color:#ff6e66">Eso es mar: elige un punto en tierra.</b>` :
-    `Punto elegido: <b>${lat.toFixed(5)} N, ${(-lon).toFixed(5)} O</b> · ${hMar.toFixed(0)} m sobre el mar · a ${(Math.hypot(L.N, L.E) / 1000).toFixed(1)} km del origen · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b> (el más despejado) · escala: ${(anchoM / 1000).toFixed(0)} km de ancho` +
+    `Punto elegido: <b>${lat.toFixed(5)} N, ${(-lon).toFixed(5)} O</b> · ${hMar.toFixed(0)} m sobre el mar · a ${(Math.hypot(L.N, L.E) / 1000).toFixed(1)} km del origen · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b> (${L.defecto ? "punto de salida por defecto, hacia el este" : "el más despejado"}) · escala: ${(anchoM / 1000).toFixed(0)} km de ancho` +
     (zonaEn(M.id, L.N, L.E) ? ` · <b style="color:#ffd54f">dentro de una zona de detalle</b> (foto a 0,5 m, terreno a 5 m, edificios y árboles reales)` : ` · fuera de las zonas de detalle (recuadros amarillos): terreno a 150 m y foto a 12 m`);
   document.getElementById("btnLanzAqui").disabled = mar;
 }
@@ -1442,6 +1501,11 @@ async function empezar() {
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
+  document.getElementById("ayudaTeclasDron").style.display = modelo.esCuadricoptero ? "" : "none";
+  document.getElementById("ayudaTeclasAvion").style.display = modelo.esCuadricoptero ? "none" : "";
+  // el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
+  if (!!modelo.esCuadricoptero !== !!visor.eraDron) visor.camara = modelo.esCuadricoptero ? 3 : 1;
+  visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero);
   construirAnemometro(velPerdida());
   if (carga) await mostrarCarga(mundo.nombre, "Terreno, mar, carreteras y pueblos…", 0.3);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
@@ -1458,9 +1522,10 @@ function reiniciar() {
   mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
   nuevoEvaluador(); vuelo = null; ponerPausa(false);
+  DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
   if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
-  aviso(modelo.esCuadricoptero ? "Pulsa L para armar los motores" : "Pulsa L para lanzar");
+  aviso(modelo.esCuadricoptero ? "Pulsa el botón de despegue (⇧) o L para armar" : "Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
 function orientarLanzamiento() {
@@ -1492,6 +1557,8 @@ function paso(dt) {
   const pAnt = av.p.slice();
   const vn = modelo.paso(av, viento, dt);
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
+  // un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app (camara 3)
+  if (vuelo && !vuelo.otraCamara && !camaraValida() && ESCENARIOS[sesion.escenario].objetivos.length) { vuelo.otraCamara = true; toast("Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)"); }
   if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
@@ -1554,10 +1621,12 @@ function terminarVuelo(final, vn) {
 // =====================================================================
 //  4. RESULTADO Y GUARDADO
 // =====================================================================
-/** Objetivos y veredicto de un vuelo (lo que se guarda). */
+const camaraValida = () => visor.camara === 1 || (!!modelo.esCuadricoptero && visor.camara === 3);
+/** Objetivos y veredicto de un vuelo (lo que se guarda). Ademas de los objetivos, la camara: solo cuenta visto desde el piloto. */
 function datosResultado(v) {
   const E = ESCENARIOS[v.escenario], libre = !E.objetivos.length;
   const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
+  if (!libre) objs.push({ id: "camara", texto: modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
   const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
   return { E, libre, objs, apto, resultado: libre ? "LIBRE" : apto ? "APTO" : "NO APTO" };
 }
@@ -1929,17 +1998,18 @@ function ponerPausa(p) {
   if (p === pausado) return;
   pausado = p; document.getElementById("pausa").classList.toggle("activa", p);
   if (p) {
-    document.getElementById("btnPausaCamara").textContent = "Cámara: " + ["", "piloto", "persecución", "a bordo"][visor.camara];
-    document.getElementById("btnPausaInstr").textContent = "Instrumentos: " + (sinInstrumentos ? "no" : "sí");
+    document.getElementById("btnPausaCamara").textContent = "Cámara: " + nombreCamara(visor.camara);
+    document.getElementById("btnPausaInstr").textContent = (modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí");
     document.getElementById("pausaSonido").checked = Sonido.on;
     document.getElementById("pausaInfo").textContent = `${Modelos.datos(sesion.avion).nombre} · ${ESCENARIOS[sesion.escenario].nombre}`;
     Sonido.silenciar(true);
-  } else { Sonido.silenciar(false); tAnterior = performance.now(); for (const k in teclas) teclas[k] = false; }
+  } else { Sonido.silenciar(false); tAnterior = performance.now(); for (const k in teclas) teclas[k] = false; document.getElementById("ayuda").style.display = "none"; }
 }
+const nombreCamara = n => ["", "piloto", "persecución", modelo && modelo.esCuadricoptero ? "del dron" : "a bordo"][n];
 document.getElementById("btnPausaSeguir").onclick = () => ponerPausa(false);
 document.getElementById("btnPausaReiniciar").onclick = () => { ponerPausa(false); reiniciar(); };
-document.getElementById("btnPausaCamara").onclick = () => { visor.camara = visor.camara % 3 + 1; document.getElementById("btnPausaCamara").textContent = "Cámara: " + ["", "piloto", "persecución", "a bordo"][visor.camara]; };
-document.getElementById("btnPausaInstr").onclick = () => { sinInstrumentos = !sinInstrumentos; document.getElementById("btnPausaInstr").textContent = "Instrumentos: " + (sinInstrumentos ? "no" : "sí"); };
+document.getElementById("btnPausaCamara").onclick = () => { visor.camara = visor.camara % 3 + 1; document.getElementById("btnPausaCamara").textContent = "Cámara: " + nombreCamara(visor.camara); };
+document.getElementById("btnPausaInstr").onclick = () => { sinInstrumentos = !sinInstrumentos; document.getElementById("btnPausaInstr").textContent = (modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí"); };
 document.getElementById("btnPausaAyuda").onclick = () => { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; };
 document.getElementById("btnPausaTerminar").onclick = () => { ponerPausa(false); if (av.estado === "volando") terminarVuelo("abandonado"); else if (vuelo && vuelo.final) mostrarResultado(vuelo); else irInicio(); };
 document.getElementById("btnPausaSalir").onclick = salirAlMenu;
@@ -2041,16 +2111,26 @@ window.addEventListener("keydown", e => {
     if (e.code.startsWith("Arrow")) e.preventDefault();
     return;
   }
-  if (e.code === "Escape") { ponerPausa(!pausado); return; }
+  if (e.code === "Escape") {        // con la ventana de controles abierta, Esc la cierra (y sigue el vuelo); si no, pausa
+    const a = document.getElementById("ayuda");
+    if (a.style.display === "block") { a.style.display = "none"; ponerPausa(false); } else ponerPausa(!pausado);
+    return;
+  }
   if (pausado) return;
   teclas[e.code] = true;
-  const libre = !ESCENARIOS[sesion.escenario].objetivos.length, vto = entorno.viento;
+  const libre = !ESCENARIOS[sesion.escenario].objetivos.length, vto = entorno.viento, dron = !!modelo.esCuadricoptero;
+  if (dron) {                       // teclas de la app y del mando del DJI
+    if (e.code === "KeyM") djiModo();
+    if (e.code === "KeyH") djiRTH();
+    if (e.code === "KeyF") djiFoto();
+    if (e.code === "KeyV") djiVideo();
+  }
   if (e.code === "KeyL") lanzar();
   if (e.code === "KeyR") reiniciar();
   if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
-  if (e.code === "KeyH") mostrarHud = !mostrarHud;
-  if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
+  if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
+  if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
   if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
   if (e.code === "BracketLeft") mando.trim = Math.max(-6, mando.trim - 0.25);
@@ -2091,7 +2171,7 @@ const expo = (x, e) => (1 - e) * x + e * x * x * x;
 /** Lee el mando en cada cuadro. Devuelve true si el mando manda (alguna palanca fuera de la zona muerta o gas absoluto). */
 function leerMando(dt) {
   const p = mandoConectado();
-  MANDO.activo = !!p; if (!p) return false;
+  MANDO.activo = !!p; MANDO.gimbal = 0; if (!p) return false;
   MANDO.id = p.id;
   const ax = p.axes, rx = zonaMuerta(ax[2] || 0, MANDO.zona), ry = zonaMuerta(ax[3] || 0, MANDO.zona), ly = zonaMuerta(ax[1] || 0, MANDO.zona), lx = zonaMuerta(ax[0] || 0, MANDO.zona);
   const cuad = modelo && modelo.esCuadricoptero;
@@ -2099,7 +2179,17 @@ function leerMando(dt) {
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
   const pulsado = i => b(i) && !antes[i];
   if (pantallaActual === null && pulsado(9)) ponerPausa(!pausado);
-  if (pantallaActual === null && !pausado) {
+  if (pantallaActual === null && !pausado && cuad) {     // mando del DJI: A despegar/aterrizar, B volver a casa, X video, Y foto, LB modo, RB camara, Back reiniciar
+    if (pulsado(0)) djiDespegar();
+    if (pulsado(1)) djiRTH();
+    if (pulsado(2)) djiVideo();
+    if (pulsado(3)) djiFoto();
+    if (pulsado(4)) djiModo();
+    if (pulsado(5)) visor.camara = visor.camara % 3 + 1;
+    if (pulsado(8)) reiniciar();
+    const tr = i => p.buttons[i] ? (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0)) : 0;
+    MANDO.gimbal = tr(7) - tr(6);                           // gatillos: rueda del gimbal (RT sube, LT baja)
+  } else if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
     if (pulsado(1)) av.gases = 0;
     if (pulsado(3)) visor.camara = visor.camara % 3 + 1;
@@ -2129,7 +2219,9 @@ function leerTeclado(dt) {
   const cuad = modelo && modelo.esCuadricoptero;
   const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || (cuad && (teclas["KeyA"] || teclas["KeyD"] || teclas["KeyW"] || teclas["KeyS"]));
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
-  if (leerMando(dt) && !teclaPalanca) { leerGasTeclado(dt); return; }
+  const gimbalTeclas = cuad ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
+  if (leerMando(dt) && !teclaPalanca) { mando.gimbal = gimbalTeclas || MANDO.gimbal; leerGasTeclado(dt); return; }
+  mando.gimbal = gimbalTeclas || MANDO.gimbal;
   mando.pitchObj = (teclas["ArrowDown"] ? 1 : 0) - (teclas["ArrowUp"] ? 1 : 0);    // +1 = tirar
   mando.yawObj = (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0);
   mando.guinadaObj = (teclas["KeyD"] ? 1 : 0) - (teclas["KeyA"] ? 1 : 0);                 // cuadricoptero: giro sobre si mismo
@@ -2146,6 +2238,86 @@ function leerGasTeclado(dt) {
   if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - 0.8 * dt);
 }
 
+
+// =====================================================================
+//  APP DJI FLY (cuadricoptero): modo de vuelo C/N/S, foto y video, despegue automatico, aterrizar y volver a casa.
+//  La pantalla #dji imita lo que ve el piloto en el movil con el mando: solo eso, sin los instrumentos del avion.
+// =====================================================================
+const DJI = { grabando: false, tRec: 0, fotos: 0, video: false, tAnt: 0 };
+const NOMBRES_MODO = { C: "Cine", N: "Normal", S: "Sport" };
+function djiModo(m) {
+  if (!modelo || !modelo.esCuadricoptero) return;
+  modelo.modo = m || { N: "S", S: "C", C: "N" }[modelo.modo] || "N";
+  toast(`Modo ${NOMBRES_MODO[modelo.modo]}` + (modelo.modo === "S" ? " · sin frenado suave" : ""));
+}
+function djiFoto() {
+  if (!modelo || !modelo.esCuadricoptero) return;
+  DJI.fotos++; const f = document.getElementById("djiFlash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 80);
+  toast(`Foto ${DJI.fotos}`);
+}
+function djiVideo() {
+  if (!modelo || !modelo.esCuadricoptero) return;
+  DJI.video = true; DJI.grabando = !DJI.grabando; if (DJI.grabando) { DJI.tRec = 0; DJI.tAnt = av.t; }
+  toast(DJI.grabando ? "Grabando" : "Vídeo guardado");
+}
+function djiDisparo() { DJI.video ? djiVideo() : djiFoto(); }
+function djiCamModo() { DJI.video = !DJI.video; if (!DJI.video) DJI.grabando = false; }
+/** Boton de despegue de la app: en el suelo arma y sube a 1,2 m; en vuelo, aterriza en el sitio. */
+function djiDespegar() {
+  if (!modelo || !modelo.esCuadricoptero || Repeticion.activa) return;
+  if (av.estado === "en mano") { lanzar(); modelo.despegar(av); aviso(""); }
+  else if (av.estado === "volando" && av.posado) modelo.despegar(av);
+  else if (av.estado === "volando") { av.rth = { fase: "bajar" }; toast("Aterrizando"); }
+}
+function djiRTH() {
+  if (!modelo || !modelo.esCuadricoptero || Repeticion.activa || av.estado !== "volando" || av.posado) return;
+  if (av.rth && av.rth.fase !== "bajar") { av.rth = null; toast("Volver a casa cancelado"); return; }
+  modelo.volverACasa(av); toast("Volviendo a casa");
+}
+document.getElementById("djiModo").onclick = () => djiModo();
+document.getElementById("djiDisparo").onclick = djiDisparo;
+document.getElementById("djiCamModo").onclick = djiCamModo;
+document.getElementById("djiDespegar").onclick = djiDespegar;
+document.getElementById("djiRTH").onclick = djiRTH;
+const fmtTiempo = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+/** Pantalla de la app: barra de arriba (modo, estado, GPS, señal, batería), mapa, D/H/HS/VS, gimbal y botones. */
+function hudDji(h, vn, vs, dist) {
+  const $ = id => document.getElementById(id), M = modelo.modo || "N", me = $("djiModo");
+  me.textContent = M; me.className = "modo " + M;
+  let est, cl = "";
+  if (Repeticion.activa) est = "REPETICIÓN";
+  else if (av.estado === "en mano") { est = "Motores parados · pulsa despegar o L"; cl = "aviso"; }
+  else if (av.estado === "volando") {
+    if (av.rth) { est = av.rth.fase === "bajar" ? "Aterrizando…" : av.rth.fase === "subir" ? "Volviendo a casa: subiendo…" : "Volviendo a casa…"; cl = "aviso"; }
+    else if (av.despegueAuto) { est = "Despegando…"; cl = "aviso"; }
+    else if (av.posado) est = av.despegado ? "Aterrizado · motores al ralentí" : "Listo para despegar";
+    else est = M === "S" ? "En vuelo · modo Sport" : "En vuelo (GPS)";
+  } else { est = av.estado.toUpperCase(); cl = av.estado === "aterrizado" ? "" : "rojo"; }
+  if (pausado) est += " · PAUSA";
+  $("djiEstado").textContent = est; $("djiEstado").className = "estado " + cl;
+  // grabacion y bateria (tiempo restante con el consumo medio del vuelo)
+  if (DJI.grabando && !pausado) DJI.tRec += Math.max(0, av.t - DJI.tAnt);
+  DJI.tAnt = av.t;
+  $("djiRec").textContent = DJI.grabando ? `● REC ${fmtTiempo(DJI.tRec)}` : "";
+  const bat = modelo.bateriaPct(av), restWh = modelo.propulsion.masa_bateria_Wh * bat / 100, P = av.t > 5 && av.Wh > 0 ? av.Wh / av.t * 3600 : 35;
+  const be = $("djiBat"); be.className = "bat" + (bat < 20 ? " rojo" : ""); be.querySelector("i").style.setProperty("--w", (22 * bat / 100).toFixed(1) + "px");
+  be.lastChild.textContent = `${bat.toFixed(0)} % · ${fmtTiempo(Math.min(5999, restWh / P * 3600))}`;
+  // telemetria como la app: distancia y altura respecto al punto de despegue, velocidad horizontal y vertical
+  const c = casa(), hCasa = entorno.altura ? entorno.altura(c.N, c.E) : 0, f1 = x => (Math.abs(x) < 0.05 ? 0 : x).toFixed(1).replace(".", ",");
+  $("djiD").textContent = dist >= 1000 ? f1(dist / 1000) + " km" : dist.toFixed(0) + " m";
+  $("djiH").textContent = Math.max(0, h - hCasa).toFixed(0) + " m";
+  $("djiHS").textContent = f1(Math.hypot(vn[0], vn[1])) + " m/s"; $("djiVS").textContent = f1(vs) + " m/s";
+  // gimbal (+10 arriba, -90 abajo), botones
+  const g = av.gimbal === undefined ? -10 : av.gimbal;
+  $("djiGimbalMarca").style.top = $("djiGimbalTxt").style.top = ((10 - g) / 100 * 130).toFixed(0) + "px";
+  $("djiGimbalTxt").textContent = (g < 0 ? "−" : "") + Math.abs(Math.round(g)) + "°";
+  $("djiDespegar").textContent = av.estado === "volando" && !av.posado ? "⇩" : "⇧";
+  $("djiDespegar").title = av.estado === "volando" && !av.posado ? "Aterrizar aquí (botón A del mando)" : "Despegar: arma y sube a 1,2 m (botón A del mando)";
+  $("djiRTH").classList.toggle("activo", !!(av.rth && av.rth.fase !== "bajar"));
+  const d = $("djiDisparo"); d.classList.toggle("video", DJI.video); d.classList.toggle("rec", DJI.grabando);
+  $("djiCamTxt").textContent = DJI.video ? "VÍDEO" : "FOTO";
+  const mapa = $("djiMapa"), gps = $("gps"); if (gps.parentNode !== mapa) mapa.appendChild(gps);
+}
 // =====================================================================
 //  HUD Y BUCLE
 // =====================================================================
@@ -2219,7 +2391,7 @@ document.getElementById("gps").addEventListener("wheel", e => { e.preventDefault
 /** Barra de escala: una longitud redonda de un tercio del semiancho del mapa. */
 function escalaRedonda(semi) { const c = [50, 100, 200, 500, 1000, 2000, 5000, 10000]; return c.reduce((a, b) => Math.abs(b - semi / 3) < Math.abs(a - semi / 3) ? b : a, c[0]); }
 function pintarGPS(rumbo) {
-  const cv = document.getElementById("gps"), ver = visor.camara === 2 || visor.camara === 3;
+  const cv = document.getElementById("gps"), ver = visor.camara === 2 || visor.camara === 3 || !!modelo.esCuadricoptero;
   cv.style.display = ver ? "block" : "none";
   if (!ver) return;
   const N = av.p[0], E = av.p[1];
@@ -2342,6 +2514,7 @@ function hud() {
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
+  if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); document.getElementById("dji").style.display = sinInstrumentos ? "none" : ""; }
   if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) document.getElementById(id).style.display = "none";
   document.getElementById("barra").style.display = sinInstrumentos ? "none" : "";       // sin instrumentos: tampoco gas ni palanca (como en el campo)
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";

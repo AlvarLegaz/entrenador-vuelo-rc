@@ -46,7 +46,21 @@ function construirAvion(datos) {
     cono.rotation.z = -Math.PI / 2; cono.position.set(K.helice[0] + 0.02, 0, K.helice[2]); grupo.add(cono);
   }
   grupo.traverse(o => { if (o.isMesh && o !== helice && o.parent !== helice) o.castShadow = true; });
-  return { grupo, prof, timon, alerones, helice };
+  // luces (K.luces: posicion en ejes cuerpo, color y patron de parpadeo): un punto brillante de tamano fijo en pantalla
+  // (sprite sin atenuacion), para que un dron de 25 cm se vea desde el puesto del piloto, y una bolita para las camaras cercanas
+  if (K.luces && K.luces.length && !construirAvion.texLuz) {       // punto redondo con halo, compartido
+    const c = document.createElement("canvas"); c.width = c.height = 32; const g = c.getContext("2d");
+    const gr = g.createRadialGradient(16, 16, 2, 16, 16, 16); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.45, "rgba(255,255,255,0.95)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32); construirAvion.texLuz = new THREE.CanvasTexture(c);
+  }
+  const luces = (K.luces || []).map(l => {
+    const g = new THREE.Group(); g.position.set(...l.p); g.patron = l.patron || "fijo";
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color: l.color, map: construirAvion.texLuz, sizeAttenuation: false, transparent: true, depthWrite: false }));
+    sp.scale.set(0.01, 0.01, 1); g.add(sp);      // en el visor se reescala cada cuadro a un tamano fijo en pixeles
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 6), new THREE.MeshBasicMaterial({ color: l.color })));
+    grupo.add(g); return g;
+  });
+  return { grupo, prof, timon, alerones, helice, luces, dron: !!K.helices };
 }
 
 // ---------------------------------------------------------------------
@@ -510,12 +524,9 @@ class Visor {
       const t = new THREE.Mesh(gtapa, new THREE.MeshLambertMaterial({ color: new THREE.Color(hex) }));
       t.position.set(s[1], Pi.alto, -s[0]); esc.add(t);
     });
-    // el aparcamiento: la furgoneta, la carpa del piloto y la manga de viento a rayas
+    // el aparcamiento: la furgoneta, la mesa del piloto y la manga de viento a rayas (sin carpa: tapaba la vista)
     const furgo = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.1, 4.8), lam(0xececec)); furgo.position.set(8, 1.05, 9); esc.add(furgo);
     const vent = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.7, 3.2), lam(0x2b3a48)); vent.position.set(8, 1.5, 9.3); esc.add(vent);
-    const mCarpa = lam(0x2f5aa8);
-    for (const [x, z] of [[-9, 5], [-5, 5], [-9, 9], [-5, 9]]) { const pie = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.3, 5), mEst); pie.position.set(x, 1.15, z); esc.add(pie); }
-    const techo = new THREE.Mesh(new THREE.ConeGeometry(3.1, 1.2, 4), mCarpa); techo.rotation.y = Math.PI / 4; techo.position.set(-7, 2.9, 7); esc.add(techo);
     const mesa = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.7), lam(0xcfcfcf)); mesa.position.set(-7, 0.78, 7); esc.add(mesa);
     const mastil = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4, 6), mEst); mastil.position.set(-14, 2, -10); esc.add(mastil);
     const [cmg, gmg] = lienzo(32, 128); for (let i = 0; i < 5; i++) { gmg.fillStyle = i % 2 ? "#ffffff" : "#ff6d00"; gmg.fillRect(0, i * 25.6, 32, 25.6); }
@@ -796,6 +807,10 @@ class Visor {
       a.timon.rotation.z = -av.dr;         // + = borde de fuga a la derecha
       for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * (av.da || 0) + (al.prof ? av.de : 0));   // + = aleron derecho arriba
       a.helice.visible = av.gases > 0.05;
+      // luces: en el suelo con los motores parados, apagadas; "lento" (navegacion) 1 Hz, "estrobo" dos destellos por segundo
+      // el sprite sin atenuacion se proyecta a scale / tan(fov/2) del semialto de la pantalla: se reescala a unos 12 px sea cual sea el zoom
+      const tl = (ahora / 1000) % 1, enc = av.estado !== "en mano", sc = 16 * 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
+      for (const l of a.luces) { l.visible = enc && (l.patron === "lento" ? tl < 0.5 : l.patron === "estrobo" ? tl < 0.06 || (tl > 0.15 && tl < 0.21) : true); l.children[0].scale.set(sc, sc, 1); }
       const suelo = this.entorno.altura ? this.entorno.altura(av.p[0], av.p[1]) : 0;
       this.sombra.position.set(t[0], suelo + 0.06, t[2]);
       const s = Math.max(0.2, 1 - Math.max(0, -av.p[2] - suelo) / 60);
@@ -833,13 +848,22 @@ class Visor {
       // vista. Suavizado para que no de saltos al cambiar de camara
       const b = this.base || [0, 0, 0];
       cam.position.set(b[0] + 1.5, b[1] + 1.7, b[2] + 2);
-      const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2), fovObj = Math.max(this.mundo ? 3 : 9, Math.min(50, 50 * 40 / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
+      // el dron es 5 veces mas pequeno que los aviones: su zoom cierra desde mas cerca y hasta 3 grados
+      const k = this.avion && this.avion.dron ? 0.3 : 1;
+      const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2), fovObj = Math.max(this.mundo || k < 1 ? 3 : 9, Math.min(50, 50 * 40 * k / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }
     else if (this.camara === 2) {
       const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * 5, -Math.sin(yaw) * 5, -1.5]);
       cam.position.set(t[0] + back[0], t[1] + back[1], t[2] + back[2]); cam.fov = 60; cam.lookAt(t[0], t[1], t[2]);
+    } else if (this.avion && this.avion.dron) {
+      // camara del dron en su gimbal de 3 ejes: nivelada (sin alabeo ni cabeceo del dron), con el rumbo del dron y la
+      // inclinacion de la rueda (av.gimbal: 0 horizontal, -90 vertical). Campo de vision como el del DJI Mini (83 grados en diagonal)
+      const yaw = Cuat.euler(av.q)[2], g = (av.gimbal === undefined ? -10 : av.gimbal) * Math.PI / 180;
+      const pos = ned2three(Cuat.rot(av.q, [0.1, 0, -0.1])), fw = ned2three([Math.cos(yaw) * Math.cos(g), Math.sin(yaw) * Math.cos(g), -Math.sin(g)]);   // 10 cm sobre el dron: en el suelo el plano cercano (0,1 m) no corta el terreno
+      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 58;
+      cam.up.set(0, 1, 0); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else {
       const q = av.q, pos = ned2three(Cuat.rot(q, [0.3, 0, -0.1])), fw = ned2three(Cuat.rot(q, [1, 0, 0])), up = ned2three(Cuat.rot(q, [0, 0, -1]));
       cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 80;

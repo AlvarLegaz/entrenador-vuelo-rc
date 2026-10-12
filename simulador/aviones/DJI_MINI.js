@@ -6,14 +6,18 @@
 // motores con sus limites reales (inclinacion maxima, empuje maximo, par maximo) y el dron responde con su inercia,
 // su resistencia aerodinamica y el viento: no es un "teleport", se nota el retardo al frenar y las rachas.
 // Mandos del DJI (modo 2): palanca izquierda gas (velocidad vertical, con muelle) y guinada; derecha inclinacion.
-// Teclado: flechas inclinan (arriba = adelante), W/S suben y bajan, A/D giran. L arma los motores en el suelo; para
-// aterrizar, posarlo con poco descenso y mantener S (o la palanca izquierda abajo) hasta que paren los motores.
+// Modos de vuelo C / N / S (Cine, Normal, Sport) como el conmutador del mando: cambian velocidades, inclinacion y giro.
+// Gimbal de 3 ejes: la camara va nivelada y su inclinacion (0 horizontal, -90 vertical) la mueve la rueda del mando.
+// Despegue automatico (sube a 1,2 m y se queda), volver a casa (RTH: sube a 30 m, vuelve al punto de despegue y
+// aterriza) y aterrizaje con la palanca abajo, como en la app DJI Fly. Teclado: flechas inclinan (arriba = adelante),
+// W/S suben y bajan, A/D giran, Q/E gimbal, M modo, H volver a casa, L arma los motores.
 // Ejes y estado como en ModeloAvion (cuerpo x adelante, y derecha, z abajo; mundo NED), para que el simulador, el
 // HUD, la caja negra y la repeticion funcionen igual. No tiene perdida (av.perdida = 0) ni angulo de ataque.
 window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricoptero {
   constructor(datos) {
     Object.assign(this, datos);
     this.esCuadricoptero = true;
+    this.modo = "N"; this.casa = null;                       // modo de vuelo (C/N/S) y punto de despegue [N, E] (para el RTH)
     this.masa_diseno_kg = datos.masa_kg; this.inercia_diseno = Object.assign({}, datos.inercia);
     this.dcg = 0; this.rho = RHO; this.calib = { empuje: 1, resistencia: 1 }; this.facil = false;
     this.mandos = Object.assign({}, datos.mandos);
@@ -29,26 +33,56 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   estadoInicial() {
     return { p: [0, 0, -0.02], q: Cuat.desdeEuler(0, 0, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0, asim: 0,
              estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false,
-             posado: true, despegado: false, tParar: 0, cmd: { adelante: 0, derecha: 0, guinada: 0, vz: 0 } };
+             posado: true, despegado: false, tParar: 0, cmd: { adelante: 0, derecha: 0, guinada: 0, vz: 0 },
+             gimbal: -10, rth: null, despegueAuto: false, hold: null };
   }
   /** Armar: motores al ralenti en el suelo; despega al pedir velocidad vertical. */
   lanzar(av) {
     av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.estado = "volando"; av.posado = true; av.despegado = false; av.tParar = 0;
     av.q = Cuat.desdeEuler(0, 0, Cuat.euler(av.q)[2]);
+    av.rth = null; av.despegueAuto = false; av.hold = null; this.casa = [av.p[0], av.p[1]];     // punto de casa: donde arranca
   }
   /** Palancas -> consignas (con la exponencial del simulador; con mando la pone el mando y expo vale 0), suavizadas
    *  como la respuesta de la emisora. mando: pitch (+ = palanca hacia ti = atras), yaw (+ = derecha), guinada, vz. */
   servos(av, mando, dt) {
     const e = this.mandos.expo || 0, ex = s => (1 - e) * s + e * s * s * s, cl = x => Math.max(-1, Math.min(1, x || 0));
     const obj = { adelante: ex(cl(-mando.pitch)), derecha: ex(cl(mando.yaw)), guinada: ex(cl(mando.guinada)), vz: cl(mando.vz) };
+    // cualquier palanca cancela el RTH y el despegue automatico (como en el DJI)
+    if (Math.max(...Object.values(obj).map(Math.abs)) > 0.3) { av.rth = null; av.despegueAuto = false; }
+    if (av.rth) this._rth(av, obj);
+    else if (av.despegueAuto) { obj.adelante = obj.derecha = obj.guinada = 0; obj.vz = av.agl < 1.2 ? 0.5 : 0; if (av.agl >= 1.2) av.despegueAuto = false; }
     for (const k in obj) av.cmd[k] += Math.max(-10 * dt, Math.min(10 * dt, obj[k] - av.cmd[k]));
+    av.gimbal = Math.max(-90, Math.min(10, av.gimbal + 45 * cl(mando.gimbal) * dt));      // rueda del gimbal: 45 grados/s
   }
+  /** Volver a casa: sube a la altura de RTH, va al punto de despegue a 8 m/s mirando hacia el, y aterriza. Escribe las consignas en obj. */
+  _rth(av, obj) {
+    const R = av.rth, casa = this.casa || [0, 0], dN = casa[0] - av.p[0], dE = casa[1] - av.p[1], d = Math.hypot(dN, dE);
+    const vn = Cuat.rot(av.q, av.v), yaw = Cuat.euler(av.q)[2], M = this.fc.modos[this.modo] || this.fc.modos.N, cl = x => Math.max(-1, Math.min(1, x));
+    obj.adelante = obj.derecha = obj.guinada = 0; obj.vz = 0;
+    if (R.fase === "subir") { obj.vz = av.agl < this.fc.rth_altura_m - 0.5 ? 1 : 0; if (av.agl >= this.fc.rth_altura_m - 0.5 || d < 5) R.fase = "volver"; }
+    if (R.fase === "volver") {
+      const vObj = Math.min(8, d * 0.6), vN = dN / Math.max(d, 1e-3) * vObj, vE = dE / Math.max(d, 1e-3) * vObj;
+      const cy = Math.cos(yaw), sy = Math.sin(yaw);     // velocidad objetivo en ejes de rumbo, como si fuera la palanca
+      obj.adelante = cl((vN * cy + vE * sy) / M.vmax_ms); obj.derecha = cl((-vN * sy + vE * cy) / M.vmax_ms);
+      const rumbo = Math.atan2(dE, dN), err = Math.atan2(Math.sin(rumbo - yaw), Math.cos(rumbo - yaw));
+      obj.guinada = d > 3 ? cl(err * 2) : 0;
+      if (d < 1.5 && Math.hypot(vn[0], vn[1]) < 0.8) R.fase = "bajar";
+    }
+    if (R.fase === "bajar") { obj.vz = -1; av.hold = [casa[0], casa[1]]; }      // baja sujetando la posicion sobre casa
+  }
+  /** Volver a casa (boton RTH de la app o tecla H). */
+  volverACasa(av) {
+    if (av.estado !== "volando" || av.posado) return;
+    av.despegueAuto = false; av.rth = { fase: av.agl < this.fc.rth_altura_m - 0.5 ? "subir" : "volver" };
+  }
+  /** Despegue automatico (boton de la app): arma los motores y sube a 1,2 m. */
+  despegar(av) { if (av.estado !== "volando") this.lanzar(av); if (av.posado) av.despegueAuto = true; }
   mandosCoef() { return { CL: 0, CY: 0, Cl: 0, Cm: 0, Cn: 0 }; }
   /** Un paso: controlador de vuelo -> empuje y pares -> dinamica de 6 grados de libertad. Devuelve la velocidad NED. */
   paso(av, viento, dt) {
     const m = this.masa_kg, I = this.inercia, F = this.fc, pr = this.propulsion, q = av.q, v = av.v, w = av.w, rho = this.rho;
     const Tmax = pr.empuje_max_N * this.calib.empuje, suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl;
-    const tilt = this.mandos.prof_max_grados * D2R, c = av.cmd;
+    const M = F.modos[this.modo] || F.modos.N, tilt = M.inclinacion_grados * D2R, c = av.cmd;
     if (av.motorRoto) { c.vz = -1; }
     // --- estado: velocidad respecto al suelo en NED y en ejes de rumbo (adelante, derecha), angulos ---
     const vn = Cuat.rot(q, v), [roll, pitch, yaw] = Cuat.euler(q), cy = Math.cos(yaw), sy = Math.sin(yaw);
@@ -56,13 +90,22 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     // --- controlador de vuelo ---
     // velocidad horizontal objetivo (palanca derecha) -> aceleracion -> inclinacion objetivo (tope: inclinacion maxima)
     const amax = G0 * Math.tan(tilt);
-    let af = F.kv * (c.adelante * F.vmax_ms - vf), ar = F.kv * (c.derecha * F.vmax_ms - vr);
+    // retencion de posicion (GPS): con la palanca derecha en el centro y ya frenado, se sujeta el punto donde se paro
+    // (sin esto, el viento lo iria arrastrando despacio, como un dron sin GPS)
+    const quieto = Math.abs(c.adelante) < 0.02 && Math.abs(c.derecha) < 0.02;
+    if (quieto && !av.posado) { if (!av.hold && Math.hypot(vf, vr) < 0.5) av.hold = [av.p[0], av.p[1]]; } else av.hold = null;
+    let vfObj = c.adelante * M.vmax_ms, vrObj = c.derecha * M.vmax_ms;
+    if (av.hold) {
+      const lim2 = (x, L) => Math.max(-L, Math.min(L, x)), vN = lim2(0.7 * (av.hold[0] - av.p[0]), 2), vE = lim2(0.7 * (av.hold[1] - av.p[1]), 2);
+      vfObj += vN * cy + vE * sy; vrObj += -vN * sy + vE * cy;
+    }
+    let af = M.kv * (vfObj - vf), ar = M.kv * (vrObj - vr);
     const an = Math.hypot(af, ar); if (an > amax) { af *= amax / an; ar *= amax / an; }
     const pitchObj = -Math.atan(af / G0), rollObj = Math.atan(ar / G0);
     // velocidad vertical objetivo (palanca izquierda): sube a vzmax_sube, baja a vzmax_baja; al centro mantiene la altura
     // proteccion de aterrizaje como la del DJI: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
-    const agl = av.agl === undefined ? 100 : av.agl, bajaMax = agl < 3 ? 0.6 : agl < 8 ? 1.5 : F.vzmax_baja;
-    const vzObj = c.vz > 0 ? c.vz * F.vzmax_sube : c.vz * bajaMax;
+    const agl = av.agl === undefined ? 100 : av.agl, bajaMax = Math.min(M.vzmax_baja, agl < 3 ? 0.6 : agl < 8 ? 1.5 : M.vzmax_baja);
+    const vzObj = c.vz > 0 ? c.vz * M.vzmax_sube : c.vz * bajaMax;
     let T = av.motorRoto ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(roll) * Math.cos(pitch));
     T = Math.max(0, Math.min(Tmax, T));
     // en el suelo: los motores al ralenti hasta que se pide subir; con la palanca abajo un rato, se paran (aterrizado)
@@ -72,14 +115,14 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
         av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.q = Cuat.desdeEuler(0, 0, yaw); av.p[2] = -(suelo + 0.02);
         av.T = T; av.gases = av.motorRoto ? 0 : 0.08; av.rpm = av.motorRoto ? 0 : 0.25 * pr.rpm_max; av.V = 0; av.g_carga = 1; av.alfa = 0; av.beta = 0; av.t += dt;
         av.Wh += (av.motorRoto ? 0 : 6) * dt / 3600;
-        av.tParar = c.vz < -0.3 && av.despegado ? av.tParar + dt : 0;
+        av.tParar = (c.vz < -0.3 || av.rth) && av.despegado ? av.tParar + dt : 0;   // RTH: al posarse para los motores
         if (av.tParar > 0.8 || (av.motorRoto && av.despegado)) av.p[2] = -(suelo - 0.05);    // posado y motores parados: el simulador lo da por aterrizado
         return [0, 0, 0];
       }
       av.posado = false;    // despega
     }
     // --- pares: angulos objetivo -> velocidades angulares objetivo -> par, con los topes de los motores ---
-    const pObj = F.ka * (rollObj - roll), qObj = F.ka * (pitchObj - pitch), rObj = c.guinada * F.rmax_grados_s * D2R;
+    const pObj = F.ka * (rollObj - roll), qObj = F.ka * (pitchObj - pitch), rObj = c.guinada * M.rmax_grados_s * D2R;
     const lim = (x, L) => Math.max(-L, Math.min(L, x));
     let Mx = lim(I.Ixx * F.kr * (pObj - w[0]), F.tau_max), My = lim(I.Iyy * F.kr * (qObj - w[1]), F.tau_max), Mz = lim(I.Izz * F.kr * (rObj - w[2]), F.tau_guinada);
     if (av.motorRoto) { Mx = My = Mz = 0; }
@@ -139,19 +182,29 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   Modelos.registrar({
     id: "DJI_MINI", nombre: "Cuadricóptero DJI Mini 4K", tipo: "cuadricoptero",
     descripcion: "Dron de 249 g con controlador de vuelo estabilizado y retención de posición, como el DJI Mini 4K: suelta las palancas y se queda quieto. Para practicar los mandos del DJI (modo 2) antes de volar el de verdad.",
-    ayuda: "Palanca izquierda: arriba y abajo sube y baja; izquierda y derecha gira sobre sí mismo. Palanca derecha: adelante, atrás y laterales. Con las palancas en el centro frena y se queda quieto. Teclado: flechas inclinan (↑ adelante), W/S suben y bajan, A/D giran. L arma los motores; para aterrizar, pósalo despacio y mantén S hasta que se paren.",
+    ayuda: "Palanca izquierda: arriba y abajo sube y baja; izquierda y derecha gira sobre sí mismo. Palanca derecha: adelante, atrás y laterales. Con las palancas en el centro frena y se queda quieto. Conmutador C/N/S (tecla M) cambia el modo de vuelo; rueda del gimbal (Q/E) inclina la cámara. Botones de la app: despegar, volver a casa (H), foto y vídeo. Para aterrizar, pósalo despacio y mantén la palanca abajo (S) hasta que se paren los motores.",
     caracteristicas: [["Masa en vuelo", "249 g"], ["Tamaño", "249 × 290 × 60 mm desplegado, hélices de 3 pulgadas"], ["Empuje máximo", "≈ 2 veces el peso (4,9 N)"],
-                      ["Velocidad máxima", "10 m/s en modo normal (16 en modo S)"], ["Ascenso / descenso", "5 / 3,5 m/s"], ["Inclinación máxima", "25° (modo normal)"],
-                      ["Batería", "2S 2250 mAh, 17 Wh: unos 30 min de vuelo"], ["Mandos", "modo 2: izquierda gas y guiñada, derecha inclinación"],
+                      ["Modos de vuelo", "C (Cine) 6 m/s · N (Normal) 10 m/s · S (Sport) 16 m/s"], ["Ascenso / descenso", "C 2 / 1,5 · N 3 / 3 · S 5 / 3,5 m/s"],
+                      ["Inclinación máxima", "C 15° · N 25° · S 40°"], ["Giro", "C 60°/s · N 100°/s · S 200°/s"],
+                      ["Cámara", "gimbal de 3 ejes, de −90° a +10°; foto y vídeo desde la app"], ["Volver a casa", "sube a 30 m, vuelve al punto de despegue y aterriza"],
+                      ["Batería", "2S 2250 mAh, 17 Wh: unos 30 min de vuelo"], ["Mandos", "modo 2: izquierda gas y guiñada, derecha inclinación; conmutador C/N/S y rueda del gimbal"],
                       ["Controlador", "estabilizado con retención de posición y altura (como con GPS)"], ["Velocidad de pérdida", "0 m/s (no entra en pérdida)"]],
     masa_kg: 0.249, b_m: 0.25, S_m2: 0.03, c_m: 0.1, inercia: { Ixx: 0.0006, Iyy: 0.0007, Izz: 0.0012, Ixz: 0 }, cg_mm: [0, 0, 0],
     propulsion: { empuje_max_N: 4.9, rpm_max: 16000, D_m: 0.076, masa_bateria_Wh: 17.3, P_max_W: 110 },
     // controlador de vuelo: velocidades maximas, inclinacion, ganancias (velocidad -> aceleracion, altura, angulo -> giro, giro -> par),
     // pares maximos de los motores (N m) y resistencia aerodinamica (CdA, m2) horizontal y vertical
-    fc: { vmax_ms: 10, vzmax_sube: 5, vzmax_baja: 3.5, rmax_grados_s: 100, kv: 1.2, kz: 3.5, ka: 6, kr: 25, tau_max: 0.22, tau_guinada: 0.03, cda_h: 0.012, cda_v: 0.03 },
+    // modos C/N/S del DJI Mini 4K: velocidad horizontal, ascenso, descenso, inclinacion maxima, giro y ganancia de velocidad
+    fc: { modos: { C: { vmax_ms: 6, vzmax_sube: 2, vzmax_baja: 1.5, inclinacion_grados: 15, rmax_grados_s: 60, kv: 0.9 },
+                   N: { vmax_ms: 10, vzmax_sube: 3, vzmax_baja: 3, inclinacion_grados: 25, rmax_grados_s: 100, kv: 1.2 },
+                   S: { vmax_ms: 16, vzmax_sube: 5, vzmax_baja: 3.5, inclinacion_grados: 40, rmax_grados_s: 200, kv: 1.5 } },
+          rth_altura_m: 30, kz: 3.5, ka: 6, kr: 25, tau_max: 0.22, tau_guinada: 0.03, cda_h: 0.012, cda_v: 0.03 },
     mandos: { expo: 0.3, prof_max_grados: 25, aleron_max_grados: 25, timon_max_grados: 0, servo_vel_grados_s: 400, servo_tau_s: 0.02, izq_der: "inclinación lateral (A/D: giro)" },
     lanzamiento: { vel_ms: 0, cabeceo_grados: 0 }, compensador_grados: 0,
     colores: { fuselaje: 0xdcdcdc, ala: 0x3a3a3a, estab: 0x2f2f2f, moviles: 0xd32f2f },
-    malla: { fuselaje: V.fuselaje, estab: V.estab, helices: brazos.map(([x, y]) => [x, y, -0.018]), helice_r: 0.038, helice: [0.095, 0.09, -0.018] },
+    malla: { fuselaje: V.fuselaje, estab: V.estab, helices: brazos.map(([x, y]) => [x, y, -0.018]), helice_r: 0.038, helice: [0.095, 0.09, -0.018],
+             // luces como las del DJI Mini: en los brazos traseros verde a la derecha y roja a la izquierda (parpadeo lento)
+             // y un estrobo blanco en la cola, para verlo desde el puesto del piloto
+             luces: [{ p: [-0.095, 0.09, -0.012], color: 0x00e676, patron: "lento" }, { p: [-0.095, -0.09, -0.012], color: 0xff1744, patron: "lento" },
+                     { p: [-0.07, 0, -0.03], color: 0xffffff, patron: "estrobo" }] },
   }, ModeloCuadricoptero);
 })();
