@@ -1512,7 +1512,8 @@ async function empezar() {
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
   if (mundo) {
     await mostrarCarga(mundo.nombre, "Zona de detalle: ortofoto, edificios y árboles…", 0.6);
-    await ponerZonaDeLanzamiento(mundo); const c = casa(); visor.ponerBase([c.N, c.E], true);
+    const c = casa(); visor.baseNE = [c.N, c.E];                 // antes de la zona: sus arboles se detallan alrededor del punto de salida
+    await ponerZonaDeLanzamiento(mundo); visor.ponerBase([c.N, c.E], true);
     await mostrarCarga(mundo.nombre, "Listo", 1);
   }
   ocultarCarga();

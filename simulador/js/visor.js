@@ -685,13 +685,15 @@ class Visor {
     if (this._carreterasMundo) { this._carreterasMundo(esc, m); this._edificiosSinteticos(esc, m); }
     else this._cintas(esc, m.carreteras, alt);
     this._arbolesMundo(esc, m, 0, 0);
-    // --- rotulos de los pueblos (ciudades y pueblos, no aldeas) ---
+    // --- rotulos de los pueblos (ciudades y pueblos, no aldeas): tamano fijo en pantalla (se reescalan en dibujar), texto con borde ---
+    this.rotulos = [];
     for (const [nombre, rango, e, n] of m.lugares) {
       if (rango > 3) continue;
-      const [c, g] = lienzo(512, 128); g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, 30, 512, 68);
-      g.fillStyle = "#fff"; g.fillText(nombre, 256, 78);
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(c), transparent: true, depthTest: false, fog: false, opacity: 0.85 }));
-      const s = rango === 1 ? 1600 : rango === 2 ? 1000 : 600; sp.scale.set(s, s / 4, 1); sp.position.set(e, alt(n, e) + s * 0.18, -n); esc.add(sp);
+      const [c, g] = lienzo(1024, 256); g.font = "bold 84px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.lineWidth = 14; g.strokeStyle = "rgba(0,0,0,0.8)"; g.lineJoin = "round"; g.strokeText(nombre, 512, 128); g.fillStyle = "#fff"; g.fillText(nombre, 512, 128);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(c), transparent: true, depthTest: false, fog: false, sizeAttenuation: false }));
+      sp.userData.px = rango === 1 ? 64 : rango === 2 ? 52 : 44;               // alto en pixeles (ciudad, pueblo, pedania)
+      sp.position.set(e, alt(n, e) + (rango === 1 ? 300 : 120), -n); esc.add(sp); this.rotulos.push(sp);
     }
     esc.traverse(o => { if (o.isMesh && !o.isSprite) o.receiveShadow = true; });
     if (this._despuesDeConstruirMundo) this._despuesDeConstruirMundo(esc, m);    // visor_real.js: ortofoto de la region
@@ -837,6 +839,10 @@ class Visor {
       m.rotation.set(0, 0, 0); m.lookAt(m.position.x + vw[0], m.position.y, m.position.z + vw[2]); m.rotateX(Math.PI / 2);
     }
     this._camara(av);
+    if (this.rotulos) {           // rotulos de los pueblos: alto fijo en pixeles sea cual sea el zoom (ver las luces del avion)
+      const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
+      for (const sp of this.rotulos) { const h = sp.userData.px * k; sp.scale.set(h * 4, h, 1); }
+    }
     this.renderer.render(this.escena, this.cam);
   }
 

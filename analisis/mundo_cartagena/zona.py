@@ -5,11 +5,15 @@ simulador/mundos/<mundo>.js: N y E en metros desde su origen, alturas sobre el n
   - ortofoto PNOA del IGN (WMS, ~0,5 m/px) en teselas JPEG de 500 m (orto_<i>_<j>.jpg, i hacia el norte, j hacia el este)
   - modelo digital del terreno del IGN a 5 m (WCS Elevacion4258_5), suavizado (viene en metros enteros) -> dem.bin (int16, dm)
   - edificios del Catastro (WFS BU:BuildingPart): huella, plantas y color del tejado sacado de la ortofoto -> edificios.json
-  - arboles: manchas oscuras y verdosas de la ortofoto (copas), con su radio -> arboles.bin (float32: E, N, radio)
+  - arboles: manchas oscuras y verdosas de la ortofoto (copas), con su radio -> arboles.bin (float32: E, N, radio).
+    Solo cuentan como arbol (con tronco en el simulador) las copas sobre suelo labrado claro y rojizo (bancales de
+    almendros y algarrobos) o las grandes; las manchas del monte bajo (fondo oscuro y grisaceo) son matorral y se
+    escriben con radio < 1,3 (los simuladores las pintan como matas, sin tronco) y solo las de mas de 6 m2
   - agua: lado de mar de la linea de costa de OSM, a 5 m -> agua en dem.bin (valor -32768)
 y escribe zona.json con todo lo necesario para colocarla. Uso:
 
     python zona.py <mundo.js> <id> <lat> <lon> [lado_m] [salida_dir]
+    python zona.py arboles <zona_dir>        # solo vuelve a detectar los arboles de una zona ya descargada
 
 Fuentes: ortofoto y MDT (c) Instituto Geografico Nacional (CC BY 4.0); edificios (c) Direccion General del Catastro;
 costa (c) colaboradores de OpenStreetMap (ODbL).
@@ -110,24 +114,7 @@ def main():
     Hdm = np.round(H * 10).astype(np.int16); Hdm[agua] = -32768
     Hdm.astype("<i2").tofile(os.path.join(salida, "dem.bin"))
 
-    # ---------------- arboles: copas oscuras y verdosas en la ortofoto ----------------
-    o = orto.astype(np.float32); lum = o.mean(axis=2)
-    fondo = ndimage.uniform_filter(lum, size=int(30 / mpx))      # luminosidad del entorno (30 m)
-    verde = o[:, :, 1] - 0.5 * (o[:, :, 0] + o[:, :, 2])
-    copa = (lum < 0.80 * fondo) & (lum < 120) & (verde > -6)
-    copa = ndimage.binary_opening(copa, iterations=1)
-    lab, n = ndimage.label(copa)
-    arboles = []
-    if n:
-        sl = ndimage.find_objects(lab); areas = ndimage.sum(np.ones_like(lab), lab, index=np.arange(1, n + 1))
-        cms = ndimage.center_of_mass(copa, lab, np.arange(1, n + 1))
-        for (r, c), ar in zip(cms, areas):
-            area_m2 = ar * mpx * mpx
-            if area_m2 < 3 or area_m2 > 250: continue                # matas sueltas o sombras de edificios
-            Np, Ep = N0 + lado - (r + 0.5) * mpx, E0 + (c + 0.5) * mpx
-            ii, jj = int((Np - N0) / PASO_DEM), int((Ep - E0) / PASO_DEM)
-            if agua[min(ii, nD - 1), min(jj, nD - 1)]: continue
-            arboles.append((Ep, Np, math.sqrt(area_m2 / math.pi)))
+    arboles = detectar_arboles(orto, mpx, agua, N0, E0, lado, nD)
     np.array(arboles, dtype="<f4").tofile(os.path.join(salida, "arboles.bin"))
     print("  arboles: %d" % len(arboles))
 
@@ -183,6 +170,60 @@ def main():
     print("zona escrita en", os.path.abspath(salida))
 
 
+def detectar_arboles(orto, mpx, agua, N0, E0, lado, nD):
+    """Copas (manchas oscuras y algo verdosas) de la ortofoto. Devuelve [(E, N, radio)]: radio >= 1,3 arbol, menor matorral.
+    Arbol de verdad solo si el suelo de alrededor es el de un bancal (claro y rojizo: labrado) o la copa es grande; en el
+    monte bajo (suelo oscuro y gris) cada mata oscura salia como un almendro, y eso llenaba el monte de arboles."""
+    o = orto.astype(np.float32); lum = o.mean(axis=2)
+    k30 = int(30 / mpx)
+    fondo = ndimage.uniform_filter(lum, size=k30)                # luminosidad del entorno (30 m)
+    verde = o[:, :, 1] - 0.5 * (o[:, :, 0] + o[:, :, 2])
+    copa = (lum < 0.80 * fondo) & (lum < 120) & (verde > -6)
+    copa = ndimage.binary_opening(copa, iterations=1)
+    # suelo de alrededor sin las copas: media de los pixeles no oscuros en 30 m; y lo rojizo del suelo (R - B)
+    claro = (~copa).astype(np.float32)
+    suelo = ndimage.uniform_filter(lum * claro, size=k30) / np.maximum(ndimage.uniform_filter(claro, size=k30), 1e-3)
+    rojizo = ndimage.uniform_filter(o[:, :, 0] - o[:, :, 2], size=k30)
+    lab, n = ndimage.label(copa)
+    arboles = []; n_arb = n_mat = 0
+    if n:
+        idx = np.arange(1, n + 1); areas = ndimage.sum(np.ones_like(lab), lab, index=idx)
+        cms = ndimage.center_of_mass(copa, lab, idx)
+        for (r, c), ar in zip(cms, areas):
+            area_m2 = ar * mpx * mpx
+            if area_m2 < 3 or area_m2 > 250: continue                # matas sueltas o sombras de edificios
+            Np, Ep = N0 + lado - (r + 0.5) * mpx, E0 + (c + 0.5) * mpx
+            ii, jj = int((Np - N0) / PASO_DEM), int((Ep - E0) / PASO_DEM)
+            if agua[min(ii, nD - 1), min(jj, nD - 1)]: continue
+            ri, ci = min(int(r), lum.shape[0] - 1), min(int(c), lum.shape[1] - 1)
+            bancal = rojizo[ri, ci] >= 22 or suelo[ri, ci] >= 136
+            radio = math.sqrt(area_m2 / math.pi)
+            if bancal or area_m2 >= 20: arboles.append((Ep, Np, max(radio, 1.3))); n_arb += 1
+            elif area_m2 >= 6: arboles.append((Ep, Np, min(radio, 1.2))); n_mat += 1      # monte bajo: matorral
+    print("  copas: %d arboles (bancales o grandes), %d matas de monte bajo" % (n_arb, n_mat))
+    return arboles
+
+
+def rearbolar(zona_dir):
+    """Vuelve a detectar los arboles de una zona ya descargada (ortofoto y dem.bin en la carpeta) y reescribe arboles.bin,
+    zona.json, zona.js y el indice."""
+    Z = json.load(open(os.path.join(zona_dir, "zona.json")))
+    n_t, lado, N0, E0 = Z["orto"]["teselas"], Z["lado_m"], Z["N0"], Z["E0"]
+    orto = np.zeros((n_t * TESELA_PX, n_t * TESELA_PX, 3), np.uint8)
+    for i in range(n_t):
+        for j in range(n_t):
+            im = np.array(Image.open(os.path.join(zona_dir, "orto_%d_%d.jpg" % (i, j))).convert("RGB"))
+            orto[(n_t - 1 - i) * TESELA_PX:(n_t - i) * TESELA_PX, j * TESELA_PX:(j + 1) * TESELA_PX] = im
+    nD = Z["dem"]["n"]; H = np.fromfile(os.path.join(zona_dir, "dem.bin"), dtype="<i2").reshape(nD, nD); agua = H == -32768
+    arboles = detectar_arboles(orto, TESELA_M / TESELA_PX, agua, N0, E0, lado, nD)
+    np.array(arboles, dtype="<f4").tofile(os.path.join(zona_dir, "arboles.bin"))
+    Z["arboles"]["n"] = len(arboles); json.dump(Z, open(os.path.join(zona_dir, "zona.json"), "w"), indent=1)
+    escribir_indice(os.path.dirname(os.path.abspath(zona_dir)))
+    import empaquetar_fichero
+    empaquetar_fichero.zona(zona_dir); empaquetar_fichero.indice(os.path.dirname(os.path.abspath(zona_dir)))
+    print("arboles reescritos en", os.path.abspath(zona_dir))
+
+
 def escribir_indice(dir_zonas):
     """zonas/indice.json: la cabecera (zona.json) de todas las zonas de la carpeta, para que los dos simuladores sepan
     cuales hay sin recorrer el disco (el navegador no puede)."""
@@ -194,4 +235,5 @@ def escribir_indice(dir_zonas):
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1] == "arboles": rearbolar(sys.argv[2])
+    else: main()

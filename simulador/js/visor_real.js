@@ -158,26 +158,34 @@ Object.assign(Visor.prototype, {
     }).catch(e => console.warn("Sin edificios de la zona:", e));
   },
 
-  /** Arboles detectados en la ortofoto: los de copa grande con tronco y copa; los pequenos, como matorral bajo.
-   *  Instanciados por celdas de 500 m; mas detalle en las copas cercanas al punto de salida. */
+  /** Arboles detectados en la ortofoto: los de copa (radio >= 1,3 m) con tronco y copa, los pequenos como matorral bajo.
+   *  Copa pequena (radio < 2,5 m) = almendro: copa aplanada verde grisacea sobre un tronco corto; grande = algarrobo o
+   *  pino: copa densa y oscura, tronco grueso. Instanciados por celdas de 500 m; mas triangulos cerca del punto de salida. */
   _arbolesZona(g, z) {
     (z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b))).then(A => {
       const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0];
       const arboles = [], matas = [];
-      for (let i = 0; i < A.length; i += 3) (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], A[i + 2]]);
+      for (let i = 0; i < A.length; i += 3) {
+        if (Math.hypot(A[i] - base[1], A[i + 1] - base[0]) < 8) continue;        // claro de 8 m alrededor del piloto (como en Godot)
+        (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], A[i + 2]]);
+      }
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), mTronco = new THREE.MeshLambertMaterial({ color: 0x5b4632 });
       const antes = new Set(g.children);
-      // copas detalladas (80 triangulos) solo a menos de 400 m del punto de salida; mas lejos, 20 triangulos y sin tronco
-      const cerca = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) < 400), lejos = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) >= 400);
+      // copas con 80 triangulos a menos de 600 m del punto de salida; mas lejos, 20. Tronco en todos (es lo que se ve desde abajo)
+      const tronco = rc => rc < 2.5 ? 0.7 + 0.25 * rc : 1.2 + 0.4 * rc;           // altura del tronco: almendro corto, algarrobo mas alto
+      const cerca = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) < 600), lejos = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) >= 600);
       for (const [lista, det] of [[cerca, 1], [lejos, 0]]) {
         this._instanciarEn(g, new THREE.IcosahedronGeometry(1, det), mat, lista, ([e, n, rc], M, C) => {
-          const ht = 0.9 + 0.45 * rc; P.set(e, alt(n, e) + ht + rc * 0.55, -n); S.set(rc, rc * (0.7 + 0.25 * r()), rc); Q.setFromAxisAngle(eje, r() * 6.28);
-          M.compose(P, Q, S); C.setHSL(0.2 + 0.05 * r(), 0.28 + 0.12 * r(), 0.16 + 0.07 * r());
+          const ht = tronco(rc), alm = rc < 2.5, sy = alm ? 0.55 + 0.15 * r() : 0.8 + 0.2 * r();     // almendro: copa aplanada
+          P.set(e, alt(n, e) + ht + rc * sy * 0.75, -n); S.set(rc * (0.9 + 0.2 * r()), rc * sy, rc * (0.9 + 0.2 * r())); Q.setFromAxisAngle(eje, r() * 6.28);
+          M.compose(P, Q, S);
+          if (alm) C.setHSL(0.21 + 0.04 * r(), 0.2 + 0.1 * r(), 0.27 + 0.08 * r());    // verde grisaceo, mas claro
+          else C.setHSL(0.24 + 0.04 * r(), 0.3 + 0.12 * r(), 0.14 + 0.06 * r());       // algarrobo / pino: verde oscuro
         }, 500);
       }
-      this._instanciarEn(g, new THREE.CylinderGeometry(0.12, 0.2, 1, 5), mTronco, cerca, ([e, n, rc], M, C) => {
-        const ht = 0.9 + 0.45 * rc; P.set(e, alt(n, e) + ht / 2, -n); S.set(rc / 2.2, ht, rc / 2.2); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
+      this._instanciarEn(g, new THREE.CylinderGeometry(0.13, 0.22, 1, 6), mTronco, arboles, ([e, n, rc], M, C) => {
+        const ht = tronco(rc), gr = rc < 2.5 ? 0.9 : 1.6; P.set(e, alt(n, e) + ht / 2, -n); S.set(gr, ht * 1.15, gr); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
       }, 500);
       this._instanciarEn(g, new THREE.IcosahedronGeometry(1, 0), mat, matas, ([e, n, rc], M, C) => {
         P.set(e, alt(n, e) + rc * 0.3, -n); S.set(rc, rc * 0.55, rc); Q.setFromAxisAngle(eje, r() * 6.28); M.compose(P, Q, S);
