@@ -2293,7 +2293,7 @@ function hud() {
     (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
     (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : "");
   const bat = modelo.bateriaPct(av), vClase = av.V < 1.1 * AN.vs ? "rojo" : av.V < 1.3 * AN.vs ? "ambar" : "";
-  document.getElementById("lecturas").innerHTML = (av.estado === "en mano" && !vuelo) ? "" :
+  document.getElementById("lecturas").innerHTML = ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
     `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
     `<div class="lect"><b>${vs >= 0 ? "+" : ""}${vs.toFixed(1)}</b><span>asc. m/s</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
     `<div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div><div class="lect ${bat < 20 ? "rojo" : ""}"><b>${bat.toFixed(0)}%</b><span>batería</span></div>` +
@@ -2316,6 +2316,7 @@ function hud() {
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
   if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) document.getElementById(id).style.display = "none";
+  document.getElementById("barra").style.display = sinInstrumentos ? "none" : "";       // sin instrumentos: tampoco gas ni palanca (como en el campo)
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
 }
