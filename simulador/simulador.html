@@ -82,6 +82,7 @@
   #horizonte { width: 190px; height: 190px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
   #anemometro, #variometro { width: 124px; height: 124px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
   #gps { width: 190px; height: 190px; pointer-events: auto; cursor: zoom-in; display: none; border-radius: 10px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  body.cam1 #gps { order: 10; }     /* camara del piloto: el GPS va a la derecha, donde en las otras camaras estan los relojes */
   #ayuda { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #ddd; background: rgba(8,14,22,.92); padding: 18px 22px;
            border-radius: var(--radio); font-size: 14px; line-height: 1.6; max-width: 560px; display: none; border: 1px solid var(--borde); z-index: 35; }
   #ayuda h3 { margin: 0 0 8px; font-size: 16px; color: var(--acento); }
@@ -2391,7 +2392,7 @@ document.getElementById("gps").addEventListener("wheel", e => { e.preventDefault
 /** Barra de escala: una longitud redonda de un tercio del semiancho del mapa. */
 function escalaRedonda(semi) { const c = [50, 100, 200, 500, 1000, 2000, 5000, 10000]; return c.reduce((a, b) => Math.abs(b - semi / 3) < Math.abs(a - semi / 3) ? b : a, c[0]); }
 function pintarGPS(rumbo) {
-  const cv = document.getElementById("gps"), ver = visor.camara === 2 || visor.camara === 3 || !!modelo.esCuadricoptero;
+  const cv = document.getElementById("gps"), ver = true;                 // en todas las camaras (en la 1, a la derecha, en vez de los relojes)
   cv.style.display = ver ? "block" : "none";
   if (!ver) return;
   const N = av.p[0], E = av.p[1];
@@ -2467,7 +2468,8 @@ function pintarHorizonte(roll, pitch, rumbo) {
   const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
   el.style.display = ver ? "block" : "none";
   document.body.classList.toggle("cam1", !ver);
-  for (const id of ["anemometro", "variometro"]) document.getElementById(id).style.display = av.estado === "en mano" && !vuelo ? "none" : "block";
+  // relojes solo en las camaras 2 y 3: en la del piloto su sitio lo ocupa el GPS (en el campo no hay relojes, pero si movil con mapa)
+  for (const id of ["anemometro", "variometro"]) document.getElementById(id).style.display = (av.estado === "en mano" && !vuelo) || !ver ? "none" : "block";
   if (!ver) return;
   document.getElementById("hzRosa").setAttribute("transform", `rotate(${-rumbo} 150 150)`);
   // marcas sobre la rosa (giran con ella): casa = hacia el piloto, pista = eje de la pista, viento = de donde viene
