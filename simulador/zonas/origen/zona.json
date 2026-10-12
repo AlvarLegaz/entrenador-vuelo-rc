@@ -1,0 +1,37 @@
+{
+ "id": "origen",
+ "mundo": "cartagena",
+ "centro": {
+  "lat": 37.612788,
+  "lon": -1.049916,
+  "N": 0.0,
+  "E": 0.0
+ },
+ "lado_m": 3000.0,
+ "N0": -1500.0,
+ "E0": -1500.0,
+ "orto": {
+  "teselas": 6,
+  "tesela_m": 500.0,
+  "tesela_px": 1024,
+  "archivo": "orto_{i}_{j}.jpg",
+  "nota": "i hacia el norte, j hacia el este; fila 0 de cada imagen = su borde norte"
+ },
+ "dem": {
+  "archivo": "dem.bin",
+  "n": 601,
+  "paso_m": 5.0,
+  "unidad": "dm sobre el nivel del mar, int16 little-endian, fila 0 = sur, -32768 = agua"
+ },
+ "edificios": {
+  "archivo": "edificios.json",
+  "n": 6043,
+  "nota": "p: [E, N, ...] (m, plano del mundo); pl: plantas; b: cota de la base (m); c: color del tejado"
+ },
+ "arboles": {
+  "archivo": "arboles.bin",
+  "n": 53856,
+  "nota": "float32 little-endian: E, N, radio de copa (m)"
+ },
+ "fuente": "Ortofoto y MDT: (c) Instituto Geografico Nacional (CC BY 4.0). Edificios: (c) Direccion General del Catastro. Costa: (c) OpenStreetMap (ODbL)."
+}

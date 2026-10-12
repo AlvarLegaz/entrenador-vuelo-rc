@@ -14,6 +14,8 @@ stl/T1/scripts/out/
 # Godot y otras herramientas descargadas (no van al repositorio)
 herramientas/
 # zonas de detalle de los mundos reales: se generan con analisis/mundo_cartagena/zona.py
+# Las dos de la primera version release (origen y salida, 2026-10-13) se subieron UNA vez con git add -f.
+# Las regeneraciones y las zonas nuevas NO se suben: pesan 13-15 MB por zona y cada copia queda en el historial.
 simulador/zonas/
 # cache de importacion de Godot (se regenera al abrir el proyecto)
 simulador_godot/.godot/
