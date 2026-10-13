@@ -1606,7 +1606,8 @@ function terminarVuelo(final, vn) {
   if (final === "aterrizado" || final.startsWith("roto")) Sonido.evento(final.startsWith("roto") ? "roto" : "toque");
   const v = vuelo;
   if (salirTras) { salirTras = false; guardarVuelo(v, datosResultado(v)); irInicio(); return; }
-  setTimeout(() => mostrarResultado(v), final === "abandonado" ? 0 : 1800);
+  // solo si sigue siendo el vuelo en curso: si en esos 1,8 s se ha pulsado R o se ha salido, el resultado ya no toca
+  setTimeout(() => { if (vuelo === v && pantallaActual === null && !Repeticion.activa) mostrarResultado(v); }, final === "abandonado" ? 0 : 1800);
 }
 
 // =====================================================================

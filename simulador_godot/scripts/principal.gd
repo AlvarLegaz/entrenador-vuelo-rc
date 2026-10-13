@@ -643,7 +643,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	var v = vuelo
 	if salir_tras: salir_tras = false; guardar_vuelo(v, datos_resultado(v)); ir_inicio(); return
 	if final != "abandonado": await get_tree().create_timer(1.8).timeout
-	mostrar_resultado(v)
+	if vuelo == v and pantalla_actual == "" and not rep_activa: mostrar_resultado(v)     # si entretanto se pulso R o se salio, ya no toca
 
 # =====================================================================
 #  RESULTADO Y GUARDADO
