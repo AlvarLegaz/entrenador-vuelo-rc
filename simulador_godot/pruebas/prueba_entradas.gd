@@ -1,6 +1,6 @@
 extends SceneTree
 ## Teclado y mando de verdad (sin el piloto automatico de --auto): inyecta teclas, botones y palancas en un vuelo con el
-## E1 y otro con el DJI y comprueba que el simulador responde. Necesita ventana (no --headless). El mando se simula en el
+## E1, otro con el Poli-1 (timon de 4 canales) y otro con el DJI y comprueba que el simulador responde. Necesita ventana (no --headless). El mando se simula en el
 ## dispositivo 0 aunque no haya ninguno conectado (Input acepta los eventos igual).
 ## Uso: herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/prueba_entradas.gd
 
@@ -59,6 +59,27 @@ func _initialize() -> void:
 	_tecla(KEY_UP, true); await create_timer(0.3).timeout
 	_ok("el teclado vuelve a mandar al tocarlo", not p._mando_usado and p.mando["pitch"] < -0.5, "(%.2f)" % p.mando["pitch"]); _tecla(KEY_UP, false)
 	await _pulsa(KEY_R); _ok("R empieza de nuevo", p.av["estado"] == "en mano")
+	print("Poli-1 (4 canales), timon con A / D y la palanca izquierda de lado:")
+	p.salir_al_menu(); await create_timer(0.5).timeout
+	await _volar("G1")
+	_ok("es de 4 canales", p.modelo.tipo == "cuatro", "(tipo %s)" % p.modelo.tipo)
+	_tecla(KEY_W, true); await create_timer(1.0).timeout; _tecla(KEY_W, false)
+	await _pulsa(KEY_L); await create_timer(0.3).timeout
+	_tecla(KEY_D, true); await create_timer(0.4).timeout
+	_ok("D mueve el timon a la derecha (y no los alerones)", p.mando["guinada"] > 0.9 and p.av["dr"] > 0.05 and absf(p.av["da"]) < 0.01,
+		"(palanca %.2f, timon %.3f rad, alerones %.3f rad)" % [p.mando["guinada"], p.av["dr"], p.av["da"]]); _tecla(KEY_D, false)
+	await create_timer(0.4).timeout
+	_tecla(KEY_A, true); await create_timer(0.4).timeout
+	_ok("A mueve el timon a la izquierda", p.av["dr"] < -0.05, "(%.3f rad)" % p.av["dr"]); _tecla(KEY_A, false)
+	await create_timer(0.4).timeout
+	_tecla(KEY_RIGHT, true); await create_timer(0.4).timeout
+	_ok("flecha derecha mueve los alerones (y no el timon)", p.av["da"] > 0.05 and absf(p.av["dr"]) < 0.01,
+		"(alerones %.3f rad, timon %.3f rad)" % [p.av["da"], p.av["dr"]]); _tecla(KEY_RIGHT, false)
+	_eje(JOY_AXIS_LEFT_X, -0.8); await create_timer(0.4).timeout
+	_ok("palanca izquierda a la izquierda mueve el timon", p._mando_usado and p.mando["guinada"] < -0.5 and p.av["dr"] < -0.05,
+		"(palanca %.2f, timon %.3f rad)" % [p.mando["guinada"], p.av["dr"]]); _eje(JOY_AXIS_LEFT_X, 0.0)
+	_tecla(KEY_UP, true); await create_timer(0.1).timeout; _tecla(KEY_UP, false)
+	await _pulsa(KEY_R)
 	print("DJI, teclado y mando:")
 	p.salir_al_menu(); await create_timer(0.5).timeout
 	await _volar("DJI_MINI")
