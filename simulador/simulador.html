@@ -162,6 +162,18 @@
   input[type=range] { accent-color: var(--acento); }
   input[type=checkbox] { accent-color: var(--acento); width: 16px; height: 16px; }
   .fila { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  /* monitor de palancas del mando: una fila por palanca, barra centrada, numero de eje e invertir */
+  #mandoMonitor { margin: 10px 0 4px; display: grid; grid-template-columns: minmax(150px, 230px) 1fr 52px 96px; gap: 6px 10px; align-items: center; font-size: 13px; }
+  #mandoMonitor .nom { color: var(--suave); } #mandoMonitor .eje { color: var(--suave); font-variant-numeric: tabular-nums; }
+  #mandoMonitor .barra { height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; position: relative; overflow: hidden; }
+  #mandoMonitor .barra::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.35); }
+  #mandoMonitor .barra i { position: absolute; top: 0; bottom: 0; background: var(--acento); }
+  #mandoMonitor .barra.hecho i { background: #8be08f; }
+  #mandoMonitor.inactivo { opacity: .45; }
+  #mandoMonitor label { min-width: 0; font-size: 13px; }
+  #mandoAsist { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--acento); border-radius: 10px; background: rgba(255,200,61,.08); display: none; font-size: 15px; }
+  #mandoAsist.activo { display: block; } #mandoAsist b { color: var(--acento); }
+  #mandoAviso { color: #ffb74d; font-size: 13px; margin: 6px 0; } #mandoAviso:empty { display: none; }
   .fila label { min-width: 140px; color: var(--suave); font-size: 14px; }
   .fila input[type=range] { flex: 1; min-width: 120px; max-width: 320px; }
   .fila b { font-size: 14px; }
@@ -522,7 +534,17 @@
         <div class="fila"><label for="mandoGas">Gas</label><select id="mandoGas" style="flex:1"><option value="incremental">Palanca con muelle (mando de consola): arriba sube el gas, abajo lo baja</option>
           <option value="absoluto">Palanca sin muelle (emisora RC): la posición es el gas</option></select></div>
         <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="60" step="5"><b id="mandoExpoTxt"></b></div>
-        <p class="sub" style="font-size:13px">Palanca derecha: profundidad (hacia ti, morro arriba) y alerones o timón. Palanca izquierda: gas. Botones: A lanzar · B cortar gas · Y cámara · X empezar de nuevo · cruceta compensador · Start pausa.</p>
+        <div class="fila"><label for="mandoPerfil">Orden de los ejes</label><select id="mandoPerfil" style="flex:1">
+          <option value="consola">Mando de consola (Xbox, PlayStation…)</option>
+          <option value="aetr">Emisora RC, canales AETR (EdgeTX, OpenTX, RadioMaster, FrSky, Jumper)</option>
+          <option value="taer">Emisora RC, canales TAER (Spektrum, Futaba)</option>
+          <option value="propio">Asignado con el asistente</option></select></div>
+        <div class="fila"><label></label><button class="btn" id="btnMandoAsist">Asignar las palancas moviéndolas…</button>
+          <span class="sub" style="font-size:13px;flex:1">Detecta qué eje es cada palanca y en qué sentido va. Sirve para cualquier emisora.</span></div>
+        <div id="mandoAsist"><div id="mandoAsistTxt"></div><div class="fila" style="margin-bottom:0"><button class="btn" id="btnMandoAsistNo">Cancelar</button></div></div>
+        <div id="mandoAviso"></div>
+        <div id="mandoMonitor"></div>
+        <p class="sub" style="font-size:13px">Modo 2: palanca derecha profundidad (hacia ti, morro arriba) y alerones o timón; palanca izquierda gas (y guiñada en el cuadricóptero). En el monitor, la barra va a la derecha al subir el gas, al mover a la derecha y al empujar la palanca de profundidad; si alguna va al revés, marca «invertir». Botones del mando de consola: A lanzar · B cortar gas · Y cámara · X empezar de nuevo · cruceta compensador · Start pausa.</p>
         <h2 style="margin-top:18px">Teclado</h2>
         <table class="datos teclas">
           <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Profundidad: ↓ tira (morro arriba), ↑ empuja</td></tr>
@@ -2148,17 +2170,111 @@ window.addEventListener("blur", () => { for (const k in teclas) teclas[k] = fals
 //  Proporcional, con zona muerta y exponencial propia. Sirve un mando de consola o una emisora RC por USB (que
 //  el sistema ve como joystick). Si el mando se mueve, manda el mando; si no, el teclado.
 // =====================================================================
-const MANDO = { gas: "incremental", expo: 0.3, zona: 0.06, botones: [], activo: false, id: "" };
-try { const g = JSON.parse(localStorage.getItem("sim_mando") || "{}"); if (g.gas) MANDO.gas = g.gas; if (g.expo !== undefined) MANDO.expo = g.expo; } catch (e) {}
-function guardarMando() { try { localStorage.setItem("sim_mando", JSON.stringify({ gas: MANDO.gas, expo: MANDO.expo })); } catch (e) {} }
+// Orden de los ejes: para cada palanca (modo 2), el indice del eje en el Gamepad API y su signo, para llevarlo a la
+// convencion interna: lx izquierda horizontal (+ derecha), ly izquierda vertical (- arriba), rx derecha horizontal
+// (+ derecha), ry derecha vertical (- arriba = empujada). Un mando de consola sigue el orden "standard" del navegador;
+// una emisora por USB manda sus canales en su orden (AETR en EdgeTX/OpenTX, TAER en Spektrum/Futaba) y con la
+// palanca arriba en +1, por eso las verticales llevan signo -1. Si no coincide, el asistente lo detecta moviendo.
+const PERFILES_MANDO = {
+  consola: { lx: [0, 1], ly: [1, 1], rx: [2, 1], ry: [3, 1] },
+  aetr: { rx: [0, 1], ry: [1, -1], ly: [2, -1], lx: [3, 1] },
+  taer: { ly: [0, -1], rx: [1, 1], ry: [2, -1], lx: [3, 1] },
+};
+const PALANCAS = [["ly", "Gas (izquierda, vertical)"], ["lx", "Timón / guiñada (izquierda, horizontal)"], ["rx", "Alabeo (derecha, horizontal)"], ["ry", "Profundidad (derecha, vertical)"]];
+const ejesDe = perfil => { const P = PERFILES_MANDO[perfil], e = {}; for (const k in P) e[k] = { i: P[k][0], s: P[k][1] }; return e; };
+const MANDO = { gas: "incremental", expo: 0.3, zona: 0.06, botones: [], activo: false, id: "", perfil: "consola", ejes: ejesDe("consola") };
+try {
+  const g = JSON.parse(localStorage.getItem("sim_mando") || "{}");
+  if (g.gas) MANDO.gas = g.gas; if (g.expo !== undefined) MANDO.expo = g.expo;
+  if (g.perfil) MANDO.perfil = g.perfil;
+  if (g.ejes && PALANCAS.every(([k]) => g.ejes[k] && Number.isInteger(g.ejes[k].i))) MANDO.ejes = g.ejes;
+} catch (e) {}
+function guardarMando() { try { localStorage.setItem("sim_mando", JSON.stringify({ gas: MANDO.gas, expo: MANDO.expo, perfil: MANDO.perfil, ejes: MANDO.ejes })); } catch (e) {} }
+/** Valor de una palanca (lx, ly, rx, ry) en la convencion interna, sin zona muerta. */
+function ejeMando(ax, k) { const e = MANDO.ejes[k]; return Math.max(-1, Math.min(1, (ax[e.i] || 0) * e.s)); }
 function pintarMandoCfg() {
   document.getElementById("mandoGas").value = MANDO.gas;
   document.getElementById("mandoExpo").value = Math.round(MANDO.expo * 100);
   document.getElementById("mandoExpoTxt").textContent = Math.round(MANDO.expo * 100) + " %";
+  document.getElementById("mandoPerfil").value = MANDO.perfil;
   const p = mandoConectado();
-  document.getElementById("mandoEstado").innerHTML = p ? `<b style="color:#8be08f">Mando conectado:</b> ${esc(p.id)}` :
+  document.getElementById("mandoEstado").innerHTML = p ? `<b style="color:#8be08f">Mando conectado:</b> ${esc(p.id)} · ${p.axes.length} ejes` :
     "Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.";
+  // una emisora no se presenta como mando "standard": si sigue con el orden de consola, lo avisa
+  document.getElementById("mandoAviso").textContent = p && p.mapping !== "standard" && MANDO.perfil === "consola"
+    ? "Este dispositivo no es un mando de consola (parece una emisora): elige el orden de canales de tu emisora o usa el asistente; con el orden de consola el gas y el alabeo salen cambiados." : "";
+  const mon = document.getElementById("mandoMonitor");
+  if (!mon.children.length) mon.innerHTML = PALANCAS.map(([k, nom]) =>
+    `<span class="nom">${nom}</span><span class="barra" id="monB_${k}"><i></i></span><span class="eje" id="monE_${k}"></span>` +
+    `<label><input type="checkbox" id="monI_${k}"> invertir</label>`).join("");
+  for (const [k] of PALANCAS) {
+    document.getElementById("monE_" + k).textContent = "eje " + MANDO.ejes[k].i;
+    const inv = document.getElementById("monI_" + k), base = (PERFILES_MANDO[MANDO.perfil] || {})[k];
+    inv.checked = base ? MANDO.ejes[k].s !== base[1] : MANDO.ejes[k].s < 0;
+    inv.onchange = () => { MANDO.ejes[k].s *= -1; guardarMando(); };
+  }
+  if (!MON.raf) MON.raf = requestAnimationFrame(monitorMando);
 }
+/** Monitor en vivo de las cuatro palancas (y el asistente) mientras se ven los ajustes. La barra va a la derecha al
+ *  subir el gas, al mover a la derecha y al empujar la profundidad. */
+const MON = { raf: 0 };
+function monitorMando() {
+  if (pantallaActual !== "pAjustes") { MON.raf = 0; return; }
+  MON.raf = requestAnimationFrame(monitorMando);
+  const p = mandoConectado(), mon = document.getElementById("mandoMonitor");
+  mon.classList.toggle("inactivo", !p);
+  if (!p) return;
+  for (const [k] of PALANCAS) {
+    const v = ejeMando(p.axes, k), d = k === "ly" || k === "ry" ? -v : v, i = document.querySelector(`#monB_${k} i`);
+    i.style.left = (50 + 50 * Math.min(0, d)) + "%"; i.style.width = (50 * Math.abs(d)) + "%";
+  }
+  if (ASIST.activo) pasoAsistente(p);
+}
+// ---- asistente: cada palanca se mueve y se deja en un extremo; el eje que mas ha recorrido y esta en ese extremo es
+// el suyo, y el signo sale de hacia donde esta ----
+const PASOS_ASIST = [
+  ["ly", -1, "Mueve la palanca de <b>gas</b> (izquierda) arriba y abajo y déjala <b>arriba del todo</b>."],
+  ["lx", 1, "Mueve la palanca <b>izquierda</b> a los lados y mantenla a la <b>derecha</b> del todo (timón)."],
+  ["rx", 1, "Mueve la palanca <b>derecha</b> a los lados y mantenla a la <b>derecha</b> del todo (alabeo)."],
+  ["ry", -1, "Mueve la palanca <b>derecha</b> arriba y abajo y mantenla <b>arriba</b>, empujada del todo (profundidad)."],
+];
+const ASIST = { activo: false };
+function empezarAsistente() {
+  const p = mandoConectado();
+  if (!p) { document.getElementById("mandoAviso").textContent = "Conecta la emisora por USB y mueve una palanca para que el navegador la vea."; return; }
+  Object.assign(ASIST, { activo: true, paso: 0, nuevos: {}, usados: new Set() });
+  reiniciarPasoAsistente(p); document.getElementById("mandoAsist").classList.add("activo");
+}
+function reiniciarPasoAsistente(p) {
+  ASIST.min = p.axes.slice(); ASIST.max = p.axes.slice(); ASIST.cand = -1; ASIST.t = 0;
+  document.getElementById("mandoAsistTxt").innerHTML = `Paso ${ASIST.paso + 1} de 4. ` + PASOS_ASIST[ASIST.paso][2];
+}
+function pasoAsistente(p) {
+  const ax = p.axes;
+  for (let i = 0; i < ax.length; i++) { ASIST.min[i] = Math.min(ASIST.min[i], ax[i]); ASIST.max[i] = Math.max(ASIST.max[i], ax[i]); }
+  let mejor = -1, rec = 0.9;
+  for (let i = 0; i < ax.length; i++) if (!ASIST.usados.has(i) && ASIST.max[i] - ASIST.min[i] > rec && Math.abs(ax[i]) > 0.7) { mejor = i; rec = ASIST.max[i] - ASIST.min[i]; }
+  const ahora = performance.now();
+  if (mejor !== ASIST.cand) { ASIST.cand = mejor; ASIST.t = ahora; return; }
+  if (mejor < 0 || ahora - ASIST.t < 500) return;                 // medio segundo quieta en el extremo
+  const [k, objetivo] = PASOS_ASIST[ASIST.paso];
+  ASIST.nuevos[k] = { i: mejor, s: Math.sign(ax[mejor]) === objetivo ? 1 : -1 }; ASIST.usados.add(mejor);
+  if (++ASIST.paso < PASOS_ASIST.length) { reiniciarPasoAsistente(p); return; }
+  MANDO.ejes = ASIST.nuevos; MANDO.perfil = "propio"; ASIST.activo = false; guardarMando();
+  document.getElementById("mandoAsistTxt").innerHTML = "<b>Listo.</b> Comprueba en el monitor que cada barra va hacia la derecha al subir el gas, mover a la derecha y empujar la profundidad." +
+    (MANDO.gas === "incremental" ? " Si es una emisora, elige arriba <b>Gas: palanca sin muelle</b>." : "");
+  document.getElementById("btnMandoAsistNo").textContent = "Cerrar";
+  pintarMandoCfg();
+}
+document.getElementById("btnMandoAsist").onclick = () => { document.getElementById("btnMandoAsistNo").textContent = "Cancelar"; empezarAsistente(); };
+document.getElementById("btnMandoAsistNo").onclick = () => { ASIST.activo = false; document.getElementById("mandoAsist").classList.remove("activo"); };
+document.getElementById("mandoPerfil").addEventListener("change", e => {
+  MANDO.perfil = e.target.value;
+  if (PERFILES_MANDO[MANDO.perfil]) MANDO.ejes = ejesDe(MANDO.perfil);
+  else if (!ASIST.nuevos) empezarAsistente();                     // "asignado con el asistente" sin haberlo pasado: lo abre
+  if (MANDO.perfil === "aetr" || MANDO.perfil === "taer") MANDO.gas = "absoluto";      // la palanca de gas de una emisora no tiene muelle
+  guardarMando(); pintarMandoCfg();
+});
 document.getElementById("mandoGas").addEventListener("change", e => { MANDO.gas = e.target.value; guardarMando(); });
 document.getElementById("mandoExpo").addEventListener("input", e => { MANDO.expo = +e.target.value / 100; guardarMando(); pintarMandoCfg(); });
 window.addEventListener("gamepadconnected", () => pintarMandoCfg());
@@ -2175,7 +2291,8 @@ function leerMando(dt) {
   const p = mandoConectado();
   MANDO.activo = !!p; MANDO.gimbal = 0; if (!p) return false;
   MANDO.id = p.id;
-  const ax = p.axes, rx = zonaMuerta(ax[2] || 0, MANDO.zona), ry = zonaMuerta(ax[3] || 0, MANDO.zona), ly = zonaMuerta(ax[1] || 0, MANDO.zona), lx = zonaMuerta(ax[0] || 0, MANDO.zona);
+  const ax = p.axes, E = k => ejeMando(ax, k);                     // ejes segun el orden configurado (consola o emisora)
+  const rx = zonaMuerta(E("rx"), MANDO.zona), ry = zonaMuerta(E("ry"), MANDO.zona), ly = zonaMuerta(E("ly"), MANDO.zona), lx = zonaMuerta(E("lx"), MANDO.zona);
   const cuad = modelo && modelo.esCuadricoptero;
   // botones: flanco de subida
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
@@ -2211,7 +2328,7 @@ function leerMando(dt) {
   if (moviendo) MANDO.usado = true;
   // palanca izquierda: gas (eje Y negativo = arriba)
   if (!av.motorRoto && !cuad) {
-    if (MANDO.gas === "absoluto") { if (MANDO.usado || ly !== 0) av.gases = Math.max(0, Math.min(1, (1 - (ax[1] || 0)) / 2)); }
+    if (MANDO.gas === "absoluto") { if (MANDO.usado || ly !== 0) av.gases = Math.max(0, Math.min(1, (1 - E("ly")) / 2)); }
     else if (ly !== 0) av.gases = Math.max(0, Math.min(1, av.gases - ly * 0.7 * dt));
   }
   return moviendo || MANDO.usado;
