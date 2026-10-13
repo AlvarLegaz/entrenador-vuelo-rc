@@ -127,6 +127,14 @@
   #djiGimbal span { position: absolute; right: 16px; font-size: 11px; color: #fff; margin-top: -7px; white-space: nowrap; text-shadow: 0 0 4px #000; }
   #djiFlash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity .3s; }
   #djiFlash.on { opacity: .75; transition: none; }
+  /* ---------- OSD de Betaflight (dron FPV): lo que se ve en las gafas, sustituye al panel de instrumentos ---------- */
+  #fpv { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.fpv #fpv { display: block; } body.fpv #panelVuelo, body.fpv #estado { display: none !important; }
+  #fpv .osd { position: absolute; font: 700 22px "Consolas", "Courier New", monospace; color: #fff; white-space: nowrap; letter-spacing: .03em;
+              text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px #000; }
+  #fpv .osd.c { transform: translateX(-50%); } #fpv .osd.rojo { color: #ff5252; } #fpv .osd.ambar { color: #ffd740; }
+  #fpv .osd.grande { font-size: 30px; } #fpv .osd:empty { display: none; }
+  #fpvMira { position: absolute; left: 50%; top: 50%; width: 90px; height: 30px; margin: -15px 0 0 -45px; }
 
   /* ---------- pantallas ---------- */
   .pantalla { position: absolute; inset: 0; display: none; z-index: 10; overflow: hidden; background: var(--fondo); }
@@ -265,6 +273,7 @@
   #pLanzamiento .cuerpo { display: flex; flex-direction: column; padding-bottom: 0; }
   #mapaCaja { flex: 1; position: relative; border-radius: var(--radio); overflow: hidden; border: 1px solid var(--borde); background: #0b0f14; min-height: 300px; }
   #mapaLanz { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; display: block; }
+  .btn.destacado { border-color: #ff8c00; color: #ffb74d; font-weight: 700; }
   #lanzInfo { position: absolute; left: 14px; bottom: 12px; right: 14px; background: rgba(8,14,22,.78); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 
   /* ---------- ajustes ---------- */
@@ -324,6 +333,13 @@
   <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / del dron · <b>I</b> pantalla de la app · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
   <b>Mando</b> (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa<br>
   </div>
+  <div id="ayudaTeclasFPV" style="display:none">
+  <b>↑ ↓</b> cabeceo (↑ adelante) · <b>← →</b> alabeo · <b>W</b> / <b>S</b> gas (no vuelve al centro) · <b>Espacio</b> gas a cero · <b>A</b> / <b>D</b> guiñada<br>
+  <b>L</b> armar / desarmar (con el gas abajo) · <b>M</b> modo ANGLE / HORIZON / ACRO · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / FPV · <b>I</b> OSD · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b> (modo 2): izquierda gas y guiñada, derecha alabeo y cabeceo · A armar / desarmar · LB modo · RB cámara · Back empezar de nuevo · Start pausa<br>
+  <span style="color:#8be08f">Mejor con una emisora RC por USB (el gas no tiene muelle) o un mando; con el teclado es muy difícil. Empieza en ANGLE.</span><br>
+  </div>
   <div id="ayudaTeclasAvion">
   <b>↓ ↑</b> profundidad (↓ tira: morro arriba) · <b>← →</b> <span id="ayudaLR">timón</span><br>
   <b>W</b> / <b>S</b> gases · <b>Espacio</b> cortar gases · <b>L</b> lanzar · <b>R</b> empezar de nuevo<br>
@@ -331,7 +347,7 @@
   <b>H</b> datos de vuelo · <b>I</b> instrumentos · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
   <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa<br>
   </div>
-  <span style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.</span><br>
+  <span id="ayudaPar" style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.<br></span>
   <span style="color:#aaa">En vuelo libre: <b>+</b> <b>−</b> viento, <b>G</b> rachas.
   <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
 </div>
@@ -515,7 +531,7 @@
 <!-- ============ PUNTO DE LANZAMIENTO (mundo real) ============ -->
 <div class="pantalla" id="pLanzamiento">
   <div class="cabecera"><div><h1>¿Desde dónde sales?</h1><p class="sub">Haz clic en el mapa para elegir el punto de lanzamiento. Se despega hacia el lado más despejado.</p></div><div class="esp"></div>
-    <button class="btn" id="btnLanzVolver">← Vuelo libre</button><button class="btn prim grande" id="btnLanzAqui">Despegar aquí →</button></div>
+    <span id="lanzDestacados" style="display:flex;gap:10px"></span><button class="btn" id="btnLanzVolver">← Vuelo libre</button><button class="btn prim grande" id="btnLanzAqui">Despegar aquí →</button></div>
   <div class="cuerpo"><div id="mapaCaja"><canvas id="mapaLanz" width="1400" height="700"></canvas><div id="lanzInfo"></div></div></div>
 </div>
 
@@ -533,7 +549,7 @@
         <p id="mandoEstado" style="margin:0 0 8px;font-size:14px">Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.</p>
         <div class="fila"><label for="mandoGas">Gas</label><select id="mandoGas" style="flex:1"><option value="incremental">Palanca con muelle (mando de consola): arriba sube el gas, abajo lo baja</option>
           <option value="absoluto">Palanca sin muelle (emisora RC): la posición es el gas</option></select></div>
-        <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="60" step="5"><b id="mandoExpoTxt"></b></div>
+        <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="100" step="5"><b id="mandoExpoTxt"></b></div>
         <div class="fila"><label for="mandoPerfil">Orden de los ejes</label><select id="mandoPerfil" style="flex:1">
           <option value="consola">Mando de consola (Xbox, PlayStation…)</option>
           <option value="aetr">Emisora RC, canales AETR (EdgeTX, OpenTX, RadioMaster, FrSky, Jumper)</option>
@@ -556,6 +572,7 @@
           <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Compensador de profundidad</td></tr>
           <tr><td><kbd>H</kbd> <kbd>I</kbd></td><td>Datos de vuelo en texto · instrumentos sí/no</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Pausa</td></tr>
+          <tr><td><kbd>L</kbd> <kbd>M</kbd></td><td>Dron FPV: armar / desarmar (con el gas abajo) · modo ANGLE / HORIZON / ACRO; W / S son el gas, que se queda donde lo dejas</td></tr>
         </table>
       </div>
       <div class="capa panelPestana" data-a="graficos">
@@ -629,6 +646,18 @@
     <div><span>HS</span><b id="djiHS">0,0 m/s</b></div><div><span>VS</span><b id="djiVS">0,0 m/s</b></div></div></div>
   <div id="djiFlash"></div>
 </div>
+<div id="fpv" class="hudCapa">
+  <svg id="fpvMira" viewBox="0 0 90 30" aria-hidden="true"><path d="M8 15H34M56 15H82M45 9V21" stroke="#000" stroke-width="5" stroke-linecap="square"/><path d="M8 15H34M56 15H82M45 9V21" stroke="#fff" stroke-width="2.5" stroke-linecap="square"/></svg>
+  <div class="osd" id="fpvModo" style="left:30%;top:9%" title="Modo de vuelo: ANGLE / HORIZON / ACRO (M, LB)"></div>
+  <div class="osd c" id="fpvTiempo" style="left:50%;top:9%" title="Tiempo armado"></div>
+  <div class="osd" id="fpvGas" style="left:63%;top:9%" title="Gas"></div>
+  <div class="osd c grande" id="fpvAviso" style="left:50%;top:15%"></div>
+  <div class="osd" id="fpvAlt" style="left:12%;top:50%" title="Altura sobre el despegue"></div>
+  <div class="osd" id="fpvVel" style="right:12%;top:50%" title="Velocidad"></div>
+  <div class="osd" id="fpvBat" style="left:16%;bottom:9%" title="Batería: tensión total y por celda"></div>
+  <div class="osd c" id="fpvArm" style="left:50%;bottom:9%"></div>
+  <div class="osd" id="fpvAmp" style="right:16%;bottom:9%" title="Corriente y carga gastada"></div>
+</div>
 <div class="velo" id="pausa"><div class="capa"><h2>Pausa</h2>
   <button class="btn prim" id="btnPausaSeguir">Continuar</button>
   <button class="btn" id="btnPausaReiniciar">Empezar el vuelo de nuevo</button>
@@ -651,6 +680,7 @@
 <script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script src="escenarios.js?v=1"></script>
+<script src="singulares.js?v=1"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -1129,7 +1159,7 @@ function lanzamientoActual() {
   const vto = entorno.viento, rumbo = zonaDe(sesion.escenario) === 2 ? Math.PI : 0;
   const op = { viento: [vto.base * Math.cos(vto.rumbo), vto.base * Math.sin(vto.rumbo), 0], rumbo, trim: mando.trim };
   const clave = JSON.stringify([sesion.avion, modelo.masa_kg, modelo.dcg, op]);
-  if (cacheLanz.clave !== clave) cacheLanz = { clave, op, gmin: gasMinimoLanzamiento(op), mmax: undefined, gminDiseno: undefined };
+  if (cacheLanz.clave !== clave) cacheLanz = { clave, op, gmin: gasMinimoLanzamiento(op), mmax: undefined, gminDiseno: undefined, sinViento: undefined };
   return cacheLanz;
 }
 /** Si lleva peso de mas (5 %): el texto que compara con el gas que bastaria con el peso de diseno. */
@@ -1140,8 +1170,21 @@ function textoPesoLanz(L) {
   return ` Es por el peso: lleva ${extra} g de más${L.gminDiseno !== null ? ` (con el peso de diseño bastaría el ${pctGas(L.gminDiseno)} %)` : ""}.`;
 }
 /** Aviso antes de lanzar ("" si sale bien con el gas puesto). */
+/** Si no sale con todo el gas pero SIN viento si: el viento (de costado o de cola) es el que lo tira, no el peso. Gas
+ *  minimo sin viento, o null. */
+function gasSinViento(L) {
+  if (L.sinViento === undefined) L.sinViento = gasMinimoLanzamiento(Object.assign({}, L.op, { viento: [0, 0, 0] }));
+  return L.sinViento;
+}
+const RUMBOS_TXT = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
+function textoVientoLanz() {
+  const v = entorno.viento, desde = ((v.rumbo * R2D + 180) % 360 + 360) % 360;
+  return `${v.base.toFixed(0)} m/s del ${RUMBOS_TXT[Math.round(desde / 45) % 8]}`;
+}
 function avisoLanzamiento() {
   const L = lanzamientoActual();
+  if (L.gmin === null && gasSinViento(L) !== null)
+    return `⚠ Con este viento (${textoVientoLanz()}) no saldría de la mano sin tocar los mandos: lánzalo de cara al viento o prepárate para corregir con la profundidad nada más soltarlo.`;
   if (L.gmin === null) return `⚠ Pesa demasiado para lanzarlo a mano (${Math.round(modelo.masa_kg * 1000)} g): no saldría ni con todo el gas. Quítale peso en la pantalla del avión.`;
   if (av.gases < L.gmin) return `⚠ Con el ${Math.round(av.gases * 100)} % de gas no saldría de la mano: sube el gas al menos al ${pctGas(L.gmin)} % (W).` + textoPesoLanz(L);
   return "";
@@ -1149,6 +1192,8 @@ function avisoLanzamiento() {
 /** Por que fallo un lanzamiento: { corto, texto }. */
 function causaLanzamientoFallido(gas) {
   const L = lanzamientoActual(), masa = Math.round(modelo.masa_kg * 1000);
+  if (L.gmin === null && gasSinViento(L) !== null)
+    return { corto: "viento", texto: `con este viento (${textoVientoLanz()}) no sale de la mano sin tocar los mandos: se encabrita, entra en pérdida y cae. Lánzalo de cara al viento y, al soltarlo, baja un poco el morro.` };
   if (L.gmin === null) {
     if (L.mmax === undefined) L.mmax = masaMaximaLanzamiento(L.op);
     return L.mmax ? { corto: "demasiado peso", texto: `pesa demasiado para lanzarlo a mano (${masa} g): no sale ni con todo el gas. Con el 100 % sale hasta unos ${Math.floor(L.mmax * 100) * 10} g.` }
@@ -1192,6 +1237,11 @@ async function irLanzamiento() {
     else sesion.lanz = z0 ? { mundo: mundo.id, N: Math.round(z0.centro.N), E: Math.round(z0.centro.E), rumbo: rumboDespejado(z0.centro.N, z0.centro.E) }
                           : { mundo: mundo.id, N: 0, E: 0, rumbo: mundo.rumbo_despegue || 0 };
   }
+  const cont = document.getElementById("lanzDestacados"); cont.innerHTML = "";
+  for (const d of destacadosLanz()) {
+    const b = document.createElement("button"); b.className = "btn destacado"; b.textContent = "📍 " + d.nombre; b.title = "Despegar desde " + d.nombre;
+    b.onclick = () => elegirDestacado(d); cont.appendChild(b);
+  }
   mostrar("pLanzamiento"); pintarMapaLanz();
 }
 window.addEventListener("resize", () => { if (pantallaActual === "pLanzamiento") pintarMapaLanz(); });
@@ -1215,6 +1265,20 @@ function pintarMapaLanz() {
     g.strokeStyle = "#ffd54f"; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.strokeRect(X(zz.E0), Y(zz.N0 + zz.lado_m), zz.lado_m * k, zz.lado_m * k); g.setLineDash([]);
     g.fillStyle = "#ffd54f"; g.font = "bold 10px sans-serif"; g.fillText("detalle", X(zz.E0) + 2, Y(zz.N0 + zz.lado_m) - 3);
   }
+  for (const d of destacadosLanz()) {                                                                 // puntos destacados (CIFP...)
+    const [dN, dE] = latLonANE(M, d.lat, d.lon), x = X(dE), y = Y(dN), sel = L.destacado === d.nombre;
+    if (d.contorno) {
+      g.beginPath(); d.contorno.forEach(([la, lo], i) => { const [n, e] = latLonANE(M, la, lo); i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n)); }); g.closePath();
+      g.fillStyle = "rgba(255,140,0,0.35)"; g.fill(); g.strokeStyle = "#ff8c00"; g.lineWidth = 2; g.stroke();
+    }
+    g.strokeStyle = "rgba(255,140,0,0.9)"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 14, 0, 2 * Math.PI); g.stroke();       // anillo
+    g.fillStyle = "#ff8c00"; g.beginPath(); g.moveTo(x, y); g.arc(x, y - 26, 9, Math.PI * 0.8, Math.PI * 2.2); g.closePath(); g.fill();   // chincheta
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y - 26, 3.5, 0, 2 * Math.PI); g.fill();
+    g.font = "bold 14px sans-serif"; const tw = g.measureText(d.nombre).width;
+    g.fillStyle = sel ? "#ff8c00" : "rgba(8,14,22,0.88)"; g.beginPath(); g.roundRect(x + 14, y - 46, tw + 16, 24, 6); g.fill();
+    g.strokeStyle = "#ff8c00"; g.lineWidth = 1.5; g.stroke(); g.fillStyle = sel ? "#111" : "#fff"; g.fillText(d.nombre, x + 22, y - 29);
+    d._xy = [x, y];
+  }
   g.fillStyle = "#ff5252"; g.beginPath(); g.arc(X(0), Y(0), 4, 0, 2 * Math.PI); g.fill();              // origen del mundo (el corazon)
   g.fillStyle = "#fff"; g.font = "10px sans-serif"; g.fillText("origen", X(0) + 6, Y(0) + 4);
   const x = X(L.E), y = Y(L.N);                                                                         // punto elegido y rumbo de despegue
@@ -1223,7 +1287,8 @@ function pintarMapaLanz() {
   g.fillStyle = "#ffd54f"; g.beginPath(); g.arc(x, y, 3, 0, 2 * Math.PI); g.fill();
   const M_LAT = 110574, M_LON = 111320 * Math.cos(M.origen.lat * D2R), lat = M.origen.lat + L.N / M_LAT, lon = M.origen.lon + L.E / M_LON;
   const hMar = entorno.alturaMar(L.N, L.E), mar = entorno.enMar(L.N, L.E);
-  document.getElementById("lanzInfo").innerHTML = mar ? `<b style="color:#ff6e66">Eso es mar: elige un punto en tierra.</b>` :
+  const dsel = destacadosLanz().find(d => d.nombre === L.destacado);
+  document.getElementById("lanzInfo").innerHTML = dsel ? `<b style="color:#ff8c00">${esc(dsel.nombre)}</b> · ${esc(dsel.nota || "")} · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b>` + (zonaEn(M.id, L.N, L.E) ? "" : ` · <b style="color:#ff6e66">falta su zona de detalle en simulador/zonas</b>`) : mar ? `<b style="color:#ff6e66">Eso es mar: elige un punto en tierra.</b>` :
     `Punto elegido: <b>${lat.toFixed(5)} N, ${(-lon).toFixed(5)} O</b> · ${hMar.toFixed(0)} m sobre el mar · a ${(Math.hypot(L.N, L.E) / 1000).toFixed(1)} km del origen · despegue con rumbo <b>${L.rumbo.toFixed(0)}°</b> (${L.defecto ? "punto de salida por defecto, hacia el este" : "el más despejado"}) · escala: ${(anchoM / 1000).toFixed(0)} km de ancho` +
     (zonaEn(M.id, L.N, L.E) ? ` · <b style="color:#ffd54f">dentro de una zona de detalle</b> (foto a 0,5 m, terreno a 5 m, edificios y árboles reales)` : ` · fuera de las zonas de detalle (recuadros amarillos): terreno a 150 m y foto a 12 m`);
   document.getElementById("btnLanzAqui").disabled = mar;
@@ -1232,9 +1297,18 @@ document.getElementById("mapaLanz").addEventListener("click", e => {
   const cv = e.currentTarget, r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * cv.width / r.width, y = (e.clientY - r.top) * cv.height / r.height;
   const T = entorno.mundo.terreno, altoM = (T.nN - 1) * T.paso, E = T.E0 + (x - LANZ_MAPA.x0) / LANZ_MAPA.k, N = T.N0 + altoM - (y - LANZ_MAPA.y0) / LANZ_MAPA.k;
   if (E < T.E0 || E > T.E0 + (T.nE - 1) * T.paso || N < T.N0 || N > T.N0 + altoM) return;
+  const d = destacadosLanz().find(q => q._xy && (Math.hypot(x - q._xy[0], y - q._xy[1]) < 18 || Math.hypot(x - q._xy[0], y - q._xy[1] + 26) < 14));
+  if (d) { elegirDestacado(d); return; }
   sesion.lanz = { mundo: entorno.mundo.id, N: Math.round(N), E: Math.round(E), rumbo: rumboDespejado(N, E) };
   pintarMapaLanz();
 });
+/** Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"). */
+function destacadosLanz() { return (ESCENARIOS[sesion.escenario] || {}).destacados || []; }
+function elegirDestacado(d) {
+  const M = entorno.mundo, [N, E] = latLonANE(M, d.lat, d.lon);
+  sesion.lanz = { mundo: M.id, N: Math.round(N), E: Math.round(E), rumbo: d.rumbo, destacado: d.nombre };
+  pintarMapaLanz();
+}
 document.getElementById("btnLanzVolver").onclick = () => irVolar();
 document.getElementById("btnLanzAqui").onclick = () => empezar();
 /** Coloca un estado recien creado en el punto de lanzamiento del mundo real (en la isla, en el origen). */
@@ -1333,6 +1407,7 @@ function empezarEnVuelo() {
   const V0 = Math.max(modelo.lanzamiento.vel_ms + 1, 1.35 * vs);
   av.p = [C.N, C.E, -C.h]; av.q = Cuat.desdeEuler(0, 3 * D2R, C.rumbo * D2R); av.v = [V0, 0, 0]; av.w = [0, 0, 0];
   av.gases = C.gas; av.estado = "volando";
+  if (modelo.armarEnVuelo) modelo.armarEnVuelo(av);           // dron FPV: armado y con el gas que lo sostiene
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: C.h };
   cnContador = 0; grabarMuestra();
   ev.guia = { i: 0, vs, vmin: Math.round(1.3 * vs * 10) / 10, avisado: false };
@@ -1471,15 +1546,26 @@ async function cargarZona(meta) {
   if (!r.ok) throw new Error("sin " + base + meta.dem.archivo);
   return (ZONAS.cache[meta.id] = { meta, dem: new Int16Array(await r.arrayBuffer()), base });
 }
-/** Pone (o quita) la zona de detalle que contiene el punto de lanzamiento, en el Entorno (suelo fisico) y en el Visor. */
+/** Zonas de detalle a menos de RADIO_ZONAS m del punto (N, E), la que lo contiene primero (la misma regla en Godot,
+ *  zonas_cerca de principal.gd). Con zonas pegadas, como las de La Manga y el Mar Menor, se vuela siempre en detalle
+ *  hasta unos 2 km del piloto sin cargar todas (cada una son 36 fotos de 1024 px). */
+const RADIO_ZONAS = 2000;
+function zonasCerca(mundoId, N, E) {
+  const dist = z => Math.hypot(Math.max(z.N0 - N, 0, N - z.N0 - z.lado_m), Math.max(z.E0 - E, 0, E - z.E0 - z.lado_m));
+  const dentro = zonaEn(mundoId, N, E);
+  return (ZONAS.indice || []).filter(z => z.mundo === mundoId && dist(z) <= RADIO_ZONAS)
+    .sort((a, b) => (b === dentro) - (a === dentro) || dist(a) - dist(b));
+}
+/** Pone (o quita) las zonas de detalle de cerca del punto de lanzamiento, en el Entorno (suelo fisico) y en el Visor. */
 async function ponerZonaDeLanzamiento(mundo) {
-  let z = null;
+  const zs = [];
   if (mundo) {
     await indiceZonas();
-    const c = casa(), meta = zonaEn(mundo.id, c.N, c.E);
-    if (meta) try { z = await cargarZona(meta); } catch (e) { console.warn("No se pudo cargar la zona " + meta.id, e); }
+    const c = casa();
+    for (const meta of zonasCerca(mundo.id, c.N, c.E))
+      try { zs.push(await cargarZona(meta)); } catch (e) { console.warn("No se pudo cargar la zona " + meta.id, e); }
   }
-  entorno.ponerZona(z); if (mundo) visor.ponerZona(z);
+  entorno.ponerZonas(zs); if (mundo) visor.ponerZonas(zs);
 }
 
 async function empezar() {
@@ -1491,16 +1577,19 @@ async function empezar() {
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
-  document.getElementById("ayudaTeclasDron").style.display = modelo.esCuadricoptero ? "" : "none";
+  document.getElementById("ayudaTeclasDron").style.display = modelo.esCuadricoptero && !modelo.esFPV ? "" : "none";
+  document.getElementById("ayudaTeclasFPV").style.display = modelo.esFPV ? "" : "none";
+  document.getElementById("ayudaPar").style.display = modelo.esFPV ? "none" : "";
   document.getElementById("ayudaTeclasAvion").style.display = modelo.esCuadricoptero ? "none" : "";
   // el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
   if (!!modelo.esCuadricoptero !== !!visor.eraDron) visor.camara = modelo.esCuadricoptero ? 3 : 1;
-  visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero);
+  visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero && !modelo.esFPV);
+  document.body.classList.toggle("fpv", !!modelo.esFPV);       // dron FPV: el OSD de Betaflight en vez de la app del DJI
   construirAnemometro(velPerdida());
   if (carga) await mostrarCarga(mundo.nombre, "Terreno, mar, carreteras y pueblos…", 0.3);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
   if (mundo) {
-    await mostrarCarga(mundo.nombre, "Zona de detalle: ortofoto, edificios y árboles…", 0.6);
+    await mostrarCarga(mundo.nombre, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6);
     const c = casa(); visor.baseNE = [c.N, c.E];                 // antes de la zona: sus arboles se detallan alrededor del punto de salida
     await ponerZonaDeLanzamiento(mundo); visor.ponerBase([c.N, c.E], true);
     await mostrarCarga(mundo.nombre, "Listo", 1);
@@ -1516,7 +1605,7 @@ function reiniciar() {
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
   if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
-  aviso(modelo.esCuadricoptero ? "Pulsa el botón de despegue (⇧) o L para armar" : "Pulsa L para lanzar");
+  aviso(modelo.esFPV ? "Gas abajo del todo y L (o botón A) para armar" : modelo.esCuadricoptero ? "Pulsa el botón de despegue (⇧) o L para armar" : "Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
 function orientarLanzamiento() {
@@ -1528,6 +1617,7 @@ function orientarLanzamiento() {
 function lanzar() {
   if (av.estado !== "en mano") return;
   modelo.lanzar(av); orientarLanzamiento(); aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : "");
+  if (modelo.esFPV) toast("ARMADO");
   if (modelo.esCuadricoptero) setTimeout(() => { if (av.estado === "volando" && av.posado) aviso(""); }, 3000);
   if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
@@ -1618,7 +1708,7 @@ const camaraValida = () => visor.camara === 1 || (!!modelo.esCuadricoptero && vi
 function datosResultado(v) {
   const E = ESCENARIOS[v.escenario], libre = !E.objetivos.length;
   const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
-  if (!libre) objs.push({ id: "camara", texto: modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
+  if (!libre) objs.push({ id: "camara", texto: modelo.esFPV ? "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" : modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
   const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
   return { E, libre, objs, apto, resultado: libre ? "LIBRE" : apto ? "APTO" : "NO APTO" };
 }
@@ -1777,7 +1867,7 @@ function irHangar() {
     const A = Modelos.datos(id), b = document.createElement("button"); b.className = "avCarta" + (id === sesion.avion ? " sel" : "");
     const masa = (A.caracteristicas || []).find(r => r[0].toLowerCase().startsWith("masa"));
     const mandosTxt = ((A.caracteristicas || []).find(c => c[0] === "Mandos") || [])[1];   // la linea "Mandos" de la ficha, si la trae
-    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos DJI" : esc(mandosTxt || ((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad")}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
+    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos DJI" : A.tipo === "fpv" ? "dron FPV, modos de Betaflight" : esc(mandosTxt || ((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad")}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
     b.onclick = () => { elegirAvion(id); irHangar(); };
     sel.appendChild(b);
   }
@@ -2009,17 +2099,18 @@ function ponerPausa(p) {
   pausado = p; document.getElementById("pausa").classList.toggle("activa", p);
   if (p) {
     document.getElementById("btnPausaCamara").textContent = "Cámara: " + nombreCamara(visor.camara);
-    document.getElementById("btnPausaInstr").textContent = (modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí");
+    document.getElementById("btnPausaInstr").textContent = textoInstr();
     document.getElementById("pausaSonido").checked = Sonido.on;
     document.getElementById("pausaInfo").textContent = `${Modelos.datos(sesion.avion).nombre} · ${ESCENARIOS[sesion.escenario].nombre}`;
     Sonido.silenciar(true);
   } else { Sonido.silenciar(false); tAnterior = performance.now(); for (const k in teclas) teclas[k] = false; document.getElementById("ayuda").style.display = "none"; }
 }
-const nombreCamara = n => ["", "piloto", "persecución", modelo && modelo.esCuadricoptero ? "del dron" : "a bordo"][n];
+const nombreCamara = n => ["", "piloto", "persecución", modelo && modelo.esFPV ? "FPV (gafas)" : modelo && modelo.esCuadricoptero ? "del dron" : "a bordo"][n];
+const textoInstr = () => (modelo.esFPV ? "OSD: " : modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí");
 document.getElementById("btnPausaSeguir").onclick = () => ponerPausa(false);
 document.getElementById("btnPausaReiniciar").onclick = () => { ponerPausa(false); reiniciar(); };
 document.getElementById("btnPausaCamara").onclick = () => { visor.camara = visor.camara % 3 + 1; document.getElementById("btnPausaCamara").textContent = "Cámara: " + nombreCamara(visor.camara); };
-document.getElementById("btnPausaInstr").onclick = () => { sinInstrumentos = !sinInstrumentos; document.getElementById("btnPausaInstr").textContent = (modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí"); };
+document.getElementById("btnPausaInstr").onclick = () => { sinInstrumentos = !sinInstrumentos; document.getElementById("btnPausaInstr").textContent = textoInstr(); };
 document.getElementById("btnPausaAyuda").onclick = () => { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; };
 document.getElementById("btnPausaTerminar").onclick = () => { ponerPausa(false); if (av.estado === "volando") terminarVuelo("abandonado"); else if (vuelo && vuelo.final) mostrarResultado(vuelo); else irInicio(); };
 document.getElementById("btnPausaSalir").onclick = salirAlMenu;
@@ -2129,18 +2220,21 @@ window.addEventListener("keydown", e => {
   if (pausado) return;
   teclas[e.code] = true;
   const libre = !ESCENARIOS[sesion.escenario].objetivos.length, vto = entorno.viento, dron = !!modelo.esCuadricoptero;
-  if (dron) {                       // teclas de la app y del mando del DJI
+  if (modelo.esFPV) {               // dron FPV: L arma y desarma, M cambia de modo
+    if (e.code === "KeyM") fpvModo();
+    if (e.code === "KeyL") fpvArmar();
+  } else if (dron) {                // teclas de la app y del mando del DJI
     if (e.code === "KeyM") djiModo();
     if (e.code === "KeyH") djiRTH();
     if (e.code === "KeyF") djiFoto();
     if (e.code === "KeyV") djiVideo();
   }
-  if (e.code === "KeyL") lanzar();
+  if (e.code === "KeyL" && !modelo.esFPV) lanzar();
   if (e.code === "KeyR") reiniciar();
   if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
   if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
-  if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
+  if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
   if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
   if (e.code === "BracketLeft") mando.trim = Math.max(-6, mando.trim - 0.25);
@@ -2168,20 +2262,26 @@ const PERFILES_MANDO = {
 };
 const PALANCAS = [["ly", "Gas (izquierda, vertical)"], ["lx", "Timón / guiñada (izquierda, horizontal)"], ["rx", "Alabeo (derecha, horizontal)"], ["ry", "Profundidad (derecha, vertical)"]];
 const ejesDe = perfil => { const P = PERFILES_MANDO[perfil], e = {}; for (const k in P) e[k] = { i: P[k][0], s: P[k][1] }; return e; };
-const MANDO = { gas: "incremental", expo: 0.3, zona: 0.06, botones: [], activo: false, id: "", perfil: "consola", ejes: ejesDe("consola") };
+// exponencial: el centro de la palanca mueve poco y el extremo da todo el recorrido. Un mando de consola, de palancas cortas,
+// necesita mas (60 %) que una emisora (30 %, que ademas suele llevar la suya)
+const EXPO_DEFECTO = { consola: 0.6, emisora: 0.3 };
+const MANDO = { gas: "incremental", expo: EXPO_DEFECTO.consola, zona: 0.06, botones: [], activo: false, id: "", perfil: "consola", ejes: ejesDe("consola") };
 try {
   const g = JSON.parse(localStorage.getItem("sim_mando") || "{}");
   if (g.gas) MANDO.gas = g.gas; if (g.expo !== undefined) MANDO.expo = g.expo;
   if (g.perfil) MANDO.perfil = g.perfil;
   if (g.ejes && PALANCAS.every(([k]) => g.ejes[k] && Number.isInteger(g.ejes[k].i))) MANDO.ejes = g.ejes;
+  // hasta el 2026-10-13 el defecto era 30 % para todo: con un mando de consola se queda en el defecto nuevo
+  if (!g.v && MANDO.perfil === "consola" && MANDO.expo === 0.3) MANDO.expo = EXPO_DEFECTO.consola;
 } catch (e) {}
-function guardarMando() { try { localStorage.setItem("sim_mando", JSON.stringify({ gas: MANDO.gas, expo: MANDO.expo, perfil: MANDO.perfil, ejes: MANDO.ejes })); } catch (e) {} }
+function guardarMando() { try { localStorage.setItem("sim_mando", JSON.stringify({ v: 2, gas: MANDO.gas, expo: MANDO.expo, perfil: MANDO.perfil, ejes: MANDO.ejes })); } catch (e) {} }
 /** Valor de una palanca (lx, ly, rx, ry) en la convencion interna, sin zona muerta. */
 function ejeMando(ax, k) { const e = MANDO.ejes[k]; return Math.max(-1, Math.min(1, (ax[e.i] || 0) * e.s)); }
 function pintarMandoCfg() {
   document.getElementById("mandoGas").value = MANDO.gas;
   document.getElementById("mandoExpo").value = Math.round(MANDO.expo * 100);
-  document.getElementById("mandoExpoTxt").textContent = Math.round(MANDO.expo * 100) + " %";
+  const e = MANDO.expo, media = (1 - e) * 0.5 + e * 0.125;          // a media palanca (la misma curva que expo())
+  document.getElementById("mandoExpoTxt").textContent = `${Math.round(e * 100)} % · a media palanca, el ${Math.round(media * 100)} % del recorrido`;
   document.getElementById("mandoPerfil").value = MANDO.perfil;
   const p = mandoConectado();
   document.getElementById("mandoEstado").innerHTML = p ? `<b style="color:#8be08f">Mando conectado:</b> ${esc(p.id)} · ${p.axes.length} ejes` :
@@ -2259,6 +2359,8 @@ document.getElementById("mandoPerfil").addEventListener("change", e => {
   if (PERFILES_MANDO[MANDO.perfil]) MANDO.ejes = ejesDe(MANDO.perfil);
   else if (!ASIST.nuevos) empezarAsistente();                     // "asignado con el asistente" sin haberlo pasado: lo abre
   if (MANDO.perfil === "aetr" || MANDO.perfil === "taer") MANDO.gas = "absoluto";      // la palanca de gas de una emisora no tiene muelle
+  if (MANDO.perfil === "consola") MANDO.gas = "incremental";                          // la de un mando de consola, si
+  if (PERFILES_MANDO[MANDO.perfil]) MANDO.expo = MANDO.perfil === "consola" ? EXPO_DEFECTO.consola : EXPO_DEFECTO.emisora;
   guardarMando(); pintarMandoCfg();
 });
 document.getElementById("mandoGas").addEventListener("change", e => { MANDO.gas = e.target.value; guardarMando(); });
@@ -2279,12 +2381,17 @@ function leerMando(dt) {
   MANDO.id = p.id;
   const ax = p.axes, E = k => ejeMando(ax, k);                     // ejes segun el orden configurado (consola o emisora)
   const rx = zonaMuerta(E("rx"), MANDO.zona), ry = zonaMuerta(E("ry"), MANDO.zona), ly = zonaMuerta(E("ly"), MANDO.zona), lx = zonaMuerta(E("lx"), MANDO.zona);
-  const cuad = modelo && modelo.esCuadricoptero;
+  const cuad = modelo && modelo.esCuadricoptero && !modelo.esFPV, fpv = modelo && modelo.esFPV;   // el FPV lleva el gas como un avion
   // botones: flanco de subida
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
   const pulsado = i => b(i) && !antes[i];
   if (pantallaActual === null && pulsado(9)) ponerPausa(!pausado);
-  if (pantallaActual === null && !pausado && cuad) {     // mando del DJI: A despegar/aterrizar, B volver a casa, X video, Y foto, LB modo, RB camara, Back reiniciar
+  if (pantallaActual === null && !pausado && fpv) {      // dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
+    if (pulsado(0)) fpvArmar();
+    if (pulsado(4)) fpvModo();
+    if (pulsado(5)) visor.camara = visor.camara % 3 + 1;
+    if (pulsado(8)) reiniciar();
+  } else if (pantallaActual === null && !pausado && cuad) {     // mando del DJI: A despegar/aterrizar, B volver a casa, X video, Y foto, LB modo, RB camara, Back reiniciar
     if (pulsado(0)) djiDespegar();
     if (pulsado(1)) djiRTH();
     if (pulsado(2)) djiVideo();
@@ -2322,7 +2429,7 @@ function leerMando(dt) {
 }
 
 function leerTeclado(dt) {
-  const cuad = modelo && modelo.esCuadricoptero;
+  const cuad = modelo && modelo.esCuadricoptero && !modelo.esFPV;     // en el FPV W/S son el gas, como en los aviones
   const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || (cuad && (teclas["KeyW"] || teclas["KeyS"]));
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
   const gimbalTeclas = cuad ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
@@ -2339,9 +2446,10 @@ function leerTeclado(dt) {
   leerGasTeclado(dt);
 }
 function leerGasTeclado(dt) {
-  if (av.motorRoto || (modelo && modelo.esCuadricoptero)) return;      // en el dron W/S son velocidad vertical (leerTeclado)
-  if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + 0.8 * dt);
-  if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - 0.8 * dt);
+  if (av.motorRoto || (modelo && modelo.esCuadricoptero && !modelo.esFPV)) return;      // en el DJI W/S son velocidad vertical (leerTeclado)
+  const k = modelo && modelo.esFPV ? 0.4 : 0.8;                      // FPV: mas despacio (se sostiene con un 30 % de gas)
+  if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + k * dt);
+  if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - k * dt);
 }
 
 
@@ -2423,6 +2531,54 @@ function hudDji(h, vn, vs, dist) {
   const d = $("djiDisparo"); d.classList.toggle("video", DJI.video); d.classList.toggle("rec", DJI.grabando);
   $("djiCamTxt").textContent = DJI.video ? "VÍDEO" : "FOTO";
   const mapa = $("djiMapa"), gps = $("gps"); if (gps.parentNode !== mapa) mapa.appendChild(gps);
+}
+// =====================================================================
+//  DRON FPV: armar / desarmar, modos de Betaflight y el OSD (#fpv: lo que se ve en las gafas, como el OSD de Betaflight)
+// =====================================================================
+const NOMBRES_FPV = { ANGLE: "ANGL", HORIZON: "HOR", ACRO: "ACRO" };
+/** Armar (solo con el gas abajo, como un FPV de verdad) o desarmar (en el aire se cae; en el suelo tras volar, aterrizado). */
+function fpvArmar() {
+  if (!modelo || !modelo.esFPV || Repeticion.activa) return;
+  if (av.estado === "en mano") {
+    if (av.gases > 0.05) { toast("Para armar, baja el gas del todo (S o palanca izquierda abajo)"); return; }
+    lanzar();
+  } else if (av.estado === "volando" && av.armado) {
+    modelo.desarmar(av); toast("DESARMADO");
+    if (av.estado === "en mano") aviso("Gas abajo del todo y L (o botón A) para armar");
+  }
+}
+/** Modo de vuelo de Betaflight: ANGLE -> HORIZON -> ACRO -> ANGLE (tecla M, LB del mando o el que se pida). */
+function fpvModo(m) {
+  if (!modelo || !modelo.esFPV) return;
+  modelo.modo = m || { ANGLE: "HORIZON", HORIZON: "ACRO", ACRO: "ANGLE" }[modelo.modo] || "ANGLE";
+  toast(`Modo ${modelo.modo}` + (modelo.modo === "ACRO" ? " · sin autonivelado" : modelo.modo === "ANGLE" ? " · se nivela solo" : ""));
+}
+/** OSD de Betaflight: modo, tiempo armado, gas, altura, velocidad, bateria (total y por celda), corriente y mAh, ARMED /
+ *  DISARMED y avisos (bateria baja, aterriza ya, desarma para terminar). Las cifras como las de Betaflight (punto decimal). */
+function hudFpv(h, vn) {
+  const $ = id => document.getElementById(id), F = modelo.fc, celda = av.Vbat / modelo.propulsion.celdas;
+  const c = casa(), hCasa = entorno.altura ? entorno.altura(c.N, c.E) : 0, V = Math.sqrt(vn[0] * vn[0] + vn[1] * vn[1] + vn[2] * vn[2]);
+  $("fpvMira").style.display = visor.camara === 3 ? "" : "none";          // la mira, solo en las gafas
+  $("fpvModo").textContent = NOMBRES_FPV[modelo.modo] || modelo.modo;
+  $("fpvTiempo").textContent = "TIME " + fmtTiempo(av.tArmado || 0);
+  $("fpvGas").textContent = "THR " + Math.round(av.gases * 100);
+  $("fpvAlt").textContent = `ALT ${(h - hCasa).toFixed(1)}m`;
+  $("fpvVel").textContent = `${Math.round(V * 3.6)}km/h`;
+  const be = $("fpvBat"); be.textContent = `${av.Vbat.toFixed(1)}V ${celda.toFixed(2)}V`;
+  be.className = "osd" + (celda < F.critico_celda_V ? " rojo" : celda < F.aviso_celda_V ? " ambar" : "");
+  $("fpvAmp").textContent = `${av.I.toFixed(1)}A ${Math.round(av.mAh)}mAh`;
+  const armado = av.estado === "volando" && av.armado, parpadeo = (performance.now() / 1000) % 1 < 0.6;
+  const ae = $("fpvArm");
+  ae.textContent = Repeticion.activa ? "REPETICIÓN" : armado ? (av.tArmado < 1.5 ? "ARMED" : "") : av.estado === "volando" || av.estado === "en mano" ? "DISARMED" : av.estado.toUpperCase();
+  ae.className = "osd c" + (armado ? "" : " rojo");
+  let avs = "", cl = "rojo";
+  if (armado) {
+    if (celda < F.critico_celda_V) avs = parpadeo ? "¡ATERRIZA YA!" : "";
+    else if (celda < F.aviso_celda_V) { avs = parpadeo ? "BATERÍA BAJA" : ""; cl = "ambar"; }
+    else if (av.posado && av.despegado) { avs = "DESARMA (L) PARA TERMINAR"; cl = ""; }
+  }
+  if (pausado) { avs = "PAUSA"; cl = ""; }
+  const ve = $("fpvAviso"); ve.textContent = avs; ve.className = "osd c grande" + (cl ? " " + cl : "");
 }
 // =====================================================================
 //  HUD Y BUCLE
@@ -2621,7 +2777,8 @@ function hud() {
   } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
   document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
-  if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); document.getElementById("dji").style.display = sinInstrumentos ? "none" : ""; }
+  if (modelo.esFPV) { hudFpv(h, vn); document.getElementById("fpv").style.display = sinInstrumentos ? "none" : ""; }
+  else if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); document.getElementById("dji").style.display = sinInstrumentos ? "none" : ""; }
   if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) document.getElementById(id).style.display = "none";
   document.getElementById("barra").style.display = sinInstrumentos ? "none" : "";       // sin instrumentos: tampoco gas ni palanca (como en el campo)
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";

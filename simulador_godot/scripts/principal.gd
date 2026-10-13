@@ -11,7 +11,7 @@ extends Node3D
 ## --avion=ID, --camara=N, --gases=0..1, --esperar=S, --captura=ruta.png (guarda la pantalla a los S segundos y sale),
 ## --pantalla=pInicio|pHangar|... (captura de una pantalla), --calidad=0..2, --dificultad=real|facil, --cenital=H, --traza,
 ## --terminar=S (termina el vuelo a los S s de vuelo: captura del resultado), --pausa=S y --ayuda=S (pausa o controles a los S s),
-## --repeticion (con --terminar: abre la repeticion desde el resultado).
+## --repeticion (con --terminar: abre la repeticion desde el resultado), --lat=G --lon=G [--rumbo=G] (punto de despegue en un mundo real), --destacado[=K] (el punto destacado K del mapa, 1 = el CIFP, 2 = Los Halcones).
 
 const DT := 1.0 / 500
 const D2R := PI / 180.0
@@ -89,6 +89,7 @@ var sonido: Sonido
 var ui: CanvasLayer
 var hud: HudVuelo
 var hud_dji: HudDji
+var hud_fpv: HudFPV                 # OSD de Betaflight del dron FPV
 var pantallas := {}
 var condiciones: PantallaMisiones.Condiciones
 var pausa := {}
@@ -124,6 +125,11 @@ func _ready() -> void:
 	if _args.has("auto"):
 		sesion["escenario"] = _args.get("escenario", "libre_cartagena"); sesion["sin_registrar"] = true
 		if Escenarios.es_mundo(sesion["escenario"]): _lanz_por_defecto()
+		if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)])      # pruebas: despegar del CIFP
+		if _args.has("lat") and _args.has("lon"):      # pruebas: despegar desde (lat, lon) con el rumbo dado o el mas despejado
+			var ne := lat_lon_a_ne(mundo_datos, float(_args["lat"]), float(_args["lon"]))
+			sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]),
+							   "rumbo": float(_args["rumbo"]) if _args.has("rumbo") else rumbo_despejado(ne[0], ne[1]) }
 		call_deferred("empezar")
 		return
 	await aula.iniciar()
@@ -136,7 +142,9 @@ func _ready() -> void:
 			"pVolar": ir_volar()
 			"pAjustes": ir_ajustes(_args.get("seccion", ""))
 			"pAlumno": ir_pilotos(ir_inicio)
-			"pLanzamiento": sesion["escenario"] = "libre_cartagena"; ir_lanzamiento()
+			"pLanzamiento":
+				sesion["escenario"] = "libre_cartagena"; ir_lanzamiento()
+				if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)]); pantallas["pLanzamiento"].pintar()
 	if _args.has("captura"):
 		await get_tree().create_timer(float(_args.get("esperar", "2"))).timeout
 		get_viewport().get_texture().get_image().save_png(_args["captura"]); get_tree().quit()
@@ -206,8 +214,10 @@ func sonido_volumen(x: float) -> void:
 # =====================================================================
 func crear_modelo(id: String):
 	var A := DatosComunes.avion(id)
+	if A.get("tipo", "") == "fpv": return ModeloFPV.new(A)
 	return ModeloCuadricoptero.new(A) if A.get("tipo", "") == "cuadricoptero" else ModeloAvion.new(A)
-func es_dron() -> bool: return modelo is ModeloCuadricoptero
+func es_dron() -> bool: return modelo is ModeloCuadricoptero or modelo is ModeloFPV
+func es_fpv() -> bool: return modelo is ModeloFPV
 
 func aplicar_cm(m) -> void:
 	var A := DatosComunes.avion(sesion["avion"])
@@ -266,7 +276,7 @@ func prueba_lanzamiento(gas: float, op: Dictionary) -> bool:
 	return true
 ## Gas minimo (0-1) para que salga de la mano, o null si no sale ni con todo el gas.
 func gas_minimo_lanzamiento(op: Dictionary):
-	if DatosComunes.avion(sesion["avion"]).get("tipo", "") == "cuadricoptero": return 0.0
+	if DatosComunes.avion(sesion["avion"]).get("tipo", "") in ["cuadricoptero", "fpv"]: return 0.0
 	var clave := str([sesion["avion"], cm_actual(sesion["avion"]), cfg_de(sesion["avion"]), sesion["dificultad"], ent.mundo.is_empty(), sesion["lanz"], op])
 	if _cache_gmin.has(clave): return _cache_gmin[clave]
 	var r = null
@@ -293,7 +303,7 @@ func lanzamiento_actual() -> Dictionary:
 	var vto: Dictionary = ent.viento; var rumbo := PI if Escenarios.zona_de(sesion["escenario"]) == 2 else 0.0
 	var op := { "viento": [vto["base"] * cos(vto["rumbo"]), vto["base"] * sin(vto["rumbo"]), 0.0], "rumbo": rumbo, "trim": mando["trim"] }
 	var clave := str([sesion["avion"], modelo.masa_kg, modelo.dcg, op])
-	if _cache_lanz["clave"] != clave: _cache_lanz = { "clave": clave, "op": op, "gmin": gas_minimo_lanzamiento(op), "mmax": -1.0, "gminDiseno": -1.0 }
+	if _cache_lanz["clave"] != clave: _cache_lanz = { "clave": clave, "op": op, "gmin": gas_minimo_lanzamiento(op), "mmax": -1.0, "gminDiseno": -1.0, "sinViento": -1.0 }
 	return _cache_lanz
 func texto_peso_lanz(L: Dictionary) -> String:
 	var d: float = DatosComunes.avion(sesion["avion"])["masa_kg"]; var extra := int(round((modelo.masa_kg - d) * 1000))
@@ -301,14 +311,27 @@ func texto_peso_lanz(L: Dictionary) -> String:
 	if typeof(L["gminDiseno"]) == TYPE_FLOAT and L["gminDiseno"] == -1.0:
 		var o: Dictionary = L["op"].duplicate(); o["masa_kg"] = d; L["gminDiseno"] = gas_minimo_lanzamiento(o)
 	return " Es por el peso: lleva %d g de más%s." % [extra, (" (con el peso de diseño bastaría el %d %%)" % pct_gas(L["gminDiseno"])) if L["gminDiseno"] != null else ""]
+## Gas minimo SIN viento (o null): si con todo el gas no sale pero sin viento si, lo tira el viento, no el peso (gasSinViento).
+func gas_sin_viento(L: Dictionary):
+	if typeof(L["sinViento"]) == TYPE_FLOAT and L["sinViento"] == -1.0:
+		var o: Dictionary = L["op"].duplicate(); o["viento"] = [0.0, 0.0, 0.0]; L["sinViento"] = gas_minimo_lanzamiento(o)
+	return L["sinViento"]
+const RUMBOS_TXT := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
+func texto_viento_lanz() -> String:
+	var v: Dictionary = ent.viento; var desde := fposmod(v["rumbo"] * R2D + 180, 360)
+	return "%d m/s del %s" % [int(round(v["base"])), RUMBOS_TXT[int(round(desde / 45)) % 8]]
 func aviso_lanzamiento() -> String:
 	if es_dron(): return ""
 	var L := lanzamiento_actual()
+	if L["gmin"] == null and gas_sin_viento(L) != null:
+		return "⚠ Con este viento (%s) no saldría de la mano sin tocar los mandos: lánzalo de cara al viento o prepárate para corregir con la profundidad nada más soltarlo." % texto_viento_lanz()
 	if L["gmin"] == null: return "⚠ Pesa demasiado para lanzarlo a mano (%d g): no saldría ni con todo el gas. Quítale peso en la pantalla del avión." % int(round(modelo.masa_kg * 1000))
 	if av["gases"] < L["gmin"]: return "⚠ Con el %d %% de gas no saldría de la mano: sube el gas al menos al %d %% (W)." % [int(round(av["gases"] * 100)), pct_gas(L["gmin"])] + texto_peso_lanz(L)
 	return ""
 func causa_lanzamiento_fallido(gas: float) -> Dictionary:
 	var L := lanzamiento_actual(); var masa := int(round(modelo.masa_kg * 1000))
+	if L["gmin"] == null and gas_sin_viento(L) != null:
+		return { "corto": "viento", "texto": "con este viento (%s) no sale de la mano sin tocar los mandos: se encabrita, entra en pérdida y cae. Lánzalo de cara al viento y, al soltarlo, baja un poco el morro." % texto_viento_lanz() }
 	if L["gmin"] == null:
 		if typeof(L["mmax"]) == TYPE_FLOAT and L["mmax"] == -1.0: L["mmax"] = masa_maxima_lanzamiento(L["op"])
 		if L["mmax"] != null: return { "corto": "demasiado peso", "texto": "pesa demasiado para lanzarlo a mano (%d g): no sale ni con todo el gas. Con el 100 %% sale hasta unos %d g." % [masa, int(floor(L["mmax"] * 100) * 10)] }
@@ -347,13 +370,19 @@ func _lanz_por_defecto() -> void:
 		var z: Dictionary = indice_zonas[0]
 		sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(z["centro"]["N"]), "E": round(z["centro"]["E"]), "rumbo": rumbo_despejado(z["centro"]["N"], z["centro"]["E"]) }
 	else: sesion["lanz"] = { "mundo": mundo_datos["id"], "N": 0.0, "E": 0.0, "rumbo": mundo_datos.get("rumbo_despegue", 0) }
+## Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"; destacadosLanz de la web).
+func destacados_lanz() -> Array:
+	return Escenarios.datos().get(sesion["escenario"], {}).get("destacados", [])
+func elegir_destacado(d: Dictionary) -> void:
+	var ne := lat_lon_a_ne(mundo_datos, d["lat"], d["lon"])
+	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": float(d["rumbo"]), "destacado": d["nombre"] }; _guardar()
 func elegir_punto(N: float, E: float) -> void:
 	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(N), "E": round(E), "rumbo": rumbo_despejado(N, E) }; _guardar()
 func colocar_en_base(a: Dictionary, m = null) -> void:
 	if not en_mundo(): return
 	if m == null: m = modelo
 	var c := _casa()
-	a["p"] = [c["N"], c["E"], -(ent.altura(c["N"], c["E"]) + (0.02 if m is ModeloCuadricoptero else 1.6))]   # en la mano (avion) o en el suelo (dron)
+	a["p"] = [c["N"], c["E"], -(ent.altura(c["N"], c["E"]) + (0.02 if (m is ModeloCuadricoptero or m is ModeloFPV) else 1.6))]   # en la mano (avion) o en el suelo (dron)
 
 # =====================================================================
 #  INTERFAZ: pantallas, HUD y capas
@@ -365,6 +394,7 @@ func _construir_ui() -> void:
 	hud = HudVuelo.new(self); raiz.add_child(hud); hud.visible = false
 	hud_dji = HudDji.new(self); raiz.add_child(hud_dji); hud_dji.visible = false; hud.dji = hud_dji
 	raiz.move_child(hud_dji, 0)
+	hud_fpv = HudFPV.new(self); raiz.add_child(hud_fpv); hud_fpv.visible = false; raiz.move_child(hud_fpv, 0)
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
@@ -385,7 +415,8 @@ func mostrar(id: String) -> void:
 	pantalla_actual = id
 	var en_vuelo := id == ""
 	hud.visible = en_vuelo
-	hud_dji.visible = en_vuelo and modelo != null and es_dron() and not sin_instrumentos
+	hud_dji.visible = en_vuelo and modelo != null and es_dron() and not es_fpv() and not sin_instrumentos
+	hud_fpv.visible = en_vuelo and modelo != null and es_fpv() and not sin_instrumentos
 	get_viewport().disable_3d = not en_vuelo                  # en las pantallas no se dibuja el mundo
 	if not en_vuelo: hud.ayuda.visible = false; poner_pausa(false); sonido.silenciar(true)
 	else: sonido.silenciar(not sonido.on); get_viewport().gui_release_focus()
@@ -453,19 +484,32 @@ func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
 			await mostrar_carga(titulo, "Terreno, mar, carreteras y pueblos…", 0.3)
 			mundo3d = Mundo3D.new(); mundo3d.calidad = cal; add_child(mundo3d); mundo3d.construir(ent, mundo_datos, orto)
 		_poner_vista(mundo3d)
-		await mostrar_carga(titulo, "Zona de detalle: ortofoto, edificios y árboles…", 0.6)
-		var c := _casa(); var meta := DatosComunes.zona_en(indice_zonas, MUNDO, c["N"], c["E"]); var z := {}
-		if not meta.is_empty():
+		await mostrar_carga(titulo, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6)
+		var c := _casa(); var zs := []
+		for meta in zonas_cerca(c["N"], c["E"]):
 			if not zonas_cache.has(meta["id"]): zonas_cache[meta["id"]] = DatosComunes.cargar_zona(meta)
-			z = zonas_cache[meta["id"]]
+			if not (zonas_cache[meta["id"]] as Dictionary).is_empty(): zs.append(zonas_cache[meta["id"]])
 		mundo3d.claro = Vector2(c["E"], c["N"])
-		ent.poner_zona(z); mundo3d.poner_zona(z); mundo3d.poner_base(c["N"], c["E"])
+		ent.poner_zonas(zs); mundo3d.poner_zonas(zs); mundo3d.poner_base(c["N"], c["E"])
 		await mostrar_carga(titulo, "Listo", 1.0)
 	else:
 		if campo3d != null and campo3d.calidad != cal: campo3d.queue_free(); campo3d = null; await get_tree().process_frame
 		if campo3d == null:
 			campo3d = Campo3D.new(); campo3d.calidad = cal; add_child(campo3d); campo3d.construir(ent)
 		_poner_vista(campo3d)
+
+## Zonas de detalle a menos de RADIO_ZONAS m del punto (N, E), primero la que lo contiene (zonasCerca de
+## simulador.html): con zonas pegadas, como las de La Manga y el Mar Menor, se vuela en detalle hasta ~2 km del piloto.
+const RADIO_ZONAS := 2000.0
+func zonas_cerca(N: float, E: float) -> Array:
+	var dist := func(z: Dictionary) -> float:
+		return Vector2(maxf(maxf(z["N0"] - N, 0.0), N - z["N0"] - z["lado_m"]), maxf(maxf(z["E0"] - E, 0.0), E - z["E0"] - z["lado_m"])).length()
+	var dentro := DatosComunes.zona_en(indice_zonas, MUNDO, N, E)
+	var lista := indice_zonas.filter(func(z): return z["mundo"] == MUNDO and dist.call(z) <= RADIO_ZONAS)
+	lista.sort_custom(func(a, b):
+		var da: int = 0 if (not dentro.is_empty() and a["id"] == dentro["id"]) else 1; var db: int = 0 if (not dentro.is_empty() and b["id"] == dentro["id"]) else 1
+		return da < db if da != db else dist.call(a) < dist.call(b))
+	return lista
 
 ## Solo un mundo en el arbol a la vez (cada uno trae su cielo, su luz y su WorldEnvironment).
 func _poner_vista(v: Node3D) -> void:
@@ -490,7 +534,7 @@ func empezar() -> void:
 	# el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
 	if es_dron() != era_dron: camara = 3 if es_dron() else 1
 	era_dron = es_dron()
-	if es_dron():
+	if es_dron() and not es_fpv():
 		if hud.gps.get_parent() != hud_dji.mapa: hud.gps.get_parent().remove_child(hud.gps); hud_dji.mapa.add_child(hud.gps)
 		hud.gps.custom_minimum_size = Vector2(130, 130)
 	elif hud.gps.get_parent() != hud.panel:
@@ -503,7 +547,13 @@ func empezar() -> void:
 
 func _texto_ayuda(A: Dictionary) -> void:
 	var t := "[font_size=18][b]Controles[/b][/font_size]\n"
-	if es_dron():
+	if es_fpv():
+		t += "[b]↑ ↓[/b] cabeceo (↑ adelante) · [b]← →[/b] alabeo · [b]W[/b] / [b]S[/b] gas (no vuelve al centro) · [b]Espacio[/b] gas a cero · [b]A[/b] / [b]D[/b] guiñada\n"
+		t += "[b]L[/b] armar / desarmar (con el gas abajo) · [b]M[/b] modo ANGLE / HORIZON / ACRO · [b]R[/b] empezar de nuevo\n"
+		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / FPV · [b]I[/b] OSD · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
+		t += "[b]Mando[/b] (modo 2): izquierda gas y guiñada, derecha alabeo y cabeceo · A armar / desarmar · LB modo · RB cámara · Back empezar de nuevo · Start pausa\n"
+		t += "[color=#8be08f]Mejor con una emisora RC por USB (el gas no tiene muelle) o un mando; con el teclado es muy difícil. Empieza en ANGLE.[/color]\n"
+	elif es_dron():
 		t += "[b]↓ ↑[/b] atrás / adelante · [b]← →[/b] laterales · [b]W[/b] / [b]S[/b] sube / baja · [b]A[/b] / [b]D[/b] gira sobre sí mismo\n"
 		t += "[b]M[/b] modo Cine / Normal / Sport · [b]Q[/b] / [b]E[/b] gimbal · [b]F[/b] foto · [b]V[/b] vídeo · [b]H[/b] volver a casa · [b]L[/b] armar · [b]R[/b] empezar de nuevo\n"
 		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / del dron · [b]I[/b] pantalla de la app · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
@@ -514,7 +564,7 @@ func _texto_ayuda(A: Dictionary) -> void:
 		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / a bordo · [b][[/b] [b]][/b] compensador\n"
 		t += "[b]H[/b] datos de vuelo · [b]I[/b] instrumentos · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
 		t += "[b]Mando[/b]: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa\n"
-	t += "[color=#ffb74d]Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.[/color]\n"
+	if not es_fpv(): t += "[color=#ffb74d]Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.[/color]\n"
 	t += "[color=#aaaaaa]En vuelo libre: [b]+[/b] [b]−[/b] viento, [b]G[/b] rachas. %s[/color]" % String(A.get("ayuda", "El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto."))
 	hud.ayuda_rt.text = t
 
@@ -528,7 +578,7 @@ func reiniciar() -> void:
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
 	if E.has("enVuelo"): _empezar_en_vuelo(); return
-	hud.aviso.text = "Pulsa el botón de despegue (⇧) o L para armar" if es_dron() else "Pulsa L para lanzar"
+	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧) o L para armar" if es_dron() else "Pulsa L para lanzar")
 
 func _nuevo_vuelo(h0: float) -> void:
 	vuelo = { "id": Aula.uuid4(), "inicio": Aula.ahora_iso(), "inicio_local": Time.get_datetime_dict_from_system(), "tVuelo": 0.0, "filas": [], "final": "",
@@ -541,6 +591,7 @@ func _empezar_en_vuelo() -> void:
 	var V0 := maxf(modelo.lanzamiento["vel_ms"] + 1, 1.35 * vs)
 	av["p"] = [float(C["N"]), float(C["E"]), -float(C["h"])]; av["q"] = Cuat.desde_euler(0, 3 * D2R, C["rumbo"] * D2R); av["v"] = [V0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]
 	av["gases"] = float(C["gas"]); av["estado"] = "volando"
+	if es_fpv(): modelo.armar_en_vuelo(av)           # dron FPV: armado y con el gas que lo sostiene
 	_nuevo_vuelo(float(C["h"]))
 	ev.empezar_guia(vs)
 	hud.aviso.text = ""; ev.guiar(av)
@@ -557,6 +608,7 @@ func lanzar() -> void:
 	if av.get("estado", "") != "en mano": return
 	modelo.lanzar(av); _orientar_lanzamiento()
 	hud.aviso.text = "Sube el gas (W o palanca izquierda arriba) para despegar" if es_dron() else ""
+	if es_fpv(): poner_toast("ARMADO")
 	if es_dron():
 		get_tree().create_timer(3.0).timeout.connect(func(): if av.get("estado") == "volando" and av.get("posado", false): hud.aviso.text = "")
 	if sesion["lanz_real"] and not modelo.facil and not es_dron():     # un lanzamiento a mano nunca es perfecto
@@ -652,7 +704,7 @@ func datos_resultado(v: Dictionary) -> Dictionary:
 	var E: Dictionary = Escenarios.datos()[v["escenario"]]; var libre := (E["objetivos"] as Array).is_empty()
 	var objs := []
 	for k in ev.orden: objs.append({ "id": k, "texto": ev.obj[k]["texto"], "ok": ev.obj[k]["estado"] == "ok" })
-	if not libre: objs.append({ "id": "camara", "texto": "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)", "ok": not v["otraCamara"] })
+	if not libre: objs.append({ "id": "camara", "texto": "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
 	var apto: bool = not libre and v["final"] == "aterrizado" and objs.all(func(o): return o["ok"])
 	return { "E": E, "libre": libre, "objs": objs, "apto": apto, "resultado": "LIBRE" if libre else ("APTO" if apto else "NO APTO") }
 
@@ -767,13 +819,14 @@ func _salir_repeticion() -> void:
 # =====================================================================
 #  PAUSA
 # =====================================================================
-func _nombre_camara(n: int) -> String: return ["", "piloto", "persecución", "del dron" if (modelo != null and es_dron()) else "a bordo"][n]
+func _nombre_camara(n: int) -> String: return ["", "piloto", "persecución", "FPV (gafas)" if (modelo != null and es_fpv()) else ("del dron" if (modelo != null and es_dron()) else "a bordo")][n]
+func _texto_instr() -> String: return ("OSD: " if es_fpv() else ("Pantalla de la app: " if es_dron() else "Instrumentos: ")) + ("no" if sin_instrumentos else "sí")
 func poner_pausa(si: bool) -> void:
 	if si == pausado: return
 	pausado = si; pausa["raiz"].visible = si
 	if si:
 		pausa["camara"].text = "Cámara: " + _nombre_camara(camara)
-		pausa["instr"].text = ("Pantalla de la app: " if es_dron() else "Instrumentos: ") + ("no" if sin_instrumentos else "sí")
+		pausa["instr"].text = _texto_instr()
 		pausa["sonido"].set_pressed_no_signal(sonido.on)
 		pausa["info"].text = "%s · %s" % [DatosComunes.avion(sesion["avion"]).get("nombre", ""), Escenarios.datos()[sesion["escenario"]]["nombre"]]
 		sonido.silenciar(true)
@@ -783,7 +836,7 @@ func cambiar_camara_pausa() -> void:
 	camara = camara % 3 + 1; pausa["camara"].text = "Cámara: " + _nombre_camara(camara)
 func cambiar_instrumentos_pausa() -> void:
 	sin_instrumentos = not sin_instrumentos
-	pausa["instr"].text = ("Pantalla de la app: " if es_dron() else "Instrumentos: ") + ("no" if sin_instrumentos else "sí")
+	pausa["instr"].text = _texto_instr()
 func terminar_desde_pausa() -> void:
 	poner_pausa(false)
 	if av["estado"] == "volando": terminar_vuelo("abandonado")
@@ -799,7 +852,7 @@ func salir_al_menu() -> void:
 #  APP DJI FLY (cuadricoptero)
 # =====================================================================
 func dji_modo(m := "") -> void:
-	if modelo == null or not es_dron(): return
+	if modelo == null or not es_dron() or es_fpv(): return
 	modelo.modo = m if m != "" else { "N": "S", "S": "C", "C": "N" }.get(modelo.modo, "N")
 	poner_toast("Modo %s%s" % [NOMBRES_MODO[modelo.modo], " · sin frenado suave" if modelo.modo == "S" else ""])
 func dji_foto() -> void:
@@ -826,6 +879,24 @@ func dji_rth() -> void:
 	if modelo == null or not es_dron() or rep_activa or av["estado"] != "volando" or av.get("posado", false): return
 	if av.get("rth") != null and av["rth"]["fase"] != "bajar": av["rth"] = null; poner_toast("Volver a casa cancelado"); return
 	modelo.volver_a_casa(av); poner_toast("Volviendo a casa")
+
+# =====================================================================
+#  DRON FPV: armar / desarmar y modos de Betaflight (el OSD esta en hud_fpv.gd)
+# =====================================================================
+## Armar (solo con el gas abajo, como un FPV de verdad) o desarmar (en el aire se cae; en el suelo tras volar, aterrizado).
+func fpv_armar() -> void:
+	if modelo == null or not es_fpv() or rep_activa: return
+	if av["estado"] == "en mano":
+		if av["gases"] > 0.05: poner_toast("Para armar, baja el gas del todo (S o palanca izquierda abajo)"); return
+		lanzar()
+	elif av["estado"] == "volando" and av["armado"]:
+		modelo.desarmar(av); poner_toast("DESARMADO")
+		if av["estado"] == "en mano": hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar"
+## Modo de vuelo de Betaflight: ANGLE -> HORIZON -> ACRO -> ANGLE (tecla M, LB del mando o el que se pida).
+func fpv_modo(m := "") -> void:
+	if modelo == null or not es_fpv(): return
+	modelo.modo = m if m != "" else { "ANGLE": "HORIZON", "HORIZON": "ACRO", "ACRO": "ANGLE" }.get(modelo.modo, "ANGLE")
+	poner_toast("Modo %s%s" % [modelo.modo, " · sin autonivelado" if modelo.modo == "ACRO" else (" · se nivela solo" if modelo.modo == "ANGLE" else "")])
 
 # =====================================================================
 #  TECLADO
@@ -857,14 +928,19 @@ func _unhandled_input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled(); return
 	if pausado: return
 	var libre := Escenarios.libre(sesion["escenario"]); var vto: Dictionary = ent.viento; var dron := es_dron()
-	if dron:
+	if es_fpv():            # dron FPV: L arma y desarma, M cambia de modo
+		match k:
+			KEY_M: fpv_modo()
+			KEY_L: fpv_armar()
+	elif dron:
 		match k:
 			KEY_M: dji_modo()
 			KEY_H: dji_rth()
 			KEY_F: dji_foto()
 			KEY_V: dji_video()
 	match k:
-		KEY_L: lanzar()
+		KEY_L:
+			if not es_fpv(): lanzar()
 		KEY_R: reiniciar()
 		KEY_SPACE: av["gases"] = 0.0
 		KEY_1: camara = 1
@@ -872,7 +948,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_3: camara = 3
 		KEY_I:
 			sin_instrumentos = not sin_instrumentos
-			poner_toast(("Sin la pantalla de la app" if sin_instrumentos else "Pantalla de la app") if dron else ("Sin instrumentos (como en el campo)" if sin_instrumentos else "Instrumentos"))
+			poner_toast(("Sin OSD" if sin_instrumentos else "OSD") if es_fpv() else ("Sin la pantalla de la app" if sin_instrumentos else "Pantalla de la app") if dron else ("Sin instrumentos (como en el campo)" if sin_instrumentos else "Instrumentos"))
 		KEY_T: hud.ayuda.visible = not hud.ayuda.visible
 		KEY_BRACKETLEFT: mando["trim"] = maxf(-6, mando["trim"] - 0.25)
 		KEY_BRACKETRIGHT: mando["trim"] = minf(6, mando["trim"] + 0.25)
@@ -894,7 +970,7 @@ func _leer_mando(dt: float) -> bool:
 	if dev < 0: return false
 	var rx := _zona_muerta(M.eje(dev, "rx"), M.zona); var ry := _zona_muerta(M.eje(dev, "ry"), M.zona)
 	var ly := _zona_muerta(M.eje(dev, "ly"), M.zona); var lx := _zona_muerta(M.eje(dev, "lx"), M.zona)
-	var cuad := modelo != null and es_dron()
+	var cuad := modelo != null and es_dron() and not es_fpv(); var fpv := modelo != null and es_fpv()   # el FPV lleva el gas como un avion
 	var pulsado := func(b: int) -> bool:
 		var ahora := Input.is_joy_button_pressed(dev, b); var antes: bool = _botones_antes.get(b, false); _botones_antes[b] = ahora
 		return ahora and not antes
@@ -904,7 +980,12 @@ func _leer_mando(dt: float) -> bool:
 		bs[b] = pulsado.call(b)
 	if pantalla_actual == "" and b_start: poner_pausa(not pausado)
 	M.gimbal = 0.0
-	if pantalla_actual == "" and not pausado and cuad:    # mando del DJI: A despegar/aterrizar, B casa, X video, Y foto, LB modo, RB camara, Back reiniciar
+	if pantalla_actual == "" and not pausado and fpv:     # dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
+		if bs[JOY_BUTTON_A]: fpv_armar()
+		if bs[JOY_BUTTON_LEFT_SHOULDER]: fpv_modo()
+		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
+		if bs[JOY_BUTTON_BACK]: reiniciar()
+	elif pantalla_actual == "" and not pausado and cuad:    # mando del DJI: A despegar/aterrizar, B casa, X video, Y foto, LB modo, RB camara, Back reiniciar
 		if bs[JOY_BUTTON_A]: dji_despegar()
 		if bs[JOY_BUTTON_B]: dji_rth()
 		if bs[JOY_BUTTON_X]: dji_video()
@@ -937,7 +1018,7 @@ func _leer_mando(dt: float) -> bool:
 	return moviendo or _mando_usado
 
 func _leer_teclado(dt: float) -> void:
-	var cuad := es_dron(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)
+	var cuad := es_dron() and not es_fpv(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas
 	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or (cuad and (T.call(KEY_W) or T.call(KEY_S)))
 	if tecla_palanca: _mando_usado = false            # si se tocan las flechas, vuelve a mandar el teclado
 	var gimbal_teclas := ((1.0 if T.call(KEY_E) else 0.0) - (1.0 if T.call(KEY_Q) else 0.0)) if cuad else 0.0
@@ -954,9 +1035,10 @@ func _leer_teclado(dt: float) -> void:
 	_leer_gas_teclado(dt)
 
 func _leer_gas_teclado(dt: float) -> void:
-	if av["motorRoto"] or es_dron(): return          # en el dron W/S son velocidad vertical
-	if Input.is_physical_key_pressed(KEY_W): av["gases"] = minf(1, av["gases"] + 0.8 * dt)
-	if Input.is_physical_key_pressed(KEY_S): av["gases"] = maxf(0, av["gases"] - 0.8 * dt)
+	if av["motorRoto"] or (es_dron() and not es_fpv()): return          # en el DJI W/S son velocidad vertical
+	var k := 0.4 if es_fpv() else 0.8                # FPV: mas despacio (se sostiene con un 30 % de gas)
+	if Input.is_physical_key_pressed(KEY_W): av["gases"] = minf(1, av["gases"] + k * dt)
+	if Input.is_physical_key_pressed(KEY_S): av["gases"] = maxf(0, av["gases"] - k * dt)
 
 # =====================================================================
 #  BUCLE, CAMARAS Y HUD
@@ -966,7 +1048,7 @@ func _process(dt_real: float) -> void:
 	if pantalla_actual != "" or av.is_empty() or modelo == null:
 		_acum = 0.0
 		if pantalla_actual != "": _leer_mando_en_menu()
-		if _args.has("auto") and modelo != null: _auto(dt_real)      # pruebas: la captura puede ser del resultado
+		if _args.has("auto") and modelo != null and not av.is_empty(): _auto(dt_real)      # pruebas: la captura puede ser del resultado
 		return
 	var t_us := Time.get_ticks_usec()
 	if rep_activa: _paso_repeticion(dt)
@@ -981,6 +1063,7 @@ func _process(dt_real: float) -> void:
 		_t_obj += dt
 		if _t_obj > 0.2: _t_obj = 0; _pintar_objetivos()
 	var t_fis := Time.get_ticks_usec() - t_us
+	avion3d.camara_fpv = es_fpv() and camara == 3     # con la camara FPV el dron no se dibuja
 	avion3d.actualizar(av)
 	vista.actualizar_manga(ent.viento["actual"])
 	_camara()
@@ -1009,6 +1092,12 @@ func _camara() -> void:
 	elif camara == 2:
 		var yaw: float = Cuat.euler(av["q"])[2]
 		cam.fov = 60; cam.global_position = t + Avion3D.ned([-cos(yaw) * 5, -sin(yaw) * 5, -1.5]); cam.look_at(t, Vector3.UP)
+	elif es_fpv():
+		# camara FPV: fija al bastidor, inclinada hacia arriba (uptilt) y gran angular (campo de vision HORIZONTAL fijo)
+		var F: Dictionary = modelo.fc; var ti: float = F["camara_inclinacion_grados"] * D2R; var q: Array = av["q"]
+		var pos := t + Avion3D.ned(Cuat.rot(q, F["camara_pos"])); var fw := Avion3D.ned(Cuat.rot(q, [cos(ti), 0.0, -sin(ti)])); var up := Avion3D.ned(Cuat.rot(q, [-sin(ti), 0.0, -cos(ti)]))
+		var asp: float = get_viewport().get_visible_rect().size.aspect()
+		cam.fov = rad_to_deg(2 * atan(tan(deg_to_rad(F["camara_fov_h_grados"]) / 2) / asp)); cam.global_position = pos; cam.look_at(pos + fw, up)
 	elif es_dron():
 		# camara del dron en su gimbal: nivelada, con el rumbo del dron y la inclinacion de la rueda (av.gimbal)
 		var yaw: float = Cuat.euler(av["q"])[2]; var g: float = av.get("gimbal", -10.0) * D2R
@@ -1075,12 +1164,19 @@ func _hud() -> void:
 	else: hud.lejos_l.text = aviso_lanzamiento() if (av["estado"] == "en mano" and not rep_activa) else ""
 	hud.lejos.visible = hud.lejos_l.text != ""
 	hud.disponer(camara == 1, sin_instrumentos, true, true, dron)
-	hud_dji.visible = dron and not sin_instrumentos
-	if dron: hud_dji.pintar(h, vn, vs, dist)
+	hud_dji.visible = dron and not es_fpv() and not sin_instrumentos
+	if dron and not es_fpv(): hud_dji.pintar(h, vn, vs, dist)
+	hud_fpv.visible = es_fpv() and not sin_instrumentos
+	if es_fpv(): hud_fpv.pintar(h, vn)
 
 ## Piloto automatico de las pruebas: alas niveladas, subida suave hasta 60 m sobre el terreno y luego crucero.
 func _piloto_auto() -> void:
 	if av["estado"] != "volando": return
+	if es_fpv():            # dron FPV en ANGLE: sube a 30 m con el gas y vuela en circulo despacio
+		var vz: float = -Cuat.rot(av["q"], av["v"])[2]; var hh: float = av.get("agl", 0.0); var eu := Cuat.euler(av["q"])
+		av["gases"] = clampf(0.32 / maxf(0.5, cos(eu[0]) * cos(eu[1])) + 0.04 * (30.0 - hh) - 0.05 * vz, 0, 1)
+		mando["pitch"] = -0.3 if hh > 8 else 0.0; mando["yaw"] = 0.12 if hh > 8 else 0.0; mando["guinada"] = 0.0
+		return
 	var e := Cuat.euler(av["q"]); var alto: bool = av.get("agl", 0.0) > 60
 	mando["yaw"] = clampf(-(e[0] / D2R - (20.0 if alto else 0.0)) / 45.0, -0.6, 0.6)
 	mando["pitch"] = clampf(((2.0 if alto else 10.0) - e[1] / D2R) / 15.0, -0.6, 0.6)
@@ -1107,7 +1203,8 @@ func _auto(dt_real: float) -> void:
 	if av.get("estado") == "en mano" and pantalla_actual == "":
 		av["gases"] = float(_args.get("gases", "1")); camara = int(_args.get("camara", "3" if es_dron() else "1"))
 		if _t_auto > 0.3:
-			if es_dron(): dji_despegar()
+			if es_fpv(): av["gases"] = 0.0; fpv_armar()
+			elif es_dron(): dji_despegar()
 			else: lanzar()
 	if _t_auto >= float(_args.get("esperar", "6")):
 		var med := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

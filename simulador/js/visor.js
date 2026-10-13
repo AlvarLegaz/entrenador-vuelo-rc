@@ -12,6 +12,7 @@ function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE
 
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
 function construirAvion(datos) {
+  if (datos.tipo === "fpv" && window.ModeloFPV && ModeloFPV.construir3D) return ModeloFPV.construir3D(datos);     // dron FPV: su modelo, en aviones/FPV.js
   const grupo = new THREE.Group(), K = datos.malla;
   const geom = m => {
     const g = new THREE.BufferGeometry();
@@ -315,6 +316,9 @@ class Visor {
     esc.add(sol.target); esc.userData.sol = sol;
   }
 
+  /** Opacidad del agua del Mar Menor (0-255), la misma que ALFA_LAGUNA de mundo_3d.gd en Godot. */
+  static get ALFA_LAGUNA() { return 105; }
+
   /** Mar: el agua de Three (reflejos del cielo y del sol, oleaje con un mapa de normales procedural) y, para la
    *  calidad baja, un plano simple. y: altura de la superficie; lado: tamano del plano. */
   _mar(esc, y, lado, color = 0x1f5a86, conReflejos = true) {
@@ -344,6 +348,29 @@ class Visor {
     }
     this.aguas.push({ water, plano });
     water.visible = this.calidad >= 2; plano.visible = !water.visible || water === plano;
+  }
+
+  /** (N, E) dentro de alguna zona de detalle puesta (con margen en m). */
+  _enZonas(n, e, margen) {
+    for (const Zb of this.zonasBBox || []) if (n > Zb[0] - margen && n < Zb[1] + margen && e > Zb[2] - margen && e < Zb[3] + margen) return true;
+    return false;
+  }
+
+  /** Agua de la laguna (Mar Menor, Entorno.laguna) semitransparente: debajo esta la ortofoto, que trae el color real del
+   *  agua somera y de su fondo (la region a 12 m y las zonas a 0,5 m); el mar abierto sigue opaco. Mascara en alphaMap,
+   *  colocada sobre el plano con repeat/offset (la textura cubre el terreno del mundo; fuera, su borde: mar opaco). */
+  _lagunaTransparente(plano, T) {
+    const Lg = this.entorno.laguna; if (!Lg || !plano) return;
+    const [c, g] = lienzo(T.nE, T.nN), img = g.createImageData(T.nE, T.nN);
+    for (let r = 0; r < T.nN; r++) for (let j = 0; j < T.nE; j++) {                     // fila 0 de la imagen = norte
+      const k = (T.nN - 1 - r) * T.nE + j, v = Lg[k] ? Visor.ALFA_LAGUNA : 255, q = 4 * (r * T.nE + j);
+      img.data[q] = img.data[q + 1] = img.data[q + 2] = v; img.data[q + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c), lado = plano.geometry.parameters.width, W = (T.nE - 1) * T.paso, H = (T.nN - 1) * T.paso;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    t.repeat.set(lado / W, lado / H); t.offset.set((-lado / 2 - T.E0) / W, (-lado / 2 - T.N0) / H);   // uv del plano (0..1 en lado) -> terreno
+    plano.material.alphaMap = t; plano.material.transparent = true; plano.material.depthWrite = false; plano.material.needsUpdate = true;
   }
 
   /** Cupula de cielo con degradado, el sol y unas nubes lejanas. radio: el de la cupula (la isla, 2850 m; un mundo
@@ -680,9 +707,10 @@ class Visor {
     // sin agua de espejo: en costas bajas como La Manga tapaba la tierra a ratos (redibuja la escena y alternaba cada
     // segundo con el plano). El agua, 0,3 m bajo el nivel del mar: la tierra va a 1 m como minimo, sin pelearse con ella
     this._mar(esc, -h0 - 0.3, 300000, 0x1d5580, false);
+    this._lagunaTransparente(this.aguas[this.aguas.length - 1].plano, T);
     // --- carreteras (cintas) y edificios genericos de las zonas urbanas de OSM: visor_real.js los rehace sin la
     // zona de detalle, donde ya estan los de verdad ---
-    this.zonaBBox = null;
+    this.zonaBBox = null; this.zonasBBox = [];
     if (this._carreterasMundo) { this._carreterasMundo(esc, m); this._edificiosSinteticos(esc, m); }
     else this._cintas(esc, m.carreteras, alt);
     this._arbolesMundo(esc, m, 0, 0);
@@ -709,7 +737,7 @@ class Visor {
     const ent = this.entorno, alt = ent.altura, r = semilla(11 + Math.round(cN / 97) + Math.round(cE / 89)), antes = new Set(esc.children);
     const lam = (c, extra) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, extra || {}));
     const arboles = [], apto = (nn, ee) => {
-      const Zb = this.zonaBBox; if (Zb && nn > Zb[0] - 20 && nn < Zb[1] + 20 && ee > Zb[2] - 20 && ee < Zb[3] + 20) return 0;
+      if (this._enZonas(nn, ee, 20)) return 0;
       const h = ent.alturaMar(nn, ee); if (h <= 1 || h > 450 || ent.enMar(nn, ee)) return 0;
       const pend = Math.abs(ent.alturaMar(nn + 60, ee) - ent.alturaMar(nn - 60, ee)) + Math.abs(ent.alturaMar(nn, ee + 60) - ent.alturaMar(nn, ee - 60));
       return pend > 40 ? 0 : h;
@@ -818,6 +846,7 @@ class Visor {
       // el sprite sin atenuacion se proyecta a scale / tan(fov/2) del semialto de la pantalla: se reescala a unos 12 px sea cual sea el zoom
       const tl = (ahora / 1000) % 1, enc = av.estado !== "en mano", sc = 16 * 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
       for (const l of a.luces) { l.visible = enc && (l.patron === "lento" ? tl < 0.5 : l.patron === "estrobo" ? tl < 0.06 || (tl > 0.15 && tl < 0.21) : true); l.children[0].scale.set(sc, sc, 1); }
+      if (a.animar) a.animar(av, dt, this);           // dron FPV: rotores, luces y oculto con su camara
       const suelo = this.entorno.altura ? this.entorno.altura(av.p[0], av.p[1]) : 0;
       this.sombra.position.set(t[0], suelo + 0.06, t[2]);
       const s = Math.max(0.2, 1 - Math.max(0, -av.p[2] - suelo) / 60);
@@ -869,6 +898,12 @@ class Visor {
     else if (this.camara === 2) {
       const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * 5, -Math.sin(yaw) * 5, -1.5]);
       cam.position.set(t[0] + back[0], t[1] + back[1], t[2] + back[2]); cam.fov = 60; cam.lookAt(t[0], t[1], t[2]);
+    } else if (this.avion && this.avion.fpv) {
+      // camara FPV: fija al bastidor, inclinada hacia arriba (uptilt) y gran angular (campo de vision HORIZONTAL fijo)
+      const C = this.avion.cam, ti = C.incl * Math.PI / 180, q = av.q;
+      const pos = ned2three(Cuat.rot(q, C.pos)), fw = ned2three(Cuat.rot(q, [Math.cos(ti), 0, -Math.sin(ti)])), up = ned2three(Cuat.rot(q, [-Math.sin(ti), 0, -Math.cos(ti)]));
+      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 2 * Math.atan(Math.tan(C.fovH / 2 * Math.PI / 180) / cam.aspect) * 180 / Math.PI;
+      cam.up.set(up[0], up[1], up[2]); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else if (this.avion && this.avion.dron) {
       // camara del dron en su gimbal de 3 ejes: nivelada (sin alabeo ni cabeceo del dron), con el rumbo del dron y la
       // inclinacion de la rueda (av.gimbal: 0 horizontal, -90 vertical). Campo de vision como el del DJI Mini (83 grados en diagonal)

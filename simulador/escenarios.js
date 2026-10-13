@@ -3,7 +3,8 @@
 // detras de "window.ESCENARIOS = ". La logica (evaluar los objetivos, la guia del aterrizaje) esta en el codigo de cada
 // version. Campos: nombre, desc, objetivos [[id, texto]], sentido (circuito: 1 o -1), zona (2: detras del piloto;
 // 3: mundo real), mundo (id del mundo real), viento fijo {vel, desde, rachas}, guia, enVuelo {N, E, h, rumbo, gas},
-// dificultad (estrellas, 1-3) y titulo_grupo (cabecera de su grupo en la pantalla de entrenamientos).
+// dificultad (estrellas, 1-3), titulo_grupo (cabecera de su grupo en la pantalla de entrenamientos) y destacados
+// (vuelo libre en un mundo real: puntos de despegue resaltados en el mapa de salida, con contorno lat/lon y rumbo).
 window.ESCENARIOS = {
  "primer_vuelo": {
   "nombre": "1 · Primer vuelo",
@@ -271,7 +272,25 @@ window.ESCENARIOS = {
   "mundo": "cartagena",
   "zona": 3,
   "desc": "Mapa real de 78 × 38 km: Cartagena, el Mar Menor, La Manga, la sierra de la Muela, Cabo de Palos, Mazarrón y el Campo de Cartagena, con el relieve de verdad, las carreteras, los pueblos y los almendros. Sales desde el corazón del mapa (al oeste de Cartagena) y no hay límite de alcance. Sin objetivos: cuenta como horas de entrenamiento.",
-  "objetivos": []
+  "objetivos": [],
+  "destacados": [
+   {
+    "nombre": "CIFP Politécnico",
+    "nota": "Aparcamiento interior del CIFP Politécnico (calle Grecia, 56): despegue hacia el este-sudeste, sobre el campo abierto. Zona de detalle a 0,25 m (cifp_politecnico).",
+    "lat": 37.613315,
+    "lon": -0.974488,
+    "rumbo": 110,
+    "contorno": [[37.613164, -0.975122], [37.613178, -0.974609], [37.613191, -0.974021], [37.613200, -0.973826], [37.614295, -0.972974], [37.615252, -0.974800], [37.613979, -0.975854], [37.613164, -0.975122]]
+   },
+   {
+    "nombre": "Los Halcones de la Rambla",
+    "nota": "Campo del Club Deportivo de Aeromodelismo Los Halcones de la Rambla (El Jimenado, Torre-Pacheco): pista de asfalto orientada 250-70; despegue desde la cabecera este hacia el 250. Zona de detalle a 0,25 m (halcones_rambla).",
+    "lat": 37.761795,
+    "lon": -1.012243,
+    "rumbo": 250,
+    "contorno": [[37.761587, -1.013745], [37.762469, -1.011307], [37.761791, -1.010939], [37.760977, -1.013462]]
+   }
+  ]
  },
  "libre": {
   "nombre": "Vuelo libre",

@@ -13,8 +13,9 @@ var h0: float
 var sol: DirectionalLight3D
 var img_region: Image
 var tex_region: ImageTexture
-var zona_bbox := []           # [N0, N1, E0, E1] de la zona de detalle puesta, o []
-var zona_id := ""
+var zonas_bbox := []          # [[N0, N1, E0, E1], ...] de las zonas de detalle puestas
+var zona_id := ""             # ids de las zonas puestas, separados por comas
+var _zonas := []              # por zona: { nodo, datos, arboles }
 var _terreno: MeshInstance3D
 var _cintas: MeshInstance3D
 var _edif_sint: Node3D
@@ -50,7 +51,7 @@ static func _tex_de(ruta: String, ampliar := 1) -> ImageTexture:
 	var img := Image.load_from_file(ruta)
 	if img == null: return null
 	# ampliada con interpolacion bicubica: de cerca se ven menos los bloques del JPEG y los pixeles de 0,5 m
-	if ampliar > 1: img.resize(img.get_width() * ampliar, img.get_height() * ampliar, Image.INTERPOLATE_CUBIC)
+	if ampliar > 1 and img.get_width() < 2048: img.resize(img.get_width() * ampliar, img.get_height() * ampliar, Image.INTERPOLATE_CUBIC)   # las de 0,25 m, no
 	img.generate_mipmaps(); img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_SRGB)     # 8 veces menos memoria de video
 	return ImageTexture.create_from_image(img)
 
@@ -138,9 +139,10 @@ func _terreno_lejano() -> void:
 							if not (agua[kk] == 1 if hay_agua else H[kk] <= 0): orilla = true
 				y = -1.5 if orilla else -7.0
 			y -= h0
-			if not zona_bbox.is_empty():          # bajo la zona de detalle se hunde 25 m: no asoma entre sus mallas
+			if not zonas_bbox.is_empty():         # bajo las zonas de detalle se hunde 25 m: no asoma entre sus mallas
 				var N := N0 + i * paso; var E := E0 + j * paso
-				if N > zona_bbox[0] and N < zona_bbox[1] and E > zona_bbox[2] and E < zona_bbox[3]: y -= 25
+				for Zb in zonas_bbox:
+					if N > Zb[0] and N < Zb[1] and E > Zb[2] and E < Zb[3]: y -= 25; break
 			Y[k] = y
 	var pos := PackedVector3Array(); pos.resize(nN * nE); var nor := PackedVector3Array(); nor.resize(nN * nE)
 	var uv := PackedVector2Array(); uv.resize(nN * nE)
@@ -166,6 +168,9 @@ const SHADER_MAR := """
 shader_type spatial;
 render_mode depth_draw_opaque;
 uniform vec3 color_agua : source_color = vec3(0.10, 0.26, 0.36);
+uniform sampler2D laguna : filter_linear, repeat_disable;       // 1 = Mar Menor (Entorno.laguna), 0 = mar o tierra
+uniform vec4 rect_laguna = vec4(0.0, 0.0, 1.0, 1.0);           // E0, N0, ancho, alto del terreno del mundo (m)
+uniform float alfa_laguna = 1.0;
 uniform sampler2D ondas1 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D ondas2 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 varying vec3 pmundo;
@@ -178,9 +183,28 @@ void fragment() {
 	float d = length(VERTEX);
 	NORMAL_MAP_DEPTH = mix(0.9, 0.15, clamp(d / 3000.0, 0.0, 1.0));   // lejos, mas liso (sin centelleo)
 	ALBEDO = color_agua;
+	// Mar Menor semitransparente: debajo esta la ortofoto con el color real del agua somera y del fondo (como en la web)
+	float lg = texture(laguna, vec2((pmundo.x - rect_laguna.x) / rect_laguna.z, 1.0 - (-pmundo.z - rect_laguna.y) / rect_laguna.w)).r;
+	ALPHA = mix(1.0, alfa_laguna, lg);
 	ROUGHNESS = 0.04; METALLIC = 0.0; SPECULAR = 0.55;
 }
 """
+
+## Opacidad del agua del Mar Menor: la misma que Visor.ALFA_LAGUNA de la web (105 / 255).
+const ALFA_LAGUNA := 105.0 / 255.0
+
+## Mascara de la laguna (fila 0 = norte) para el shader del mar; sin laguna en el mundo, todo opaco.
+func _mascara_laguna(mat: ShaderMaterial) -> void:
+	var T: Dictionary = ent.terreno; var Lg: PackedByteArray = ent.laguna
+	if Lg.is_empty(): return
+	var nN: int = T["nN"]; var nE: int = T["nE"]
+	var img := Image.create(nE, nN, false, Image.FORMAT_L8)
+	for r in nN:
+		for j in nE:
+			img.set_pixel(j, r, Color(1, 1, 1) if Lg[(nN - 1 - r) * nE + j] == 1 else Color(0, 0, 0))
+	mat.set_shader_parameter("laguna", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("rect_laguna", Vector4(T["E0"], T["N0"], (nE - 1) * T["paso"], (nN - 1) * T["paso"]))
+	mat.set_shader_parameter("alfa_laguna", ALFA_LAGUNA)
 
 func _mar() -> void:
 	var sh := Shader.new(); sh.code = SHADER_MAR
@@ -191,13 +215,15 @@ func _mar() -> void:
 		var fn := FastNoiseLite.new(); fn.frequency = 0.012 if k == "ondas1" else 0.025; fn.seed = 7 if k == "ondas1" else 13
 		fn.fractal_octaves = 4; nt.noise = fn
 		mat.set_shader_parameter(k, nt)
+	_mascara_laguna(mat)
 	var pm := PlaneMesh.new(); pm.size = Vector2(300000, 300000)
 	var mi := _mi(pm, mat, false); mi.position = Vector3(0, -h0 + 0.4, 0); add_child(mi)
 
 # ---------------------------------------------------------------- carreteras (cintas) fuera de la zona de detalle
 func _dentro_zona(n: float, e: float, margen: float) -> bool:
-	var Z := zona_bbox
-	return not Z.is_empty() and n > Z[0] - margen and n < Z[1] + margen and e > Z[2] - margen and e < Z[3] + margen
+	for Z in zonas_bbox:
+		if n > Z[0] - margen and n < Z[1] + margen and e > Z[2] - margen and e < Z[3] + margen: return true
+	return false
 
 func _carreteras() -> void:
 	if _cintas: _cintas.queue_free(); _cintas = null
@@ -408,7 +434,10 @@ func actualizar_manga(vn: Array) -> void:
 ## Punto de lanzamiento (N, E): ahi van el piloto (camara 1), la manga y los arboles de la region alrededor.
 func poner_base(N: float, E: float) -> void:
 	var h := ent.altura(N, E); base = Vector3(E, h, -N); claro = Vector2(E, N)
-	if _zona != null and _zona_arboles != null and claro.distance_to(_claro_hecho) > 5 and not sin_("arboles"): _arboles_zona(_zona_datos)
+	if not _zonas.is_empty() and claro.distance_to(_claro_hecho) > 5 and not sin_("arboles"):
+		for zz in _zonas:
+			if zz["arboles"] == null: continue
+			_zona = zz["nodo"]; _zona_arboles = zz["arboles"]; _arboles_zona(zz["datos"]); zz["arboles"] = _zona_arboles
 	manga.position = Vector3(E - 14, ent.altura(N + 10, E - 14), -N - 10)
 	if sin_("arboles"): return
 	if _arboles_NE.is_empty() or Vector2(_arboles_NE[0] - N, _arboles_NE[1] - E).length() > 1500:
@@ -448,21 +477,31 @@ func _arboles_de_la_region(cN: float, cE: float) -> void:
 # ---------------------------------------------------------------- zona de detalle
 ## Pone la zona de detalle z = DatosComunes.cargar_zona(...) (o {} para quitarla). El Entorno ya la tiene.
 func poner_zona(z: Dictionary) -> void:
-	var nuevo_id: String = z["meta"]["id"] if not z.is_empty() else ""
-	if nuevo_id == zona_id and (_zona != null or z.is_empty()): return
-	if _zona: _zona.queue_free(); _zona = null
-	var Zm: Dictionary = z.get("meta", {})
-	zona_bbox = [] if z.is_empty() else [Zm["N0"], Zm["N0"] + Zm["lado_m"], Zm["E0"], Zm["E0"] + Zm["lado_m"]]
-	zona_id = nuevo_id
+	poner_zonas([] if z.is_empty() else [z])
+
+## Pone varias zonas de detalle a la vez (las que hay cerca del punto de lanzamiento; [] para quitarlas). Como
+## ponerZonas de visor_real.js. El Entorno ya las tiene (poner_zonas) para que el suelo fisico sea el mismo.
+func poner_zonas(lista: Array) -> void:
+	var ids := ",".join(lista.map(func(z): return String(z["meta"]["id"])))
+	if ids == zona_id and (not _zonas.is_empty() or lista.is_empty()): return
+	for zz in _zonas: zz["nodo"].queue_free()
+	_zonas = []; _zona = null; _zona_arboles = null
+	zonas_bbox = lista.map(func(z): return [z["meta"]["N0"], z["meta"]["N0"] + z["meta"]["lado_m"], z["meta"]["E0"], z["meta"]["E0"] + z["meta"]["lado_m"]])
+	zona_id = ids
 	_terreno_lejano(); _carreteras(); _edificios_sinteticos()
 	_arboles_NE = []
-	if z.is_empty(): return
-	_zona = Node3D.new(); add_child(_zona); _zona_datos = z; _zona_arboles = null
-	_terreno_zona(z)
-	if not sin_("edificios"): _edificios_zona(z)
-	if not sin_("arboles"): _arboles_zona(z)
+	for z in lista:
+		_zona = Node3D.new(); add_child(_zona); _zona_datos = z; _zona_arboles = null
+		_terreno_zona(z)
+		if not sin_("edificios"): _edificios_zona(z)
+		if not sin_("arboles"): _arboles_zona(z)
+		_zonas.append({ "nodo": _zona, "datos": z, "arboles": _zona_arboles })
+	_singulares()                       # despues de las zonas: se asientan en su suelo
+
+var _tex_orto := {}           # texturas de las teselas de la zona que se esta construyendo ("ti_tj")
 
 func _terreno_zona(z: Dictionary) -> void:
+	_tex_orto = {}
 	var Z: Dictionary = z["meta"]; var D: PackedInt32Array = z["dem"]; var n: int = Z["dem"]["n"]; var paso: float = Z["dem"]["paso_m"]
 	var nt: int = Z["orto"]["teselas"]; var celdas := int(round(Z["orto"]["tesela_m"] / paso))
 	var Y := PackedFloat32Array(); Y.resize(n * n)
@@ -500,40 +539,99 @@ func _terreno_zona(z: Dictionary) -> void:
 					var p1: int = lista[q][0] * w + lista[q][1]; var p2: int = lista[q + 1][0] * w + lista[q + 1][1]
 					idx.append_array([p1, p2, base_i + q, p2, base_i + q + 1, base_i + q])
 			var nombre: String = Z["orto"]["archivo"].replace("{i}", str(ti)).replace("{j}", str(tj))
-			_zona.add_child(_mi(_malla(pos, nor, idx, uv), _mat_suelo(_tex_de(String(z["base"]).path_join(nombre), 2 if calidad >= 1 else 1)), false))
+			var tx := _tex_de(String(z["base"]).path_join(nombre), 2 if calidad >= 1 else 1); _tex_orto[str(ti) + "_" + str(tj)] = tx
+			_zona.add_child(_mi(_malla(pos, nor, idx, uv), _mat_suelo(tx), false))
 
-## Edificios del Catastro: cada huella extruida a sus plantas (3 m por planta) desde la cota del terreno, con el tejado
-## del color de la ortofoto y las fachadas claras. Todo en una malla.
+## Edificios del Catastro: cada huella extruida a sus plantas (3 m por planta) desde la cota del terreno. Tejados con la
+## propia ortofoto de la zona (la tesela de su centro: cubiertas reales, lucernarios, placas...), fachadas con una ventana
+## por planta y modulo de 3,5 m (fachada()) del color claro de siempre o, si la zona lo trae ("f", p. ej. el ladrillo del
+## CIFP Politecnico), con ladrillo caravista. Igual que _edificiosZona de visor_real.js.
 func _edificios_zona(z: Dictionary) -> void:
 	var ruta: String = String(z["base"]).path_join(z["meta"]["edificios"]["archivo"])
 	if not FileAccess.file_exists(ruta): return
 	var lista = JSON.parse_string(FileAccess.get_file_as_string(ruta))
 	if not lista is Array: return
-	var pos := PackedVector3Array(); var nor := PackedVector3Array(); var col := PackedColorArray()
+	var Z: Dictionary = z["meta"]; var nt: int = Z["orto"]["teselas"]; var tm: float = Z["orto"]["tesela_m"]
+	var fach := { "claro": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()],
+				  "ladrillo": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()] }
+	var tejados := {}
 	var crema := lin(Color.hex(0xeee6d8ff)); var r := RandomNumberGenerator.new(); r.seed = 5
 	for ed in lista:
 		var p: Array = ed["p"]
 		if p.size() < 6: continue
 		var P := PackedVector2Array()
 		for i in range(0, p.size(), 2): P.append(Vector2(p[i], p[i + 1]))
-		var y0: float = ed["b"] - h0 - 0.4; var y1: float = ed["b"] - h0 + ed["pl"] * 3.0 + 0.5
+		var y0: float = ed["b"] - h0 - 0.4; var y1: float = ed["b"] - h0 + ed["pl"] * 3.0 + 0.5; var alto := (y1 - y0) / 3.0
 		var C := lin(Color.html(ed["c"])) * 1.08; C.a = 1.0
-		var Cw := crema.lerp(C, 0.12) * (0.93 + 0.1 * r.randf()); Cw.a = 1.0
-		var tris := []
-		for k in P.size():
-			var a := P[k]; var b := P[(k + 1) % P.size()]
+		var es_l: bool = ed.has("f")
+		var F: Array = fach["ladrillo" if es_l else "claro"]
+		var Cw: Color = Color.WHITE * (0.92 + 0.12 * r.randf()) if es_l else crema.lerp(C, 0.12) * (0.93 + 0.1 * r.randf()); Cw.a = 1.0
+		var u := 0.0
+		for k in P.size():                      # fachadas: u en modulos de 3,5 m, v en plantas (v = 0 arriba de la textura)
+			var a := P[k]; var b := P[(k + 1) % P.size()]; var L := a.distance_to(b); var u0 := u / 3.5; var u1 := (u + L) / 3.5; u += L
 			var A0 := Vector3(a.x, y0, -a.y); var B0 := Vector3(b.x, y0, -b.y); var A1 := Vector3(a.x, y1, -a.y); var B1 := Vector3(b.x, y1, -b.y)
-			tris.append([A0, B0, B1, Cw]); tris.append([A0, B1, A1, Cw])
+			var nn := (B1 - A0).cross(B0 - A0).normalized()
+			F[0].append_array([A0, B0, B1, A0, B1, A1]); for q in 6: F[1].append(nn); F[2].append(Cw)
+			F[3].append_array([Vector2(u0, alto), Vector2(u1, alto), Vector2(u1, 0), Vector2(u0, alto), Vector2(u1, 0), Vector2(u0, 0)])
 		var t := Geometry2D.triangulate_polygon(P)
-		for q in range(0, t.size(), 3):
-			tris.append([Vector3(P[t[q]].x, y1, -P[t[q]].y), Vector3(P[t[q + 1]].x, y1, -P[t[q + 1]].y), Vector3(P[t[q + 2]].x, y1, -P[t[q + 2]].y), C])
-		for tr in tris:
-			var nn: Vector3 = (tr[2] - tr[0]).cross(tr[1] - tr[0]).normalized()
-			pos.append_array([tr[0], tr[1], tr[2]]); nor.append_array([nn, nn, nn]); col.append_array([tr[3], tr[3], tr[3]])
-	var mat := StandardMaterial3D.new(); mat.vertex_color_use_as_albedo = true; mat.cull_mode = BaseMaterial3D.CULL_DISABLED; mat.roughness = 0.9
-	var mi := _mi(_malla(pos, nor, PackedInt32Array(), PackedVector2Array(), col), mat)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-	_zona.add_child(mi)
+		var ce := 0.0; var cn := 0.0
+		for v in P: ce += v.x; cn += v.y
+		ce /= P.size(); cn /= P.size()
+		var ti := clampi(int(floor((cn - Z["N0"]) / tm)), 0, nt - 1); var tj := clampi(int(floor((ce - Z["E0"]) / tm)), 0, nt - 1)
+		var clave := str(ti) + "_" + str(tj)
+		if not tejados.has(clave): tejados[clave] = [PackedVector3Array(), PackedVector2Array(), Z["N0"] + ti * tm, Z["E0"] + tj * tm]
+		var T: Array = tejados[clave]
+		for q in range(0, t.size(), 3):         # tejado: la foto (en Godot la v de la tesela va de norte = 0 a sur = 1)
+			for v in [t[q], t[q + 2], t[q + 1]]:
+				T[0].append(Vector3(P[v].x, y1, -P[v].y)); T[1].append(Vector2((P[v].x - T[3]) / tm, 1.0 - (P[v].y - T[2]) / tm))
+	for nombre in fach:
+		var F: Array = fach[nombre]
+		if F[0].is_empty(): continue
+		var arr := []; arr.resize(Mesh.ARRAY_MAX); arr[Mesh.ARRAY_VERTEX] = F[0]; arr[Mesh.ARRAY_NORMAL] = F[1]; arr[Mesh.ARRAY_COLOR] = F[2]; arr[Mesh.ARRAY_TEX_UV] = F[3]
+		var am := ArrayMesh.new(); am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mat := StandardMaterial3D.new(); mat.vertex_color_use_as_albedo = true; mat.albedo_texture = fachada(nombre); mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.roughness = 0.9; mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		var mi := MeshInstance3D.new(); mi.mesh = am; mi.material_override = mat; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+		_zona.add_child(mi)
+	for clave in tejados:
+		var T: Array = tejados[clave]
+		var nor := PackedVector3Array(); nor.resize(T[0].size()); nor.fill(Vector3.UP)
+		var arr := []; arr.resize(Mesh.ARRAY_MAX); arr[Mesh.ARRAY_VERTEX] = T[0]; arr[Mesh.ARRAY_NORMAL] = nor; arr[Mesh.ARRAY_TEX_UV] = T[1]
+		var am := ArrayMesh.new(); am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mat := StandardMaterial3D.new(); mat.cull_mode = BaseMaterial3D.CULL_DISABLED; mat.roughness = 0.9
+		if _tex_orto.has(clave): mat.albedo_texture = _tex_orto[clave]
+		else: mat.albedo_color = Color("#b8b0a4")
+		var mi := MeshInstance3D.new(); mi.mesh = am; mi.material_override = mat; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+		_zona.add_child(mi)
+
+## Textura de un modulo de fachada (3,5 m por una planta de 3 m) que se repite: "claro" (pared blanca que tine el color
+## del vertice, ventana de 2,1 x 1,2 m con marco) o "ladrillo" (caravista rojo con llagas y una ventana alta apaisada,
+## como los talleres del CIFP). La misma que Visor.texturaFachada de visor_real.js.
+static var _fachadas := {}
+static func fachada(tipo: String) -> ImageTexture:
+	if _fachadas.has(tipo): return _fachadas[tipo]
+	var N := 128; var img := Image.create(N, N, false, Image.FORMAT_RGB8); var r := RandomNumberGenerator.new(); r.seed = 61 if tipo == "ladrillo" else 43
+	var ven: Array = [44, 84, 22, 42] if tipo == "ladrillo" else [26, 102, 36, 87]      # x0, x1, y0, y1 (fila 0 = arriba de la planta)
+	var lad := []
+	if tipo == "ladrillo":
+		for k in 32 * 9: lad.append(0.85 + 0.25 * r.randf())
+	for y in N:
+		for x in N:
+			var c: Color
+			if tipo == "ladrillo":           # hiladas de 4 px (7 cm), ladrillos de 15 px a soga
+				var f := y >> 2; var xo := (x + (f & 1) * 7) % N; var k := mini(8, xo / 15); var tt: float = lad[f * 9 + k]
+				c = Color8(196, 182, 164) if ((y & 3) == 3 or xo % 15 == 14) else Color8(int(164 * tt), int(85 * tt), int(63 * tt))
+			else:
+				var tt := 0.96 + 0.04 * r.randf(); c = Color8(int(244 * tt), int(241 * tt), int(236 * tt))
+			if x >= ven[0] and x < ven[1] and y >= ven[2] and y < ven[3]:
+				var marco: bool = x < ven[0] + 2 or x >= ven[1] - 2 or y < ven[2] + 2 or y >= ven[3] - 2 or absf(x - (ven[0] + ven[1]) / 2.0) < 1
+				var fy: float = float(y - ven[2]) / (ven[3] - ven[2])
+				c = Color8(205, 205, 200) if marco else Color8(int(58 + 30 * fy), int(72 + 30 * fy), int(86 + 28 * fy))
+			if y >= ven[3] and y < ven[3] + 2 and x >= ven[0] - 2 and x < ven[1] + 2: c = Color8(215, 210, 200)      # alfeizar
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	var t := ImageTexture.create_from_image(img); _fachadas[tipo] = t
+	return t
 
 static func _hsl(h: float, s: float, l: float) -> Color:
 	var q := l * (1 + s) if l < 0.5 else l + s - l * s; var p := 2 * l - q
@@ -576,3 +674,194 @@ func _arboles_zona(z: Dictionary) -> void:
 		var b := Basis(Vector3.UP, it[3] * TAU).scaled_local(Vector3(rc, rc * 0.55, rc))
 		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + rc * 0.3, -it[1])), lin(_hsl(0.15 + 0.06 * it[5], 0.16 + 0.1 * it[6], 0.3 + 0.08 * it[4]))], 500.0, 0.0, 4000.0,
 		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+
+# ---------------------------------------------------------------- elementos singulares (simulador/singulares.js)
+## Elementos singulares del mundo (simulador/singulares.js, comun con la web: la entrada del CIFP Politecnico...), con
+## las mismas piezas y texturas que _singulares de visor_real.js.
+static var _singulares_datos = null
+static func singulares_datos() -> Array:
+	if _singulares_datos != null: return _singulares_datos
+	_singulares_datos = []
+	var t := FileAccess.get_file_as_string(DatosComunes.carpeta().path_join("singulares.js"))
+	var re := RegEx.new(); re.compile("(?m)^window[.]SINGULARES = ")
+	var mm := re.search(t)
+	if mm != null:
+		var resto := t.substr(mm.get_end()); var d = JSON.parse_string(resto.substr(0, resto.rfind("]") + 1))
+		if d is Array: _singulares_datos = d
+	return _singulares_datos
+
+var _sing: Node3D
+func _singulares() -> void:
+	if _sing: _sing.queue_free()
+	_sing = Node3D.new(); add_child(_sing)
+	var alt := func(n: float, e: float) -> float: return ent.altura(n, e)
+	var mat := func(tex: Texture2D, escala: float, metal := 0.0, rug := 0.9) -> StandardMaterial3D:
+		var mt := StandardMaterial3D.new(); mt.albedo_texture = tex; mt.uv1_triplanar = true; mt.uv1_world_triplanar = true
+		mt.uv1_scale = Vector3.ONE / escala; mt.metallic = metal; mt.roughness = rug; mt.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		return mt
+	var color := func(c: Color, metal := 0.0, rug := 0.9) -> StandardMaterial3D:
+		var mt := StandardMaterial3D.new(); mt.albedo_color = c; mt.metallic = metal; mt.roughness = rug; return mt
+	var pon := func(mesh: Mesh, mt: Material, pos: Vector3, rot_y := 0.0, padre: Node3D = null) -> MeshInstance3D:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mt; mi.position = pos; mi.rotation.y = rot_y
+		(padre if padre else _sing).add_child(mi); return mi
+	for S in singulares_datos():
+		if S["mundo"] != m.get("id", ""): continue
+		for p in S["piezas"]:
+			match String(p["tipo"]):
+				"muro":
+					var de: float = p["e1"] - p["e0"]; var dn: float = p["n1"] - p["n0"]; var L := Vector2(de, dn).length()
+					var y0: float = minf(alt.call(p["n0"], p["e0"]), alt.call(p["n1"], p["e1"])) - 0.3; var h: float = p["alto"] + 0.3
+					var bm := BoxMesh.new(); bm.size = Vector3(L, h, p["grosor"])
+					pon.call(bm, mat.call(textura_singular(p["textura"]), 1.6), Vector3((p["e0"] + p["e1"]) / 2, y0 + h / 2, -(p["n0"] + p["n1"]) / 2), atan2(dn, de))
+				"cilindro":
+					var y0: float = alt.call(p["n"], p["e"]) - 0.3; var h: float = p["alto"] + 0.3
+					var cm := CylinderMesh.new(); cm.top_radius = p["radio"]; cm.bottom_radius = p["radio"]; cm.height = h; cm.radial_segments = 40
+					pon.call(cm, mat.call(textura_singular(p["textura"]), 2.4), Vector3(p["e"], y0 + h / 2, -p["n"]))
+				"disco":
+					var c := Node3D.new(); c.position = Vector3(p["e"], alt.call(p["n"], p["e"]) + p["h"], -p["n"]); c.rotation.y = PI - deg_to_rad(p["rumbo"]); _sing.add_child(c)
+					var cm := CylinderMesh.new(); cm.top_radius = p["radio"]; cm.bottom_radius = p["radio"]; cm.height = 0.04; cm.radial_segments = 48
+					var mi: MeshInstance3D = pon.call(cm, mat.call(textura_singular("rejilla"), 0.9, 0.4, 0.5), Vector3.ZERO, 0.0, c); mi.rotation.x = PI / 2
+					var tm := TorusMesh.new(); tm.inner_radius = p["radio"] - 0.06; tm.outer_radius = p["radio"] + 0.06
+					var ar: MeshInstance3D = pon.call(tm, color.call(Color("#2b2f33"), 0.5, 0.4), Vector3.ZERO, 0.0, c); ar.rotation.x = PI / 2
+				"cartel":
+					_cartel(p, Vector3(p["e"], alt.call(p["n"], p["e"]) + p["h"], -p["n"]), PI - deg_to_rad(p["rumbo"]))
+				"marquesina":
+					var y: float = alt.call((p["n0"] + p["n1"]) / 2, (p["e0"] + p["e1"]) / 2); var ancho: float = p["e1"] - p["e0"] + p["vuelo"]; var fondo: float = p["n1"] - p["n0"]
+					var acero: StandardMaterial3D = color.call(Color("#3a3f45"), 0.6, 0.45); var cx: float = (p["e0"] - p["vuelo"] + p["e1"]) / 2
+					var bm := BoxMesh.new(); bm.size = Vector3(ancho, 0.22, fondo)
+					pon.call(bm, color.call(Color("#d9dcdf"), 0.3, 0.5), Vector3(cx, y + p["h"], -(p["n0"] + p["n1"]) / 2))
+					for k in 5:                 # cerchas metalicas bajo el techo
+						var v := BoxMesh.new(); v.size = Vector3(ancho, 0.5, 0.08)
+						pon.call(v, acero, Vector3(cx, y + p["h"] - 0.35, -(p["n0"] + 0.2 + k * (fondo - 0.4) / 4)))
+					for n in [p["n0"] + 0.25, p["n1"] - 0.25]:      # pilares de la parte que vuela
+						var cm := CylinderMesh.new(); cm.top_radius = 0.11; cm.bottom_radius = 0.11; cm.height = p["h"]; cm.radial_segments = 10
+						pon.call(cm, acero, Vector3(p["e0"] - p["vuelo"] + 0.3, y + p["h"] / 2, -n))
+				"submarino":
+					var y: float = alt.call(p["n"], p["e"]); var metal: StandardMaterial3D = color.call(Color("#a7aeb5"), 0.35, 0.38)
+					var g := Node3D.new(); g.position = Vector3(p["e"], y + p["peana"] + 0.9 + p["radio"], -p["n"]); g.rotation.y = -deg_to_rad(p["rumbo"]); _sing.add_child(g)
+					pon.call(_casco_submarino(p["largo"], p["radio"]), metal, Vector3.ZERO, 0.0, g)
+					var tc := CylinderMesh.new(); tc.top_radius = 0.22; tc.bottom_radius = 0.26; tc.height = 0.42
+					pon.call(tc, metal, Vector3(0, p["radio"] + 0.12, -0.6), 0.0, g)
+					var tb := BoxMesh.new(); tb.size = Vector3(0.05, 0.5, 0.35); pon.call(tb, metal, Vector3(0, 0, p["largo"] / 2 - 0.25), 0.0, g)
+					var he := TorusMesh.new(); he.inner_radius = 0.19; he.outer_radius = 0.25
+					var hm: MeshInstance3D = pon.call(he, metal, Vector3(0, 0, p["largo"] / 2 - 0.05), 0.0, g); hm.rotation.x = PI / 2
+					var pb := BoxMesh.new(); pb.size = Vector3(1.4, p["peana"], 2.4)
+					pon.call(pb, color.call(Color("#8f9499"), 0.0, 0.85), Vector3(p["e"], y + p["peana"] / 2, -p["n"]), g.rotation.y)
+					var po := CylinderMesh.new(); po.top_radius = 0.06; po.bottom_radius = 0.08; po.height = 0.95
+					pon.call(po, metal, Vector3(p["e"], y + p["peana"] + 0.47, -p["n"]))
+				"mastil":
+					var y: float = alt.call(p["n"], p["e"])
+					var cm := CylinderMesh.new(); cm.top_radius = 0.035; cm.bottom_radius = 0.05; cm.height = p["alto"]; cm.radial_segments = 10
+					pon.call(cm, color.call(Color("#d8dadc"), 0.6, 0.3), Vector3(p["e"], y + p["alto"] / 2, -p["n"]))
+					var qm := QuadMesh.new(); qm.size = Vector2(1.5, 1.0)
+					var mb := StandardMaterial3D.new(); mb.albedo_texture = textura_bandera(p["bandera"]); mb.cull_mode = BaseMaterial3D.CULL_DISABLED; mb.roughness = 0.8
+					pon.call(qm, mb, Vector3(p["e"], y + p["alto"] - 0.6, -(p["n"] - 0.78)), PI / 2)      # ondea hacia el sur: de cara al aparcamiento
+	for mi in _sing.find_children("*", "MeshInstance3D", true, false): (mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+## Casco del submarino: torno de un perfil de puro (como LatheGeometry en la web), eje a lo largo de z.
+static func _casco_submarino(largo: float, radio: float) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES); var seg := 32
+	var perfil := []
+	for k in 25:
+		var t := k / 24.0; var r := radio * pow(sin(PI * minf(1, t * 1.15)), 0.62) * (1.0 if t < 0.87 else 1 - (t - 0.87) / 0.13 * 0.9)
+		perfil.append(Vector2(maxf(0.01, r), (t - 0.5) * largo))
+	for k in perfil.size() - 1:
+		for s in seg:
+			var a0 := TAU * s / seg; var a1 := TAU * (s + 1) / seg; var p0: Vector2 = perfil[k]; var p1: Vector2 = perfil[k + 1]
+			var v := [Vector3(p0.x * cos(a0), p0.x * sin(a0), p0.y), Vector3(p0.x * cos(a1), p0.x * sin(a1), p0.y), Vector3(p1.x * cos(a1), p1.x * sin(a1), p1.y), Vector3(p1.x * cos(a0), p1.x * sin(a0), p1.y)]
+			for q in [0, 2, 1, 0, 3, 2]:
+				var w: Vector3 = v[q]; st.set_normal(Vector3(w.x, w.y, 0).normalized()); st.add_vertex(w)
+	return st.commit()
+
+## Cartel: imagen del panel (marco claro, cuadro naranja con engranaje, panel gris oscuro) y el texto con Label3D (Godot
+## no escribe texto en una imagen): mismas medidas y colores que Visor.texturaCartel de la web.
+func _cartel(p: Dictionary, pos: Vector3, rot_y: float) -> void:
+	var c := Node3D.new(); c.position = pos; c.rotation.y = rot_y; _sing.add_child(c)
+	var ancho: float = p["ancho"]; var alto: float = p["alto"]; var H := 256; var W := int(round(H * ancho / alto)); var k: float = alto / H
+	var qm := QuadMesh.new(); qm.size = Vector2(ancho, alto)
+	var mt := StandardMaterial3D.new(); mt.albedo_texture = textura_cartel(W, H); mt.roughness = 0.6
+	var mi := MeshInstance3D.new(); mi.mesh = qm; mi.material_override = mt; c.add_child(mi)
+	var fondo := BoxMesh.new(); fondo.size = Vector3(ancho + 0.08, alto + 0.08, 0.08)
+	var fm := MeshInstance3D.new(); fm.mesh = fondo; var mf := StandardMaterial3D.new(); mf.albedo_color = Color("#e8e8e4"); fm.material_override = mf; fm.position.z = -0.05; c.add_child(fm)
+	var m_ := 10; var lado := H - 2 * m_; var x0 := m_ + lado + 8; var disp := (W - x0 - m_ - 44) * k
+	var total := 0.0
+	for l in p["lineas"]: total += float(l[2])
+	var esc := (H - 2 * m_ - 28) / total; var y := float(m_ + 14)
+	for l in p["lineas"]:
+		var px: float = float(l[2]) * esc; var f := int(round(px * 0.92))
+		var lab := Label3D.new(); lab.text = l[0]; lab.font = Tema.negrita if Tema.negrita else null; lab.font_size = f; lab.pixel_size = k
+		lab.modulate = Color(l[1]); lab.outline_size = 0; lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; lab.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		lab.double_sided = false; lab.shaded = true
+		var ancho_txt := (lab.font if lab.font else ThemeDB.fallback_font).get_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, f).x * k
+		if ancho_txt > disp: lab.font_size = int(floor(f * disp / ancho_txt)); f = lab.font_size
+		lab.position = Vector3(-ancho / 2 + (x0 + 22) * k, alto / 2 - (y + (px - f) / 2.0) * k, 0.02)
+		c.add_child(lab); y += px
+
+static func textura_cartel(W: int, H: int) -> ImageTexture:
+	var img := Image.create(W, H, false, Image.FORMAT_RGB8); img.fill(Color8(244, 244, 242))
+	var m_ := 10; var lado := H - 2 * m_; var cx := m_ + lado / 2.0; var cy := m_ + lado / 2.0
+	img.fill_rect(Rect2i(m_, m_, lado, lado), Color8(236, 122, 38))
+	for y in range(m_, m_ + lado):
+		for x in range(m_, m_ + lado):
+			var dx := (x - cx) / lado; var dy := (y - cy) / lado; var r := Vector2(dx, dy).length(); var a := fposmod(atan2(dy, dx), TAU)
+			var diente := 0.38 if int(floor(a / (TAU / 24))) % 2 == 0 else 0.30
+			var blanco := r < diente and r > 0.14
+			var ca := cos(0.6); var sa := sin(0.6); var ex := (dx * ca + dy * sa) / 0.46; var ey := (-dx * sa + dy * ca) / 0.17
+			if absf(sqrt(ex * ex + ey * ey) - 1.0) < 0.05: blanco = true          # la orbita del atomo
+			if blanco: img.set_pixel(x, y, Color.WHITE)
+	var x0 := m_ + lado + 8
+	img.fill_rect(Rect2i(x0, m_, W - x0 - m_, H - 2 * m_), Color8(61, 66, 71))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+## Texturas de los singulares: "bloque" (bloque de hormigon de 40 x 20 cm, 1,6 m por textura), "hormigon" (2,4 m, con
+## manchas) y "rejilla" (lamas verticales). Las mismas que Visor.texturaSingular de la web.
+static var _tex_sing := {}
+static func textura_singular(tipo: String) -> ImageTexture:
+	if _tex_sing.has(tipo): return _tex_sing[tipo]
+	var N := 256; var img := Image.create(N, N, false, Image.FORMAT_RGB8); var r := RandomNumberGenerator.new(); r.seed = 71 if tipo == "bloque" else (73 if tipo == "hormigon" else 79)
+	var tonos := []
+	for k in 64: tonos.append(0.9 + 0.14 * r.randf())
+	for y in N:
+		for x in N:
+			var c: Color
+			if tipo == "bloque":
+				var f := y >> 5; var xo := (x + (f & 1) * 32) % N; var k := (f * 4 + (xo >> 6)) % 64; var junta := (y & 31) >= 30 or (xo & 63) >= 62
+				var t: float = tonos[k] * (0.94 + 0.12 * r.randf())
+				c = Color8(int(150 * t / tonos[k]), int(150 * t / tonos[k]), int(146 * t / tonos[k])) if junta else Color8(int(minf(255, 190 * t)), int(minf(255, 190 * t)), int(minf(255, 185 * t)))
+			elif tipo == "hormigon":
+				var mancha := 0.88 + 0.12 * sin(x * 0.05 + sin(y * 0.03) * 2) * sin(y * 0.021); var gr := 0.95 + 0.08 * r.randf()
+				c = Color8(int(minf(255, 205 * mancha * gr)), int(minf(255, 200 * mancha * gr)), int(minf(255, 190 * mancha * gr)))
+			else:
+				c = Color8(62, 66, 70) if (x & 15) < 9 else Color8(22, 24, 26)
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	var tx := ImageTexture.create_from_image(img); _tex_sing[tipo] = tx
+	return tx
+
+## Banderas (3 x 2): "es", "ue" y "murcia" (simplificada), como Visor.texturaBandera.
+static var _tex_band := {}
+static func textura_bandera(tipo: String) -> ImageTexture:
+	if _tex_band.has(tipo): return _tex_band[tipo]
+	var W := 192; var H := 128; var img := Image.create(W, H, false, Image.FORMAT_RGB8)
+	if tipo == "es":
+		img.fill(Color8(198, 11, 30)); img.fill_rect(Rect2i(0, H / 4, W, H / 2), Color8(255, 196, 0))
+	elif tipo == "ue":
+		img.fill(Color8(0, 51, 153))
+		for k in 12:
+			var a := TAU * k / 12.0; var cx := W / 2.0 + cos(a) * 38; var cy := H / 2.0 + sin(a) * 38
+			for y in range(int(cy) - 7, int(cy) + 8):
+				for x in range(int(cx) - 7, int(cx) + 8):
+					var b := atan2(y - cy, x - cx) + PI / 2; var rr := Vector2(x - cx, y - cy).length()
+					var lim := 2.6 + (6.5 - 2.6) * pow(absf(cos(2.5 * b)), 3)          # estrella de 5 puntas
+					if rr < lim: img.set_pixel(x, y, Color8(255, 204, 0))
+	else:
+		img.fill(Color8(155, 27, 48)); var oro := Color8(242, 194, 48)
+		for q in [[10, 10], [34, 10], [10, 34], [34, 34]]:                   # castillos
+			img.fill_rect(Rect2i(q[0], q[1] + 6, 18, 12), oro); img.fill_rect(Rect2i(q[0] + 2, q[1] + 2, 4, 5), oro); img.fill_rect(Rect2i(q[0] + 12, q[1] + 2, 4, 5), oro)
+		for k in 7:                                                            # coronas
+			var x := 150 + (k % 2) * 16; var y := 14 + k * 15
+			img.fill_rect(Rect2i(x, y + 4, 12, 4), oro); img.fill_rect(Rect2i(x, y, 2, 4), oro); img.fill_rect(Rect2i(x + 5, y, 2, 4), oro); img.fill_rect(Rect2i(x + 10, y, 2, 4), oro)
+	img.generate_mipmaps()
+	var tx := ImageTexture.create_from_image(img); _tex_band[tipo] = tx
+	return tx

@@ -6,13 +6,17 @@ extends Control
 ## el zoom en el cursor y arrastrar con el boton derecho o el central para mover el mapa.
 
 signal punto_elegido(N: float, E: float)
+signal destacado_elegido(d: Dictionary)
 
 var tex: Texture2D
 var T: Dictionary              # terreno del mundo (N0, E0, nN, nE, paso)
 var lugares := []
 var carreteras := []
 var zonas := []                # indice de zonas del mundo
-var punto := {}                # { N, E, rumbo }
+var punto := {}                # { N, E, rumbo, destacado }
+var destacados := []           # puntos de despegue resaltados (escenarios.js): { nombre, lat, lon, rumbo, contorno }
+var a_ne: Callable             # (lat, lon) -> [N, E] (latLonANE)
+var _xy := []                  # posicion en pantalla de cada destacado (para el clic)
 var _esc := 0.0                # pixeles de pantalla por pixel de la imagen
 var _org := Vector2.ZERO       # pixel de la imagen en la esquina superior izquierda
 var _arrastre := false
@@ -50,6 +54,9 @@ func _gui_input(ev: InputEvent) -> void:
 			_esc = clampf(_esc * f, minf(size.x / tex.get_width(), size.y / tex.get_height()) * 0.8, 4.0)
 			_org = antes - ev.position / _esc; queue_redraw(); accept_event()
 		elif ev.button_index == MOUSE_BUTTON_LEFT:
+			for k in _xy.size():          # clic en un destacado (su punto o su chincheta): se elige el destacado
+				if ev.position.distance_to(_xy[k]) < 18 or ev.position.distance_to(_xy[k] - Vector2(0, 26)) < 14:
+					destacado_elegido.emit(destacados[k]); accept_event(); return
 			var ne := a_mundo(ev.position)
 			if ne.x > T["N0"] and ne.x < T["N0"] + (T["nN"] - 1) * T["paso"] and ne.y > T["E0"] and ne.y < T["E0"] + (T["nE"] - 1) * T["paso"]:
 				punto_elegido.emit(ne.x, ne.y)
@@ -90,6 +97,27 @@ func _draw() -> void:
 		for lado in [[r.position, Vector2(r.end.x, r.position.y)], [Vector2(r.end.x, r.position.y), r.end], [r.end, Vector2(r.position.x, r.end.y)], [Vector2(r.position.x, r.end.y), r.position]]:
 			draw_dashed_line(lado[0], lado[1], am, 1.5, 4.0)
 		_txt(f, a + Vector2(2, -3), "detalle", 10, am)
+	# puntos destacados (CIFP...): contorno naranja, anillo, chincheta y rotulo (como pintarMapaLanz de la web)
+	_xy = []
+	var fb: Font = Tema.negrita if Tema.negrita else f
+	for d in destacados:
+		var dne: Array = a_ne.call(d["lat"], d["lon"]); var q := a_pantalla(dne[0], dne[1]); var sel: bool = punto.get("destacado", "") == d["nombre"]
+		var naranja := Color("#ff8c00")
+		if d.has("contorno"):
+			var poli := PackedVector2Array()
+			for ll in d["contorno"]:
+				var c: Array = a_ne.call(ll[0], ll[1]); poli.append(a_pantalla(c[0], c[1]))
+			if poli.size() >= 3 and Geometry2D.triangulate_polygon(poli).size() > 0: draw_colored_polygon(poli, Color(1, 0.55, 0, 0.35))
+			poli.append(poli[0]); draw_polyline(poli, naranja, 2, true)
+		draw_arc(q, 14, 0, TAU, 40, Color(1, 0.55, 0, 0.9), 3, true)
+		var cab := q - Vector2(0, 26)
+		draw_colored_polygon(PackedVector2Array([q, cab + Vector2(-8, 4), cab + Vector2(8, 4)]), naranja)
+		draw_circle(cab, 9, naranja); draw_circle(cab, 3.5, Color.WHITE)
+		var tw := fb.get_string_size(d["nombre"], HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		var caja := Rect2(q + Vector2(14, -46), Vector2(tw + 16, 24))
+		draw_style_box(Tema.caja(naranja if sel else Color(8 / 255.0, 14 / 255.0, 22 / 255.0, 0.88), naranja, 6, 1, 0, 0), caja)
+		draw_string(fb, q + Vector2(22, -29), d["nombre"], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#111111") if sel else Color.WHITE)
+		_xy.append(q)
 	var o := a_pantalla(0, 0)                       # origen del mundo (el corazon)
 	draw_circle(o, 4, Color("#ff5252")); _txt(Tema.fuente if Tema.fuente else f, o + Vector2(6, 4), "origen", 10, Color.WHITE)
 	if not punto.is_empty():

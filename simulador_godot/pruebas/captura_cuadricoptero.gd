@@ -1,7 +1,8 @@
 extends SceneTree
-## Captura del dron DJI Mini dibujado por Avion3D (malla de DatosComunes, 4 rotores y luces), para mirarlo a ojo:
-## de cerca (rotores girando y luces), de lejos con el zoom del piloto (las luces se ven de ~16 px aunque el dron
-## ocupe un par de pixeles) y en el suelo con los motores parados (sin rotores ni luces). Necesita ventana (no --headless).
+## Captura del dron DJI Mini dibujado por Avion3D (modelo detallado de modelo_dji_3d.gd, 4 rotores y luces), para
+## mirarlo a ojo: de cerca (helices girando: disco de desenfoque, y luces), de lejos con el zoom del piloto (las luces se
+## ven de ~16 px aunque el dron ocupe un par de pixeles) y en el suelo con los motores parados (palas quietas, sin
+## luces). Para mas vistas del modelo, pruebas/captura_dji.gd. Necesita ventana (no --headless).
 ## Uso (desde la carpeta del repositorio):
 ##   herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/captura_cuadricoptero.gd -- --captura=<prefijo>
 ## Guarda <prefijo>_cerca.png, <prefijo>_lejos.png y <prefijo>_suelo.png.
@@ -22,6 +23,7 @@ func _initialize() -> void:
 	var m := ModeloCuadricoptero.new(DatosComunes.avion("DJI_MINI"))
 	var av := m.estado_inicial(); m.lanzar(av)
 	av["p"] = [0.0, 0.0, -2.0]; av["q"] = Cuat.desde_euler(0.1, -0.15, 0.4); av["gases"] = 0.5; av["posado"] = false
+	av["rpm"] = sqrt(0.5) * 16000.0
 	# 1) de cerca, en vuelo: rotores y luces (se espera a un instante con las tres encendidas: estrobo en 0-0,06 s)
 	dron.actualizar(av)
 	cam.fov = 40; cam.look_at_from_position(Avion3D.ned([-0.55, -0.35, -2.25]), Avion3D.ned(av["p"]), Vector3.UP)
@@ -34,20 +36,23 @@ func _initialize() -> void:
 	# 3) en el suelo con los motores parados ("en mano"): sin rotores ni luces
 	av = m.estado_inicial(); dron.actualizar(av)
 	cam.fov = 40; cam.look_at_from_position(Avion3D.ned([-0.55, -0.35, -0.3]), Avion3D.ned(av["p"]), Vector3.UP)
-	for k in 3: await process_frame
-	dron.actualizar(av)
+	for k in 90:                # las helices frenan (inercia del motor) hasta pararse
+		dron.actualizar(av); await process_frame
+		if dron.dji.rpm <= 0.0: break
 	await _guardar(prefijo + "_suelo.png")
 	var vis := []
 	for l in dron.luces: vis.append(l.visible)
-	print("en el suelo: rotores visibles %s, luces visibles %s" % [dron.helice.visible, vis])
+	print("en el suelo: palas visibles %s, disco visible %s, luces visibles %s" % [dron.dji.rotores[0]["palas"].visible, dron.dji.rotores[0]["disco"].visible, vis])
 	quit()
 
 func _instante_estrobo(dron: Avion3D, av: Dictionary) -> void:
-	while fmod(Time.get_ticks_msec() / 1000.0, 1.0) > 0.02: await process_frame
+	dron.actualizar(av); await process_frame
+	while fmod(Time.get_ticks_msec() / 1000.0, 1.0) > 0.02:
+		dron.actualizar(av); await process_frame
 	dron.actualizar(av)
 	var vis := []
 	for l in dron.luces: vis.append(l.visible)
-	print("rotores visibles %s, luces visibles %s, tamano de la luz %.5f m por m de profundidad" % [dron.helice.visible, vis, (dron.luces[0].get_child(0) as Sprite3D).pixel_size * 32])
+	print("rpm %.0f, disco visible %s, luces visibles %s, tamano de la luz %.5f m por m de profundidad" % [dron.dji.rpm, dron.dji.rotores[0]["disco"].visible, vis, (dron.luces[0].get_child(0) as Sprite3D).pixel_size * 32])
 
 func _guardar(ruta: String) -> void:
 	await RenderingServer.frame_post_draw

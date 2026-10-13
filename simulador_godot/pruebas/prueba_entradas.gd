@@ -1,6 +1,8 @@
 extends SceneTree
 ## Teclado y mando de verdad (sin el piloto automatico de --auto): inyecta teclas, botones y palancas en un vuelo con el
-## E1 (con mando de consola y con una emisora AETR, y el asistente), otro con el Poli-1 (timon de 4 canales) y otro con el DJI y comprueba que el simulador responde. Necesita ventana (no --headless). El mando se simula en el
+## E1 (con mando de consola y con una emisora AETR, y el asistente), otro con el Poli-1 (timon de 4 canales), otro con
+## el DJI y otro con el dron FPV (armar, gas, modo, camara) y comprueba que el simulador responde. Necesita ventana
+## (no --headless). El mando se simula en el
 ## dispositivo 0 aunque no haya ninguno conectado (Input acepta los eventos igual).
 ## Uso: herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/prueba_entradas.gd
 
@@ -142,6 +144,37 @@ func _initialize() -> void:
 	_ok("Q baja el gimbal", p.av.get("gimbal", -10.0) < g0 - 1, "(%.0f -> %.0f)" % [g0, p.av.get("gimbal", -10.0)])
 	await _boton(JOY_BUTTON_LEFT_SHOULDER); _ok("LB cambia de modo", p.modelo.modo != "N" or m0 == "N")
 	await _pulsa(KEY_F); _ok("F hace una foto", p.DJI["fotos"] == 1)
+	print("Dron FPV, teclado y mando:")
+	p.salir_al_menu(); await create_timer(0.5).timeout
+	await _volar("FPV")
+	_ok("camara FPV (3) y OSD de Betaflight (no la app del DJI)", p.camara == 3 and p.hud_fpv.visible and not p.hud_dji.visible and p.modelo.modo == "ANGLE")
+	_tecla(KEY_W, true); await create_timer(0.3).timeout; _tecla(KEY_W, false)
+	await _pulsa(KEY_L); await create_timer(0.2).timeout
+	_ok("con el gas arriba L no arma", p.av["estado"] == "en mano", "(gas %.2f)" % p.av["gases"])
+	await _pulsa(KEY_SPACE)
+	await _pulsa(KEY_L); await create_timer(0.3).timeout
+	_ok("L arma con el gas abajo y los motores giran al ralenti", p.av["estado"] == "volando" and p.av["armado"] and p.av["motores"][0] > 0.03,
+		"(motor 1 al %.3f)" % p.av["motores"][0])
+	_ok("OSD: ARMED", p.hud_fpv.arm.text == "ARMED", "(%s)" % p.hud_fpv.arm.text)
+	_tecla(KEY_W, true); await create_timer(1.3).timeout; _tecla(KEY_W, false)
+	var g1: float = p.av["gases"]; await create_timer(0.5).timeout
+	_ok("W sube el gas y se queda (sin muelle)", g1 > 0.35 and absf(p.av["gases"] - g1) < 1e-6, "(%.2f)" % p.av["gases"])
+	await create_timer(1.0).timeout
+	var h: float = -p.av["p"][2] - p.ent.altura(p.av["p"][0], p.av["p"][1])
+	_ok("despega", h > 0.5, "(altura %.1f m)" % h)
+	p.av["gases"] = 0.33
+	await _pulsa(KEY_M); _ok("M cambia a HORIZON", p.modelo.modo == "HORIZON", "(%s)" % p.modelo.modo)
+	_tecla(KEY_RIGHT, true); await create_timer(0.4).timeout
+	_ok("flecha derecha alabea", p.mando["yaw"] > 0.9 and p.av["cmd"]["alabeo"] > 0.5, "(palanca %.2f, consigna %.2f)" % [p.mando["yaw"], p.av["cmd"]["alabeo"]]); _tecla(KEY_RIGHT, false)
+	await _pulsa(KEY_2); _ok("2: camara de persecucion", p.camara == 2)
+	await _pulsa(KEY_3); _ok("3: camara FPV", p.camara == 3 and p.avion3d.camara_fpv)
+	await _boton(JOY_BUTTON_LEFT_SHOULDER); _ok("LB cambia a ACRO", p.modelo.modo == "ACRO", "(%s)" % p.modelo.modo)
+	await _boton(JOY_BUTTON_RIGHT_SHOULDER); _ok("RB cambia la camara", p.camara == 1, "(camara %d)" % p.camara)
+	var g2: float = p.av["gases"]
+	_eje(JOY_AXIS_LEFT_Y, -1.0); await create_timer(0.4).timeout; _eje(JOY_AXIS_LEFT_Y, 0.0)
+	_ok("palanca izquierda arriba sube el gas", p.av["gases"] > g2 + 0.1, "(%.2f -> %.2f)" % [g2, p.av["gases"]])
+	await _boton(JOY_BUTTON_A); _ok("A desarma", not p.av["armado"])
+	await _pulsa(KEY_R); _ok("R empieza de nuevo (desarmado en el suelo)", p.av["estado"] == "en mano" and not p.av["armado"])
 	if cfg_antes.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path(MandoCfg.F_CFG))
 	else: FileAccess.open(MandoCfg.F_CFG, FileAccess.WRITE).store_buffer(cfg_antes)
 	print("RESULTADO: " + ("todo bien" if fallos == 0 else "%d fallos" % fallos))

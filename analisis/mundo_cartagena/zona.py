@@ -13,6 +13,7 @@ simulador/mundos/<mundo>.js: N y E en metros desde su origen, alturas sobre el n
 y escribe zona.json con todo lo necesario para colocarla. Uso:
 
     python zona.py <mundo.js> <id> <lat> <lon> [lado_m] [salida_dir]
+    set ZONA_PX=2048 (o $env:ZONA_PX = 2048) antes, para la ortofoto a 0,25 m
     python zona.py arboles <zona_dir>        # solo vuelve a detectar los arboles de una zona ya descargada
 
 Fuentes: ortofoto y MDT (c) Instituto Geografico Nacional (CC BY 4.0); edificios (c) Direccion General del Catastro;
@@ -25,7 +26,10 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 
 UA = {"User-Agent": "entrenador-vuelo-rc/1.0 (alvarlegaz@gmail.com)"}
-TESELA_M, TESELA_PX, PASO_DEM = 500.0, 1024, 5.0
+TESELA_M, PASO_DEM = 500.0, 5.0
+# pixeles por tesela de 500 m: 1024 (~0,5 m/px) por defecto; con ZONA_PX=2048, ~0,25 m/px, la resolucion real del PNOA en
+# Cartagena (medido 2026-10-13: a 0,125 m no se ve mas). Asi se hizo la zona del CIFP Politecnico (zona_cifp.py)
+TESELA_PX = int(os.environ.get("ZONA_PX", "1024"))
 
 
 def get(url, datos=None, intentos=4, espera=3):

@@ -36,7 +36,9 @@ var zona2 := {
 var mundo := {}             # mundo real activo ({} = la isla del campo de pilones)
 var terreno := {}           # H (PackedInt32Array, m sobre el mar), paso, N0, E0, nN, nE, h0
 var agua := PackedByteArray(); var laguna := PackedByteArray()
-var zona := {}              # { meta, dem, base } o vacio
+var zona := {}              # la primera zona de detalle puesta ({ meta, dem, base }) o vacio
+var zonas := []             # todas las zonas de detalle puestas (poner_zonas)
+var _libres := []           # por zona: [sur, norte, oeste, este] sin otra zona pegada
 var facil := false          # dificultad facil: el mismo viento a cualquier altura y rachas que no alabean
 
 ## vel en m/s; desde = de donde viene el viento (grados: 0 norte, 90 este...).
@@ -89,7 +91,7 @@ static func _b64_bits(s: String, n: int) -> PackedByteArray:
 ## Activa un mundo real (DatosComunes.mundo(id)) o vuelve a la isla ({}): en la isla el suelo esta a 0 m y no hay
 ## mar (altura y en_mar miran mundo). Como en el navegador, el terreno del ultimo mundo se queda guardado.
 func poner_mundo(m: Dictionary) -> void:
-	mundo = m; zona = {}
+	mundo = m; zona = {}; zonas = []; _libres = []
 	if m.is_empty(): return
 	var T: Dictionary = m["terreno"]
 	terreno = { "H": _b64_int16(T["alturas_b64"]), "paso": float(T["paso"]), "N0": float(T["N0"]), "E0": float(T["E0"]),
@@ -119,12 +121,25 @@ func en_mar_mundo(N: float, E: float) -> bool:
 
 ## Zona de detalle (DatosComunes.cargar_zona) o {} para quitarla.
 func poner_zona(z: Dictionary) -> void:
-	zona = z
+	poner_zonas([] if z.is_empty() else [z])
 
-## [altura sobre el mar, fraccion de agua] de la zona, bilineal, o [] fuera de ella.
-func muestra_zona(N: float, E: float) -> Array:
-	if zona.is_empty(): return []
-	var Z: Dictionary = zona["meta"]; var D: PackedInt32Array = zona["dem"]; var n: int = Z["dem"]["n"]; var paso: float = Z["dem"]["paso_m"]
+## Varias zonas a la vez (ponerZonas de entorno.js): cada punto toma el suelo de la primera zona que lo contiene; la
+## mezcla con el mundo en los ultimos 100 m solo en los lados SIN otra zona pegada.
+func poner_zonas(lista: Array) -> void:
+	zonas = lista.filter(func(z): return not (z as Dictionary).is_empty())
+	zona = zonas[0] if not zonas.is_empty() else {}
+	_libres = []
+	for z in zonas:
+		var Z: Dictionary = z["meta"]; var lado: float = (Z["dem"]["n"] - 1) * Z["dem"]["paso_m"]
+		var pegada := func(dN: int, dE: int) -> bool:
+			for o in zonas:
+				if o != z and absf(o["meta"]["N0"] - (Z["N0"] + dN * lado)) < 0.5 and absf(o["meta"]["E0"] - (Z["E0"] + dE * lado)) < 0.5: return true
+			return false
+		_libres.append([not pegada.call(-1, 0), not pegada.call(1, 0), not pegada.call(0, -1), not pegada.call(0, 1)])   # sur, norte, oeste, este
+
+## [altura sobre el mar, fraccion de agua] de una zona, bilineal, o [] fuera de ella.
+static func _muestra(z: Dictionary, N: float, E: float) -> Array:
+	var Z: Dictionary = z["meta"]; var D: PackedInt32Array = z["dem"]; var n: int = Z["dem"]["n"]; var paso: float = Z["dem"]["paso_m"]
 	var i: float = (N - Z["N0"]) / paso; var j: float = (E - Z["E0"]) / paso
 	if i < 0 or j < 0 or i > n - 1 or j > n - 1: return []
 	i = minf(n - 1.001, i); j = minf(n - 1.001, j)
@@ -136,15 +151,27 @@ func muestra_zona(N: float, E: float) -> Array:
 		else: h += par[1] * vv / 10.0
 	return [h / (1 - a) if a < 1 else 0.0, a]
 
+## [altura, fraccion de agua, indice de la zona] en la primera zona que contiene (N, E), o [].
+func _buscar(N: float, E: float) -> Array:
+	for q in zonas.size():
+		var m := _muestra(zonas[q], N, E)
+		if not m.is_empty(): return [m[0], m[1], q]
+	return []
+
+## [altura sobre el mar, fraccion de agua] de las zonas, o [] fuera de ellas.
+func muestra_zona(N: float, E: float) -> Array:
+	var r := _buscar(N, E)
+	return [] if r.is_empty() else [r[0], r[1]]
+
 ## Altura del suelo (m sobre el origen del mundo) en (N, E): la de la zona si la hay (mezclada con la del mundo en
-## los ultimos 100 m del borde) o la del mundo. En la isla, 0 (en el navegador Entorno.altura es null y se usa 0).
+## los ultimos 100 m de sus bordes libres) o la del mundo. En la isla, 0 (en el navegador Entorno.altura es null).
 func altura(N: float, E: float) -> float:
 	if mundo.is_empty(): return 0.0
-	var m := muestra_zona(N, E)
-	if m.is_empty(): return altura_mundo(N, E)
-	var Z: Dictionary = zona["meta"]; var lado: float = (Z["dem"]["n"] - 1) * Z["dem"]["paso_m"]
-	var hz: float = (0.0 if m[1] > 0.7 else maxf(0, m[0])) - terreno["h0"]
-	var d := minf(minf(N - Z["N0"], Z["N0"] + lado - N), minf(E - Z["E0"], Z["E0"] + lado - E))
+	var r := _buscar(N, E)
+	if r.is_empty(): return altura_mundo(N, E)
+	var q: int = r[2]; var Z: Dictionary = zonas[q]["meta"]; var lado: float = (Z["dem"]["n"] - 1) * Z["dem"]["paso_m"]; var L: Array = _libres[q]
+	var hz: float = (0.0 if r[1] > 0.7 else maxf(0, r[0])) - terreno["h0"]
+	var d := minf(minf(N - Z["N0"] if L[0] else INF, Z["N0"] + lado - N if L[1] else INF), minf(E - Z["E0"] if L[2] else INF, Z["E0"] + lado - E if L[3] else INF))
 	return hz if d >= 100 else hz * d / 100 + altura_mundo(N, E) * (1 - d / 100)
 
 ## true si (N, E) es agua. En la isla, nunca (en el navegador Entorno.enMar es null: la isla no tiene suelo de mar).

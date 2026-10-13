@@ -45,10 +45,10 @@ func _controles(c: VBoxContainer) -> void:
 	o_gas = Tema.desplegable(["Palanca con muelle (mando de consola): arriba sube el gas, abajo lo baja", "Palanca sin muelle (emisora RC): la posición es el gas"])
 	o_gas.item_selected.connect(func(i): p.mando_cfg.gas = "incremental" if i == 0 else "absoluto"; p.mando_cfg.guardar())
 	c.add_child(Tema.fila("Gas", o_gas))
-	s_expo = Tema.deslizador(0, 60, 5, 30); s_expo.size_flags_horizontal = Control.SIZE_FILL; s_expo.custom_minimum_size.x = 320
+	s_expo = Tema.deslizador(0, 100, 5, 60); s_expo.size_flags_horizontal = Control.SIZE_FILL; s_expo.custom_minimum_size.x = 320
 	t_expo = Tema.etiqueta("", 14, Tema.TEXTO, true)
 	var fe := HBoxContainer.new(); fe.add_theme_constant_override("separation", 12); fe.add_child(s_expo); fe.add_child(t_expo)
-	s_expo.value_changed.connect(func(x): p.mando_cfg.expo = x / 100.0; p.mando_cfg.guardar(); t_expo.text = "%d %%" % int(x))
+	s_expo.value_changed.connect(func(x): p.mando_cfg.expo = x / 100.0; p.mando_cfg.guardar(); t_expo.text = _texto_expo())
 	c.add_child(Tema.fila("Exponencial", fe))
 	o_perfil = Tema.desplegable(["Mando de consola (Xbox, PlayStation…)", "Emisora RC, canales AETR (EdgeTX, OpenTX, RadioMaster, FrSky, Jumper)",
 								 "Emisora RC, canales TAER (Spektrum, Futaba)", "Asignado con el asistente"])
@@ -91,7 +91,8 @@ func _controles(c: VBoxContainer) -> void:
 	var teclas := [["↓ ↑", "Profundidad: ↓ tira (morro arriba), ↑ empuja"], ["← →", "Timón o alerones"],
 				   ["A D", "Timón en los aviones de 4 canales (alerones y timón, como el Poli-1); guiñada en el cuadricóptero"],
 				   ["W S", "Gases más / menos · Espacio cortar gases"], ["L", "Lanzar a mano · R empezar de nuevo"], ["1 2 3", "Cámara piloto / persecución / a bordo"],
-				   ["[ ]", "Compensador de profundidad"], ["H I", "Datos de vuelo en texto · instrumentos sí/no"], ["Esc", "Pausa"]]
+				   ["[ ]", "Compensador de profundidad"], ["H I", "Datos de vuelo en texto · instrumentos sí/no"], ["Esc", "Pausa"],
+				   ["L M", "Dron FPV: armar / desarmar (con el gas abajo) · modo ANGLE / HORIZON / ACRO; W / S son el gas, que se queda donde lo dejas"]]
 	var tv := VBoxContainer.new(); tv.add_theme_constant_override("separation", 0)
 	for t in teclas:
 		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10)
@@ -185,7 +186,7 @@ func refrescar() -> void:
 	_pintando = true
 	var M: MandoCfg = p.mando_cfg
 	o_gas.selected = 0 if M.gas == "incremental" else 1
-	s_expo.value = round(M.expo * 100); t_expo.text = "%d %%" % int(round(M.expo * 100))
+	s_expo.set_value_no_signal(round(M.expo * 100)); t_expo.text = _texto_expo()
 	o_perfil.selected = ["consola", "aetr", "taer", "propio"].find(M.perfil)
 	for par in MandoCfg.PALANCAS:
 		var k: String = par[0]; var base = MandoCfg.PERFILES.get(M.perfil, {}).get(k)
@@ -209,3 +210,7 @@ func refrescar() -> void:
 	if not e_url.has_focus(): e_url.text = A.url
 	b_profesor.disabled = A.url == "" or A.modo == "local"
 	_pintando = false
+
+func _texto_expo() -> String:
+	var M: MandoCfg = p.mando_cfg
+	return "%d %% · a media palanca, el %d %% del recorrido" % [int(round(M.expo * 100)), int(round(M.media_palanca() * 100))]

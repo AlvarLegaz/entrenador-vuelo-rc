@@ -23,7 +23,10 @@ const PASOS_ASIST := [
 ]
 
 var gas := "incremental"
-var expo := 0.3
+## exponencial: el centro de la palanca mueve poco y el extremo da todo el recorrido. Un mando de consola, de palancas
+## cortas, necesita mas (60 %) que una emisora (30 %, que ademas suele llevar la suya). Como EXPO_DEFECTO de la web
+const EXPO_DEFECTO := { "consola": 0.6, "emisora": 0.3 }
+var expo := 0.6
 var zona := 0.06
 var perfil := "consola"
 var ejes := {}
@@ -37,6 +40,8 @@ func _init() -> void:
 	gas = cf.get_value("mando", "gas", gas); expo = cf.get_value("mando", "expo", expo); perfil = cf.get_value("mando", "perfil", perfil)
 	var e = cf.get_value("mando", "ejes", {})
 	if e is Dictionary and PALANCAS.all(func(par): return e.has(par[0])): ejes = e
+	# hasta el 2026-10-13 el defecto era 30 % para todo: con un mando de consola se queda en el defecto nuevo
+	if int(cf.get_value("mando", "v", 1)) < 2 and perfil == "consola" and is_equal_approx(expo, 0.3): expo = EXPO_DEFECTO["consola"]
 
 static func ejes_de(p: String) -> Dictionary:
 	var P: Dictionary = PERFILES[p]; var e := {}
@@ -45,19 +50,24 @@ static func ejes_de(p: String) -> Dictionary:
 
 func guardar() -> void:
 	var cf := ConfigFile.new()
-	cf.set_value("mando", "gas", gas); cf.set_value("mando", "expo", expo); cf.set_value("mando", "perfil", perfil); cf.set_value("mando", "ejes", ejes)
+	cf.set_value("mando", "v", 2); cf.set_value("mando", "gas", gas); cf.set_value("mando", "expo", expo); cf.set_value("mando", "perfil", perfil); cf.set_value("mando", "ejes", ejes)
 	cf.save(F_CFG)
 
 func poner_perfil(p: String) -> void:
 	perfil = p
 	if PERFILES.has(p): ejes = ejes_de(p)
 	if p == "aetr" or p == "taer": gas = "absoluto"          # la palanca de gas de una emisora no tiene muelle
+	if p == "consola": gas = "incremental"                    # la de un mando de consola, si
+	if PERFILES.has(p): expo = EXPO_DEFECTO["consola"] if p == "consola" else EXPO_DEFECTO["emisora"]
 	guardar()
 
 ## El primer mando conectado (o -1).
 static func conectado() -> int:
 	var js := Input.get_connected_joypads()
 	return js[0] if not js.is_empty() else -1
+
+## Recorrido (0-1) a media palanca con la exponencial puesta (el texto de Ajustes).
+func media_palanca() -> float: return (1 - expo) * 0.5 + expo * 0.125
 
 ## Valor de una palanca (lx, ly, rx, ry) en la convencion interna, sin zona muerta (ejeMando).
 func eje(dev: int, k: String) -> float:
