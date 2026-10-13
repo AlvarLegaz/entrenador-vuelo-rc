@@ -11,4 +11,13 @@ if not exist "herramientas\godot\Godot_v4.7.2-stable_win64.exe" (
     exit /b 1
   )
 )
+rem La cache de Godot (simulador_godot\.godot: registro de clases de los scripts e imports) no va en git. Sin ella el
+rem simulador abre una ventana en blanco (no encuentra las clases), asi que se regenera en cada arranque (~2 s): asi
+rem vale tambien despues de actualizar el repositorio con scripts nuevos.
+echo Preparando el simulador...
+if exist "herramientas\godot\Godot_v4.7.2-stable_win64_console.exe" (
+  "herramientas\godot\Godot_v4.7.2-stable_win64_console.exe" --headless --path simulador_godot --import >nul 2>&1
+) else (
+  start "" /wait "herramientas\godot\Godot_v4.7.2-stable_win64.exe" --headless --path simulador_godot --import
+)
 start "" "herramientas\godot\Godot_v4.7.2-stable_win64.exe" --path simulador_godot
