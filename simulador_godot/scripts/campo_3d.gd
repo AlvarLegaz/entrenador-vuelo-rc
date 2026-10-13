@@ -979,6 +979,86 @@ func actualizar_manga(viento_actual: Array) -> void:
 	# lookAt de Three (el +z del objeto hacia el viento) y rotateX(pi/2): la punta del cono (+y) apunta a sotavento
 	manga.basis = Basis.looking_at(vw, Vector3.UP, true) * Basis(Vector3.RIGHT, PI / 2)
 
+## Pista FPV de un entrenamiento del dron FPV (escenarios.js, "pista_fpv"; las reglas en pista_fpv.gd), o {} para
+## quitarla: plataforma de salida, cilindro del estacionario, conos de colores, postes del slalom y del ocho, puertas
+## numeradas con su flecha en el suelo, puerta alta y torre (ponerPistaFpv de visor.js).
+var _pista_fpv: Node3D
+func poner_pista_fpv(d: Dictionary) -> void:
+	if _pista_fpv != null: _pista_fpv.queue_free(); _pista_fpv = null
+	if d.is_empty(): return
+	var G := Node3D.new(); add_child(G); _pista_fpv = G
+	var col: Array = ent.circuito["colores"]
+	var en := func(mesh: Mesh, mat: Material, N: float, E: float, y := 0.0, padre: Node3D = G) -> MeshInstance3D:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mat; mi.position = Vector3(E, y, -N); padre.add_child(mi); return mi
+	var plano := func(c: Color) -> StandardMaterial3D:
+		var m := StandardMaterial3D.new(); m.albedo_color = c; m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; m.cull_mode = BaseMaterial3D.CULL_DISABLED; return m
+	var rayas := func(c1: Color, c2: Color, n: int) -> StandardMaterial3D:
+		var img := Image.create(8, 64, false, Image.FORMAT_RGB8)
+		for i in n: img.fill_rect(Rect2i(0, i * 64 / n, 8, 64 / n), c2 if i % 2 else c1)
+		return lambert(Color.WHITE, _tex(img))
+	var anillo := func(N: float, E: float, r: float, c: Color, y := 0.04) -> void:
+		var t := TorusMesh.new(); t.inner_radius = r - 0.07; t.outer_radius = r + 0.07; t.rings = 48; t.ring_segments = 4
+		en.call(t, plano.call(c), N, E, y).scale = Vector3(1, 0.05, 1)
+	# plataforma de salida: chapa oscura con el borde naranja y una H blanca
+	var s: Array = d["salida"]
+	en.call(_caja(2.4, 0.06, 2.4), lambert(Color.html("#2b2b2b")), s[0], s[1], 0.03)
+	var img := Image.create(128, 128, false, Image.FORMAT_RGB8); img.fill(Color.html("#ff6d00")); img.fill_rect(Rect2i(8, 8, 112, 112), Color.html("#2b2b2b"))
+	for r in [Rect2i(38, 30, 12, 68), Rect2i(78, 30, 12, 68), Rect2i(38, 58, 52, 12)]: img.fill_rect(r, Color.WHITE)
+	var pm := PlaneMesh.new(); pm.size = Vector2(2.4, 2.4)
+	en.call(pm, lambert(Color.WHITE, _tex(img)), s[0], s[1], 0.061)
+	if d.has("cilindro"):                                             # cilindro translucido del estacionario, con sus circulos
+		var c: Dictionary = d["cilindro"]; var m := StandardMaterial3D.new()
+		m.albedo_color = Color(Color.html("#29b6f6"), 0.22); m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED; m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		en.call(cilindro(c["r"], c["r"], c["h1"] - c["h0"], 40, true), m, c["n"], c["e"], (c["h0"] + c["h1"]) / 2)
+		for y in [0.04, float(c["h0"]), float(c["h1"])]: anillo.call(c["n"], c["e"], c["r"], Color.html("#29b6f6"), y)
+	var conos: Array = d.get("conos", [])
+	for i in conos.size():                                            # conos de los colores del circuito, con el circulo donde se tocan
+		var q: Array = conos[i]; var hx := Color.html(col[i % col.size()]["hex"])
+		en.call(cilindro(0, 0.28, 0.7, 20), lambert(hx), q[0], q[1], 0.35)
+		en.call(cilindro(0.2, 0.235, 0.12, 20), lambert(Color.WHITE), q[0], q[1], 0.33)
+		anillo.call(q[0], q[1], PistaFpv.CONO_R, hx)
+	for q in d.get("postes", []): en.call(cilindro(PistaFpv.POSTE["r"], PistaFpv.POSTE["r"], PistaFpv.POSTE["alto"], 10), rayas.call(Color.html("#e53935"), Color.WHITE, 8), q[0], q[1], PistaFpv.POSTE["alto"] / 2)
+	var och: Array = d.get("ocho", [])
+	for i in och.size():                                              # postes del ocho: rojo y azul, con banderin
+		var q: Array = och[i]; var hx := Color.html(col[PistaFpv.COLOR_OCHO[i]]["hex"]); var O: Dictionary = PistaFpv.OCHO
+		en.call(cilindro(O["r"], O["r"], O["alto"], 10), rayas.call(hx, Color.WHITE, 10), q[0], q[1], O["alto"] / 2)
+		var qm := QuadMesh.new(); qm.size = Vector2(0.8, 0.5)
+		en.call(qm, lambert(hx, null, false, true), q[0], q[1], O["alto"] - 0.3).position.x += 0.4
+	# puertas: marco de tubo, numero arriba (por las dos caras) y flecha en el suelo antes de la puerta
+	var puerta := func(g: Dictionary, color: Color, texto: String) -> void:
+		var gr := PistaFpv.GROSOR; var H1: float = g["h0"] + g["alto"]; var A: float = g["ancho"] / 2; var P0 := Node3D.new(); G.add_child(P0); var m := lambert(color)
+		for sg in [-1, 1]: en.call(_caja(gr, H1 + gr, gr), m, 0, 0, (H1 + gr) / 2, P0).position.x = sg * (A + gr / 2)
+		en.call(_caja(g["ancho"] + 2 * gr, gr, gr), m, 0, 0, H1 + gr / 2, P0)
+		if g["h0"] > 0: en.call(_caja(g["ancho"] + 2 * gr, gr, gr), m, 0, 0, g["h0"] - gr / 2, P0)
+		var qm := QuadMesh.new(); qm.size = Vector2(0.8, 0.6)
+		en.call(qm, plano.call(Color.html("#111111")), 0, 0, H1 + gr + 0.32, P0)
+		for lado in [0.0, PI]:
+			var l := Label3D.new(); l.text = texto; l.font_size = 96; l.outline_size = 0; l.pixel_size = 0.005; l.modulate = Color.WHITE
+			l.double_sided = false; l.font = Tema.negrita; l.position = Vector3(0, H1 + gr + 0.3, 0) + Vector3(0, 0, 0.01).rotated(Vector3.UP, lado); l.rotation.y = lado
+			P0.add_child(l)
+		var fl := _malla(PackedVector3Array([Vector3(-0.5, 0.03, 2.6), Vector3(0.5, 0.03, 2.6), Vector3(0, 0.03, 1.5)]), PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP]), PackedInt32Array([0, 1, 2]))
+		en.call(fl, plano.call(Color.WHITE), 0, 0, 0, P0)               # la punta hacia la puerta (-z local = sentido de paso)
+		P0.rotation.y = -g["rumbo"] * D2R; P0.position = Vector3(g["e"], 0, -g["n"])
+	var gs := PistaFpv.new(d, func(_k, _e): pass).puertas()
+	for i in gs.size(): puerta.call(gs[i], Color.html("#ff6d00"), str(i + 1))
+	if d.has("puerta_alta"): puerta.call(d["puerta_alta"], Color.html("#d81b60"), "▲")
+	if d.has("torre"):                                                # torre de andamio galvanizado con baliza arriba
+		var q: Dictionary = d["torre"]; var l: float = q["lado"] / 2; var mt := lambert(Color.html("#b8bcc0"))
+		for ab in [[-l, -l], [-l, l], [l, -l], [l, l]]: en.call(cilindro(0.05, 0.05, q["alto"], 8), mt, q["n"] + ab[0], q["e"] + ab[1], q["alto"] / 2)
+		var y := 2.5
+		while y <= q["alto"]:
+			for a in [-l, l]:
+				en.call(_caja(0.05, 0.05, q["lado"]), mt, q["n"] + a, q["e"], y); en.call(_caja(q["lado"], 0.05, 0.05), mt, q["n"], q["e"] + a, y)
+			y += 2.5
+		en.call(_caja(q["lado"], 0.1, q["lado"]), lambert(Color.html("#8d6e63")), q["n"], q["e"], q["alto"])
+		var sf := SphereMesh.new(); sf.radius = 0.18; sf.height = 0.36
+		en.call(sf, plano.call(Color.html("#ff1744")), q["n"], q["e"], q["alto"] + 0.3)
+	if d.has("recta"):                                                # conos naranjas en las cuatro esquinas del pasillo de la recta
+		var R: Dictionary = d["recta"]; var w: float = R["ancho"] / 2 + R["margen"]
+		for e in [R["e0"], R["e1"]]:
+			for sg in [-1, 1]: en.call(cilindro(0, 0.25, 0.6, 16), lambert(Color.html("#ff6d00")), R["n"] + sg * w, e, 0.3)
+
 ## Los almendros [E, N, s] que salen del pintado del suelo (para las pruebas).
 func arboles() -> Array:
 	return _arboles

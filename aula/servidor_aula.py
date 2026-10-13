@@ -32,7 +32,14 @@ NOMBRES_ESC = {"primer_vuelo": "Primer vuelo", "orientacion": "Orientación", "v
                "emergencia": "Emergencia", "libre": "Vuelo libre",
                # zona 2 (precision, detras del piloto): practica, no cuentan para la autorizacion
                "puerta": "Puerta (zona 2)", "pasada_baja": "Pasada baja (zona 2)", "diana": "Diana (zona 2)",
-               "recorrido": "Recorrido de precisión (zona 2)"}
+               "recorrido": "Recorrido de precisión (zona 2)", "aterrizaje": "Aterrizaje guiado",
+               # dron FPV (pista FPV detras del piloto): practica, no cuentan para la autorizacion del avion
+               "fpv_estacionario": "FPV: despegue y estacionario", "fpv_caja": "FPV: la caja", "fpv_slalom": "FPV: slalom y ocho",
+               "fpv_circuito": "FPV: circuito de puertas", "fpv_acro": "FPV: paso a ACRO", "fpv_tecnica": "FPV: técnica",
+               # operaciones (trabajos de operador de dron con el DJI en el mapa real)
+               "op_inspeccion": "Operación: inspección de edificios", "op_fotogrametria": "Operación: fotogrametría",
+               "op_busqueda": "Operación: búsqueda y rescate", "op_agricultura": "Operación: agricultura",
+               "op_linea": "Operación: línea eléctrica", "op_video": "Operación: grabación de vídeo", "libre_cartagena": "Vuelo libre (Cartagena)"}
 
 SESIONES = {}            # token -> caduca (epoch)
 FALLOS = {}              # ip -> (n fallos, bloqueado hasta)

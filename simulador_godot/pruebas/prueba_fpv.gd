@@ -115,14 +115,19 @@ func _init() -> void:
 	var fallos := 0
 	# datos y modelo 3D
 	var ids := DatosComunes.aviones(); var A := DatosComunes.avion("FPV"); var K: Dictionary = A.get("modelo3d", {})
-	var suma := 0.0
-	for P in K.get("piezas", []):
-		suma += P["c"][0] + 2 * P["c"][1] + 3 * P["c"][2] + ((P["l"][0] + P["l"][1] + P["l"][2]) if P.has("l") else P["r"] + P["h"]) + P.get("ry", 0.0) + P.get("rz", 0.0) + P["col"] / 1e6
+	var suma := _suma_num(K)
 	var rm: Dictionary = ref["modelo3d"]
-	var ok_datos: bool = ids.has("FPV") and A.get("tipo", "") == "fpv" and K.get("piezas", []).size() == int(rm["piezas"]) and K.get("rotores", []).size() == int(rm["rotores"]) \
-		and K.get("luces", []).size() == int(rm["luces"]) and absf(suma - rm["suma"]) < 1e-9
+	var ok_datos: bool = ids.has("FPV") and A.get("tipo", "") == "fpv" and K.get("piezas", []).size() == int(rm["piezas"]) and K.get("rotores", []).size() == int(rm["rotores"]) 		and K.get("luces", []).size() == int(rm["luces"]) and absf(suma - rm["suma"]) < 1e-6 * maxf(1.0, absf(suma))
 	if not ok_datos: fallos += 1
 	print("Datos del FPV: aviones() = %s; modelo 3D %d piezas, %d rotores, %d luces  %s" % [", ".join(ids), K.get("piezas", []).size(), K.get("rotores", []).size(), K.get("luces", []).size(), "OK" if ok_datos else "MAL"])
+	# la misma malla que el navegador: vertices y triangulos iguales, area y suma de posiciones con el redondeo de float32
+	var C := ModeloFPV3D.mallas(K)
+	var mg := { "fija": ModeloFPV3D.resumen(C["fija"]), "palas": ModeloFPV3D.resumen(C["palas"][1]), "palas_inv": ModeloFPV3D.resumen(C["palas"][-1]), "disco": ModeloFPV3D.resumen(C["disco"]) }
+	for k in ["fija", "palas", "palas_inv", "disco"]:
+		var g: Dictionary = mg[k]; var j: Dictionary = rm["mallas"][k]
+		var ok_m: bool = int(g["vertices"]) == int(j["vertices"]) and int(g["triangulos"]) == int(j["triangulos"]) 			and absf(g["area"] - j["area"]) < 1e-5 * j["area"] and absf(g["suma"] - j["suma"]) < 1e-3
+		if not ok_m: fallos += 1
+		print("Malla %s: %d vertices, %d triangulos, area %.6f m2 (navegador %d, %d, %.6f)  %s" % [k, g["vertices"], g["triangulos"], g["area"], j["vertices"], j["triangulos"], j["area"], "OK" if ok_m else "MAL"])
 	print("FPV: diferencia maxima con el navegador (posicion m, velocidad m/s, giro rad/s, actitud, motores, consignas, tension V, mAh, empuje N)")
 	var guiones := { "normal": [{}, false, _completo, 55], "config_facil": [{ "masa_kg": 0.72, "temperatura": 32.0, "empuje_gf": 5200.0, "resistencia": 1.3 }, true, _completo, 55],
 					 "choque": [{}, false, _choque, 12] }
@@ -153,3 +158,13 @@ func _init() -> void:
 		print("               %s%s" % ["; ".join(txt_fin), "" if ok_fin else "   <- distinto del navegador: %s" % str(fr)])
 	print("RESULTADO: " + ("todo igual" if fallos == 0 else "%d casos distintos" % fallos))
 	quit(1 if fallos else 0)
+
+## Suma de todos los numeros de un dato JSON (diccionarios y listas anidados).
+static func _suma_num(o) -> float:
+	if o is float or o is int: return float(o)
+	var s := 0.0
+	if o is Array:
+		for x in o: s += _suma_num(x)
+	elif o is Dictionary:
+		for x in o.values(): s += _suma_num(x)
+	return s

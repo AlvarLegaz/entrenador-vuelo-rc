@@ -4,7 +4,7 @@
 // abajo. Coordenadas N, E en metros del plano del mundo (las de sus zonas); alturas en metros sobre el suelo del punto.
 // Piezas:
 //   muro       {e0, n0, e1, n1, alto, grosor, textura: "bloque"|"hormigon"}  pared recta de (e0, n0) a (e1, n1)
-//   cilindro   {e, n, radio, alto, textura}
+//   cilindro   {e, n, radio, alto, textura: "bloque"|"hormigon"|"sillar"|"linterna"}
 //   disco      {e, n, h, radio, rumbo, textura: "rejilla"}                    disco vertical cuya cara mira a "rumbo"
 //   cartel     {e, n, h, ancho, alto, rumbo, lineas: [[texto, color, tam]], icono}   panel vertical (cara hacia "rumbo")
 //   marquesina {e0, n0, e1, n1, h, vuelo}                                     cubierta metalica sobre pilares
@@ -28,6 +28,17 @@ window.SINGULARES = [
    {"tipo": "mastil", "e": 6704.0, "n": 64.6, "alto": 7.0, "bandera": "ue"},
    {"tipo": "mastil", "e": 6704.2, "n": 61.4, "alto": 7.0, "bandera": "es"},
    {"tipo": "mastil", "e": 6704.4, "n": 58.4, "alto": 7.0, "bandera": "murcia"}
+  ]
+ },
+ {
+  "mundo": "cartagena",
+  "nombre": "Faro de Cabo de Palos",
+  "nota": "Torre de piedra de 51 m sobre el cabo (1865), en el centro de la casa del farero: es la planta redonda de 3,5 m de radio del Catastro, que solo trae la casa, de 3 plantas.",
+  "piezas": [
+   {"tipo": "cilindro", "e": 31713.7, "n": 2424.0, "radio": 3.4, "alto": 45.5, "textura": "sillar"},
+   {"tipo": "cilindro", "e": 31713.7, "n": 2424.0, "radio": 3.7, "alto": 46.2, "textura": "sillar"},
+   {"tipo": "cilindro", "e": 31713.7, "n": 2424.0, "radio": 2.1, "alto": 50, "textura": "linterna"},
+   {"tipo": "cilindro", "e": 31713.7, "n": 2424.0, "radio": 1.1, "alto": 51, "textura": "hormigon"}
   ]
  }
 ];

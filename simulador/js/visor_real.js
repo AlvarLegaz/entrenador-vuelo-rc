@@ -107,6 +107,79 @@ Object.assign(Visor.prototype, {
     this._singulares(esc, m);                          // despues de las zonas: se asientan en su suelo
   },
 
+  /** Lo que hay que ver en un trabajo del modo Operaciones (escenarios.js, "operacion"; las reglas en js/operaciones.js),
+   *  o null para quitarlo: la plataforma de despegue, las placas numeradas de la inspeccion, los jalones de la parcela o
+   *  de la zona de busqueda, el senderista, las manchas de plaga y las torres y cables de la linea. casa: [N, E]. */
+  ponerOperacion(d, casa) {
+    if (this.operacion) { this.operacion.parent && this.operacion.parent.remove(this.operacion); this.operacion = null; }
+    if (!d || !this.mundo) return;
+    const G = new THREE.Group(), alt = this.entorno.altura, h0 = this.mundo.terreno.h0, std = (c, extra) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8 }, extra || {}));
+    const en = (o, N, E, y) => { o.position.set(E, y, -N); G.add(o); return o; };
+    const placa = (texto, fondo, tam) => { const [c, g] = lienzo(128, 128); g.fillStyle = fondo; g.fillRect(0, 0, 128, 128); g.fillStyle = "#fff"; g.fillRect(8, 8, 112, 112); g.fillStyle = fondo; g.fillRect(16, 16, 96, 96);
+      g.fillStyle = "#fff"; g.font = `bold ${tam || 80}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(texto, 64, 68); return new THREE.MeshBasicMaterial({ map: texSRGB(c), side: THREE.DoubleSide }); };
+    const jalon = (N, E, c1) => {                                       // jalon de 2 m a franjas con banderin
+      const y = alt(N, E), [c, g] = lienzo(8, 64); for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#ffffff" : c1; g.fillRect(0, i * 8, 8, 8); }
+      en(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2, 8), new THREE.MeshLambertMaterial({ map: texSRGB(c) })), N, E, y + 1);
+      en(new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.35), std(c1, { side: THREE.DoubleSide })), N, E, y + 1.8).position.x += 0.25;
+    };
+    const esquinas = (P, c1) => [[P.n0, P.e0], [P.n0, P.e1], [P.n1, P.e0], [P.n1, P.e1]].forEach(([N, E]) => jalon(N, E, c1));
+    // plataforma de despegue (a la que hay que volver)
+    const pad = en(new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.03, 32), placa("H", "#ff6d00", 70)), casa[0], casa[1], alt(casa[0], casa[1]) + 0.04);
+    pad.material = [std(0xff6d00), placa("H", "#ff6d00", 70), std(0xff6d00)];
+    (d.puntos || []).forEach((q, i) => {                                // inspeccion: placas naranjas numeradas
+      const y = q.cota !== undefined ? q.cota - h0 : alt(q.n, q.e) + (q.h || 0), o = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), placa(String(i + 1), "#ff6d00"));
+      if (q.normal !== undefined) { en(o, q.n + 0.06 * Math.cos(q.normal * D2R), q.e + 0.06 * Math.sin(q.normal * D2R), y); o.rotation.y = Math.PI - q.normal * D2R; }
+      else { en(o, q.n, q.e, y + 0.06); o.rotation.x = -Math.PI / 2; }
+    });
+    if (d.parcela) esquinas(d.parcela, d.solape ? "#e53935" : "#2e7d32");
+    if (d.solape) {                                                     // dianas de apoyo de la fotogrametria
+      const P = d.parcela;
+      for (const [N, E] of [[P.n0 + 15, P.e0 + 15], [P.n0 + 15, P.e1 - 15], [P.n1 - 15, P.e0 + 15], [P.n1 - 15, P.e1 - 15], [(P.n0 + P.n1) / 2, (P.e0 + P.e1) / 2]]) {
+        const [c, g] = lienzo(64, 64); g.fillStyle = "#fff"; g.fillRect(0, 0, 64, 64); g.fillStyle = "#111"; g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32);
+        en(new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.MeshBasicMaterial({ map: texSRGB(c) })), N, E, alt(N, E) + 0.05).rotation.x = -Math.PI / 2;
+      }
+    }
+    if (d.zona) {                                                       // busqueda: jalones amarillos y el senderista
+      esquinas(d.zona, "#fdd835");
+      if (d.persona) {
+        const [N, E] = d.persona, y = alt(N, E), P = new THREE.Group();
+        const pie = (dx) => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.85, 8), std(0x2b3440)); p.position.set(dx, 0.43, 0); P.add(p); };
+        pie(-0.1); pie(0.1);
+        const tronco = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.62, 12), std(0xd32f2f)); tronco.position.y = 1.16; P.add(tronco);
+        const cabeza = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), std(0xc68b6e)); cabeza.position.y = 1.6; P.add(cabeza);
+        const mochila = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.45, 0.2), std(0xff8f00)); mochila.position.set(0, 1.2, 0.2); P.add(mochila);
+        for (const s of [-1, 1]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.6, 8), std(0xd32f2f)); b.position.set(s * 0.27, 1.12, 0); b.rotation.z = s * 0.2; P.add(b); }
+        P.rotation.y = 0.7; en(P, N, E, y);
+      }
+    }
+    (d.manchas || []).forEach(([N, E, r], i) => {                       // agricultura: rodales amarillos en el cultivo
+      const s = new THREE.Shape(); for (let k = 0; k <= 24; k++) { const a = k / 24 * 2 * Math.PI, rr = r * (0.82 + 0.18 * Math.sin(3 * a + i) * Math.cos(2 * a - i)); k ? s.lineTo(rr * Math.cos(a), rr * Math.sin(a)) : s.moveTo(rr * Math.cos(a), rr * Math.sin(a)); }
+      en(new THREE.Mesh(new THREE.ShapeGeometry(s), new THREE.MeshLambertMaterial({ color: 0xc9b13a, transparent: true, opacity: 0.85 })), N, E, alt(N, E) + 0.12).rotation.x = -Math.PI / 2;
+    });
+    if (d.torres) {                                                     // linea: torres de celosia, crucetas, aisladores y cables
+      const op = new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), acero = std(0x9ea4a8, { metalness: 0.5, roughness: 0.5 });
+      const barra = (A, B, r, mat) => {                                 // cilindro de A a B (N, E, arriba)
+        const a = new THREE.Vector3(A[1], A[2], -A[0]), b = new THREE.Vector3(B[1], B[2], -B[0]), L = a.distanceTo(b);
+        const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 6), mat); o.position.copy(a).add(b).multiplyScalar(0.5);
+        o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); G.add(o);
+      };
+      d.torres.forEach(([tn, te], i) => {
+        const b0 = op.bases[i], L = op.laterales[i], F = [L[1], -L[0]];      // F: a lo largo de la linea
+        const pata = (s, t, h) => { const w = 1.3 - 0.75 * h / d.alto; return [tn + (s * L[0] + t * F[0]) * w, te + (s * L[1] + t * F[1]) * w, b0 + h]; };
+        for (const [s, t] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) barra(pata(s, t, 0), pata(s, t, d.alto - 1), 0.07, acero);
+        for (let h = 0; h < d.alto - 2; h += 4) for (const [s1, t1, s2, t2] of [[-1, -1, 1, -1], [-1, 1, 1, 1], [-1, -1, -1, 1], [1, -1, 1, 1]]) {
+          barra(pata(s1, t1, h), pata(s2, t2, h + 4), 0.03, acero); barra(pata(s2, t2, h), pata(s1, t1, h + 4), 0.03, acero);
+        }
+        barra([tn + L[0] * d.brazo, te + L[1] * d.brazo, b0 + d.fases + 1.2], [tn - L[0] * d.brazo, te - L[1] * d.brazo, b0 + d.fases + 1.2], 0.09, acero);   // cruceta
+        barra(pata(0, 0, d.alto - 1), [tn, te, b0 + d.alto], 0.08, acero);
+        for (const k of [0, 1]) { const A = op.enganches[i][k]; barra([A[0], A[1], A[2] + 1.2], A, 0.07, std(0x8d6e63)); }   // cadenas de aisladores
+      });
+      for (const [A, B] of op.cables) barra(A, B, 0.025, std(0x2f3133, { metalness: 0.6, roughness: 0.4 }));
+    }
+    G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.operacion = G; this.escena.add(G);
+  },
+
   /** Elementos singulares del mundo (simulador/singulares.js, comun con Godot): la entrada del CIFP Politecnico... */
   _singulares(esc, m) {
     if (esc.userData.singulares) { esc.userData.singulares.traverse(o => { if (o.geometry) o.geometry.dispose(); }); esc.remove(esc.userData.singulares); }
@@ -206,7 +279,7 @@ Object.assign(Visor.prototype, {
    *  con una ventana por planta y modulo de 3,5 m (VentanasFachada) del color claro de siempre o, si la zona lo trae
    *  ("f", p. ej. el ladrillo del CIFP Politecnico), con ese color y textura de ladrillo. Igual que _edificios_zona de Godot. */
   _edificiosZona(g, z) {
-    (z.datos ? Promise.resolve(z.datos.edificios) : fetch(z.base + z.meta.edificios.archivo).then(r => r.json())).then(lista => {
+    this._edificiosDe(z).then(lista => {
       const Z = z.meta, h0 = this.mundo.terreno.h0, nt = Z.orto.teselas, tm = Z.orto.tesela_m, C = new THREE.Color(), Cw = new THREE.Color(), crema = new THREE.Color(0xeee6d8), r = semilla(5);
       const fach = { claro: { pos: [], col: [], uv: [] }, ladrillo: { pos: [], col: [], uv: [] } }, tejados = {};
       for (const ed of lista) {
@@ -252,12 +325,46 @@ Object.assign(Visor.prototype, {
   /** Arboles detectados en la ortofoto: los de copa (radio >= 1,3 m) con tronco y copa, los pequenos como matorral bajo.
    *  Copa pequena (radio < 2,5 m) = almendro: copa aplanada verde grisacea sobre un tronco corto; grande = algarrobo o
    *  pino: copa densa y oscura, tronco grueso. Instanciados por celdas de 500 m; mas triangulos cerca del punto de salida. */
+  /** Edificios de una zona (una sola carga para los edificios y para quitar los arboles que caen dentro). */
+  _edificiosDe(z) {
+    return z._edificios = z._edificios || (z.datos ? Promise.resolve(z.datos.edificios) : fetch(z.base + z.meta.edificios.archivo).then(r => r.json()).catch(() => []));
+  },
+
+  /** Funcion (e, n, rc) -> true si un arbol de radio de copa rc cae dentro de un edificio o su copa se mete en el muro
+   *  (centro a menos de media copa del borde): la deteccion de copas en la ortofoto confunde a veces cubiertas y patios
+   *  con arboles. Rejilla de 40 m con los edificios que tocan cada celda. Lo mismo que _en_edificio de mundo_3d.gd. */
+  _filtroEdificios(lista) {
+    const C = 40, rej = new Map(), clave = (i, j) => i * 100003 + j;
+    for (const ed of lista || []) {
+      const p = ed.p; if (p.length < 6) continue;
+      let e0 = Infinity, e1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+      for (let i = 0; i < p.length; i += 2) { e0 = Math.min(e0, p[i]); e1 = Math.max(e1, p[i]); n0 = Math.min(n0, p[i + 1]); n1 = Math.max(n1, p[i + 1]); }
+      for (let i = Math.floor((e0 - 4) / C); i <= Math.floor((e1 + 4) / C); i++) for (let j = Math.floor((n0 - 4) / C); j <= Math.floor((n1 + 4) / C); j++) {
+        const k = clave(i, j); if (!rej.has(k)) rej.set(k, []); rej.get(k).push(p);
+      }
+    }
+    return (e, n, rc) => {
+      for (const p of rej.get(clave(Math.floor(e / C), Math.floor(n / C))) || []) {
+        let dentro = false, d2 = Infinity;
+        for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+          const xi = p[i], yi = p[i + 1], xj = p[j], yj = p[j + 1];
+          if ((yi > n) !== (yj > n) && e < (xj - xi) * (n - yi) / (yj - yi) + xi) dentro = !dentro;
+          const dx = xj - xi, dy = yj - yi, t = Math.max(0, Math.min(1, ((e - xi) * dx + (n - yi) * dy) / (dx * dx + dy * dy || 1)));
+          d2 = Math.min(d2, (e - xi - t * dx) ** 2 + (n - yi - t * dy) ** 2);
+        }
+        if (dentro || d2 < (0.5 * rc) ** 2) return true;
+      }
+      return false;
+    };
+  },
+
   _arbolesZona(g, z) {
-    (z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b))).then(A => {
-      const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0];
+    Promise.all([z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b)), this._edificiosDe(z)]).then(([A, edificios]) => {
+      const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0], enEdificio = this._filtroEdificios(edificios);
       const arboles = [], matas = [];
       for (let i = 0; i < A.length; i += 3) {
         if (Math.hypot(A[i] - base[1], A[i + 1] - base[0]) < 8) continue;        // claro de 8 m alrededor del piloto (como en Godot)
+        if (enEdificio(A[i], A[i + 1], A[i + 2])) continue;                      // ni dentro de los edificios ni metidos en sus muros
         (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], Math.min(3.5, A[i + 2])]);     // mas de 3,5 m de radio es un grupo de copas pegadas, no un arbol
       }
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);
@@ -337,6 +444,12 @@ Visor.texturaSingular = function (tipo) {
     } else if (tipo === "hormigon") {
       const mancha = 0.88 + 0.12 * Math.sin(x * 0.05 + Math.sin(y * 0.03) * 2) * Math.sin(y * 0.021), grano = 0.95 + 0.08 * r();
       v = [205 * mancha * grano, 200 * mancha * grano, 190 * mancha * grano];
+    } else if (tipo === "sillar") {              // sillares de piedra (faro): 3 a lo ancho, 6 hiladas, a matajuntas
+      const f = Math.floor(y / 43), xo = (x + (f & 1) * 43) % N, k = (f * 3 + Math.floor(xo / 86)) % 64, junta = y % 43 >= 41 || xo % 86 >= 84;
+      v = junta ? [168, 164, 152] : [196 * tonos[k], 190 * tonos[k], 176 * tonos[k]];
+      const grano = 0.93 + 0.12 * r(); v = v.map(q => q * grano);
+    } else if (tipo === "linterna") {            // linterna del faro: cristal oscuro con montantes blancos
+      v = (x & 31) < 4 || y < 12 ? [236, 236, 230] : [48 + y * 0.12, 66 + y * 0.12, 82 + y * 0.1];
     } else {                                     // rejilla: lamas verticales cada 16 px
       const lama = (x & 15) < 9; v = lama ? [62, 66, 70] : [22, 24, 26];
     }

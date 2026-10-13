@@ -645,6 +645,38 @@ static func _hsl(h: float, s: float, l: float) -> Color:
 
 ## Arboles detectados en la ortofoto: los de copa grande con tronco y copa detallada cerca de la camara; los
 ## pequenos, como matorral bajo. Cada celda de 500 m lleva su version detallada (hasta 450 m) y la sencilla.
+## Rejilla de 40 m con los poligonos (E, N) de los edificios de una zona que tocan cada celda, para quitar los arboles
+## que caen dentro (la deteccion de copas en la ortofoto confunde a veces cubiertas y patios con arboles).
+func _rejilla_edificios(z: Dictionary) -> Dictionary:
+	var rej := {}
+	var ruta: String = String(z["base"]).path_join(z["meta"]["edificios"]["archivo"])
+	if not FileAccess.file_exists(ruta): return rej
+	var lista = JSON.parse_string(FileAccess.get_file_as_string(ruta))
+	if not lista is Array: return rej
+	for ed in lista:
+		var p: Array = ed["p"]
+		if p.size() < 6: continue
+		var poli := PackedVector2Array(); var e0 := INF; var e1 := -INF; var n0 := INF; var n1 := -INF
+		for i in range(0, p.size(), 2):
+			poli.append(Vector2(p[i], p[i + 1])); e0 = minf(e0, p[i]); e1 = maxf(e1, p[i]); n0 = minf(n0, p[i + 1]); n1 = maxf(n1, p[i + 1])
+		for i in range(int(floor((e0 - 4) / 40.0)), int(floor((e1 + 4) / 40.0)) + 1):
+			for j in range(int(floor((n0 - 4) / 40.0)), int(floor((n1 + 4) / 40.0)) + 1):
+				var k := Vector2i(i, j)
+				if not rej.has(k): rej[k] = []
+				rej[k].append(poli)
+	return rej
+
+## true si un arbol (centro E, N y radio de copa rc) cae dentro de un edificio o con el centro a menos de media copa de
+## su borde (la copa se meteria en el muro). Lo mismo que _filtroEdificios de visor_real.js.
+static func _en_edificio(rej: Dictionary, e: float, n: float, rc: float) -> bool:
+	var pt := Vector2(e, n)
+	for poli in rej.get(Vector2i(int(floor(e / 40.0)), int(floor(n / 40.0))), []):
+		if Geometry2D.is_point_in_polygon(pt, poli): return true
+		for i in poli.size():
+			var a: Vector2 = poli[i]; var b: Vector2 = poli[(i + 1) % poli.size()]
+			if pt.distance_squared_to(Geometry2D.get_closest_point_to_segment(pt, a, b)) < 0.25 * rc * rc: return true
+	return false
+
 func _arboles_zona(z: Dictionary) -> void:
 	if _zona_arboles: _zona_arboles.queue_free()
 	var padre := Node3D.new(); _zona.add_child(padre); _zona_arboles = padre; _claro_hecho = claro
@@ -652,9 +684,11 @@ func _arboles_zona(z: Dictionary) -> void:
 	if not FileAccess.file_exists(ruta): return
 	var A := FileAccess.get_file_as_bytes(ruta).to_float32_array()
 	var arboles := []; var matas := []; var r := RandomNumberGenerator.new(); r.seed = 29
+	var rej := _rejilla_edificios(z)
 	for i in range(0, A.size(), 3):
 		var it := [A[i], A[i + 1], A[i + 2], r.randf(), r.randf(), r.randf(), r.randf()]
 		if Vector2(A[i] - claro.x, A[i + 1] - claro.y).length() < 25 + A[i + 2]: continue      # el claro del piloto
+		if _en_edificio(rej, A[i], A[i + 1], A[i + 2]): continue                                 # ni dentro de los edificios ni en sus muros
 		if A[i + 2] < 1.3: matas.append(it)
 		else: arboles.append(it)
 	var copa := func(it: Array) -> Array:
@@ -689,6 +723,110 @@ static func singulares_datos() -> Array:
 		var resto := t.substr(mm.get_end()); var d = JSON.parse_string(resto.substr(0, resto.rfind("]") + 1))
 		if d is Array: _singulares_datos = d
 	return _singulares_datos
+
+# ---------------------------------------------------------------- trabajos del modo Operaciones
+## Lo que hay que ver en un trabajo (escenarios.js, "operacion"; las reglas en operaciones.gd), o {} para quitarlo: la
+## plataforma de despegue, las placas numeradas de la inspeccion, los jalones de la parcela o de la zona de busqueda, el
+## senderista, las manchas de plaga y las torres y cables de la linea (ponerOperacion de visor_real.js). casa: [N, E].
+var _op: Node3D
+func poner_operacion(d: Dictionary, casa: Array) -> void:
+	if _op: _op.queue_free(); _op = null
+	if d.is_empty(): return
+	var G := Node3D.new(); add_child(G); _op = G
+	var alt := func(n: float, e: float) -> float: return ent.altura(n, e)
+	var std := func(c: Color, metal := 0.0, rug := 0.8) -> StandardMaterial3D:
+		var mt := StandardMaterial3D.new(); mt.albedo_color = c; mt.metallic = metal; mt.roughness = rug; return mt
+	var en := func(mesh: Mesh, mt: Material, N: float, E: float, y: float, padre: Node3D = G) -> MeshInstance3D:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mt; mi.position = Vector3(E, y, -N); padre.add_child(mi); return mi
+	var plano := func(c: Color) -> StandardMaterial3D:
+		var mt := StandardMaterial3D.new(); mt.albedo_color = c; mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.cull_mode = BaseMaterial3D.CULL_DISABLED; return mt
+	var placa := func(N: float, E: float, y: float, texto: String, lado: float, rot: Vector3, padre: Node3D = G) -> void:
+		var P := Node3D.new(); P.position = Vector3(E, y, -N); P.rotation = rot; padre.add_child(P)
+		var img := Image.create(64, 64, false, Image.FORMAT_RGB8); img.fill(Color.html("#ff6d00")); img.fill_rect(Rect2i(4, 4, 56, 56), Color.WHITE); img.fill_rect(Rect2i(8, 8, 48, 48), Color.html("#ff6d00"))
+		var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(img); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var q := QuadMesh.new(); q.size = Vector2(lado, lado); var mi := MeshInstance3D.new(); mi.mesh = q; mi.material_override = mt; P.add_child(mi)
+		for s in [1.0, -1.0]:
+			var l := Label3D.new(); l.text = texto; l.font_size = 96; l.pixel_size = lado / 160.0; l.outline_size = 0; l.modulate = Color.WHITE; l.font = Tema.negrita
+			l.double_sided = false; l.position = Vector3(0, 0, 0.01 * s); l.rotation.y = 0.0 if s > 0 else PI; P.add_child(l)
+	var jalon := func(N: float, E: float, c1: Color) -> void:            # jalon de 2 m a franjas con banderin
+		var y: float = alt.call(N, E); var img := Image.create(8, 64, false, Image.FORMAT_RGB8)
+		for i in 8: img.fill_rect(Rect2i(0, i * 8, 8, 8), Color.WHITE if i % 2 else c1)
+		var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(img)
+		var cm := CylinderMesh.new(); cm.top_radius = 0.03; cm.bottom_radius = 0.03; cm.height = 2; cm.radial_segments = 8
+		en.call(cm, mt, N, E, y + 1)
+		var qm := QuadMesh.new(); qm.size = Vector2(0.5, 0.35); var b: MeshInstance3D = en.call(qm, plano.call(c1), N, E, y + 1.8); b.position.x += 0.25
+	var esquinas := func(P: Dictionary, c1: Color) -> void:
+		for ne in [[P["n0"], P["e0"]], [P["n0"], P["e1"]], [P["n1"], P["e0"]], [P["n1"], P["e1"]]]: jalon.call(ne[0], ne[1], c1)
+	# plataforma de despegue (a la que hay que volver)
+	var pad := CylinderMesh.new(); pad.top_radius = 0.75; pad.bottom_radius = 0.75; pad.height = 0.03; pad.radial_segments = 32
+	en.call(pad, std.call(Color.html("#ff6d00")), casa[0], casa[1], alt.call(casa[0], casa[1]) + 0.04)
+	var lh := Label3D.new(); lh.text = "H"; lh.font_size = 96; lh.pixel_size = 0.009; lh.font = Tema.negrita; lh.modulate = Color.WHITE; lh.outline_size = 0
+	lh.rotation = Vector3(-PI / 2, 0, 0); lh.position = Vector3(casa[1], alt.call(casa[0], casa[1]) + 0.06, -casa[0]); G.add_child(lh)
+	var pts: Array = d.get("puntos", [])
+	for i in pts.size():                                               # inspeccion: placas naranjas numeradas
+		var q: Dictionary = pts[i]; var y: float = q["cota"] - h0 if q.has("cota") else alt.call(q["n"], q["e"]) + float(q.get("h", 0.0))
+		if q.has("normal"):
+			var r: float = q["normal"] * PI / 180
+			placa.call(q["n"] + 0.06 * cos(r), q["e"] + 0.06 * sin(r), y, str(i + 1), 1.5, Vector3(0, PI - r, 0))
+		else: placa.call(q["n"], q["e"], y + 0.06, str(i + 1), 1.5, Vector3(-PI / 2, 0, 0))
+	if d.has("parcela"): esquinas.call(d["parcela"], Color.html("#e53935" if d.has("solape") else "#2e7d32"))
+	if d.has("solape"):                                                # dianas de apoyo de la fotogrametria
+		var P: Dictionary = d["parcela"]
+		var img := Image.create(64, 64, false, Image.FORMAT_RGB8); img.fill(Color.WHITE); img.fill_rect(Rect2i(0, 0, 32, 32), Color.html("#111111")); img.fill_rect(Rect2i(32, 32, 32, 32), Color.html("#111111"))
+		var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(img); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		for ne in [[P["n0"] + 15, P["e0"] + 15], [P["n0"] + 15, P["e1"] - 15], [P["n1"] - 15, P["e0"] + 15], [P["n1"] - 15, P["e1"] - 15], [(P["n0"] + P["n1"]) / 2, (P["e0"] + P["e1"]) / 2]]:
+			var pm := PlaneMesh.new(); pm.size = Vector2(1.2, 1.2); en.call(pm, mt, ne[0], ne[1], alt.call(ne[0], ne[1]) + 0.05)
+	if d.has("zona"):                                                  # busqueda: jalones amarillos y el senderista
+		esquinas.call(d["zona"], Color.html("#fdd835"))
+		if d.has("persona"):
+			var N: float = d["persona"][0]; var E: float = d["persona"][1]; var P := Node3D.new(); P.position = Vector3(E, alt.call(N, E), -N); P.rotation.y = 0.7; G.add_child(P)
+			var parte := func(mesh: Mesh, c: Color, pos: Vector3, rz := 0.0) -> void:
+				var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = std.call(c); mi.position = pos; mi.rotation.z = rz; P.add_child(mi)
+			var cil := func(rt: float, rb: float, h: float) -> CylinderMesh:
+				var c := CylinderMesh.new(); c.top_radius = rt; c.bottom_radius = rb; c.height = h; c.radial_segments = 10; return c
+			for s in [-0.1, 0.1]: parte.call(cil.call(0.08, 0.07, 0.85), Color.html("#2b3440"), Vector3(s, 0.43, 0))
+			parte.call(cil.call(0.2, 0.17, 0.62), Color.html("#d32f2f"), Vector3(0, 1.16, 0))
+			var cab := SphereMesh.new(); cab.radius = 0.12; cab.height = 0.24; parte.call(cab, Color.html("#c68b6e"), Vector3(0, 1.6, 0))
+			var mo := BoxMesh.new(); mo.size = Vector3(0.32, 0.45, 0.2); parte.call(mo, Color.html("#ff8f00"), Vector3(0, 1.2, 0.2))
+			for s in [-1.0, 1.0]: parte.call(cil.call(0.06, 0.05, 0.6), Color.html("#d32f2f"), Vector3(s * 0.27, 1.12, 0), s * 0.2)
+	var manchas: Array = d.get("manchas", [])
+	for i in manchas.size():                                           # agricultura: rodales amarillos en el cultivo
+		var N: float = manchas[i][0]; var E: float = manchas[i][1]; var r: float = manchas[i][2]
+		var pol := PackedVector2Array()
+		for k in 24:
+			var a := k / 24.0 * TAU; var rr := r * (0.82 + 0.18 * sin(3 * a + i) * cos(2 * a - i)); pol.append(Vector2(rr * cos(a), -rr * sin(a)))
+		var idx := Geometry2D.triangulate_polygon(pol); var pos := PackedVector3Array(); var nor := PackedVector3Array()
+		for k in idx: pos.append(Vector3(pol[k].x, 0, pol[k].y)); nor.append(Vector3.UP)
+		var am := ArrayMesh.new(); var arr := []; arr.resize(Mesh.ARRAY_MAX); arr[Mesh.ARRAY_VERTEX] = pos; arr[Mesh.ARRAY_NORMAL] = nor
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mt := StandardMaterial3D.new(); mt.albedo_color = Color(Color.html("#c9b13a"), 0.85); mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.cull_mode = BaseMaterial3D.CULL_DISABLED
+		en.call(am, mt, N, E, alt.call(N, E) + 0.12)
+	if d.has("torres"):                                                # linea: torres de celosia, crucetas, aisladores y cables
+		var op := Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 })
+		var acero: StandardMaterial3D = std.call(Color.html("#9ea4a8"), 0.5, 0.5)
+		var barra := func(A: Array, B: Array, r: float, mt: Material) -> void:
+			var a := Vector3(A[1], A[2], -A[0]); var b := Vector3(B[1], B[2], -B[0]); var L := a.distance_to(b)
+			var c := CylinderMesh.new(); c.top_radius = r; c.bottom_radius = r; c.height = L; c.radial_segments = 6; c.rings = 0
+			var mi := MeshInstance3D.new(); mi.mesh = c; mi.material_override = mt; G.add_child(mi)
+			var dirv := (b - a).normalized(); var eje := Vector3.UP.cross(dirv)
+			mi.transform = Transform3D(Basis(eje.normalized(), Vector3.UP.angle_to(dirv)) if eje.length() > 1e-6 else Basis(), (a + b) / 2)
+		var TT: Array = d["torres"]
+		for i in TT.size():
+			var tn: float = TT[i][0]; var te: float = TT[i][1]; var b0: float = op.bases[i]; var L: Array = op.laterales[i]; var F := [L[1], -L[0]]
+			var pata := func(s: float, t: float, h: float) -> Array:
+				var w: float = 1.3 - 0.75 * h / d["alto"]; return [tn + (s * L[0] + t * F[0]) * w, te + (s * L[1] + t * F[1]) * w, b0 + h]
+			for st in [[-1, -1], [-1, 1], [1, -1], [1, 1]]: barra.call(pata.call(st[0], st[1], 0), pata.call(st[0], st[1], d["alto"] - 1), 0.07, acero)
+			var h := 0.0
+			while h < d["alto"] - 2:
+				for c in [[-1, -1, 1, -1], [-1, 1, 1, 1], [-1, -1, -1, 1], [1, -1, 1, 1]]:
+					barra.call(pata.call(c[0], c[1], h), pata.call(c[2], c[3], h + 4), 0.03, acero); barra.call(pata.call(c[2], c[3], h), pata.call(c[0], c[1], h + 4), 0.03, acero)
+				h += 4
+			barra.call([tn + L[0] * d["brazo"], te + L[1] * d["brazo"], b0 + d["fases"] + 1.2], [tn - L[0] * d["brazo"], te - L[1] * d["brazo"], b0 + d["fases"] + 1.2], 0.09, acero)
+			barra.call(pata.call(0, 0, d["alto"] - 1), [tn, te, b0 + d["alto"]], 0.08, acero)
+			for k in [0, 1]:
+				var A: Array = op.enganches[i][k]; barra.call([A[0], A[1], A[2] + 1.2], A, 0.07, std.call(Color.html("#8d6e63")))
+		var mc: StandardMaterial3D = std.call(Color.html("#2f3133"), 0.6, 0.4)
+		for c in op.cables: barra.call(c[0], c[1], 0.025, mc)
 
 var _sing: Node3D
 func _singulares() -> void:
@@ -815,7 +953,8 @@ static func textura_cartel(W: int, H: int) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 ## Texturas de los singulares: "bloque" (bloque de hormigon de 40 x 20 cm, 1,6 m por textura), "hormigon" (2,4 m, con
-## manchas) y "rejilla" (lamas verticales). Las mismas que Visor.texturaSingular de la web.
+## manchas), "rejilla" (lamas verticales), "sillar" (piedra del faro) y "linterna" (cristal con montantes). Las mismas que
+## Visor.texturaSingular de la web.
 static var _tex_sing := {}
 static func textura_singular(tipo: String) -> ImageTexture:
 	if _tex_sing.has(tipo): return _tex_sing[tipo]
@@ -832,6 +971,12 @@ static func textura_singular(tipo: String) -> ImageTexture:
 			elif tipo == "hormigon":
 				var mancha := 0.88 + 0.12 * sin(x * 0.05 + sin(y * 0.03) * 2) * sin(y * 0.021); var gr := 0.95 + 0.08 * r.randf()
 				c = Color8(int(minf(255, 205 * mancha * gr)), int(minf(255, 200 * mancha * gr)), int(minf(255, 190 * mancha * gr)))
+			elif tipo == "sillar":         # sillares de piedra (faro): 3 a lo ancho, 6 hiladas, a matajuntas
+				var f := y / 43; var xo := (x + (f & 1) * 43) % N; var k := (f * 3 + xo / 86) % 64; var junta := y % 43 >= 41 or xo % 86 >= 84
+				var gr := 0.93 + 0.12 * r.randf()
+				c = Color8(int(168 * gr), int(164 * gr), int(152 * gr)) if junta else Color8(int(minf(255, 196 * tonos[k] * gr)), int(minf(255, 190 * tonos[k] * gr)), int(minf(255, 176 * tonos[k] * gr)))
+			elif tipo == "linterna":       # linterna del faro: cristal oscuro con montantes blancos
+				c = Color8(236, 236, 230) if (x & 31) < 4 or y < 12 else Color8(int(48 + y * 0.12), int(66 + y * 0.12), int(82 + y * 0.1))
 			else:
 				c = Color8(62, 66, 70) if (x & 15) < 9 else Color8(22, 24, 26)
 			img.set_pixel(x, y, c)

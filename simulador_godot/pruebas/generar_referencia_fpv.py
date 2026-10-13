@@ -101,12 +101,14 @@ GUION = r"""
     mando.yaw = en(5.2, 5.5, i) ? 0.4 : 0;
     if (i < 500) a.gases = 0; else if (i < 3000) sujetar(a, 20); else a.gases = 0;
   }
-  // resumen del modelo 3D (para comprobar que Godot lee los mismos datos)
+  // resumen del modelo 3D (para comprobar que Godot lee los mismos datos y construye la misma malla): piezas, rotores,
+  // luces, suma de todos los numeros de modelo3d y, de cada malla (fija, palas de cada sentido y disco), vertices,
+  // triangulos, area y suma de posiciones
   const K = Modelos.datos("FPV").modelo3d;
+  const sumaNum = o => typeof o === "number" ? o : Array.isArray(o) ? o.reduce((s, x) => s + sumaNum(x), 0) : (o && typeof o === "object") ? Object.values(o).reduce((s, x) => s + sumaNum(x), 0) : 0;
   return JSON.stringify({
     DT, VIENTO,
-    modelo3d: { piezas: K.piezas.length, rotores: K.rotores.length, luces: K.luces.length,
-                suma: K.piezas.reduce((s, P) => s + P.c[0] + 2 * P.c[1] + 3 * P.c[2] + (P.l ? P.l[0] + P.l[1] + P.l[2] : P.r + P.h) + (P.ry || 0) + (P.rz || 0) + P.col / 1e6, 0) },
+    modelo3d: { piezas: K.piezas.length, rotores: K.rotores.length, luces: K.luces.length, suma: sumaNum(K), mallas: ModeloFPV.mallas3D(Modelos.datos("FPV")) },
     normal: traza(null, false, completo, 55),
     config_facil: traza({ masa_kg: 0.72, temperatura: 32, empuje_gf: 5200, resistencia: 1.3 }, true, completo, 55),
     choque: traza(null, false, choque, 12),

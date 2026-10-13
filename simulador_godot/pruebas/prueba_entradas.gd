@@ -175,6 +175,24 @@ func _initialize() -> void:
 	_ok("palanca izquierda arriba sube el gas", p.av["gases"] > g2 + 0.1, "(%.2f -> %.2f)" % [g2, p.av["gases"]])
 	await _boton(JOY_BUTTON_A); _ok("A desarma", not p.av["armado"])
 	await _pulsa(KEY_R); _ok("R empieza de nuevo (desarmado en el suelo)", p.av["estado"] == "en mano" and not p.av["armado"])
+	print("Dron FPV con mando de consola (palanca de gas con muelle: el centro es el estacionario):")
+	p.mando_cfg.poner_perfil("consola")
+	var alt := func() -> float: return -p.av["p"][2] - p.ent.altura(p.av["p"][0], p.av["p"][1])
+	_eje(JOY_AXIS_RIGHT_X, 0.3); await create_timer(0.1).timeout; _eje(JOY_AXIS_RIGHT_X, 0.0)      # el mando manda
+	await _boton(JOY_BUTTON_A); await create_timer(1.0).timeout
+	_ok("armado con la palanca en reposo no despega", p.av["armado"] and alt.call() < 0.3, "(gas %.2f, altura %.2f m)" % [p.av["gases"], alt.call()])
+	_eje(JOY_AXIS_LEFT_Y, -0.3); await create_timer(1.5).timeout; _eje(JOY_AXIS_LEFT_Y, 0.0)
+	var h1: float = alt.call()
+	_ok("un toque arriba sube despacio", h1 > 0.5 and h1 < 8.0, "(%.1f m en 1,5 s)" % h1)
+	var vz := func() -> float: return -Cuat.rot(p.av["q"], p.av["v"])[2]
+	var v1: float = vz.call(); await create_timer(2.5).timeout; var v2: float = vz.call(); var h3: float = alt.call()
+	# soltando, el gas vuelve al del estacionario: sigue subiendo por la inercia (un FPV no mantiene la altura), pero cada
+	# vez mas despacio (al subir empuja menos) y no se escapa
+	_ok("soltando vuelve al estacionario y la subida se frena", absf(p.av["gases"] - 0.30) < 0.01 and v2 < v1 and h3 < 20.0,
+		"(gas %.2f, subida %.1f -> %.1f m/s, %.1f m)" % [p.av["gases"], v1, v2, h3])
+	_eje(JOY_AXIS_LEFT_Y, 1.0); await create_timer(0.3).timeout
+	_ok("abajo del todo, gas cero", p.av["gases"] < 0.01, "(%.2f)" % p.av["gases"]); _eje(JOY_AXIS_LEFT_Y, 0.0)
+	await _pulsa(KEY_R)
 	if cfg_antes.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path(MandoCfg.F_CFG))
 	else: FileAccess.open(MandoCfg.F_CFG, FileAccess.WRITE).store_buffer(cfg_antes)
 	print("RESULTADO: " + ("todo bien" if fallos == 0 else "%d fallos" % fallos))

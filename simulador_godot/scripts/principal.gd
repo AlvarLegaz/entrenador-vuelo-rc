@@ -67,6 +67,7 @@ var _t_obj := 0.0
 var _vs := 0.0
 var _fov1 := -1.0
 var _mando_usado := false
+var _gas_fpv_mando := false          # FPV con mando de consola: la palanca del gas manda (gasFpv de la web)
 var _botones_antes := {}
 var _cache_lanz := { "clave": null }
 var _cache_gmin := {}
@@ -124,6 +125,8 @@ func _ready() -> void:
 	_construir_ui()
 	if _args.has("auto"):
 		sesion["escenario"] = _args.get("escenario", "libre_cartagena"); sesion["sin_registrar"] = true
+		var O: Dictionary = Escenarios.datos()[sesion["escenario"]].get("operacion", {})       # pruebas: un trabajo, desde su punto de despegue
+		if not O.is_empty(): sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(O["salida"]["n"]), "E": float(O["salida"]["e"]), "rumbo": float(O["salida"]["rumbo"]) }
 		if Escenarios.es_mundo(sesion["escenario"]): _lanz_por_defecto()
 		if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)])      # pruebas: despegar del CIFP
 		if _args.has("lat") and _args.has("lon"):      # pruebas: despegar desde (lat, lon) con el rumbo dado o el mas despejado
@@ -140,6 +143,7 @@ func _ready() -> void:
 			"pHangar": ir_hangar()
 			"pEntrenamientos": ir_entrenamientos()
 			"pVolar": ir_volar()
+			"pOperaciones": ir_operaciones()
 			"pAjustes": ir_ajustes(_args.get("seccion", ""))
 			"pAlumno": ir_pilotos(ir_inicio)
 			"pLanzamiento":
@@ -398,6 +402,7 @@ func _construir_ui() -> void:
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
+				  "pOperaciones": PantallaMisiones.Operaciones.new(self),
 				  "pLanzamiento": PantallaLanzamiento.new(self), "pAjustes": PantallaAjustes.new(self),
 				  "pResultado": PantallaResultado.Resultado.new(self), "pProgreso": PantallaResultado.Progreso.new(self) }
 	for k in pantallas: pantallas[k].visible = false; raiz.add_child(pantallas[k])
@@ -460,6 +465,16 @@ func ir_hangar() -> void:
 	pantallas["pHangar"].refrescar(); mostrar("pHangar")
 func ir_entrenamientos() -> void:
 	mostrar("pEntrenamientos"); pantallas["pEntrenamientos"].refrescar()
+func ir_operaciones() -> void:
+	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
+## Empieza el trabajo elegido: con el DJI (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
+func volar_operacion(id: String) -> void:
+	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
+	if Escenarios.vehiculo_de(sesion["avion"]) != "dron":
+		for a in ids_aviones:
+			if Escenarios.vehiculo_de(a) == "dron": sesion["avion"] = a; break
+	sesion["escenario"] = id; sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(S["n"]), "E": float(S["e"]), "rumbo": float(S["rumbo"]) }
+	guardar_sesion(); empezar()
 func ir_volar() -> void:
 	if Escenarios.libre(sesion["escenario"]): sitio_sel = sesion["escenario"]
 	mostrar("pVolar"); pantallas["pVolar"].refrescar()
@@ -497,6 +512,7 @@ func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
 		if campo3d == null:
 			campo3d = Campo3D.new(); campo3d.calidad = cal; add_child(campo3d); campo3d.construir(ent)
 		_poner_vista(campo3d)
+	if campo3d != null: campo3d.poner_pista_fpv({} if es_m else Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {}))
 
 ## Zonas de detalle a menos de RADIO_ZONAS m del punto (N, E), primero la que lo contiene (zonasCerca de
 ## simulador.html): con zonas pegadas, como las de La Manga y el Mar Menor, se vuela en detalle hasta ~2 km del piloto.
@@ -569,11 +585,17 @@ func _texto_ayuda(A: Dictionary) -> void:
 	hud.ayuda_rt.text = t
 
 func reiniciar() -> void:
-	av = modelo.estado_inicial(); colocar_en_base(av); _orientar_lanzamiento()
+	_gas_fpv_mando = false
+	av = modelo.estado_inicial(); colocar_en_base(av)
+	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
+	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
+		av["p"] = [float(F["salida"][0]), float(F["salida"][1]), -0.02]; modelo.modo = String(F["modo"])
+	_orientar_lanzamiento()
 	mando["pitch"] = 0.0; mando["yaw"] = 0.0; mando["trim"] = modelo.compensador_grados; mando["gimbal"] = 0.0
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]; var vv: Dictionary = E.get("viento", sesion["viento"])
 	ent.configurar_viento(float(vv["vel"]), float(vv["desde"]), bool(vv["rachas"]))
 	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false)
+	if mundo3d != null: mundo3d.poner_operacion(ev.op.d if ev.op != null else {}, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
 	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
@@ -621,7 +643,18 @@ func lanzar() -> void:
 # =====================================================================
 #  PASO DE LA SIMULACION (paso() de simulador.html)
 # =====================================================================
-func camara_valida() -> bool: return camara == 1 or (es_dron() and camara == 3)
+## Entrenamiento del FPV que se vuela con las gafas (solo cuenta la camara 3): conGafas de la web.
+func con_gafas() -> bool:
+	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
+	return F.get("camara", "") == "gafas" and es_fpv()
+func camara_valida() -> bool: return camara == 3 if con_gafas() else (camara == 1 or (es_dron() and camara == 3))
+## Texto de la pista FPV: {cono:i} -> el pilon de color i (BBCode o solo el nombre) y <b> -> [b] (textoFpv de la web).
+func texto_fpv(s: String, bb: bool) -> String:
+	var re := RegEx.new(); re.compile("\\{cono:(\\d)\\}")
+	for m in re.search_all(s):
+		var i := int(m.get_string(1))
+		s = s.replace(m.get_string(), Escenarios.pilon_bb(ent, i, true) if bb else String(ent.circuito["colores"][i]["nombre"]))
+	return s.replace("<b>", "[b]").replace("</b>", "[/b]") if bb else s
 
 func paso(dt: float) -> void:
 	aplicar_recorridos()
@@ -638,14 +671,20 @@ func paso(dt: float) -> void:
 		vuelo["tVuelo"] += dt; vuelo["hmax"] = maxf(vuelo["hmax"], -av["p"][2] - ent.altura(av["p"][0], av["p"][1]))
 		# un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app
 		if not vuelo["otraCamara"] and not camara_valida() and not (E["objetivos"] as Array).is_empty():
-			vuelo["otraCamara"] = true; poner_toast("Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
+			vuelo["otraCamara"] = true; poner_toast("Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" if con_gafas() else "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
 	cn_contador += 1
 	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT)
 	if av["estado"] != "volando": return
 	if ent.choca_pilon(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un pilón)", vn); return
+	if ev.fpv != null:                        # pista FPV: objetivos y choques con postes, puertas y torre
+		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
+		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
+	if ev.op != null:                         # operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
+		for t in ev.op.paso(p_ant, av, dt, { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }): poner_toast(t)
+		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
 	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
 	var su = ev.contador.actualizar(p_ant, av["p"], av["t"]) if (ev.zona == 1 and ev.contador != null) else {}
-	if ev.zona <= 2 and not E.has("mundo"): _zona2(p_ant)
+	if ev.zona <= 2 and not E.has("mundo") and ev.fpv == null: _zona2(p_ant)
 	if su != null and not (su as Dictionary).is_empty():
 		var nom: String = ent.circuito["colores"][su["i"]]["nombre"]; var sen := int(E.get("sentido", 0))
 		match String(su["tipo"]):
@@ -704,7 +743,7 @@ func datos_resultado(v: Dictionary) -> Dictionary:
 	var E: Dictionary = Escenarios.datos()[v["escenario"]]; var libre := (E["objetivos"] as Array).is_empty()
 	var objs := []
 	for k in ev.orden: objs.append({ "id": k, "texto": ev.obj[k]["texto"], "ok": ev.obj[k]["estado"] == "ok" })
-	if not libre: objs.append({ "id": "camara", "texto": "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
+	if not libre: objs.append({ "id": "camara", "texto": "Volar con las gafas FPV (cámara 3)" if con_gafas() else "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
 	var apto: bool = not libre and v["final"] == "aterrizado" and objs.all(func(o): return o["ok"])
 	return { "E": E, "libre": libre, "objs": objs, "apto": apto, "resultado": "LIBRE" if libre else ("APTO" if apto else "NO APTO") }
 
@@ -857,7 +896,9 @@ func dji_modo(m := "") -> void:
 	poner_toast("Modo %s%s" % [NOMBRES_MODO[modelo.modo], " · sin frenado suave" if modelo.modo == "S" else ""])
 func dji_foto() -> void:
 	if modelo == null or not es_dron(): return
-	DJI["fotos"] += 1; hud_dji.foto(); poner_toast("Foto %d" % DJI["fotos"])
+	DJI["fotos"] += 1; hud_dji.foto()
+	var T: Array = ev.op.foto(av, av.get("gimbal", -10.0)) if (ev != null and ev.op != null) else []     # operaciones: lo que vale esa foto
+	poner_toast(" · ".join(T) if not T.is_empty() else "Foto %d" % DJI["fotos"])
 func dji_video() -> void:
 	if modelo == null or not es_dron(): return
 	DJI["video"] = true; DJI["grabando"] = not DJI["grabando"]
@@ -884,6 +925,14 @@ func dji_rth() -> void:
 #  DRON FPV: armar / desarmar y modos de Betaflight (el OSD esta en hud_fpv.gd)
 # =====================================================================
 ## Armar (solo con el gas abajo, como un FPV de verdad) o desarmar (en el aire se cae; en el suelo tras volar, aterrizado).
+## Gas del FPV con un mando de consola (gasFpvConsola de la web): el centro de la palanca con muelle es el gas del
+## estacionario (thr_mid de Betaflight), arriba del todo todo el gas, abajo nada, con curva suave cerca del centro; en
+## el suelo con la palanca en reposo, cero (se arma sin despegar). s: palanca (+1 arriba).
+const FPV_GAS_ESTACIONARIO := 0.30               # medido: el FPV de 650 g se sostiene con el 30,4 % (bateria llena)
+func gas_fpv_consola(s: float) -> float:
+	var f := func(x: float) -> float: return 0.25 * x + 0.75 * x * x * x
+	if (av.get("posado", false) or av["estado"] == "en mano") and s <= 0.05: return 0.0
+	return FPV_GAS_ESTACIONARIO + (1 - FPV_GAS_ESTACIONARIO) * f.call(s) if s >= 0 else FPV_GAS_ESTACIONARIO * (1 - f.call(-s))
 func fpv_armar() -> void:
 	if modelo == null or not es_fpv() or rep_activa: return
 	if av["estado"] == "en mano":
@@ -1011,7 +1060,10 @@ func _leer_mando(dt: float) -> bool:
 		if cuad: mando["vz"] = -ly; mando["vzObj"] = mando["vz"]
 	if moviendo: _mando_usado = true
 	# palanca izquierda: gas (eje Y negativo = arriba)
-	if not av["motorRoto"] and not cuad:
+	if not av["motorRoto"] and fpv and M.perfil == "consola":     # FPV con mando de consola (palanca con muelle): gas_fpv_consola
+		if ly != 0: _gas_fpv_mando = true                          # desde que se toca la palanca del gas en este vuelo
+		if _gas_fpv_mando: av["gases"] = gas_fpv_consola(-ly)
+	elif not av["motorRoto"] and not cuad:
 		if M.gas == "absoluto":
 			if _mando_usado or ly != 0: av["gases"] = clampf((1 - M.eje(dev, "ly")) / 2, 0, 1)
 		elif ly != 0: av["gases"] = clampf(av["gases"] - ly * 0.7 * dt, 0, 1)
@@ -1019,8 +1071,9 @@ func _leer_mando(dt: float) -> bool:
 
 func _leer_teclado(dt: float) -> void:
 	var cuad := es_dron() and not es_fpv(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas
-	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or (cuad and (T.call(KEY_W) or T.call(KEY_S)))
+	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or ((cuad or es_fpv()) and (T.call(KEY_W) or T.call(KEY_S)))   # en el FPV, W/S tambien devuelven el gas al teclado
 	if tecla_palanca: _mando_usado = false            # si se tocan las flechas, vuelve a mandar el teclado
+	if es_fpv() and (T.call(KEY_W) or T.call(KEY_S)): _gas_fpv_mando = false      # W/S: el gas vuelve al teclado
 	var gimbal_teclas := ((1.0 if T.call(KEY_E) else 0.0) - (1.0 if T.call(KEY_Q) else 0.0)) if cuad else 0.0
 	if _leer_mando(dt) and not tecla_palanca:
 		mando["gimbal"] = gimbal_teclas if gimbal_teclas != 0 else mando_cfg.gimbal; _leer_gas_teclado(dt); return
@@ -1113,14 +1166,19 @@ func _camara() -> void:
 func _pintar_objetivos() -> void:
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
 	var t := "[font_size=14][b][color=#ffc83d]%s[/color][/b][/font_size]\n" % E["nombre"]     # #objetivos h3: acento, 14 px
-	if E.has("mundo"):
+	if E.has("mundo") and ev.op != null:       # operacion: lo que toca ahora y la orden de trabajo
+		t += texto_fpv(ev.op.ahora(ev.obj, av), true) + "\n" + ev.lineas_objetivos()
+		if sesion["alumno"] != null: t += "[font_size=12][color=#aaaaaa]%s[/color][/font_size]" % sesion["alumno"]["nombre"]
+	elif E.has("mundo"):
 		var suelo := ent.altura(av["p"][0], av["p"][1])
 		t += "Terreno a %d m sobre el mar · casa a [b]%d m[/b]" % [int(round(suelo + ent.terreno["h0"])), int(round(Vector2(av["p"][0] - casa["N"], av["p"][1] - casa["E"]).length()))]
 	elif (E["objetivos"] as Array).is_empty(): t += ev.texto_orden() + ev.texto_vueltas(sesion["escenario"])
 	else:
 		if ev.obj.has("circ1"): t += ev.texto_orden()
 		if ev.obj.has("ocho1"): t += ev.texto_ocho()
-		if ev.zona == 2: t += ev.texto_zona2(sesion["escenario"])
+		if ev.zona == 2 and ev.fpv == null: t += ev.texto_zona2(sesion["escenario"])
+		if ev.fpv != null: t += texto_fpv(ev.fpv.ahora(ev.obj, av), true) + "
+"
 		t += ev.lineas_objetivos()
 		if sesion["alumno"] != null: t += "[font_size=12][color=#aaaaaa]%s[/color][/font_size]" % sesion["alumno"]["nombre"]
 	hud.obj_rt.text = t.strip_edges()
@@ -1187,6 +1245,9 @@ func _piloto_auto() -> void:
 func _auto(dt_real: float) -> void:
 	if not _args.has("auto"): return
 	_t_auto += dt_real
+	if _args.has("vista") and not av.is_empty():     # pruebas: dron quieto en N,E,altura,rumbo,gimbal para la captura
+		var w := Array(String(_args["vista"]).split(",")).map(func(x): return float(x))
+		av["p"] = [w[0], w[1], -(ent.altura(w[0], w[1]) + w[2])]; av["q"] = Cuat.desde_euler(0, 0, w[3] * D2R); av["gimbal"] = w[4]; av["v"] = [0.0, 0.0, 0.0]
 	var vp := get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(vp, true)
 	if _t_auto > 1.5:

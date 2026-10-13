@@ -24,6 +24,22 @@ static func datos() -> Dictionary:
 	_datos = d if d is Dictionary else {}
 	return _datos
 
+## Tipo de vehiculo de un avion: "avion", "dron" (el DJI) o "fpv" (escenarios.js: "vehiculos"; vehiculoDe de la web).
+static func vehiculo_de(id: String) -> String:
+	var t := String(DatosComunes.avion(id).get("tipo", ""))
+	return "fpv" if t == "fpv" else ("dron" if t == "cuadricoptero" else "avion")
+## Los entrenamientos (con objetivos) de un vehiculo, en el orden de escenarios.js (misionesDe).
+static func misiones_de(veh: String) -> Array:
+	var r := []
+	for id in datos():
+		if not (datos()[id]["objetivos"] as Array).is_empty() and not datos()[id].has("operacion") and veh in datos()[id].get("vehiculos", ["avion"]): r.append(id)
+	return r
+## Los trabajos del modo Operaciones (escenarios.js: "operacion"), en el orden del fichero (operacionesLista de la web).
+static func operaciones() -> Array:
+	var r := []
+	for id in datos():
+		if datos()[id].has("operacion"): r.append(id)
+	return r
 static func zona_de(id: String) -> int: return int(datos()[id].get("zona", 1))
 static func libre(id: String) -> bool: return (datos()[id]["objetivos"] as Array).is_empty()
 static func es_mundo(id: String) -> bool: return datos()[id].has("mundo")
@@ -91,6 +107,8 @@ class Evaluador extends RefCounted:
 	var tramos := []
 	var guia_bb := ""        # texto de la banda de la guia
 	var p                    # principal (avisos, toasts)
+	var fpv: PistaFpv = null # entrenamientos del dron FPV (escenarios.js: "pista_fpv")
+	var op: Operacion = null # trabajos del modo Operaciones (escenarios.js: "operacion")
 
 	func _init(id_: String, ent_: Entorno, p_) -> void:
 		id = id_; ent = ent_; p = p_; E = Escenarios.datos()[id]
@@ -99,8 +117,17 @@ class Evaluador extends RefCounted:
 		if not E.has("mundo"):
 			contador = ent.contador_vueltas(int(E.get("sentido", 0)))
 			pasada = ent.pasada_baja()
-		for k in ["cerca", "sinPerdida"]:
+		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]:
 			if obj.has(k): obj[k]["estado"] = "curso"
+		if E.has("operacion") and not ent.mundo.is_empty():    # el trabajo (en la busqueda, el senderista en un sitio al azar de la zona)
+			var dd: Dictionary = E["operacion"].duplicate()
+			if dd.has("zona"):
+				var Z: Dictionary = dd["zona"]
+				dd["persona"] = [Z["n0"] + 20 + randf() * (Z["n1"] - Z["n0"] - 40), Z["e0"] + 20 + randf() * (Z["e1"] - Z["e0"] - 40)]
+			var anotar := func(k: String, tx: String) -> void:
+				if obj.has(k): obj[k]["texto"] += " (%s)" % tx
+			op = Operacion.new(dd, marcar, anotar, { "casa": [p.casa["N"], p.casa["E"]], "suelo": func(N: float, Ee: float) -> float: return ent.altura(N, Ee), "h0": float(ent.terreno["h0"]) })
+		if E.has("pista_fpv") and not E.has("mundo"): fpv = PistaFpv.new(E["pista_fpv"], marcar)
 
 	func marcar(k: String, estado: String) -> void:
 		if obj.has(k) and obj[k]["estado"] != "mal": obj[k]["estado"] = estado
@@ -209,6 +236,8 @@ class Evaluador extends RefCounted:
 				marcar("suave", "ok" if vn[2] < 1.5 else "mal")
 				marcar("diana10", "ok" if toma["d"] <= 10 else "mal")
 				marcar("dianaR", "ok" if (toma["d"] <= 10 and obj.has("puertaR") and obj["puertaR"]["estado"] == "ok") else "mal")
+		if fpv != null: fpv.final(final, av)
+		if op != null: op.final(final, av, { "bateria": p.modelo.bateria_pct(av) })
 		for k in orden:
 			if obj[k]["estado"] == "curso": obj[k]["estado"] = "ok" if ok else "mal"
 		for k in orden:

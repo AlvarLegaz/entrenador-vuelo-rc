@@ -589,6 +589,69 @@ class Visor {
     this.ponerBase(mundo ? (this.baseNE || [0, 0]) : [0, 0], true);
   }
 
+  /** Pista FPV de un entrenamiento del dron FPV (escenarios.js, "pista_fpv"; las reglas en js/pista_fpv.js), o null para
+   *  quitarla: plataforma de salida, cilindro del estacionario, conos de colores, postes del slalom y del ocho, puertas
+   *  numeradas con su flecha en el suelo, puerta alta y torre. Va en la isla, en la zona despejada de detras del piloto. */
+  ponerPistaFpv(d) {
+    if (this.pistaFpv) { this.escenaIsla.remove(this.pistaFpv); this.pistaFpv = null; }
+    if (!d) return;
+    const G = new THREE.Group(), P = FPV_PISTA, col = this.entorno.circuito.colores, lam = c => new THREE.MeshLambertMaterial({ color: c });
+    const en = (o, N, E, y = 0) => { o.position.set(E, y, -N); G.add(o); return o; };
+    const rayas = (c1, c2, n) => { const [c, g] = lienzo(8, 64); for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? c2 : c1; g.fillRect(0, i * 64 / n, 8, 64 / n); } return new THREE.MeshLambertMaterial({ map: texSRGB(c) }); };
+    // plataforma de salida: chapa oscura con el borde naranja y una H blanca
+    const [cp, gp] = lienzo(128, 128); gp.fillStyle = "#ff6d00"; gp.fillRect(0, 0, 128, 128); gp.fillStyle = "#2b2b2b"; gp.fillRect(8, 8, 112, 112);
+    gp.fillStyle = "#fff"; gp.fillRect(38, 30, 12, 68); gp.fillRect(78, 30, 12, 68); gp.fillRect(38, 58, 52, 12);
+    const pad = en(new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 2.4), [lam(0x2b2b2b), lam(0x2b2b2b), new THREE.MeshLambertMaterial({ map: texSRGB(cp) }), lam(0x2b2b2b), lam(0x2b2b2b), lam(0x2b2b2b)]), d.salida[0], d.salida[1], 0.03);
+    pad.rotation.y = Math.PI;                                        // la H se lee mirando al sur, como el piloto
+    const anillo = (N, E, r, c, y = 0.04) => { const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.07, r + 0.07, 48), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; return en(m, N, E, y); };
+    if (d.cilindro) {                                                 // cilindro translucido del estacionario, con sus circulos
+      const c = d.cilindro, m = new THREE.Mesh(new THREE.CylinderGeometry(c.r, c.r, c.h1 - c.h0, 40, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0x29b6f6, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+      en(m, c.n, c.e, (c.h0 + c.h1) / 2); anillo(c.n, c.e, c.r, 0x29b6f6); anillo(c.n, c.e, c.r, 0x29b6f6, c.h0); anillo(c.n, c.e, c.r, 0x29b6f6, c.h1);
+    }
+    (d.conos || []).forEach((q, i) => {                               // conos de los colores del circuito, con el circulo donde se tocan
+      const hex = col[i % col.length].hex;
+      en(new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.7, 20), lam(new THREE.Color(hex))), q[0], q[1], 0.35);
+      en(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.235, 0.12, 20), lam(0xffffff)), q[0], q[1], 0.33);
+      anillo(q[0], q[1], P.CONO_R, new THREE.Color(hex));
+    });
+    (d.postes || []).forEach(q => en(new THREE.Mesh(new THREE.CylinderGeometry(P.POSTE.r, P.POSTE.r, P.POSTE.alto, 10), rayas("#e53935", "#ffffff", 8)), q[0], q[1], P.POSTE.alto / 2));
+    (d.ocho || []).forEach((q, i) => {                                // postes del ocho: rojo y azul, con banderin
+      const hex = col[P.COLOR_OCHO[i]].hex;
+      en(new THREE.Mesh(new THREE.CylinderGeometry(P.OCHO.r, P.OCHO.r, P.OCHO.alto, 10), rayas(hex, "#ffffff", 10)), q[0], q[1], P.OCHO.alto / 2);
+      en(new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshLambertMaterial({ color: new THREE.Color(hex), side: THREE.DoubleSide })), q[0], q[1], P.OCHO.alto - 0.3).position.x += 0.4;
+    });
+    // puertas: marco de tubo, numero arriba (por las dos caras) y flecha en el suelo antes de la puerta
+    const puerta = (g, color, texto) => {
+      const gr = P.GROSOR, H1 = g.h0 + g.alto, A = g.ancho / 2, P0 = new THREE.Group(), m = lam(color);
+      for (const s of [-1, 1]) { const pie = new THREE.Mesh(new THREE.BoxGeometry(gr, H1 + gr, gr), m); pie.position.set(s * (A + gr / 2), (H1 + gr) / 2, 0); P0.add(pie); }
+      const arriba = new THREE.Mesh(new THREE.BoxGeometry(g.ancho + 2 * gr, gr, gr), m); arriba.position.y = H1 + gr / 2; P0.add(arriba);
+      if (g.h0 > 0) { const abajo = new THREE.Mesh(new THREE.BoxGeometry(g.ancho + 2 * gr, gr, gr), m); abajo.position.y = g.h0 - gr / 2; P0.add(abajo); }
+      const [cn, gn] = lienzo(128, 96); gn.fillStyle = "#111"; gn.fillRect(0, 0, 128, 96); gn.fillStyle = "#fff"; gn.font = "bold 76px sans-serif"; gn.textAlign = "center"; gn.textBaseline = "middle"; gn.fillText(texto, 64, 52);
+      for (const lado of [0, Math.PI]) { const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.6), new THREE.MeshBasicMaterial({ map: texSRGB(cn) })); pl.position.y = H1 + gr + 0.32; pl.rotation.y = lado; P0.add(pl); }
+      const fl = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1.1)])), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+      fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0.03, 2.6); P0.add(fl);   // la punta hacia la puerta (-z local = sentido de paso)
+      P0.rotation.y = -g.rumbo * D2R; en(P0, g.n, g.e);
+    };
+    new PistaFpv(d, () => {}).puertas().forEach((g, i) => puerta(g, 0xff6d00, String(i + 1)));
+    if (d.puerta_alta) puerta(d.puerta_alta, 0xd81b60, "▲");
+    if (d.torre) {                                                    // torre de andamio galvanizado con baliza arriba
+      const q = d.torre, l = q.lado / 2, mt = lam(0xb8bcc0);
+      for (const [a, b] of [[-l, -l], [-l, l], [l, -l], [l, l]]) en(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, q.alto, 8), mt), q.n + a, q.e + b, q.alto / 2);
+      for (let y = 2.5; y <= q.alto; y += 2.5) {
+        for (const a of [-l, l]) { en(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, q.lado), mt), q.n + a, q.e, y); en(new THREE.Mesh(new THREE.BoxGeometry(q.lado, 0.05, 0.05), mt), q.n, q.e + a, y); }
+      }
+      en(new THREE.Mesh(new THREE.BoxGeometry(q.lado, 0.1, q.lado), lam(0x8d6e63)), q.n, q.e, q.alto);
+      en(new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff1744 })), q.n, q.e, q.alto + 0.3);
+    }
+    if (d.recta) {                                                    // conos naranjas en las cuatro esquinas del pasillo de la recta
+      const R = d.recta, w = R.ancho / 2 + R.margen;
+      for (const e of [R.e0, R.e1]) for (const s of [-1, 1]) en(new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.6, 16), lam(0xff6d00)), R.n + s * w, e, 0.3);
+    }
+    G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.pistaFpv = G; this.escenaIsla.add(G);
+  }
+
   /** Punto de lanzamiento (N, E) en un mundo real: ahi van el piloto (camara 1), la manga y los arboles cercanos.
    *  En la isla siempre es el origen. */
   ponerBase(NE, forzar) {

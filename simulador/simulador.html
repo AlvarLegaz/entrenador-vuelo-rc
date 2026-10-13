@@ -244,6 +244,10 @@
   #hangarFicha { overflow: auto; max-height: 100%; }
 
   /* ---------- entrenamientos y vuelo libre ---------- */
+  .ordenTrabajo { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 8px; }
+  .ordenTrabajo td { padding: 4px 0; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .ordenTrabajo td:first-child { color: var(--suave); width: 92px; padding-right: 8px; }
+  #comprobacionesOp label { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
   .misiones { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; color: var(--suave); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   .zonaTitulo:first-child { margin-top: 0; }
@@ -410,7 +414,8 @@
     <div id="inicioIzq">
       <div class="titulo"><small>Simulador de vuelo RC</small><h1>Entrenador de vuelo</h1><p>Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.</p></div>
       <button class="menu-btn" id="mnVolar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg><div><b>Vuelo libre</b><span>El campo de vuelo del club o el Campo de Cartagena con mapa real</span></div></button>
-      <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Nueve misiones con objetivos: desde el primer vuelo hasta el aterrizaje de precisión</span></div></button>
+      <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV</span></div></button>
+      <button class="menu-btn" id="mnOperaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><div><b>Operaciones</b><span>Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, líneas eléctricas y vídeo</span></div></button>
       <button class="menu-btn" id="mnHangar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg><div><b>Hangar</b><span>Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora</span></div></button>
       <button class="menu-btn" id="mnAjustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><div><b>Ajustes</b><span>Mando, gráficos, sonido, dificultad y registro de vuelos</span></div></button>
     </div>
@@ -497,6 +502,19 @@
       <div class="capa" id="fichaMision"></div>
       <div id="condicionesSlotEntrenar" style="margin-top:12px"></div>
       <button class="btn prim grande" id="btnMisionVolar" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ OPERACIONES (trabajos de operador de dron) ============ -->
+<div class="pantalla" id="pOperaciones">
+  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos de operador de dron con el DJI Mini 4K en el mapa real de Cartagena</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div class="misiones" id="listaOperaciones"></div>
+    <div>
+      <div class="capa" id="fichaOperacion"></div>
+      <div class="capa" id="comprobacionesOp" style="margin-top:12px"></div>
+      <button class="btn prim grande" id="btnOpVolar" style="width:100%;margin-top:12px">Volar →</button>
     </div>
   </div></div>
 </div>
@@ -676,11 +694,13 @@
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=21"></script>
 <script src="js/entorno.js?v=22"></script>
-<script src="js/visor.js?v=29"></script>
-<script src="js/visor_real.js?v=25"></script>
+<script src="js/pista_fpv.js?v=1"></script>
+<script src="js/operaciones.js?v=1"></script>
+<script src="js/visor.js?v=30"></script>
+<script src="js/visor_real.js?v=26"></script>
 <script src="mundos/cartagena.js?v=20"></script>
-<script src="escenarios.js?v=1"></script>
-<script src="singulares.js?v=1"></script>
+<script src="escenarios.js?v=3"></script>
+<script src="singulares.js?v=2"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -1323,7 +1343,16 @@ function nuevoEvaluador() {
          contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
          pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
-  for (const k of ["cerca", "sinPerdida"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
+  for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
+  const O = ESCENARIOS[sesion.escenario].operacion;
+  ev.op = null;
+  if (O && entorno.mundo) {                    // operaciones: el trabajo (en la busqueda, el senderista en un sitio al azar de la zona)
+    const d = Object.assign({}, O), c = casa();
+    if (O.zona) d.persona = [O.zona.n0 + 20 + Math.random() * (O.zona.n1 - O.zona.n0 - 40), O.zona.e0 + 20 + Math.random() * (O.zona.e1 - O.zona.e0 - 40)];
+    ev.op = new Operacion(d, (k, e) => marcar(k, e), (k, t) => { if (ev.obj[k]) ev.obj[k].texto += ` (${t})`; }, { casa: [c.N, c.E], suelo: (N, E) => entorno.altura(N, E), h0: entorno.terreno.h0 });
+  }
+  const F = ESCENARIOS[sesion.escenario].pista_fpv;
+  ev.fpv = F && !mundoDe(sesion.escenario) ? new PistaFpv(F, (k, e) => marcar(k, e)) : null;   // entrenamientos del dron FPV
 }
 function marcar(id, estado) { if (ev.obj[id] && ev.obj[id].estado !== "mal") ev.obj[id].estado = estado; }
 const desenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
@@ -1462,6 +1491,8 @@ function evaluarFinal(final, vn) {
     marcar("diana10", ev.toma.d <= 10 ? "ok" : "mal");
     marcar("dianaR", ev.toma.d <= 10 && ev.obj.puertaR && ev.obj.puertaR.estado === "ok" ? "ok" : "mal");
   }
+  if (ev.fpv) ev.fpv.final(final, av);
+  if (ev.op) ev.op.final(final, av, { bateria: modelo.bateriaPct(av) });
   // lo que seguia "en curso" solo cuenta si el vuelo acabo en un aterrizaje; lo pendiente, no se hizo
   for (const o of Object.values(ev.obj)) if (o.estado === "curso") o.estado = ok ? "ok" : "mal";
   for (const o of Object.values(ev.obj)) if (o.estado === "pend") o.estado = "mal";
@@ -1504,6 +1535,12 @@ function textoOrden() {
 }
 function pintarObjetivos() {
   const el = document.getElementById("objetivos"), E = ESCENARIOS[sesion.escenario];
+  if (E.mundo && ev && ev.op) {                // operacion: lo que toca ahora y la orden de trabajo
+    const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
+    el.innerHTML = `<h3>${esc(E.nombre)}</h3><div style="margin:4px 0">${ev.op.ahora(ev.obj, av)}</div>` + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+      (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
+    return;
+  }
   if (E.mundo) {
     const h = -av.p[2], suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
     el.innerHTML = `<h3>${esc(E.nombre)}</h3><div>Terreno a ${(suelo + mundoDe(sesion.escenario).terreno.h0).toFixed(0)} m sobre el mar · casa a <b>${Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E).toFixed(0)} m</b></div>`;
@@ -1511,7 +1548,7 @@ function pintarObjetivos() {
   }
   if (!E.objetivos.length) { el.innerHTML = `<h3>${esc(E.nombre)}</h3>${textoOrden()}${textoVueltas()}`; return; }
   const icono = { ok: "✔", mal: "✘", pend: "○", curso: "◔" }, clase = { ok: "ob-ok", mal: "ob-mal", pend: "ob-pend", curso: "ob-curso" };
-  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.obj.ocho1 ? textoOcho() : "") + (ev.zona === 2 ? textoZona2() : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
+  el.innerHTML = `<h3>${esc(E.nombre)}</h3>` + (ev.obj.circ1 ? textoOrden() : "") + (ev.obj.ocho1 ? textoOcho() : "") + (ev.zona === 2 && !ev.fpv ? textoZona2() : "") + (ev.fpv ? `<div style="margin:4px 0">${textoFpv(ev.fpv.ahora(ev.obj, av), true)}</div>` : "") + Object.values(ev.obj).map(o => `<div class="${clase[o.estado]}">${icono[o.estado]} ${esc(o.texto)}</div>`).join("") +
     (sesion.alumno ? `<div style="margin-top:6px;color:#aaa;font-size:12px">${esc(sesion.alumno.nombre)}</div>` : "");
 }
 
@@ -1588,6 +1625,7 @@ async function empezar() {
   construirAnemometro(velPerdida());
   if (carga) await mostrarCarga(mundo.nombre, "Terreno, mar, carreteras y pueblos…", 0.3);
   entorno.ponerMundo(mundo); visor.ponerMundo(mundo); GPS.mapa = null;
+  visor.ponerPistaFpv(!mundo && ESCENARIOS[sesion.escenario].pista_fpv || null);
   if (mundo) {
     await mostrarCarga(mundo.nombre, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6);
     const c = casa(); visor.baseNE = [c.N, c.E];                 // antes de la zona: sus arboles se detallan alrededor del punto de salida
@@ -1598,10 +1636,15 @@ async function empezar() {
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
-  av = modelo.estadoInicial(); colocarEnBase(av); orientarLanzamiento();
+  MANDO.gasFpv = false;
+  av = modelo.estadoInicial(); colocarEnBase(av);
+  const F = ESCENARIOS[sesion.escenario].pista_fpv;
+  if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
+  orientarLanzamiento();
   mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
   nuevoEvaluador(); vuelo = null; ponerPausa(false);
+  if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
   if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
@@ -1639,13 +1682,21 @@ function paso(dt) {
   const vn = modelo.paso(av, viento, dt);
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
   // un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app (camara 3)
-  if (vuelo && !vuelo.otraCamara && !camaraValida() && ESCENARIOS[sesion.escenario].objetivos.length) { vuelo.otraCamara = true; toast("Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)"); }
+  if (vuelo && !vuelo.otraCamara && !camaraValida() && ESCENARIOS[sesion.escenario].objetivos.length) { vuelo.otraCamara = true; toast(conGafas() ? "Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" : "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)"); }
   if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
+  if (ev && ev.fpv) {                         // pista FPV: objetivos y choques con postes, puertas y torre
+    for (const t of ev.fpv.paso(pAnt, av, dt, { modo: modelo.modo, critica: modelo.celda(av) < modelo.fc.critico_celda_V })) toast(textoFpv(t));
+    if (ev.fpv.choque) { terminarVuelo("roto (" + ev.fpv.choque + ")", vn); return; }
+  }
+  if (ev && ev.op) {                          // operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
+    for (const t of ev.op.paso(pAnt, av, dt, { gimbal: av.gimbal, grabando: DJI.grabando })) toast(t);
+    if (ev.op.choque) { terminarVuelo("roto (" + ev.op.choque + ")", vn); return; }
+  }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
   const su = ev && ev.zona === 1 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
-  if (ev && ev.zona <= 2) zona2(pAnt);
+  if (ev && ev.zona <= 2 && !ev.fpv) zona2(pAnt);
   if (su) {
     const nom = entorno.circuito.colores[su.i].nombre, sen = ESCENARIOS[sesion.escenario].sentido;
     toast(su.tipo === "vuelta" ? `¡Vuelta ${su.n}!  ${su.tiempo.toFixed(1)} s` : su.tipo === "dentro" ? `¡Por dentro del pilón ${nom}! Vuelta anulada` :
@@ -1703,12 +1754,16 @@ function terminarVuelo(final, vn) {
 // =====================================================================
 //  4. RESULTADO Y GUARDADO
 // =====================================================================
-const camaraValida = () => visor.camara === 1 || (!!modelo.esCuadricoptero && visor.camara === 3);
+/** Entrenamiento del FPV que se vuela con las gafas (solo cuenta la camara 3). */
+const conGafas = () => { const F = ESCENARIOS[sesion.escenario].pista_fpv; return !!(F && F.camara === "gafas" && modelo.esFPV); };
+const camaraValida = () => conGafas() ? visor.camara === 3 : visor.camara === 1 || (!!modelo.esCuadricoptero && visor.camara === 3);
+/** Texto de la pista FPV con los conos de colores: {cono:i} -> el pilon de color i (HTML o solo el nombre). */
+const textoFpv = (s, html) => s.replace(/\{cono:(\d)\}/g, (_, i) => html ? pilonHTML(+i, true) : entorno.circuito.colores[+i].nombre);
 /** Objetivos y veredicto de un vuelo (lo que se guarda). Ademas de los objetivos, la camara: solo cuenta visto desde el piloto. */
 function datosResultado(v) {
   const E = ESCENARIOS[v.escenario], libre = !E.objetivos.length;
   const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
-  if (!libre) objs.push({ id: "camara", texto: modelo.esFPV ? "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" : modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
+  if (!libre) objs.push({ id: "camara", texto: conGafas() ? "Volar con las gafas FPV (cámara 3)" : modelo.esFPV ? "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" : modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
   const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
   return { E, libre, objs, apto, resultado: libre ? "LIBRE" : apto ? "APTO" : "NO APTO" };
 }
@@ -1853,6 +1908,7 @@ function irInicio() {
 }
 document.getElementById("mnVolar").onclick = () => conPiloto(irVolar);
 document.getElementById("mnEntrenar").onclick = () => conPiloto(irEntrenamientos);
+document.getElementById("mnOperaciones").onclick = () => conPiloto(irOperaciones);
 document.getElementById("mnHangar").onclick = irHangar;
 document.getElementById("mnAjustes").onclick = () => irAjustes();
 document.getElementById("chipPiloto").onclick = () => irPilotos(irInicio);
@@ -1908,13 +1964,18 @@ function montarCondiciones(slotId, E) {
 // ---- entrenamientos: tarjetas con icono, dificultad y estado; la ficha de la elegida a la derecha ----
 let misionSel = null;
 
+/** Tipo de vehiculo de un avion de la carpeta aviones/: "avion", "dron" (el DJI) o "fpv" (escenarios.js: "vehiculos"). */
+function vehiculoDe(id) { const t = (Modelos.datos(id) || {}).tipo; return t === "fpv" ? "fpv" : t === "cuadricoptero" ? "dron" : "avion"; }
+/** Los entrenamientos (con objetivos) de un vehiculo, en el orden de escenarios.js. */
+function misionesDe(veh) { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].objetivos.length && !ESCENARIOS[id].operacion && (ESCENARIOS[id].vehiculos || ["avion"]).includes(veh)); }
 function irEntrenamientos() {
-  const g = sesion.alumno && sesion.alumno.progreso;
-  document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : " · sin registro");
+  const g = sesion.alumno && sesion.alumno.progreso, veh = vehiculoDe(sesion.avion), lista = misionesDe(veh);
+  document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + " · " + lista.length + " entrenamientos" +
+    (veh !== "avion" ? "" : g ? ` · ${g.escenarios_superados}/4 escenarios superados` : " · sin registro");
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
-  if (!misionSel || !ESCENARIOS[misionSel] || !ESCENARIOS[misionSel].objetivos.length) misionSel = "primer_vuelo";
-  for (const [id, E] of Object.entries(ESCENARIOS)) {
-    if (!E.objetivos.length) continue;             // los vuelos libres tienen su pantalla
+  if (!lista.includes(misionSel)) misionSel = lista[0];
+  for (const id of lista) {
+    const E = ESCENARIOS[id];
     if (E.titulo_grupo) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = E.titulo_grupo; el.appendChild(t); }
     const st = g && g.escenarios[id], dif = E.dificultad || 1;
     const d = document.createElement("div"); d.className = "mision" + (id === misionSel ? " sel" : "");
@@ -1931,6 +1992,45 @@ function irEntrenamientos() {
   mostrar("pEntrenamientos");
 }
 const irEscenario = irEntrenamientos;
+
+// ---- operaciones: trabajos de operador de dron (escenarios.js, "operacion"); la orden de trabajo y las comprobaciones
+// antes del vuelo, que hay que marcar todas para poder volar ----
+const COMPROBACIONES_OP = ["Operador registrado en AESA y piloto con el certificado A1/A3", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
+  "Viento previsto por debajo de 8 m/s", "Baterías del dron y del mando cargadas; hélices sin daños", "Permiso del cliente y del propietario del terreno",
+  "Zona de despegue despejada y nadie debajo del vuelo"];
+const RUMBOS_VIENTO = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
+let opSel = null; const opMarcas = {};
+function operacionesLista() { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].operacion); }
+function irOperaciones() {
+  const lista = operacionesLista(), el = document.getElementById("listaOperaciones"); el.innerHTML = "";
+  if (!lista.includes(opSel)) opSel = lista[0];
+  for (const id of lista) {
+    const E = ESCENARIOS[id], dif = E.dificultad || 1, d = document.createElement("div");
+    d.className = "mision" + (id === opSel ? " sel" : "");
+    d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre)}</h3><p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span></div></div>`;
+    d.onclick = () => { opSel = id; irOperaciones(); };
+    el.appendChild(d);
+  }
+  const E = ESCENARIOS[opSel], O = E.operacion, v = E.viento, fila = (a, b) => `<tr><td>${a}</td><td>${esc(b)}</td></tr>`;
+  document.getElementById("fichaOperacion").innerHTML = `<h2>Orden de trabajo</h2><h3 style="margin:0 0 8px;font-size:18px">${esc(E.nombre)}</h3>
+    <table class="ordenTrabajo">${fila("Cliente", O.cliente)}${fila("Lugar", O.lugar)}${fila("Trabajo", O.trabajo)}${fila("Entrega", O.entrega)}
+    ${fila("Viento previsto", `${v.vel} m/s del ${RUMBOS_VIENTO[Math.round(v.desde / 45) % 8]}${v.rachas ? ", con rachas" : ""}`)}${fila("Dron", "DJI Mini 4K (249 g, categoría abierta A1)")}</table>
+    <b style="font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.08em">Se evalúa</b><ul>${E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("")}</ul>`;
+  const marcas = opMarcas[opSel] = opMarcas[opSel] || COMPROBACIONES_OP.map(() => false);
+  const cc = document.getElementById("comprobacionesOp");
+  cc.innerHTML = `<h2>Antes de volar</h2>` + COMPROBACIONES_OP.map((t, i) => `<label><input type="checkbox" data-i="${i}" ${marcas[i] ? "checked" : ""}> ${esc(t)}</label>`).join("");
+  const boton = () => { const ok = marcas.every(Boolean), b = document.getElementById("btnOpVolar"); b.disabled = !ok; b.textContent = ok ? "Volar →" : "Marca las comprobaciones para volar"; };
+  cc.querySelectorAll("input").forEach(x => x.onchange = () => { marcas[+x.dataset.i] = x.checked; boton(); });
+  boton(); mostrar("pOperaciones");
+}
+/** Empieza el trabajo elegido: con el DJI (las operaciones son suyas), desde su punto de despegue. */
+function volarOperacion(id) {
+  const E = ESCENARIOS[id], S = E.operacion.salida;
+  if (vehiculoDe(sesion.avion) !== "dron") elegirAvion(Object.keys(Modelos._datos || {}).find(a => vehiculoDe(a) === "dron") || "DJI_MINI");
+  sesion.escenario = id; sesion.lanz = { mundo: E.mundo, N: S.n, E: S.e, rumbo: S.rumbo }; empezar();
+}
+document.getElementById("btnOpVolver").onclick = irInicio;
+document.getElementById("btnOpVolar").onclick = () => volarOperacion(opSel);
 document.getElementById("btnEntrenarVolver").onclick = irInicio;
 document.getElementById("btnMisionVolar").onclick = () => { leerViento(); sesion.escenario = misionSel; empezar(); };
 /** Icono esquematico de cada mision (SVG). */
@@ -1961,6 +2061,19 @@ function iconoMision(id) {
       `<g fill="${tr}" font-size="12" font-weight="700"><text x="36" y="72">1</text><text x="102" y="24">2</text><text x="148" y="106">3</text></g>` + fin;
     case "aterrizaje": return ini + pista(28, 20, 12, 70) + `<path d="M34 25 C34 10 170 10 170 25 L170 85 C170 100 34 100 34 90" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
       flecha(102, 15, 0) + flecha(170, 55, 90) + flecha(102, 95, 180) + avion(34, 60, -90) + `<text x="46" y="60" fill="#fff" font-size="9">final</text>` + fin;
+    // operaciones y dron FPV: los mismos SVG que PantallaMisiones.icono de Godot
+    case "op_inspeccion": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M30 100V45H95V100M95 100V30H160V100" fill="#5d6b78" stroke="#cfd8dc" stroke-width="1.5"/><path d="M40 55h12v10H40zM60 55h12v10H60zM40 75h12v10H40zM105 40h12v10h-12zM125 40h12v10h-12zM105 60h12v10h-12z" fill="#90caf9"/><rect x="137" y="22" width="12" height="7" fill="#ff6d00" stroke="#fff" stroke-width="1"/><path d="M150 0L128 26L158 26z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(160 12) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "op_fotogrametria": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="40" width="150" height="60" fill="#8d6e63" stroke="#e53935" stroke-width="1.5" stroke-dasharray="5 3"/><rect x="30" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="60" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="90" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="120" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="150" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><path d="M30 25H170V35H30" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><g transform="translate(100 25) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "op_busqueda": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M0 100L40 60L70 80L110 40L150 75L200 50V110H0z" fill="#5d4f3a"/><circle cx="128" cy="68" r="3.5" fill="#e53935"/><circle cx="128" cy="66" r="16" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M140 78L152 90" stroke="#fff" stroke-width="4" stroke-linecap="round"/><g transform="translate(60 22) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "op_agricultura": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M15 50H185" stroke="#43a047" stroke-width="5"/><path d="M15 59H185" stroke="#43a047" stroke-width="5"/><path d="M15 68H185" stroke="#43a047" stroke-width="5"/><path d="M15 77H185" stroke="#43a047" stroke-width="5"/><path d="M15 86H185" stroke="#43a047" stroke-width="5"/><path d="M15 95H185" stroke="#43a047" stroke-width="5"/><ellipse cx="70" cy="68" rx="16" ry="9" fill="#d4c13a" fill-opacity="0.9"/><ellipse cx="140" cy="85" rx="12" ry="7" fill="#d4c13a" fill-opacity="0.9"/><path d="M110 18L52 66L90 70z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(110 18) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "op_linea": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M37 105L42 50L48 50L53 105"/><path d="M38 95L50 75M52 95L40 75M40 75L48 55M50 75L42 55"/><path d="M29 63H61"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M31 63v6M59 63v6"/></g><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M147 105L152 50L158 50L163 105"/><path d="M148 95L160 75M162 95L150 75M150 75L158 55M160 75L152 55"/><path d="M139 63H171"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M141 63v6M169 63v6"/></g><path d="M31 63Q100 85 141 63M59 63Q100 85 169 63" fill="none" stroke="#263238" stroke-width="1.5"/><circle cx="100" cy="40" r="20" fill="none" stroke="#ff5252" stroke-width="1.2" stroke-dasharray="3 3"/><g transform="translate(100 38) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "op_video": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M94 100L97 30H103L106 100z" fill="#cfd8dc"/><rect x="95" y="22" width="10" height="9" fill="#ffd54f"/><path d="M93 22H107L100 14z" fill="#b71c1c"/><ellipse cx="100" cy="60" rx="70" ry="22" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M168 64l4 -8 4 8" fill="none" stroke="#ffc83d" stroke-width="2"/><circle cx="45" cy="74" r="4" fill="#e53935"/><g transform="translate(45 74) rotate(0) scale(0.8)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
+    case "fpv_estacionario": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="91" y="91" width="18" height="10" fill="#2b2b2b" stroke="#ff6d00" stroke-width="1.5"/><path d="M96 93V99M104 93V99M96 96H104" stroke="#fff" stroke-width="1.2"/><g fill="none" stroke="#4fc3f7" stroke-width="1.6"><ellipse cx="100" cy="30" rx="34" ry="8"/><ellipse cx="100" cy="74" rx="34" ry="8"/><path d="M66 30V74M134 30V74"/></g><g transform="translate(100 52) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M150 80V24" stroke="#ffc83d" stroke-width="1.5"/><path d="M146 28L150 22 154 28M146 76L150 82 154 76" fill="none" stroke="#ffc83d" stroke-width="1.5"/><text x="156" y="56" fill="#fff" font-size="10">20 s</text></svg>';
+    case "fpv_caja": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="55" y="25" width="90" height="60" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M55 19L60 31H50z" fill="#4caf50" stroke="#000" stroke-width="0.8"/><path d="M55 79L60 91H50z" fill="#ffeb3b" stroke="#000" stroke-width="0.8"/><path d="M145 79L150 91H140z" fill="#f44336" stroke="#000" stroke-width="0.8"/><path d="M145 19L150 31H140z" fill="#42a5f5" stroke="#000" stroke-width="0.8"/><g transform="translate(100 55) rotate(180)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>';
+    case "fpv_slalom": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M30 56V80" stroke="#e53935" stroke-width="3"/><path d="M30 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M52 56V80" stroke="#e53935" stroke-width="3"/><path d="M52 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M74 56V80" stroke="#e53935" stroke-width="3"/><path d="M74 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M96 56V80" stroke="#e53935" stroke-width="3"/><path d="M96 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M118 56V80" stroke="#e53935" stroke-width="3"/><path d="M118 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M15 66 C25 50 35 50 41 66 S57 82 63 66 S79 50 85 66 S101 82 107 66 S123 50 129 66" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><path d="M158 26V50" stroke="#f44336" stroke-width="3"/><path d="M158 26V50" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M182 26V50" stroke="#42a5f5" stroke-width="3"/><path d="M182 26V50" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M170 38 C160 18 146 22 150 38 C154 54 186 22 190 38 C194 54 180 58 170 38" fill="none" stroke="#ffc83d" stroke-width="1.8"/><g transform="translate(129 66) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>';
+    case "fpv_circuito": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M40 30 C20 55 30 90 70 92 L140 92 C180 90 185 55 165 32 C150 15 60 12 40 30z" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M31 40V22H49V40" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="37" y="19" fill="#fff" font-size="9" font-weight="700">1</text><path d="M36 88V70H54V88" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="42" y="67" fill="#fff" font-size="9" font-weight="700">2</text><path d="M96 100V82H114V100" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="102" y="79" fill="#fff" font-size="9" font-weight="700">3</text><path d="M156 88V70H174V88" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="162" y="67" fill="#fff" font-size="9" font-weight="700">4</text><path d="M163 45V27H181V45" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="169" y="24" fill="#fff" font-size="9" font-weight="700">5</text><path d="M96 26V8H114V26" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="102" y="5" fill="#fff" font-size="9" font-weight="700">6</text><g transform="translate(75 25) rotate(-100)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>';
+    case "fpv_acro": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="70" width="160" height="14" fill="#8d6e63" rx="2"/><path d="M15 55 H185" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M178 51l7 4-7 4" fill="#ffc83d"/><g transform="translate(90 55) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M90 55 L118 40" stroke="#4fc3f7" stroke-width="1.5"/><text x="122" y="40" fill="#4fc3f7" font-size="10" font-weight="700">ACRO</text><path d="M20 84L25 96H15z" fill="#ff6d00" stroke="#000" stroke-width="0.8"/><path d="M180 84L185 96H175z" fill="#ff6d00" stroke="#000" stroke-width="0.8"/></svg>';
+    case "fpv_tecnica": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M58 100V38H86V100" fill="none" stroke="#d81b60" stroke-width="3"/><path d="M58 70H86" stroke="#d81b60" stroke-width="3"/><path d="M30 56 H72 C112 56 112 12 72 12 C40 12 40 56 72 56" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><g stroke="#b8bcc0" stroke-width="2"><path d="M150 100V20M168 100V20"/><path d="M150 40H168M150 60H168M150 80H168M150 20H168"/></g><circle cx="159" cy="15" r="3.5" fill="#ff1744"/><path d="M176 22 C186 50 184 80 178 98" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><path d="M174 92l4 7 4-7" fill="none" stroke="#ffc83d" stroke-width="2"/><g transform="translate(30 56) rotate(90)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>';
     case "campo": return ini + pista(96, 25, 8, 55) + pil(70, 30, P[0]) + pil(130, 30, P[1]) + pil(130, 75, P[2]) + pil(70, 75, P[3]) +
       `<circle cx="100" cy="95" r="4" fill="#fff"/><text x="108" y="98" fill="#fff" font-size="9">piloto</text>` + avion(150, 50, -30) + fin;
   }
@@ -2421,7 +2534,10 @@ function leerMando(dt) {
   }
   if (moviendo) MANDO.usado = true;
   // palanca izquierda: gas (eje Y negativo = arriba)
-  if (!av.motorRoto && !cuad) {
+  if (!av.motorRoto && fpv && MANDO.perfil === "consola") {        // FPV con mando de consola (palanca con muelle): ver gasFpvConsola
+    if (ly !== 0) MANDO.gasFpv = true;                              // desde que se toca la palanca del gas en este vuelo
+    if (MANDO.gasFpv) av.gases = gasFpvConsola(-ly);
+  } else if (!av.motorRoto && !cuad) {
     if (MANDO.gas === "absoluto") { if (MANDO.usado || ly !== 0) av.gases = Math.max(0, Math.min(1, (1 - E("ly")) / 2)); }
     else if (ly !== 0) av.gases = Math.max(0, Math.min(1, av.gases - ly * 0.7 * dt));
   }
@@ -2430,8 +2546,9 @@ function leerMando(dt) {
 
 function leerTeclado(dt) {
   const cuad = modelo && modelo.esCuadricoptero && !modelo.esFPV;     // en el FPV W/S son el gas, como en los aviones
-  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || (cuad && (teclas["KeyW"] || teclas["KeyS"]));
+  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || ((cuad || (modelo && modelo.esFPV)) && (teclas["KeyW"] || teclas["KeyS"]));   // en el FPV, W/S tambien devuelven el gas al teclado
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
+  if (modelo && modelo.esFPV && (teclas["KeyW"] || teclas["KeyS"])) MANDO.gasFpv = false;   // W/S: el gas vuelve al teclado
   const gimbalTeclas = cuad ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
   if (leerMando(dt) && !teclaPalanca) { mando.gimbal = gimbalTeclas || MANDO.gimbal; leerGasTeclado(dt); return; }
   mando.gimbal = gimbalTeclas || MANDO.gimbal;
@@ -2467,7 +2584,8 @@ function djiModo(m) {
 function djiFoto() {
   if (!modelo || !modelo.esCuadricoptero) return;
   DJI.fotos++; const f = document.getElementById("djiFlash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 80);
-  toast(`Foto ${DJI.fotos}`);
+  const T = ev && ev.op ? ev.op.foto(av, av.gimbal) : [];        // operaciones: lo que vale esa foto para el trabajo
+  toast(T.length ? T.join(" · ") : `Foto ${DJI.fotos}`);
 }
 function djiVideo() {
   if (!modelo || !modelo.esCuadricoptero) return;
@@ -2537,6 +2655,17 @@ function hudDji(h, vn, vs, dist) {
 // =====================================================================
 const NOMBRES_FPV = { ANGLE: "ANGL", HORIZON: "HOR", ACRO: "ACRO" };
 /** Armar (solo con el gas abajo, como un FPV de verdad) o desarmar (en el aire se cae; en el suelo tras volar, aterrizado). */
+/** Gas del FPV con un mando de consola: su palanca izquierda tiene muelle y vuelve al centro, asi que el centro es el
+ *  gas del estacionario (como thr_mid de Betaflight): suelta, se mantiene la altura; arriba del todo, todo el gas; abajo
+ *  del todo, nada. Con una curva suave cerca del centro (un toque arriba sube unos pocos m/s, no sale disparado). En el
+ *  suelo, con la palanca en reposo, gas cero: se arma sin despegar y para despegar hay que empujar. s: palanca (+1 arriba).
+ *  La misma que gas_fpv_consola() de principal.gd. */
+const FPV_GAS_ESTACIONARIO = 0.30;               // medido: el FPV de 650 g se sostiene con el 30,4 % (bateria llena)
+function gasFpvConsola(s) {
+  const f = x => 0.25 * x + 0.75 * x * x * x, h = FPV_GAS_ESTACIONARIO;
+  if ((av.posado || av.estado === "en mano") && s <= 0.05) return 0;
+  return s >= 0 ? h + (1 - h) * f(s) : h * (1 - f(-s));
+}
 function fpvArmar() {
   if (!modelo || !modelo.esFPV || Repeticion.activa) return;
   if (av.estado === "en mano") {

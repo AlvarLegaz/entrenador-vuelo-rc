@@ -33,6 +33,19 @@ static func icono(id: String) -> String:
 			'<g fill="%s" font-size="12" font-weight="700"><text x="36" y="72">1</text><text x="102" y="24">2</text><text x="148" y="106">3</text></g>' % tr + fin
 		"aterrizaje": return ini + pista.call(28, 20, 12, 70) + '<path d="M34 25 C34 10 170 10 170 25 L170 85 C170 100 34 100 34 90" fill="none" stroke="%s" stroke-width="2" stroke-dasharray="6 4"/>' % tr + \
 			flecha.call(102, 15, 0) + flecha.call(170, 55, 90) + flecha.call(102, 95, 180) + avion.call(34, 60, -90) + '<text x="46" y="60" fill="#fff" font-size="9">final</text>' + fin
+		# operaciones y dron FPV: los mismos SVG que iconoMision de la web
+		"op_inspeccion": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M30 100V45H95V100M95 100V30H160V100" fill="#5d6b78" stroke="#cfd8dc" stroke-width="1.5"/><path d="M40 55h12v10H40zM60 55h12v10H60zM40 75h12v10H40zM105 40h12v10h-12zM125 40h12v10h-12zM105 60h12v10h-12z" fill="#90caf9"/><rect x="137" y="22" width="12" height="7" fill="#ff6d00" stroke="#fff" stroke-width="1"/><path d="M150 0L128 26L158 26z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(160 12) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_fotogrametria": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="40" width="150" height="60" fill="#8d6e63" stroke="#e53935" stroke-width="1.5" stroke-dasharray="5 3"/><rect x="30" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="60" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="90" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="120" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="150" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><path d="M30 25H170V35H30" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><g transform="translate(100 25) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_busqueda": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M0 100L40 60L70 80L110 40L150 75L200 50V110H0z" fill="#5d4f3a"/><circle cx="128" cy="68" r="3.5" fill="#e53935"/><circle cx="128" cy="66" r="16" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M140 78L152 90" stroke="#fff" stroke-width="4" stroke-linecap="round"/><g transform="translate(60 22) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_agricultura": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M15 50H185" stroke="#43a047" stroke-width="5"/><path d="M15 59H185" stroke="#43a047" stroke-width="5"/><path d="M15 68H185" stroke="#43a047" stroke-width="5"/><path d="M15 77H185" stroke="#43a047" stroke-width="5"/><path d="M15 86H185" stroke="#43a047" stroke-width="5"/><path d="M15 95H185" stroke="#43a047" stroke-width="5"/><ellipse cx="70" cy="68" rx="16" ry="9" fill="#d4c13a" fill-opacity="0.9"/><ellipse cx="140" cy="85" rx="12" ry="7" fill="#d4c13a" fill-opacity="0.9"/><path d="M110 18L52 66L90 70z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(110 18) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_linea": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M37 105L42 50L48 50L53 105"/><path d="M38 95L50 75M52 95L40 75M40 75L48 55M50 75L42 55"/><path d="M29 63H61"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M31 63v6M59 63v6"/></g><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M147 105L152 50L158 50L163 105"/><path d="M148 95L160 75M162 95L150 75M150 75L158 55M160 75L152 55"/><path d="M139 63H171"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M141 63v6M169 63v6"/></g><path d="M31 63Q100 85 141 63M59 63Q100 85 169 63" fill="none" stroke="#263238" stroke-width="1.5"/><circle cx="100" cy="40" r="20" fill="none" stroke="#ff5252" stroke-width="1.2" stroke-dasharray="3 3"/><g transform="translate(100 38) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_video": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M94 100L97 30H103L106 100z" fill="#cfd8dc"/><rect x="95" y="22" width="10" height="9" fill="#ffd54f"/><path d="M93 22H107L100 14z" fill="#b71c1c"/><ellipse cx="100" cy="60" rx="70" ry="22" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M168 64l4 -8 4 8" fill="none" stroke="#ffc83d" stroke-width="2"/><circle cx="45" cy="74" r="4" fill="#e53935"/><g transform="translate(45 74) rotate(0) scale(0.8)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"fpv_estacionario": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="91" y="91" width="18" height="10" fill="#2b2b2b" stroke="#ff6d00" stroke-width="1.5"/><path d="M96 93V99M104 93V99M96 96H104" stroke="#fff" stroke-width="1.2"/><g fill="none" stroke="#4fc3f7" stroke-width="1.6"><ellipse cx="100" cy="30" rx="34" ry="8"/><ellipse cx="100" cy="74" rx="34" ry="8"/><path d="M66 30V74M134 30V74"/></g><g transform="translate(100 52) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M150 80V24" stroke="#ffc83d" stroke-width="1.5"/><path d="M146 28L150 22 154 28M146 76L150 82 154 76" fill="none" stroke="#ffc83d" stroke-width="1.5"/><text x="156" y="56" fill="#fff" font-size="10">20 s</text></svg>'
+		"fpv_caja": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="55" y="25" width="90" height="60" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M55 19L60 31H50z" fill="#4caf50" stroke="#000" stroke-width="0.8"/><path d="M55 79L60 91H50z" fill="#ffeb3b" stroke="#000" stroke-width="0.8"/><path d="M145 79L150 91H140z" fill="#f44336" stroke="#000" stroke-width="0.8"/><path d="M145 19L150 31H140z" fill="#42a5f5" stroke="#000" stroke-width="0.8"/><g transform="translate(100 55) rotate(180)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>'
+		"fpv_slalom": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M30 56V80" stroke="#e53935" stroke-width="3"/><path d="M30 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M52 56V80" stroke="#e53935" stroke-width="3"/><path d="M52 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M74 56V80" stroke="#e53935" stroke-width="3"/><path d="M74 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M96 56V80" stroke="#e53935" stroke-width="3"/><path d="M96 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M118 56V80" stroke="#e53935" stroke-width="3"/><path d="M118 56V80" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M15 66 C25 50 35 50 41 66 S57 82 63 66 S79 50 85 66 S101 82 107 66 S123 50 129 66" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><path d="M158 26V50" stroke="#f44336" stroke-width="3"/><path d="M158 26V50" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M182 26V50" stroke="#42a5f5" stroke-width="3"/><path d="M182 26V50" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><path d="M170 38 C160 18 146 22 150 38 C154 54 186 22 190 38 C194 54 180 58 170 38" fill="none" stroke="#ffc83d" stroke-width="1.8"/><g transform="translate(129 66) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>'
+		"fpv_circuito": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M40 30 C20 55 30 90 70 92 L140 92 C180 90 185 55 165 32 C150 15 60 12 40 30z" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M31 40V22H49V40" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="37" y="19" fill="#fff" font-size="9" font-weight="700">1</text><path d="M36 88V70H54V88" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="42" y="67" fill="#fff" font-size="9" font-weight="700">2</text><path d="M96 100V82H114V100" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="102" y="79" fill="#fff" font-size="9" font-weight="700">3</text><path d="M156 88V70H174V88" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="162" y="67" fill="#fff" font-size="9" font-weight="700">4</text><path d="M163 45V27H181V45" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="169" y="24" fill="#fff" font-size="9" font-weight="700">5</text><path d="M96 26V8H114V26" fill="none" stroke="#ff6d00" stroke-width="2.6"/><text x="102" y="5" fill="#fff" font-size="9" font-weight="700">6</text><g transform="translate(75 25) rotate(-100)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>'
+		"fpv_acro": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="70" width="160" height="14" fill="#8d6e63" rx="2"/><path d="M15 55 H185" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M178 51l7 4-7 4" fill="#ffc83d"/><g transform="translate(90 55) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M90 55 L118 40" stroke="#4fc3f7" stroke-width="1.5"/><text x="122" y="40" fill="#4fc3f7" font-size="10" font-weight="700">ACRO</text><path d="M20 84L25 96H15z" fill="#ff6d00" stroke="#000" stroke-width="0.8"/><path d="M180 84L185 96H175z" fill="#ff6d00" stroke="#000" stroke-width="0.8"/></svg>'
+		"fpv_tecnica": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M58 100V38H86V100" fill="none" stroke="#d81b60" stroke-width="3"/><path d="M58 70H86" stroke="#d81b60" stroke-width="3"/><path d="M30 56 H72 C112 56 112 12 72 12 C40 12 40 56 72 56" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><g stroke="#b8bcc0" stroke-width="2"><path d="M150 100V20M168 100V20"/><path d="M150 40H168M150 60H168M150 80H168M150 20H168"/></g><circle cx="159" cy="15" r="3.5" fill="#ff1744"/><path d="M176 22 C186 50 184 80 178 98" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="5 3"/><path d="M174 92l4 7 4-7" fill="none" stroke="#ffc83d" stroke-width="2"/><g transform="translate(30 56) rotate(90)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>'
 		"campo": return ini + pista.call(96, 25, 8, 55) + pil.call(70, 30, P[0]) + pil.call(130, 30, P[1]) + pil.call(130, 75, P[2]) + pil.call(70, 75, P[3]) + \
 			'<circle cx="100" cy="95" r="4" fill="#fff"/><text x="108" y="98" fill="#fff" font-size="9">piloto</text>' + avion.call(150, 50, -30) + fin
 	return ini + avion.call(100, 55, 0) + fin
@@ -133,13 +146,13 @@ class Entrenamientos extends Control:
 	func refrescar() -> void:
 		var E := Escenarios.datos(); var al = p.sesion["alumno"]
 		var g = al["progreso"] if al != null and al.has("progreso") else null
-		d["subtitulo"].text = String(DatosComunes.avion(p.sesion["avion"]).get("nombre", "")) + ((" · %d/4 escenarios superados" % int(g["escenarios_superados"])) if g != null else " · sin registro")
-		if not E.has(sel) or Escenarios.libre(sel): sel = "primer_vuelo"
+		var veh := Escenarios.vehiculo_de(p.sesion["avion"]); var ids := Escenarios.misiones_de(veh)
+		d["subtitulo"].text = String(DatosComunes.avion(p.sesion["avion"]).get("nombre", "")) + " · %d entrenamientos" % ids.size() + 			("" if veh != "avion" else ((" · %d/4 escenarios superados" % int(g["escenarios_superados"])) if g != null else " · sin registro"))
+		if not sel in ids: sel = ids[0]
 		for x in lista.get_children(): x.queue_free()
 		var rejilla: GridAdaptable = null
-		for id in E:
+		for id in ids:
 			var M: Dictionary = E[id]
-			if (M["objetivos"] as Array).is_empty(): continue
 			if M.has("titulo_grupo") or rejilla == null:
 				if M.has("titulo_grupo"):
 					var t := Tema.etiqueta(String(M["titulo_grupo"]).to_upper(), 13, Tema.SUAVE, true)
@@ -169,6 +182,76 @@ class Entrenamientos extends Control:
 		var meta := "[color=#ffc83d]%s%s[/color]" % ["★".repeat(dif), "☆".repeat(3 - dif)]
 		if st != null and int(st["intentos"]) > 0: meta += "[color=#9fb3c8] · %d intento%s[/color]" % [int(st["intentos"]), "s" if int(st["intentos"]) > 1 else ""]
 		tx.add_child(Tema.rico(meta, 12))
+		v.add_child(Tema.margen(tx, 12, 10, 12, 12))
+		var t := Tarjeta.new(v, 14, Vector2(0, 0)); t.elegida = id == sel
+		t.pulsada.connect(func(): sel = id; refrescar())
+		return t
+
+
+## Operaciones: los trabajos de operador de dron (escenarios.js, "operacion") en tarjetas; a la derecha la orden de
+## trabajo, las comprobaciones antes del vuelo (hay que marcarlas todas) y Volar (#pOperaciones de la web).
+const COMPROBACIONES_OP := ["Operador registrado en AESA y piloto con el certificado A1/A3", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
+	"Viento previsto por debajo de 8 m/s", "Baterías del dron y del mando cargadas; hélices sin daños", "Permiso del cliente y del propietario del terreno",
+	"Zona de despegue despejada y nadie debajo del vuelo"]
+const RUMBOS_VIENTO := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
+class Operaciones extends Control:
+	var p: Node; var d: Dictionary
+	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var checks: VBoxContainer; var b_volar: Button
+	var sel := ""
+	var marcas := {}
+	func _init(p_: Node) -> void:
+		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
+		d = Tema.pantalla("Operaciones", "Trabajos de operador de dron con el DJI Mini 4K en el mapa real de Cartagena"); add_child(d["raiz"])
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
+		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
+		var sc := Tema.desplazable(lista); dos.add_child(sc)
+		var der := VBoxContainer.new(); der.custom_minimum_size.x = 380; der.add_theme_constant_override("separation", 12)
+		var sd := Tema.desplazable(der); sd.size_flags_horizontal = Control.SIZE_FILL; dos.add_child(sd)
+		var cf := Tema.capa(6); der.add_child(cf[0])
+		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
+		var cc := Tema.capa(4); der.add_child(cc[0])
+		checks = cc[1]
+		b_volar = Tema.boton("Volar →", "BotonPrimGrande", func(): p.volar_operacion(sel))
+		b_volar.size_flags_horizontal = Control.SIZE_FILL; der.add_child(b_volar)
+	func refrescar() -> void:
+		var E := Escenarios.datos(); var ids := Escenarios.operaciones()
+		if not sel in ids: sel = ids[0]
+		for x in lista.get_children(): x.queue_free()
+		var rejilla := Tema.rejilla(230, 12); lista.add_child(rejilla)
+		for id in ids: rejilla.add_child(_tarjeta(id, E[id]))
+		var M: Dictionary = E[sel]; var O: Dictionary = M["operacion"]; var v: Dictionary = M["viento"]
+		var fila := func(a: String, b: String) -> String: return "[cell][color=#9fb3c8]%s[/color]   [/cell][cell]%s[/cell]" % [a, b]
+		var bb := "[font_size=15][color=#ffc83d][b]ORDEN DE TRABAJO[/b][/color][/font_size]\n[font_size=18][b]%s[/b][/font_size]\n[font_size=13][table=2]" % M["nombre"]
+		bb += fila.call("Cliente", O["cliente"]) + fila.call("Lugar", O["lugar"]) + fila.call("Trabajo", O["trabajo"]) + fila.call("Entrega", O["entrega"])
+		bb += fila.call("Viento previsto", "%s m/s del %s%s" % [PasadaBaja._num(v["vel"]), RUMBOS_VIENTO[int(round(v["desde"] / 45.0)) % 8], ", con rachas" if v["rachas"] else ""])
+		bb += fila.call("Dron", "DJI Mini 4K (249 g, categoría abierta A1)") + "[/table][/font_size]\n\n[font_size=12][color=#9fb3c8][b]SE EVALÚA[/b][/color][/font_size]\n"
+		for o in M["objetivos"]: bb += "  •  %s\n" % o[1]
+		ficha_rt.text = bb
+		if not marcas.has(sel):
+			var a := []
+			for i in COMPROBACIONES_OP.size(): a.append(false)
+			marcas[sel] = a
+		for x in checks.get_children(): x.queue_free()
+		checks.add_child(Tema.rico("[font_size=15][color=#ffc83d][b]ANTES DE VOLAR[/b][/color][/font_size]", 15))
+		for i in COMPROBACIONES_OP.size():
+			var cb := CheckBox.new(); cb.text = COMPROBACIONES_OP[i]; cb.button_pressed = marcas[sel][i]; cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cb.add_theme_font_size_override("font_size", 13); cb.focus_mode = Control.FOCUS_NONE
+			cb.toggled.connect(func(si: bool): marcas[sel][i] = si; _boton())
+			checks.add_child(cb)
+		_boton()
+	func _boton() -> void:
+		var ok: bool = (marcas[sel] as Array).all(func(x): return x)
+		b_volar.disabled = not ok; b_volar.text = "Volar →" if ok else "Marca las comprobaciones para volar"
+	func _tarjeta(id: String, M: Dictionary) -> Tarjeta:
+		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
+		v.add_child(PantallaMisiones.imagen(id, 110))
+		var tx := VBoxContainer.new(); tx.add_theme_constant_override("separation", 4)
+		tx.add_child(Tema.etiqueta(String(M["nombre"]), 15, Tema.TEXTO, true))
+		var dsc := Tema.etiqueta(String(M["desc"]), 12, Tema.SUAVE, false, true); dsc.max_lines_visible = 2; dsc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		tx.add_child(dsc)
+		var dif := int(M.get("dificultad", 1))
+		tx.add_child(Tema.rico("[color=#ffc83d]%s%s[/color]" % ["★".repeat(dif), "☆".repeat(3 - dif)], 12))
 		v.add_child(Tema.margen(tx, 12, 10, 12, 12))
 		var t := Tarjeta.new(v, 14, Vector2(0, 0)); t.elegida = id == sel
 		t.pulsada.connect(func(): sel = id; refrescar())
