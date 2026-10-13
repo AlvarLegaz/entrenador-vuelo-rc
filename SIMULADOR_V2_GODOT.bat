@@ -11,6 +11,13 @@ if not exist "herramientas\godot\Godot_v4.7.2-stable_win64.exe" (
     exit /b 1
   )
 )
+rem Las zonas de detalle (La Manga, Mar Menor, CIFP Politecnico, Los Halcones) no van en git: si faltan, se descargan
+rem de la release del repositorio (unos 300 MB, solo la primera vez; simulador\descargar_zonas.ps1). Sin ellas el
+rem simulador funciona igual, con menos detalle en esos sitios.
+if not exist "simulador\zonas\halcones_rambla\zona.json" (
+  echo Faltan las zonas de detalle: las descargo ahora ^(solo la primera vez^).
+  powershell -NoProfile -ExecutionPolicy Bypass -File "simulador\descargar_zonas.ps1"
+)
 rem La cache de Godot (simulador_godot\.godot: registro de clases de los scripts e imports) no va en git. Sin ella el
 rem simulador abre una ventana en blanco (no encuentra las clases), asi que se regenera en cada arranque (~2 s): asi
 rem vale tambien despues de actualizar el repositorio con scripts nuevos.
