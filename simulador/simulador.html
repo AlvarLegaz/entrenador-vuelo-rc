@@ -650,6 +650,7 @@
 <script src="js/visor.js?v=29"></script>
 <script src="js/visor_real.js?v=25"></script>
 <script src="mundos/cartagena.js?v=20"></script>
+<script src="escenarios.js?v=1"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -1161,51 +1162,7 @@ function causaLanzamientoFallido(gas) {
 // =====================================================================
 //  3. ESCENARIOS: objetivos y evaluacion automatica
 // =====================================================================
-const ESCENARIOS = {
-  primer_vuelo: { nombre: "1 · Primer vuelo", sentido: 1,
-    desc: "Lanza el avión, da dos vueltas al circuito rodeando por fuera los 4 pilones en el orden indicado (subes por la izquierda y vuelves por la derecha) y aterriza.",
-    objetivos: [["subir", "Lanzar y subir a 20 m"], ["circ1", "Primera vuelta por fuera de los 4 pilones, en orden"],
-                ["circ2", "Segunda vuelta por fuera de los 4 pilones, en orden"], ["aterrizar", "Aterrizar sin daños"]] },
-  orientacion: { nombre: "2 · Orientación", desc: "Dos ochos alrededor de los pilones: por fuera del rojo y el azul, cruzas el centro, por fuera del amarillo y el verde, y vuelta al rojo. Sin alejarte y sin entrar en pérdida.",
-    objetivos: [["subir", "Subir a 20 m"], ["ocho1", "Primer ocho: por fuera del rojo y el azul, por fuera del amarillo y el verde, vuelta al rojo"], ["ocho2", "Segundo ocho igual"],
-                ["cerca", "No alejarse más de 200 m"], ["sinPerdida", "Sin entrar en pérdida"], ["aterrizar", "Aterrizar sin daños"]] },
-  viento_cruzado: { nombre: "3 · Viento cruzado", sentido: -1,
-    desc: "Viento de 4 m/s del oeste, de lado a la pista. Una vuelta al circuito en el orden indicado (al revés que en el primer vuelo: subes por la derecha), corrige la deriva y aterriza en la pista.",
-    viento: { vel: 4, desde: 270, rachas: true },
-    objetivos: [["subir", "Subir a 20 m"], ["circ1", "Una vuelta por fuera de los 4 pilones, en orden"], ["enPista", "Tocar tierra en la pista"],
-                ["alineado", "Toma alineada con la pista (±25°)"], ["aterrizar", "Aterrizar sin daños"]] },
-  emergencia: { nombre: "4 · Emergencia", desc: "Sube a 40 m. En algún momento el motor se para: planea y aterriza cerca de ti.",
-    objetivos: [["subir40", "Subir a 40 m"], ["fallo", "Fallo de motor: mantener el control (sin pérdida)"],
-                ["aterrizar", "Aterrizar sin daños"], ["cerca100", "Aterrizar a menos de 100 m del piloto"]] },
-  // zona 2, detras del piloto: se lanza hacia el sur (el piloto se da la vuelta). No cuentan para la autorizacion
-  // del avion real (esa la dan los 4 de la zona 1), son practica de precision
-  puerta: { nombre: "5 · Puerta", zona: 2, desc: "Cruza la puerta de pilones naranjas tres veces, de lado a lado (de este a oeste o al revés), por debajo de lo alto de los pilones (20 m), y aterriza.",
-    objetivos: [["subir", "Subir a 20 m"], ["puerta1", "Primer paso por la puerta"], ["puerta2", "Segundo paso por la puerta"],
-                ["puerta3", "Tercer paso por la puerta"], ["aterrizar", "Aterrizar sin daños"]] },
-  pasada_baja: { nombre: "6 · Pasada baja", zona: 2, desc: "Recorre la pista 2 de punta a punta entre 2 y 8 m de altura sin tocar el suelo ni salirte por los lados: una pasada hacia cada lado.",
-    objetivos: [["subir", "Subir a 20 m"], ["pasadaO", "Pasada baja hacia el oeste (de izquierda a derecha, mirando a la zona 2)"],
-                ["pasadaE", "Pasada baja hacia el este (de derecha a izquierda)"], ["aterrizar", "Aterrizar sin daños"]] },
-  diana: { nombre: "7 · Diana", zona: 2, desc: "Aterriza en la diana del centro de la pista 2: 100 puntos dentro del círculo de 5 m, 50 en el de 10 m y 20 en el de 20 m.",
-    objetivos: [["subir", "Subir a 20 m"], ["aterrizar", "Aterrizar sin daños"], ["diana10", "Tomar a menos de 10 m del centro de la diana"]] },
-  recorrido: { nombre: "8 · Recorrido de precisión", zona: 2, desc: "Todo seguido y en este orden: una pasada baja por la pista 2, un paso por la puerta y el aterrizaje en la diana.",
-    objetivos: [["subir", "Subir a 20 m"], ["pasada", "1. Pasada baja válida por la pista 2"], ["puertaR", "2. Después, un paso por la puerta"],
-                ["dianaR", "3. Después, aterrizar a menos de 10 m del centro de la diana"], ["aterrizar", "Aterrizar sin daños"]] },
-  // aterrizaje guiado: empieza con el avion YA EN EL AIRE (no hay que lanzar) y la pantalla va diciendo que hacer en
-  // cada tramo del circuito de aterrizaje (viraje, viento en cola, base, final, toma). Practica: no cuenta para el avion real
-  aterrizaje: { nombre: "9 · Aterrizaje guiado", guia: true,
-    enVuelo: { N: 60, E: 0, h: 35, rumbo: 0, gas: 0.55 },
-    desc: "Empiezas ya volando, a 35 m sobre la pista y rumbo norte. La pantalla te va guiando por el circuito de aterrizaje: viraje a la derecha, tramo con el viento en cola por tu derecha, base, final alineado con la pista y toma suave.",
-    objetivos: [["viraje1", "1. Viraje a la derecha hasta rumbo sur (180°)"], ["viento_cola", "2. Tramo de viento en cola por tu derecha, bajando a 20 m"],
-                ["base", "3. Base: viraje a rumbo oeste (270°), bajando a 10–15 m"], ["final", "4. Final: rumbo norte, alineado con la pista, con poco gas"],
-                ["enPista", "Tocar tierra en la pista"], ["alineado", "Toma alineada con la pista (±25°)"],
-                ["suave", "Toma suave (menos de 1,5 m/s de descenso)"], ["aterrizar", "Aterrizar sin daños"]] },
-  // vuelo libre en un mundo real (terreno SRTM + OpenStreetMap, carpeta mundos/): se lanza a mano desde el origen del
-  // mundo con el rumbo mas despejado; sin limite de alcance; el suelo es el terreno real
-  libre_cartagena: { nombre: "Vuelo libre · Campo de Cartagena (mapa real)", mundo: "cartagena", zona: 3,
-    desc: "Mapa real de 78 × 38 km: Cartagena, el Mar Menor, La Manga, la sierra de la Muela, Cabo de Palos, Mazarrón y el Campo de Cartagena, con el relieve de verdad, las carreteras, los pueblos y los almendros. Sales desde el corazón del mapa (al oeste de Cartagena) y no hay límite de alcance. Sin objetivos: cuenta como horas de entrenamiento.",
-    objetivos: [] },
-  libre: { nombre: "Vuelo libre", desc: "Sin objetivos. Cuenta para las horas de entrenamiento. Da vueltas al circuito por fuera de los pilones, en el sentido que quieras: se cronometra cada vuelta. También puedes darte la vuelta y practicar en la zona 2.", objetivos: [] },
-};
+const ESCENARIOS = window.ESCENARIOS;          // simulador/escenarios.js (comun con la version de Godot)
 const zonaDe = id => ESCENARIOS[id].zona || 1;
 const mundoDe = id => ESCENARIOS[id].mundo ? Mundos.datos(ESCENARIOS[id].mundo) : null;
 // ---- punto de lanzamiento en un mundo real: se elige en un mapa (textura del terreno + carreteras + pueblos) ----
@@ -1859,17 +1816,16 @@ function montarCondiciones(slotId, E) {
 
 // ---- entrenamientos: tarjetas con icono, dificultad y estado; la ficha de la elegida a la derecha ----
 let misionSel = null;
-const DIFICULTAD_MISION = { primer_vuelo: 1, orientacion: 1, aterrizaje: 2, puerta: 2, viento_cruzado: 2, emergencia: 3, pasada_baja: 3, diana: 3, recorrido: 3 };
+
 function irEntrenamientos() {
   const g = sesion.alumno && sesion.alumno.progreso;
   document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + (g ? ` · ${g.escenarios_superados}/4 escenarios superados` : " · sin registro");
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
-  const titulos = { primer_vuelo: "Zona 1 · Circuito de pilones (cuentan para el avión real)", puerta: "Zona 2 · Precisión, detrás del piloto (práctica)", aterrizaje: "Guiado (práctica)" };
   if (!misionSel || !ESCENARIOS[misionSel] || !ESCENARIOS[misionSel].objetivos.length) misionSel = "primer_vuelo";
   for (const [id, E] of Object.entries(ESCENARIOS)) {
     if (!E.objetivos.length) continue;             // los vuelos libres tienen su pantalla
-    if (titulos[id]) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = titulos[id]; el.appendChild(t); }
-    const st = g && g.escenarios[id], dif = DIFICULTAD_MISION[id] || 1;
+    if (E.titulo_grupo) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = E.titulo_grupo; el.appendChild(t); }
+    const st = g && g.escenarios[id], dif = E.dificultad || 1;
     const d = document.createElement("div"); d.className = "mision" + (id === misionSel ? " sel" : "");
     d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre.replace(/^\d · /, ""))}${st && st.superado ? ' <span class="hecha" title="superado">✔</span>' : ""}</h3>
       <p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span>${st && st.intentos ? `<span>· ${st.intentos} intento${st.intentos > 1 ? "s" : ""}</span>` : ""}</div></div>`;

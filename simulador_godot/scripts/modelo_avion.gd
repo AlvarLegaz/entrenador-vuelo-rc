@@ -13,7 +13,7 @@ const G0 := 9.81
 const RHO := 1.225
 
 var datos: Dictionary
-var tipo := "timon"            # "timon" (E1), "alerones" (E2, E3) o "elevones" (T1)
+var tipo := "timon"            # "timon" (E1), "alerones" (E2, E3), "elevones" (T1) o "cuatro" (G1: alerones, profundidad y timon)
 var S_m2: float; var b_m: float; var c_m: float; var masa_kg: float; var CD0: float
 var inercia: Dictionary; var inercia_diseno: Dictionary; var masa_diseno_kg: float
 var cg_mm: Array; var perdida: Dictionary; var propulsion: Dictionary; var mandos: Dictionary; var malla: Dictionary
@@ -35,6 +35,7 @@ func _init(d: Dictionary) -> void:
 	cg_mm = d["cg_mm"]; perdida = d["perdida"]; propulsion = d["propulsion"]; mandos = d["mandos"].duplicate(); malla = d.get("malla", {})
 	compensador_grados = d.get("compensador_grados", 0.0); lanzamiento = d["lanzamiento"]
 	if mandos.has("elevon_max_grados"): tipo = "elevones"
+	elif mandos.has("aleron_max_grados") and float(mandos.get("timon_max_grados", 0)) > 0: tipo = "cuatro"
 	elif mandos.has("aleron_max_grados"): tipo = "alerones"
 	for t in d["tabla_alfa"]:
 		TA.append(t["alfa"]); TCL.append(t["CL"]); TCDI.append(t["CDi"]); TCM.append(t["Cm"])
@@ -106,6 +107,11 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 		var drObj: float = ex.call(mando["yaw"]) * m["timon_max_grados"] * D2R
 		for par in [["de", deObj], ["dr", drObj]]:
 			av[par[0]] += clampf((par[1] - av[par[0]]) * dt / tau, -vmax * dt, vmax * dt)
+	elif tipo == "cuatro":      # ModeloG1: la palanca izquierda de lado (mando.guinada) mueve el timon
+		var daObj: float = ex.call(mando["yaw"]) * m["aleron_max_grados"] * D2R
+		var drObj: float = ex.call(mando.get("guinada", 0.0)) * m["timon_max_grados"] * D2R
+		for par in [["de", deObj], ["da", daObj], ["dr", drObj]]:
+			av[par[0]] += clampf((par[1] - av[par[0]]) * dt / tau, -vmax * dt, vmax * dt)
 	elif tipo == "alerones":
 		var daObj: float = ex.call(mando["yaw"]) * m["aleron_max_grados"] * D2R
 		for par in [["de", deObj], ["da", daObj]]:
@@ -129,6 +135,10 @@ func mandos_coef(av: Dictionary, d: Callable, kman: float) -> Dictionary:
 		var dr: float = av["dr"] * kman
 		return { "CL": d.call("CLde") * de, "CY": d.call("CYdr") * dr, "Cl": d.call("Cldr") * dr, "Cm": d.call("Cmde") * de, "Cn": d.call("Cndr") * dr }
 	var da: float = av["da"] * kman
+	if tipo == "cuatro":
+		var dr: float = av["dr"] * kman
+		return { "CL": d.call("CLde") * de, "CY": d.call("CYda") * da + d.call("CYdr") * dr, "Cl": d.call("Clda") * da + d.call("Cldr") * dr,
+				 "Cm": d.call("Cmde") * de, "Cn": d.call("Cnda") * da + d.call("Cndr") * dr }
 	return { "CL": d.call("CLde") * de, "CY": d.call("CYda") * da, "Cl": d.call("Clda") * da, "Cm": d.call("Cmde") * de, "Cn": d.call("Cnda") * da }
 
 ## Un paso de integracion. viento: velocidad del aire en NED (m/s). Opcionales en av: agl (efecto suelo) y pg

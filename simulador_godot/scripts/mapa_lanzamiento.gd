@@ -1,14 +1,16 @@
 class_name MapaLanzamiento
 extends Control
-## Mapa para elegir el punto de lanzamiento, como en el navegador: la ortofoto de la region, las zonas de detalle
-## (recuadros) y los pueblos. Clic izquierdo: lanzar desde ahi. Rueda: zoom en el cursor. Arrastrar con el boton
-## derecho o el central: mover el mapa.
+## Mapa para elegir el punto de lanzamiento, como pintarMapaLanz del navegador: la ortofoto de la region, las
+## carreteras por tipo, los pueblos, las zonas de detalle (recuadros amarillos discontinuos), el origen del mundo y el
+## punto elegido con el rumbo de despegue. Clic izquierdo: lanzar desde ahi. Ademas (no lo tiene la web): rueda para
+## el zoom en el cursor y arrastrar con el boton derecho o el central para mover el mapa.
 
 signal punto_elegido(N: float, E: float)
 
 var tex: Texture2D
 var T: Dictionary              # terreno del mundo (N0, E0, nN, nE, paso)
 var lugares := []
+var carreteras := []
 var zonas := []                # indice de zonas del mundo
 var punto := {}                # { N, E, rumbo }
 var _esc := 0.0                # pixeles de pantalla por pixel de la imagen
@@ -19,8 +21,8 @@ func _ready() -> void:
 	clip_contents = true; mouse_filter = Control.MOUSE_FILTER_STOP
 	resized.connect(_encajar)
 
-func poner(textura: Texture2D, terreno: Dictionary, lugares_mundo: Array, indice_zonas: Array) -> void:
-	tex = textura; T = terreno; lugares = lugares_mundo; zonas = indice_zonas; _encajar()
+func poner(textura: Texture2D, terreno: Dictionary, lugares_mundo: Array, indice_zonas: Array, carreteras_mundo := []) -> void:
+	tex = textura; T = terreno; lugares = lugares_mundo; zonas = indice_zonas; carreteras = carreteras_mundo; _encajar()
 
 func _encajar() -> void:
 	if tex == null or size.x < 10: return
@@ -59,26 +61,40 @@ func _gui_input(ev: InputEvent) -> void:
 	elif ev is InputEventMouseMotion and _arrastre:
 		_org -= ev.relative / _esc; queue_redraw()
 
+func _txt(f: Font, q: Vector2, t: String, tam: int, c: Color) -> void:
+	draw_string_outline(f, q, t, HORIZONTAL_ALIGNMENT_LEFT, -1, tam, 3, Color(0, 0, 0, 0.7))
+	draw_string(f, q, t, HORIZONTAL_ALIGNMENT_LEFT, -1, tam, c)
+
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.07, 0.1))
+	draw_rect(Rect2(Vector2.ZERO, size), Color("#0b0f14"))
 	if tex == null: return
 	draw_texture_rect(tex, Rect2(-_org * _esc, Vector2(tex.get_size()) * _esc), false)
-	var f := ThemeDB.fallback_font
+	var f: Font = Tema.negrita if Tema.negrita else ThemeDB.fallback_font
+	# carreteras: de las secundarias a las principales (colores y grosores de la web)
+	var col := { 1: Color("#ffb74d"), 2: Color("#fff176"), 3: Color("#f5f5f5"), 4: Color("#cfd8dc") }
+	var gro := { 1: 2.0, 2: 1.4, 3: 0.9, 4: 0.6 }
+	for t in [4, 3, 2, 1]:
+		for c in carreteras:
+			if int(c[0]) != t: continue
+			var pts := PackedVector2Array()
+			for i in range(1, c.size(), 2): pts.append(a_pantalla(c[i + 1], c[i]))
+			if pts.size() > 1: draw_polyline(pts, col[t], gro[t], true)
 	for l in lugares:
-		if l[1] > (3 if _esc > 0.4 else 2): continue
+		if l[1] > 4: continue
 		var q := a_pantalla(l[3], l[2])
 		draw_rect(Rect2(q - Vector2(2, 2), Vector2(4, 4)), Color.WHITE)
-		draw_string_outline(f, q + Vector2(5, -4), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.8))
-		draw_string(f, q + Vector2(5, -4), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+		_txt(f, q + Vector2(4, -3), l[0], 11, Color.WHITE)
 	for z in zonas:
 		var a := a_pantalla(z["N0"] + z["lado_m"], z["E0"]); var b := a_pantalla(z["N0"], z["E0"] + z["lado_m"])
-		draw_rect(Rect2(a, b - a), Color(0.31, 0.76, 0.97, 0.18)); draw_rect(Rect2(a, b - a), Color(0.31, 0.76, 0.97), false, 2)
-		draw_string_outline(f, a + Vector2(3, -5), "zona de detalle: " + str(z["id"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 4, Color(0, 0, 0, 0.8))
-		draw_string(f, a + Vector2(3, -5), "zona de detalle: " + str(z["id"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.6, 0.88, 1))
+		var r := Rect2(a, b - a); var am := Color("#ffd54f")
+		for lado in [[r.position, Vector2(r.end.x, r.position.y)], [Vector2(r.end.x, r.position.y), r.end], [r.end, Vector2(r.position.x, r.end.y)], [Vector2(r.position.x, r.end.y), r.position]]:
+			draw_dashed_line(lado[0], lado[1], am, 1.5, 4.0)
+		_txt(f, a + Vector2(2, -3), "detalle", 10, am)
+	var o := a_pantalla(0, 0)                       # origen del mundo (el corazon)
+	draw_circle(o, 4, Color("#ff5252")); _txt(Tema.fuente if Tema.fuente else f, o + Vector2(6, 4), "origen", 10, Color.WHITE)
 	if not punto.is_empty():
-		var q := a_pantalla(punto["N"], punto["E"]); var r: float = punto.get("rumbo", 0.0) * PI / 180
-		var u := Vector2(sin(r), -cos(r))
-		draw_line(q, q + u * 26, Color(1, 0.84, 0.31), 3, true)
-		draw_circle(q, 7, Color(0.9, 0.2, 0.2)); draw_arc(q, 7, 0, TAU, 20, Color.WHITE, 2, true)
-	draw_string_outline(f, Vector2(10, size.y - 12), "Clic: punto de lanzamiento · rueda: zoom · botón derecho: mover", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.8))
-	draw_string(f, Vector2(10, size.y - 12), "Clic: punto de lanzamiento · rueda: zoom · botón derecho: mover", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+		var q := a_pantalla(punto["N"], punto["E"]); var rr: float = punto.get("rumbo", 0.0) * PI / 180
+		var am := Color("#ffd54f")
+		draw_arc(q, 9, 0, TAU, 28, am, 2, true)
+		draw_line(q, q + Vector2(sin(rr), -cos(rr)) * 26, am, 2, true)
+		draw_circle(q, 3, am)

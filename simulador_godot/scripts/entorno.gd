@@ -1,14 +1,39 @@
 class_name Entorno
 extends RefCounted
-## El entorno fisico de un mundo real: viento con rachas, turbulencia de alabeo, viento junto al suelo, terreno (el
-## del mundo y, donde la hay, el de la zona de detalle a 5 m), agua y contacto con el suelo. Traduccion literal de
-## la parte de mundos reales de Entorno (simulador/js/entorno.js): pruebas/prueba_fisica.gd compara los dos.
+## El entorno fisico: viento con rachas, turbulencia de alabeo, viento junto al suelo, contacto con el suelo y, segun el
+## mundo, la isla del campo de vuelo del club (mundo vacio: la pista, los 4 pilones del circuito, la zona 2 con la pista 2,
+## la diana y la puerta, y los limites del campo) o un mundo real (terreno del mundo y, donde la hay, el de la zona de
+## detalle a 5 m, y el agua). Traduccion literal de Entorno (simulador/js/entorno.js): pruebas/prueba_fisica.gd compara
+## los mundos reales y pruebas/prueba_campo.gd la isla (con ContadorVueltas y PasadaBaja) con el navegador.
+## Coordenadas NED en metros con origen en el piloto, que mira al norte. La pista va hacia el norte.
 
 const D2R := PI / 180.0
 
 var viento := { "base": 2.0, "rumbo": PI, "rachas": true, "r": [0.0, 0.0, 0.0, 0.0], "actual": [0.0, 0.0, 0.0] }
-var limites := { "descenso_ms": 2.5, "alabeo_grados": 30.0, "vel_suelo_ms": 12.0, "cabeceo_grados": 25.0 }
-var mundo := {}
+## limites de un aterrizaje sin danos, y del campo: a mas de aviso_m se avisa, a mas de distancia_m el avion ya no se
+## ve desde el piloto y el vuelo termina "fuera de limites" (solo en la isla)
+var limites := { "descenso_ms": 2.5, "alabeo_grados": 30.0, "vel_suelo_ms": 12.0, "cabeceo_grados": 25.0, "aviso_m": 400.0, "distancia_m": 650.0 }
+var pista := { "n0": 10.0, "n1": 70.0, "ancho": 10.0 }                 # N 10 a 70, centrada en E = 0
+## circuito: rectangulo de 120 x 180 m delante del piloto, con la pista dentro. Pilones en las esquinas (N, E), ordenados
+## por angulo alrededor del centro: los indices consecutivos son esquinas vecinas. Cada pilon tiene su color. Indices
+## crecientes (verde -> amarillo -> rojo -> azul) = vuelta en sentido horario visto desde arriba. Sentido -1 = al reves.
+var circuito := { "centro": [100.0, 0.0], "pilones": [[40.0, -90.0], [160.0, -90.0], [160.0, 90.0], [40.0, 90.0]],
+				  "colores": [{ "nombre": "verde", "hex": "#2e7d32" }, { "nombre": "amarillo", "hex": "#f9a825" },
+							  { "nombre": "rojo", "hex": "#c62828" }, { "nombre": "azul", "hex": "#1565c0" }] }
+var pilon := { "alto": 20.0, "r0": 1.4, "r1": 0.45 }                   # cono hinchable: radio abajo y arriba
+## ZONA 2, detras del piloto (al sur; el piloto se da la vuelta): entrenamiento de precision.
+##  - pista 2: franja de tierra de este a oeste para la pasada baja (de punta a punta entre hmin y hmax, sin salirse
+##    por los lados) y con la diana de aterrizaje en el centro
+##  - diana: circulos de cal de 5, 10 y 20 m con sus puntos
+##  - puerta: dos pilones naranjas separados 16 m; se cruza de este a oeste o al reves, por debajo de lo alto
+##  - despejado: rectangulo sin almendros ni estacas
+var zona2 := {
+	"pista": { "n": -45.0, "e0": -35.0, "e1": 35.0, "ancho": 10.0, "margen": 5.0, "hmin": 2.0, "hmax": 8.0 },
+	"diana": { "n": -45.0, "e": 0.0, "anillos": [[5.0, 100], [10.0, 50], [20.0, 20]] },
+	"puerta": { "e": 60.0, "n0": -123.0, "n1": -107.0, "color": { "nombre": "naranja", "hex": "#ef6c00" } },
+	"despejado": { "n0": -150.0, "n1": -14.0, "e0": -60.0, "e1": 95.0 },
+}
+var mundo := {}             # mundo real activo ({} = la isla del campo de pilones)
 var terreno := {}           # H (PackedInt32Array, m sobre el mar), paso, N0, E0, nN, nE, h0
 var agua := PackedByteArray(); var laguna := PackedByteArray()
 var zona := {}              # { meta, dem, base } o vacio
@@ -61,8 +86,11 @@ static func _b64_bits(s: String, n: int) -> PackedByteArray:
 	for i in n: out[i] = (bytes[i >> 3] >> (7 - (i & 7))) & 1
 	return out
 
+## Activa un mundo real (DatosComunes.mundo(id)) o vuelve a la isla ({}): en la isla el suelo esta a 0 m y no hay
+## mar (altura y en_mar miran mundo). Como en el navegador, el terreno del ultimo mundo se queda guardado.
 func poner_mundo(m: Dictionary) -> void:
 	mundo = m; zona = {}
+	if m.is_empty(): return
 	var T: Dictionary = m["terreno"]
 	terreno = { "H": _b64_int16(T["alturas_b64"]), "paso": float(T["paso"]), "N0": float(T["N0"]), "E0": float(T["E0"]),
 				"nN": int(T["nN"]), "nE": int(T["nE"]), "h0": float(T["h0"]) }
@@ -109,8 +137,9 @@ func muestra_zona(N: float, E: float) -> Array:
 	return [h / (1 - a) if a < 1 else 0.0, a]
 
 ## Altura del suelo (m sobre el origen del mundo) en (N, E): la de la zona si la hay (mezclada con la del mundo en
-## los ultimos 100 m del borde) o la del mundo.
+## los ultimos 100 m del borde) o la del mundo. En la isla, 0 (en el navegador Entorno.altura es null y se usa 0).
 func altura(N: float, E: float) -> float:
+	if mundo.is_empty(): return 0.0
 	var m := muestra_zona(N, E)
 	if m.is_empty(): return altura_mundo(N, E)
 	var Z: Dictionary = zona["meta"]; var lado: float = (Z["dem"]["n"] - 1) * Z["dem"]["paso_m"]
@@ -118,7 +147,9 @@ func altura(N: float, E: float) -> float:
 	var d := minf(minf(N - Z["N0"], Z["N0"] + lado - N), minf(E - Z["E0"], Z["E0"] + lado - E))
 	return hz if d >= 100 else hz * d / 100 + altura_mundo(N, E) * (1 - d / 100)
 
+## true si (N, E) es agua. En la isla, nunca (en el navegador Entorno.enMar es null: la isla no tiene suelo de mar).
 func en_mar(N: float, E: float) -> bool:
+	if mundo.is_empty(): return false
 	var m := muestra_zona(N, E)
 	return m[1] > 0.7 if not m.is_empty() else en_mar_mundo(N, E)
 
@@ -135,3 +166,74 @@ func contacto_suelo(av: Dictionary, vn: Array) -> String:
 	if vel > L["vel_suelo_ms"]: return "roto (demasiada velocidad)"
 	if absf(e[1]) > L["cabeceo_grados"] * D2R: return "roto (morro en el suelo)"
 	return "aterrizado"
+
+# ---------------- la isla: pista, circuito de pilones y zona 2 ----------------
+
+static func _hypot(x: float, y: float) -> float:
+	return sqrt(x * x + y * y)
+
+func pilones() -> Array:
+	return circuito["pilones"]
+
+## Los dos pilones de la puerta de la zona 2, (N, E).
+func pilones_puerta() -> Array:
+	var P: Dictionary = zona2["puerta"]
+	return [[P["n0"], P["e"]], [P["n1"], P["e"]]]
+
+## Distancia horizontal al piloto (m) y si esta fuera del campo. En un mundo real no hay limite.
+func distancia(p: Array) -> float:
+	return _hypot(p[0], p[1])
+
+func fuera_de_limites(p: Array) -> bool:
+	return mundo.is_empty() and distancia(p) > limites["distancia_m"]
+
+## true si el avion (posicion NED, semienvergadura en m) toca un pilon.
+func choca_pilon(p: Array, semi: float) -> bool:
+	if not mundo.is_empty(): return false
+	var h: float = -p[2]; var P := pilon
+	if h > P["alto"] + 0.3: return false
+	var r: float = P["r0"] + (P["r1"] - P["r0"]) * maxf(0, h) / P["alto"]
+	for s in pilones() + pilones_puerta():
+		if _hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8: return true
+	return false
+
+## Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(p_ant, p, t) en cada paso. sentido: +1 (verde,
+## amarillo, rojo, azul), -1 (al reves) o 0 (cualquiera).
+func contador_vueltas(sentido := 0) -> ContadorVueltas:
+	return ContadorVueltas.new(circuito, sentido)
+
+## Texto del orden de paso de un sentido: "verde → amarillo → rojo → azul".
+func orden_pilones(sentido: int) -> String:
+	var n := PackedStringArray()
+	for c in circuito["colores"]: n.append(c["nombre"])
+	if not sentido: return "en cualquier sentido"
+	if sentido < 0: n.reverse()
+	return " → ".join(n)
+
+## Cruce de la linea de la puerta entre dos pasos: {} (no cruza), {tipo: "puerta", sentido: "este" | "oeste", h},
+## {tipo: "alta", h} (por encima de los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon).
+func cruza_puerta(p_ant: Array, p: Array) -> Dictionary:
+	var P: Dictionary = zona2["puerta"]; var a: float = p_ant[1] - P["e"]; var b: float = p[1] - P["e"]
+	if (a < 0) == (b < 0): return {}
+	var t := a / (a - b); var n: float = p_ant[0] + t * (p[0] - p_ant[0]); var h: float = -(p_ant[2] + t * (p[2] - p_ant[2]))
+	if n > P["n0"] and n < P["n1"]:
+		return { "tipo": "puerta", "sentido": "este" if b > a else "oeste", "h": h } if h < pilon["alto"] else { "tipo": "alta", "h": h }
+	if n > P["n0"] - 30 and n < P["n1"] + 30 and h < 40: return { "tipo": "fuera" }
+	return {}
+
+## Pasadas bajas por la pista 2: un objeto por vuelo, con actualizar(p) en cada paso.
+func pasada_baja() -> PasadaBaja:
+	return PasadaBaja.new(zona2["pista"])
+
+## Distancia horizontal (m) de (N, E) al centro de la diana y los puntos de esa toma: {d, puntos}.
+func diana(N: float, E: float) -> Dictionary:
+	var D: Dictionary = zona2["diana"]; var d := _hypot(N - D["n"], E - D["e"]); var puntos := 0
+	for a in D["anillos"]:
+		if d <= a[0]:
+			puntos = a[1]; break
+	return { "d": d, "puntos": puntos }
+
+## true si (N, E) esta sobre la pista, con margen.
+func en_pista(N: float, E: float, margen := 3.0) -> bool:
+	var P := pista
+	return absf(E) <= P["ancho"] / 2 + margen and N >= P["n0"] - 5 and N <= P["n1"] + 15
