@@ -849,6 +849,11 @@ def fin_fixed():
             m = m + Manifold.cylinder(NUDILLO_L, NUDILLO_R).translate([X_EJE_T, 0, zk])
             m = m + Manifold.cube([X_EJE_T - (P.L - 4.0), PLATE_T, NUDILLO_L]).translate([P.L - 4.0, -PLATE_T / 2, zk])
         m = m - Manifold.cylinder(zt1 - zt0 + 4.0, PIN_LIBRE / 2).translate([X_EJE_T, 0, zt0 - 1.0])
+    elif P.FIN_XLE + P.FIN_C > P.L + 0.5:
+        # deriva fija mas larga que el fuselaje (E3): detras de X = L empieza 1 mm por encima del lomo de la cola, como
+        # el timon del E1, para que la profundidad (que une sus dos mitades por detras del fuselaje) se mueva libre
+        z_cola = P.fus_lomo(P.L) + 1.0
+        m = m - Manifold.cube([P.FIN_XLE + P.FIN_C - P.L + 2.0, 20.0, z_cola - z0 + 1.0]).translate([P.L, -10.0, z0 - 1.0])
     return m
 
 
