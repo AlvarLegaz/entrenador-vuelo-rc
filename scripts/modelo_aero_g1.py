@@ -1,4 +1,4 @@
-"""Exporta el modelo de vuelo del Germán 1 al simulador (simulador/aviones/G1.js). Es un avion de foam ya construido,
+"""Exporta el modelo de vuelo del Poli-1 al simulador (simulador/aviones/G1.js). Es un avion de foam ya construido,
 sin piezas impresas: todo sale de scripts/parametros_g1.py (medidas del avion, la foto y estimaciones marcadas).
 
     python scripts/modelo_aero_g1.py

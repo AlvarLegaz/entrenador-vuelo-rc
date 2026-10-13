@@ -1,4 +1,4 @@
-// Germán 1 (y cualquier avion de 4 canales): fisica con alerones, profundidad y timon. scripts/modelo_aero_g1.py copia
+// Poli-1 (y cualquier avion de 4 canales): fisica con alerones, profundidad y timon. scripts/modelo_aero_g1.py copia
 // esta clase al principio de simulador/aviones/G1.js y registra los datos con ella.
 // Como en una emisora en modo 2: la palanca derecha mueve profundidad y alerones (flechas del teclado) y la izquierda,
 // de lado, el timon (A / D del teclado, mando.guinada). da > 0 = aleron derecho arriba (alabeo a la derecha); dr > 0 =

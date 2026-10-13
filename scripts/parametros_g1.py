@@ -1,4 +1,4 @@
-"""Germán 1: avion de foam de ala alta, de 4 canales (alerones, profundidad, timon y motor), con tren fijo de dos
+"""Poli-1: avion de foam de ala alta, de 4 canales (alerones, profundidad, timon y motor), con tren fijo de dos
 ruedas y patin de cola. NO es un diseno de este proyecto ni tiene piezas impresas: es el modelo de vuelo de un avion
 ya construido, a partir de sus medidas y de una foto (2026-10-13). Solo lo usan analisis/vlm_e1.py (con
 ENTRENADOR=G1) y scripts/modelo_aero_g1.py, que escribe simulador/aviones/G1.js.
@@ -12,7 +12,7 @@ Ejes del proyecto (los de vlm_e1.py): X a lo largo del fuselaje (0 = cara delant
 positivo hacia la cola), Y a la derecha, Z arriba. Unidades: mm y grados.
 """
 
-NOMBRE = "Germán 1"
+NOMBRE = "Poli-1"
 DESCRIPCION = ("Avión de foam de ala alta y 4 canales (alerones, profundidad, timón y motor), con tren fijo. "
                "Hecho a partir de las medidas del avión real; las flechas ← → mueven los alerones y A / D el timón.")
 MANDOS_TXT = "alerones, profundidad y timón"
