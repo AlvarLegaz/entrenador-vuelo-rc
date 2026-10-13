@@ -21,9 +21,10 @@ function construirAvion(datos) {
   const mat = c => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
   const col = Object.assign({ fuselaje: 0xf4f4f4, ala: 0xffc107, estab: 0xdddddd, moviles: 0xd32f2f }, datos.colores || {});
   for (const k of ["fuselaje", "ala", "estab"]) if (K[k]) grupo.add(new THREE.Mesh(geom(K[k]), mat(col[k])));
-  const pivote = (malla, eje) => {      // superficie movil que gira sobre su bisagra
+  for (const p of K.piezas || []) grupo.add(new THREE.Mesh(geom(p), mat(p.color)));     // piezas de otro color (franjas, ruedas, motor)
+  const pivote = (malla, eje) => {      // superficie movil que gira sobre su bisagra (con su color, si lo trae)
     const p = new THREE.Group(); p.position.set(...eje);
-    const mm = new THREE.Mesh(geom(malla), mat(col.moviles)); mm.position.set(-eje[0], -eje[1], -eje[2]);
+    const mm = new THREE.Mesh(geom(malla), mat(malla.color !== undefined ? malla.color : col.moviles)); mm.position.set(-eje[0], -eje[1], -eje[2]);
     p.add(mm); grupo.add(p); return p;
   };
   const prof = K.prof ? pivote(K.prof, K.bisagra_prof) : new THREE.Group();

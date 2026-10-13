@@ -549,6 +549,7 @@
         <table class="datos teclas">
           <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Profundidad: ↓ tira (morro arriba), ↑ empuja</td></tr>
           <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Timón o alerones</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Timón en los aviones de 4 canales (alerones y timón, como el Germán 1); guiñada en el cuadricóptero</td></tr>
           <tr><td><kbd>W</kbd> <kbd>S</kbd></td><td>Gases más / menos · <kbd>Espacio</kbd> cortar gases</td></tr>
           <tr><td><kbd>L</kbd></td><td>Lanzar a mano · <kbd>R</kbd> empezar de nuevo</td></tr>
           <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Cámara piloto / persecución / a bordo</td></tr>
@@ -996,8 +997,8 @@ try { cfgAvion = JSON.parse(localStorage.getItem("sim_cfg_avion") || "{}"); } ca
 function cfgDe(id) { return Object.assign({ drAlabeo: 100, drProf: 100, empuje: "", res: 100, temp: 20, lanzReal: true }, cfgAvion[id] || {}); }
 function guardarCfg() { try { localStorage.setItem("sim_cfg_avion", JSON.stringify(cfgAvion)); } catch (e) {} }
 function pintarCfgAvion() {
-  const c = cfgDe(sesion.avion), A = Modelos.datos(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || {};
-  const lat = A.mandos.timon_max_grados > 0 ? "timón" : "alerones", mLat = mec.aleron || mec.timon || A.mandos.aleron_max_grados || A.mandos.timon_max_grados;
+  const c = cfgDe(sesion.avion), A = Modelos.datos(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || Modelos.datos(sesion.avion).mandos.mecanico || {};
+  const lat = A.mandos.timon_max_grados > 0 && A.mandos.aleron_max_grados ? "alerones y timón" : A.mandos.timon_max_grados > 0 ? "timón" : "alerones", mLat = mec.aleron || mec.timon || A.mandos.aleron_max_grados || A.mandos.timon_max_grados;
   document.getElementById("drAlabeo").value = c.drAlabeo; document.getElementById("drProf").value = c.drProf;
   document.getElementById("drAlabeoTxt").textContent = `${c.drAlabeo} % · ${lat} ±${(mLat * c.drAlabeo / 100).toFixed(1)}° (mecánico ±${mLat}°)`;
   const mP = mec.prof || A.mandos.prof_max_grados;
@@ -1051,7 +1052,7 @@ function aplicarRecorridos(mod, forzarMando) {
   mod._fuente = fuente;
   const B = mod.mandosBase, m = Object.assign({}, B);
   if (fuente === "mando") {
-    const c = cfgDe(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || {};
+    const c = cfgDe(sesion.avion), mec = RECORRIDO_MECANICO[sesion.avion] || Modelos.datos(sesion.avion).mandos.mecanico || {};
     m.expo = 0;
     m.prof_max_grados = (mec.prof || B.prof_max_grados) * c.drProf / 100;
     if (B.aleron_max_grados) m.aleron_max_grados = (mec.aleron || B.aleron_max_grados) * c.drAlabeo / 100;
@@ -1808,7 +1809,8 @@ function irHangar() {
   for (const id of Modelos.ids()) {
     const A = Modelos.datos(id), b = document.createElement("button"); b.className = "avCarta" + (id === sesion.avion ? " sel" : "");
     const masa = (A.caracteristicas || []).find(r => r[0].toLowerCase().startsWith("masa"));
-    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos DJI" : esc((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad"}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
+    const mandosTxt = ((A.caracteristicas || []).find(c => c[0] === "Mandos") || [])[1];   // la linea "Mandos" de la ficha, si la trae
+    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos DJI" : esc(mandosTxt || ((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad")}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
     b.onclick = () => { elegirAvion(id); irHangar(); };
     sel.appendChild(b);
   }
@@ -2319,11 +2321,12 @@ function leerMando(dt) {
   MANDO.botones = p.buttons.map(x => x.pressed);
   if (pausado) return false;
   // palanca derecha: hacia ti (eje Y positivo, abajo) = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
-  const moviendo = rx !== 0 || ry !== 0 || (cuad && (lx !== 0 || ly !== 0));
+  const moviendo = rx !== 0 || ry !== 0 || lx !== 0 || (cuad && ly !== 0);   // la izquierda de lado: guinada del dron o timon (4 canales)
   if (moviendo || MANDO.usado) {
     mando.pitch = expo(ry, MANDO.expo); mando.yaw = expo(rx, MANDO.expo);
     mando.pitchObj = mando.pitch; mando.yawObj = mando.yaw;
-    if (cuad) { mando.guinada = expo(lx, MANDO.expo); mando.vz = -ly; mando.guinadaObj = mando.guinada; mando.vzObj = mando.vz; }   // DJI modo 2: izquierda gas (con muelle) y guinada
+    mando.guinada = expo(lx, MANDO.expo); mando.guinadaObj = mando.guinada;     // izquierda de lado: guinada del dron o timon de un avion de 4 canales
+    if (cuad) { mando.vz = -ly; mando.vzObj = mando.vz; }   // DJI modo 2: izquierda gas (con muelle) y guinada
   }
   if (moviendo) MANDO.usado = true;
   // palanca izquierda: gas (eje Y negativo = arriba)
@@ -2336,7 +2339,7 @@ function leerMando(dt) {
 
 function leerTeclado(dt) {
   const cuad = modelo && modelo.esCuadricoptero;
-  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || (cuad && (teclas["KeyA"] || teclas["KeyD"] || teclas["KeyW"] || teclas["KeyS"]));
+  const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || (cuad && (teclas["KeyW"] || teclas["KeyS"]));
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
   const gimbalTeclas = cuad ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
   if (leerMando(dt) && !teclaPalanca) { mando.gimbal = gimbalTeclas || MANDO.gimbal; leerGasTeclado(dt); return; }

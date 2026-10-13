@@ -45,10 +45,12 @@ func _init(datos: Dictionary) -> void:
 		for k in datos["colores"]: col[k] = int(datos["colores"][k])
 	for k in ["fuselaje", "ala", "estab"]:
 		if K.has(k): _pieza(self, K[k], col[k])
-	prof = _pivote(K["prof"], K["bisagra_prof"], col["moviles"]) if K.has("prof") else Node3D.new()
-	timon = _pivote(K["timon"], K["bisagra_timon"], col["moviles"]) if K.has("timon") else Node3D.new()
+	for pz in K.get("piezas", []):          # piezas de otro color (franjas, ruedas, motor)
+		_pieza(self, pz, int(pz["color"]))
+	prof = _pivote(K["prof"], K["bisagra_prof"], int(K["prof"].get("color", col["moviles"]))) if K.has("prof") else Node3D.new()
+	timon = _pivote(K["timon"], K["bisagra_timon"], int(K["timon"].get("color", col["moviles"]))) if K.has("timon") else Node3D.new()
 	for a in K.get("alerones", []):
-		var p := _pivote(a, a["bisagra"], col["moviles"])
+		var p := _pivote(a, a["bisagra"], int(a.get("color", col["moviles"])))
 		p.set_meta("eje", Vector3(a["eje"][0], a["eje"][1], a["eje"][2]).normalized())
 		p.set_meta("signo", float(a["signo"])); p.set_meta("prof", bool(a.get("prof", false)))
 		alerones.append(p)
