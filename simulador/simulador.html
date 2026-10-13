@@ -564,6 +564,15 @@
           <option value="auto">Automática: alta, y baja sola si no llega a 35 fps</option><option value="2">Alta: sombras, agua con reflejos, vegetación lejana</option>
           <option value="1">Media: sin vegetación lejana ni reflejos</option><option value="0">Baja: tres cuartos de resolución, sin matas ni nubes</option></select></div>
         <p class="sub" id="calidadInfo" style="font-size:13px"></p>
+        <h2 style="margin-top:18px">Cámara del piloto</h2>
+        <div class="fila"><label for="zoomPiloto">Zoom automático</label><select id="zoomPiloto" style="flex:1">
+          <option value="0">Sin zoom: como lo ve el ojo (el avión se hace pequeño al alejarse)</option>
+          <option value="0.05">Poco: la envergadura ocupa un 5 % de la pantalla</option>
+          <option value="0.1">Normal: un 10 % de la pantalla</option>
+          <option value="0.15">Mucho: un 15 % de la pantalla</option>
+          <option value="0.22">Máximo: un 22 % de la pantalla</option>
+          <option value="otro" hidden>Ajustado con la rueda del ratón</option></select></div>
+        <p class="sub" style="font-size:13px">Con zoom, el campo de visión se cierra al alejarse el avión para que se vea siempre del mismo tamaño (hasta un teleobjetivo de 1,5°). En vuelo, con la cámara del piloto, la rueda del ratón lo ajusta.</p>
       </div>
       <div class="capa panelPestana" data-a="sonido">
         <h2>Sonido</h2>
@@ -1931,7 +1940,7 @@ document.getElementById("btnVolarYa").onclick = () => { leerViento(); sesion.esc
 
 // ---- ajustes ----
 function irAjustes(seccion) {
-  pintarMandoCfg(); pintarDificultad(); pintarCalidad(); pintarSonidoCfg();
+  pintarMandoCfg(); pintarDificultad(); pintarCalidad(); pintarZoomPiloto(); pintarSonidoCfg();
   document.getElementById("datosAula").textContent = sesion.aula
     ? (sesion.modo === "local" ? "Registro local: los alumnos y los vuelos se guardan en este navegador (y en un archivo, si lo eliges)." : `Aula «${sesion.nombreAula}»: los vuelos se guardan en el servidor.`)
     : "Sin aula ni registro: los vuelos no se guardan. Desde «Pilotos y registro» puedes activar el registro local.";
@@ -1952,6 +1961,24 @@ function pintarCalidad() {
   document.getElementById("calidad").value = m;
   document.getElementById("calidadInfo").textContent = `Ahora: ${["baja", "media", "alta"][visor.calidad]}${m === "auto" ? " (automática)" : ""}. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel.`;
 }
+// zoom de la camara del piloto: fraccion del alto de la pantalla que ocupa la envergadura (0 = sin zoom)
+try { const z = localStorage.getItem("sim_zoom_piloto"); if (z !== null && isFinite(+z)) visor.zoomPiloto = +z; } catch (e) {}
+function pintarZoomPiloto() {
+  const z = visor.zoomPiloto === undefined ? 0.1 : visor.zoomPiloto, sel = document.getElementById("zoomPiloto");
+  const op = [...sel.options].find(o => o.value !== "otro" && Math.abs(+o.value - z) < 0.004);
+  sel.value = op ? op.value : "otro";
+  sel.querySelector('option[value="otro"]').textContent = `Ajustado con la rueda del ratón: un ${(z * 100).toFixed(0)} % de la pantalla`;
+}
+function ponerZoomPiloto(z) { visor.zoomPiloto = z; try { localStorage.setItem("sim_zoom_piloto", String(z)); } catch (e) {} pintarZoomPiloto(); }
+document.getElementById("zoomPiloto").addEventListener("change", e => { if (e.target.value !== "otro") ponerZoomPiloto(+e.target.value); });
+// en vuelo, con la camara del piloto, la rueda del raton cambia el zoom (fuera del GPS, que tiene su propia rueda)
+window.addEventListener("wheel", e => {
+  if (pantallaActual !== null || visor.camara !== 1 || e.target.closest && e.target.closest("#gps")) return;
+  const z0 = visor.zoomPiloto === undefined ? 0.1 : visor.zoomPiloto;
+  const z = Math.max(0, Math.min(0.3, z0 > 0 ? z0 * (e.deltaY > 0 ? 0.85 : 1 / 0.85) : (e.deltaY < 0 ? 0.03 : 0)));
+  ponerZoomPiloto(z < 0.025 && e.deltaY > 0 ? 0 : +z.toFixed(3));
+  toast(visor.zoomPiloto > 0 ? `Zoom del piloto: el avión ocupa un ${(visor.zoomPiloto * 100).toFixed(0)} % de la pantalla` : "Sin zoom: como lo ve el ojo");
+}, { passive: true });
 function aplicarModoCalidad(m) { if (m === "auto") { visor.calidadFija = false; visor.aplicarCalidad(2); } else { visor.calidadFija = true; visor.aplicarCalidad(+m); } }
 document.getElementById("calidad").addEventListener("change", e => { const m = e.target.value; try { localStorage.setItem("sim_calidad_modo", m); } catch (er) {} aplicarModoCalidad(m); pintarCalidad(); });
 

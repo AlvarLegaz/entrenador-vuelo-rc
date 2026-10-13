@@ -45,6 +45,7 @@ var orto := []                     # [Image, ImageTexture] de la region
 var avion3d: Avion3D
 var cam: Camera3D
 var _fov1 := -1.0
+const ZOOM_PILOTO := 0.10          # fraccion del alto de la pantalla que ocupa la envergadura en la camara del piloto
 var _acum := 0.0
 var _mando_usado := false
 var _botones_antes := {}
@@ -458,10 +459,11 @@ func _camara() -> void:
 	if _args.has("cenital"):          # pruebas: vista vertical del punto de lanzamiento desde la altura dada
 		cam.fov = 60; cam.global_position = mundo3d.base + Vector3(0, float(_args["cenital"]), 0); cam.look_at(mundo3d.base, Vector3.FORWARD); return
 	if camara == 1:
-		# vista del piloto con ZOOM AUTOMATICO: a partir de 40 m el campo de vision se cierra en proporcion a la distancia
-		# (hasta 3 grados), asi el avion se ve siempre del mismo tamano. Suavizado, como en el navegador
+		# vista del piloto con ZOOM AUTOMATICO, como en el navegador: el campo de vision se cierra con la distancia para que
+		# la envergadura ocupe siempre un 10 % del alto de la pantalla (ZOOM_PILOTO), entre 50 y 1,5 grados. Suavizado
 		var b := mundo3d.base + Vector3(1.5, 1.7, 2)
-		var d := b.distance_to(t); var obj := maxf(3.0, minf(50.0, 50.0 * 40.0 / maxf(d, 1.0)))
+		var env: float = float(modelo.b_m) if modelo != null else 1.0
+		var d := b.distance_to(t); var obj := maxf(1.5, minf(50.0, rad_to_deg(env / (ZOOM_PILOTO * maxf(d, 0.5)))))
 		_fov1 = obj if _fov1 < 0 else _fov1 + (obj - _fov1) * 0.08
 		cam.fov = _fov1; cam.global_position = b
 		if d > 0.1: cam.look_at(t, Vector3.UP)

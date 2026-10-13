@@ -795,6 +795,7 @@ class Visor {
   ponerAvion(datos) {
     if (this.avion) this.escena.remove(this.avion.grupo);
     this.avion = construirAvion(datos);
+    this.avion.envergadura = datos.b_m || 1;           // para el zoom de la camara del piloto
     this.avion.grupo.matrixAutoUpdate = false;
     this.escena.add(this.avion.grupo);
   }
@@ -853,14 +854,15 @@ class Visor {
   _camara(av) {
     const cam = this.cam, t = ned2three(av.p);
     if (this.camara === 1) {
-      // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: a partir de 40 m el campo de vision se cierra
-      // en proporcion a la distancia (hasta 9 grados), asi el avion se ve siempre del mismo tamano y no se pierde de
-      // vista. Suavizado para que no de saltos al cambiar de camara
+      // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: el campo de vision se cierra con la distancia
+      // para que la envergadura ocupe siempre la fraccion zoomPiloto del alto de la pantalla (10 % por defecto; 0 = sin
+      // zoom, como lo ve el ojo), entre 50 y 1,5 grados. Asi el avion no se pierde de vista y cada avion se ve segun su
+      // tamano (el dron de 25 cm cierra antes). Suavizado para que no de saltos al cambiar de camara
       const b = this.base || [0, 0, 0];
       cam.position.set(b[0] + 1.5, b[1] + 1.7, b[2] + 2);
-      // el dron es 5 veces mas pequeno que los aviones: su zoom cierra desde mas cerca y hasta 3 grados
-      const k = this.avion && this.avion.dron ? 0.3 : 1;
-      const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2), fovObj = Math.max(this.mundo || k < 1 ? 3 : 9, Math.min(50, 50 * 40 * k / Math.max(d, 1)));   // en un mundo real se va mas lejos: hasta 3 grados
+      const env = (this.avion && this.avion.envergadura) || 1, zp = this.zoomPiloto === undefined ? 0.10 : this.zoomPiloto;
+      const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2);
+      const fovObj = zp > 0 ? Math.max(1.5, Math.min(50, env / (zp * Math.max(d, 0.5)) * 180 / Math.PI)) : 50;
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }
