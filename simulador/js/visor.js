@@ -88,6 +88,89 @@ function ruido(x, y) {        // ruido de valor suavizado, en [0, 1]
 function fbm(x, y, oct = 4) { let s = 0, a = 0.5, f = 1, n = 0; for (let i = 0; i < oct; i++) { s += a * ruido(x * f + 31 * i, y * f - 17 * i); n += a; a *= 0.5; f *= 2.1; } return s / n; }
 function lienzo(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return [c, c.getContext("2d")]; }
 
+// ---- aspecto del mundo real, como el de Godot (simulador_godot/scripts/mundo_3d.gd) ----
+const GLSL_RUIDO = `float ac_hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float ac_ruido(vec3 x) {
+  vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(ac_hash(i), ac_hash(i + vec3(1, 0, 0)), f.x), mix(ac_hash(i + vec3(0, 1, 0)), ac_hash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(ac_hash(i + vec3(0, 0, 1)), ac_hash(i + vec3(1, 0, 1)), f.x), mix(ac_hash(i + vec3(0, 1, 1)), ac_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}`;
+/** Copas de los arboles del mundo real (SHADER_ARBOL de Godot): la esfera se deforma con ruido (silueta irregular,
+ *  distinta en cada arbol), el color lleva manchas de hojas y sombra interior, y la luz que atraviesa las hojas la
+ *  aclara a contraluz. Un solo material para todas las copas (el color de cada una es el de su instancia). */
+function materialCopas() {
+  if (materialCopas.m) return materialCopas.m;
+  // tinte y luz ambiente ajustados midiendo la misma escena en los dos simuladores (la luz de la escena web es mas fuerte
+  // y azulada que la de Godot): copas de (70, 93, 20) en Godot, (80, 98, 26) aqui
+  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.31, 0.38, 0.21, THREE.LinearSRGBColorSpace), roughness: 0.92, metalness: 0 });
+  m.userData.u = { uAmb: { value: 0.42 } };
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, m.userData.u);
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vHueco;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+  float acId = float(gl_InstanceID); vec3 acS = vec3(acId * 1.73, acId * 0.37, 0.0);
+  float acN = ac_ruido(transformed * 1.6 + acS) * 0.6 + ac_ruido(transformed * 4.1 + acS) * 0.4;
+  transformed += objectNormal * (acN - 0.5) * 2.0 * 0.28; vHueco = acN;
+  #ifdef USE_INSTANCING
+  vMundoA = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+  #else
+  vMundoA = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  #endif`);
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uAmb;\nvarying float vHueco;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
+      .replace("#include <color_fragment>", `#include <color_fragment>
+  float acF = ac_ruido(vMundoA * 2.7) * 0.55 + ac_ruido(vMundoA * 8.3) * 0.45;
+  diffuseColor.rgb *= (0.6 + 0.75 * acF) * (0.7 + 0.5 * vHueco);`)
+      .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
+  reflectedLight.indirectDiffuse *= uAmb;                 // la luz ambiente de las copas (la de Godot es mas debil y neutra)
+  #if NUM_DIR_LIGHTS > 0
+  reflectedLight.directDiffuse += diffuseColor.rgb * 0.35 * directionalLights[0].color * max(0.0, -dot(normal, directionalLights[0].direction)) * RECIPROCAL_PI;
+  #endif`);
+  };
+  m.customProgramCacheKey = () => "copas_godot";
+  return (materialCopas.m = m);
+}
+/** Grano fino del suelo (el NoiseTexture2D de Godot: ruido fractal de 5 octavas, 512 px, sin costuras). */
+function texturaGrano() {
+  if (texturaGrano.t) return texturaGrano.t;
+  const N = 512, d = new Float32Array(N * N), r = semilla(3);
+  for (let oct = 0, L = 25, amp = 1; oct < 5; oct++, L *= 2, amp *= 0.5) {          // ruido de valor periodico, octava a octava
+    const red = Float32Array.from({ length: L * L }, () => r()), v = (i, j) => red[((i % L + L) % L) * L + ((j % L + L) % L)];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const fx = x * L / N, fy = y * L / N, i = Math.floor(fy), j = Math.floor(fx); let tx = fx - j, ty = fy - i;
+      tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+      d[y * N + x] += amp * ((v(i, j) * (1 - tx) + v(i, j + 1) * tx) * (1 - ty) + (v(i + 1, j) * (1 - tx) + v(i + 1, j + 1) * tx) * ty);
+    }
+  }
+  let mn = Infinity, mx = -Infinity; for (const x of d) { mn = Math.min(mn, x); mx = Math.max(mx, x); }
+  const [c, g] = lienzo(N, N), im = g.createImageData(N, N);
+  for (let k = 0; k < N * N; k++) { const q = Math.round(255 * (d[k] - mn) / (mx - mn)); im.data.set([q, q, q, 255], 4 * k); }
+  g.putImageData(im, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
+  return (texturaGrano.t = t);
+}
+/** Suelo con la ortofoto y, cerca de la camara, el grano fino (piedras, matas, tierra) que rompe los pixeles de 0,5 m
+ *  (SHADER_SUELO de Godot). */
+function conGrano(m) {
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uGrano = { value: texturaGrano() };
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vMundoS;").replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvMundoS = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uGrano;\nvarying vec3 vMundoS;")
+      .replace("#include <map_fragment>", `#include <map_fragment>
+  float acG = texture2D(uGrano, vMundoS.xz / 3.7).r * 0.55 + texture2D(uGrano, vMundoS.xz / 0.83).r * 0.45;
+  diffuseColor.rgb *= mix(0.68 + 0.64 * acG, 1.0, smoothstep(20.0, 160.0, length(vViewPosition)));`);
+  };
+  m.customProgramCacheKey = () => "suelo_grano";
+  return m;
+}
+// color del mundo real como el de Godot (adjustment: contraste 1,18 y saturacion 1,2 despues del tonemapping ACES)
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace("vec3 CustomToneMapping( vec3 color ) { return color; }",
+  `vec3 CustomToneMapping( vec3 color ) {
+  vec3 s = pow(ACESFilmicToneMapping(color), vec3(1.0 / 2.2));
+  s = (s - 0.5) * 1.18 + 0.5;
+  s = mix(vec3(dot(s, vec3(0.2126, 0.7152, 0.0722))), s, 1.2);
+  return pow(clamp(s, 0.0, 1.0), vec3(2.2));
+}`);
+
 const CAMPO = {
   // bancales de almendros: centro (E, N), largo (a lo largo de su norte girado), ancho, giro en grados (+ hacia el este),
   // paso entre muros de bancal y paleta de tonos de la tierra
@@ -378,7 +461,15 @@ class Visor {
    *  real, mucho mas, y las nubes se escalan con el). Con THREE.Sky, cielo fisico (dispersion de Rayleigh y Mie). */
   _cielo(posSol, esc, radio) {
     const k = radio / 2850;
-    if (THREE.Sky) {
+    if (radio > 5000) {             // mapa real: el cielo de Godot (ProceduralSkyMaterial: degradado de horizonte a cenit, curva 0,12),
+      // con los colores que Godot muestra en pantalla tras su tonemapping (el de la web es un cielo fisico, mas palido)
+      esc.add(new THREE.Mesh(new THREE.SphereGeometry(radio, 32, 16), new THREE.ShaderMaterial({
+        uniforms: { cima: { value: new THREE.Vector3(168 / 255, 198 / 255, 232 / 255) }, horizonte: { value: new THREE.Vector3(205 / 255, 221 / 255, 236 / 255) } },
+        vertexShader: "varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+        fragmentShader: "uniform vec3 cima; uniform vec3 horizonte; varying vec3 vP; void main() { float y = clamp(normalize(vP).y, 0.0, 1.0); " +
+          "gl_FragColor = vec4(mix(horizonte, cima, clamp(1.0 - pow(1.0 - y, 1.0 / 0.12), 0.0, 1.0)), 1.0); }",
+        side: THREE.BackSide, depthWrite: false, fog: false })));
+    } else if (THREE.Sky) {
       const sky = new THREE.Sky(); sky.scale.setScalar(radio * 3); sky.frustumCulled = false;
       const u = sky.material.uniforms;
       u.turbidity.value = 3.5; u.rayleigh.value = 2.2; u.mieCoefficient.value = 0.003; u.mieDirectionalG.value = 0.8;
@@ -396,7 +487,7 @@ class Visor {
     gs.fillStyle = g; gs.fillRect(0, 0, 256, 256);
     const solSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(cs), fog: false, depthWrite: false }));
     solSprite.position.copy(posSol).normalize().multiplyScalar(2600 * k); solSprite.scale.set(520 * k, 520 * k, 1);
-    if (!THREE.Sky) esc.add(solSprite);
+    if (!THREE.Sky || radio > 5000) esc.add(solSprite);     // con el cielo de Godot (mapa real), tambien el sol
     const [cn, gn] = lienzo(256, 128), r = semilla(5);
     for (let i = 0; i < 26; i++) {
       const x = 40 + r() * 176, y = 50 + r() * 40, rad = 18 + r() * 26, gg = gn.createRadialGradient(x, y, 0, x, y, rad);
@@ -590,6 +681,7 @@ class Visor {
     const vieja = this.escena, nueva = this.mundos[id];
     for (const o of [this.avion && this.avion.grupo, this.sombra, this.manga]) if (o) { vieja.remove(o); nueva.add(o); }
     this.escena = nueva; this.mundoId = id; this.mundo = mundo;
+    this.renderer.toneMapping = mundo ? THREE.CustomToneMapping : THREE.ACESFilmicToneMapping;      // mapa real: el color de Godot
     this.cam.far = mundo ? 16000 : 3000; this.cam.updateProjectionMatrix();
     this.ponerBase(mundo ? (this.baseNE || [0, 0]) : [0, 0], true);
   }
