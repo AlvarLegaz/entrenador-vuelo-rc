@@ -1099,8 +1099,8 @@ window.ESCENARIOS = {
    "minima": 5
   }
  },
- "op_linea": {
-  "nombre": "Inspección de línea eléctrica",
+ "op_paneles": {
+  "nombre": "Inspección de paneles fotovoltaicos",
   "vehiculos": [
    "dron"
   ],
@@ -1109,18 +1109,18 @@ window.ESCENARIOS = {
   "dificultad": 3,
   "viento": {
    "vel": 4,
-   "desde": 70,
+   "desde": 300,
    "rachas": true
   },
-  "desc": "La compañía eléctrica pide revisar los aisladores de cuatro torres de una línea de alta tensión. Fotografía los aisladores de cada torre de 8 a 25 m sin acercarte nunca a menos de 5 m de los cables.",
+  "desc": "La planta fotovoltaica de El Mingrano (20 filas de 150 m, unos 3.000 módulos) produce menos de lo que debería. Recorre las filas, encuentra los 8 módulos dañados (cristal roto o muy sucio) y fotografía cada uno desde arriba, sin bajar a menos de 3 m de los paneles.",
   "objetivos": [
    [
-    "torres",
-    "Fotografiar los aisladores de las 4 torres, de 8 a 25 m"
+    "defectos",
+    "Fotografiar los 8 módulos dañados: de 4 a 20 m, con la cámara hacia abajo (−45° o más)"
    ],
    [
-    "distancia",
-    "Nunca a menos de 5 m de los cables"
+    "baja",
+    "Nunca a menos de 3 m sobre los paneles"
    ],
    [
     "techo",
@@ -1148,42 +1148,83 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
-   "cliente": "Compañía de distribución eléctrica",
-   "lugar": "Línea de alta tensión al oeste del campo de Los Halcones de la Rambla.",
-   "trabajo": "Inspección de los aisladores (en las crucetas, a 21 m) torre por torre. La línea está en tensión: mantén la distancia de seguridad con los cables.",
-   "entrega": "4 fotos, una por torre, de los aisladores.",
+   "cliente": "Planta fotovoltaica de El Mingrano · mantenimiento",
+   "lugar": "El Mingrano (Fuente Álamo, Campo de Cartagena). Despegue desde el camino junto a la planta.",
+   "trabajo": "Inspección visual de los módulos fila por fila, con la cámara hacia abajo. En una inspección real se usa además una cámara térmica para ver los puntos calientes.",
+   "entrega": "8 fotos, una por módulo dañado, para cambiarlos.",
    "salida": {
-    "n": 16400,
-    "e": 3000,
-    "rumbo": 340
+    "n": 3232,
+    "e": -15115,
+    "rumbo": 0
    },
-   "torres": [
+   "planta": {
+    "n0": 3262,
+    "e0": -15190,
+    "filas": 20,
+    "largo": 150,
+    "ancho": 4,
+    "separacion": 8,
+    "inclinacion": 30,
+    "h0": 0.6
+   },
+   "defectos": [
     [
-     16825,
-     2927
+     1,
+     23
     ],
     [
-     16538,
-     2986
+     3,
+     118
     ],
     [
-     16285,
-     3056
+     6,
+     61
     ],
     [
-     16034,
-     3122
+     8,
+     140
+    ],
+    [
+     11,
+     9
+    ],
+    [
+     13,
+     87
+    ],
+    [
+     16,
+     44
+    ],
+    [
+     19,
+     131
     ]
    ],
-   "alto": 26,
-   "brazo": 4.5,
-   "fases": 21,
-   "flecha": 3,
    "dist": [
-    8,
-    25
+    4,
+    20
    ],
-   "seguridad": 5
+   "gimbal": -45,
+   "minima": 3,
+   "sin_arboles": [
+    [
+     3248,
+     -15200
+    ],
+    [
+     3248,
+     -15030
+    ],
+    [
+     3424,
+     -15030
+    ],
+    [
+     3424,
+     -15200
+    ]
+   ]
   }
  },
  "op_video": {

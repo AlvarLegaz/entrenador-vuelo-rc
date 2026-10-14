@@ -144,6 +144,14 @@ func _initialize() -> void:
 	_ok("Q baja el gimbal", p.av.get("gimbal", -10.0) < g0 - 1, "(%.0f -> %.0f)" % [g0, p.av.get("gimbal", -10.0)])
 	await _boton(JOY_BUTTON_LEFT_SHOULDER); _ok("LB cambia de modo", p.modelo.modo != "N" or m0 == "N")
 	await _pulsa(KEY_F); _ok("F hace una foto", p.DJI["fotos"] == 1)
+	await _pulsa(KEY_R); await create_timer(0.3).timeout
+	p.mando_cfg.poner_perfil("consola")
+	_eje(JOY_AXIS_LEFT_X, 0.95); _eje(JOY_AXIS_LEFT_Y, 1.0); _eje(JOY_AXIS_RIGHT_X, -0.95); _eje(JOY_AXIS_RIGHT_Y, 1.0)   # CSC: abajo y hacia dentro
+	await create_timer(0.25).timeout
+	_ok("CSC: un cuarto de segundo no basta", p.av["estado"] == "en mano")
+	await create_timer(0.6).timeout
+	_ok("CSC: medio segundo arranca los motores (en el suelo)", p.av["estado"] == "volando" and p.av.get("posado", false), "(%s)" % p.av["estado"])
+	_ejes_a_cero(); await create_timer(0.2).timeout
 	print("Dron FPV, teclado y mando:")
 	p.salir_al_menu(); await create_timer(0.5).timeout
 	await _volar("FPV")

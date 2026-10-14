@@ -39,9 +39,15 @@ NOMBRES_ESC = {"primer_vuelo": "Primer vuelo", "orientacion": "Orientación", "v
                # operaciones (trabajos de operador de dron con el DJI en el mapa real)
                "op_inspeccion": "Operación: inspección de edificios", "op_fotogrametria": "Operación: fotogrametría",
                "op_busqueda": "Operación: búsqueda y rescate", "op_agricultura": "Operación: agricultura",
-               "op_linea": "Operación: línea eléctrica", "op_video": "Operación: grabación de vídeo", "libre_cartagena": "Vuelo libre (Cartagena)"}
+               "op_paneles": "Operación: paneles fotovoltaicos", "op_video": "Operación: grabación de vídeo", "libre_cartagena": "Vuelo libre (Cartagena)"}
 
 SESIONES = {}            # token -> caduca (epoch)
+# ---- multijugador: salas en memoria (no van a la base de datos). Cada simulador manda su estado unas 10 veces por
+# segundo y recibe el de los demas de su sala; el panel del profesor las ve en directo ----
+SALAS = {}               # codigo -> dict(codigo, nombre, escenario, lanz, viento, creada, ultimo, jugadores={id: estado})
+CERROJO_SALAS = threading.Lock()
+JUGADOR_CADUCA = 6       # s sin noticias: el jugador sale de la sala
+SALA_CADUCA = 3 * 3600   # s sin nadie: la sala se cierra sola
 FALLOS = {}              # ip -> (n fallos, bloqueado hasta)
 CERROJO = threading.Lock()
 CAMBIOS = {"desde_copia": 0}
@@ -226,7 +232,9 @@ class Manejador(BaseHTTPRequestHandler):
     def despachar(self, metodo):
         url = urlparse(self.path)
         try:
-            if url.path.startswith("/api/"):
+            if url.path.startswith("/api/salas"):       # multijugador: en memoria, sin abrir la base de datos
+                self.enviar(201 if metodo == "POST" else 200, self.api_salas(metodo, url.path[5:].strip("/").split("/")))
+            elif url.path.startswith("/api/"):
                 con = conectar()
                 try:
                     r = self.api(metodo, url.path[5:].strip("/").split("/"), parse_qs(url.query), con)
@@ -262,6 +270,46 @@ class Manejador(BaseHTTPRequestHandler):
         tipo = mimetypes.guess_type(f)[0] or "application/octet-stream"
         if tipo.startswith("text/") or tipo.endswith("javascript"): tipo += "; charset=utf-8"
         with open(f, "rb") as fh: self.enviar(200, fh.read(), tipo)
+
+    # ---- multijugador ----
+    @staticmethod
+    def _sala_publica(sala, con_jugadores=True):
+        d = {k: sala[k] for k in ("codigo", "nombre", "escenario", "lanz", "viento", "creada")}
+        d["jugadores"] = list(sala["jugadores"].values()) if con_jugadores else len(sala["jugadores"])
+        return d
+
+    def api_salas(self, m, p):
+        t = time.time()
+        with CERROJO_SALAS:
+            for cod in list(SALAS):                      # limpieza: jugadores callados y salas vacias hace mucho
+                sala = SALAS[cod]
+                for jid in [j for j, e in sala["jugadores"].items() if t - e["_t"] > JUGADOR_CADUCA]: del sala["jugadores"][jid]
+                if not sala["jugadores"] and t - sala["ultimo"] > SALA_CADUCA: del SALAS[cod]
+            if p == ["salas"] and m == "GET":
+                return sorted((self._sala_publica(s) for s in SALAS.values()), key=lambda d: d["creada"])
+            if p == ["salas"] and m == "POST":
+                b = self.cuerpo()
+                if not b.get("escenario"): raise Error(400, "falta el escenario")
+                cod = next(c for c in (str(secrets.randbelow(9000) + 1000) for _ in range(100)) if c not in SALAS)
+                SALAS[cod] = dict(codigo=cod, nombre=str(b.get("nombre") or "Sala " + cod)[:60], escenario=str(b["escenario"]),
+                                  lanz=b.get("lanz"), viento=b.get("viento"), creada=ahora(), ultimo=t, jugadores={})
+                return self._sala_publica(SALAS[cod])
+            if len(p) >= 2 and p[0] == "salas":
+                sala = SALAS.get(p[1])
+                if not sala: raise Error(404, "La sala ya no existe")
+                if len(p) == 2 and m == "GET": return self._sala_publica(sala)
+                if len(p) == 2 and m == "DELETE":
+                    self.profesor(); del SALAS[p[1]]; return dict(ok=True)
+                if len(p) == 3 and p[2] == "estado" and m == "POST":
+                    e = self.cuerpo(); jid = str(e.get("id") or "")
+                    if not jid: raise Error(400, "falta el id")
+                    e = {k: e[k] for k in ("id", "nombre", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "tvuelo", "final", "gimbal") if k in e}
+                    e["nombre"] = str(e.get("nombre") or "Piloto")[:40]; e["_t"] = t; e["_ip"] = self.client_address[0]
+                    sala["jugadores"][jid] = e; sala["ultimo"] = t
+                    return dict(otros=[x for k, x in sala["jugadores"].items() if k != jid], sala=self._sala_publica(sala, False))
+                if len(p) == 3 and p[2] == "salir" and m == "POST":
+                    sala["jugadores"].pop(str(self.cuerpo().get("id") or ""), None); return dict(ok=True)
+        raise Error(404, "ruta no encontrada")
 
     # ---- API ----
     def api(self, m, p, q, con):

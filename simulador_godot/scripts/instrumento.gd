@@ -222,6 +222,32 @@ func _textos_gps(W: float, k0: float, alt: float, escala: float, esc_px: float, 
 	_txt(Vector2(10 * k0, W - 14 * k0), (str(int(escala / 1000)) + " km") if escala >= 1000 else (str(int(escala)) + " m"), 10 * k0, TXT, false, HORIZONTAL_ALIGNMENT_LEFT)
 	_txt(Vector2(W - 6 * k0, W - 14 * k0), dcha, 10 * k0, TXT, false, HORIZONTAL_ALIGNMENT_RIGHT)
 
+## Multijugador: los demas de la sala en el GPS, triangulos azules con su rumbo (pintarOtrosGPS de la web).
+func _otros_gps(X: Callable, Y: Callable, W: float) -> void:
+	if p.sala.is_empty(): return
+	for id in p.multi_otros:
+		var o: Dictionary = p.multi_otros[id]; var c := Vector2(X.call(o["p"][1]), Y.call(o["p"][0]))
+		if c.x < 0 or c.y < 0 or c.x > W or c.y > W: continue
+		var a: float = Cuat.euler(o["q"])[2]; var u := Vector2(sin(a), -cos(a)); var n := Vector2(-u.y, u.x)
+		var pts := PackedVector2Array([c + u * 7, c - u * 5 + n * 5, c - u * 3, c - u * 5 - n * 5])
+		draw_colored_polygon(pts, Color("#4fc3f7")); pts.append(pts[0]); draw_polyline(pts, Color.BLACK, 1, true)
+
+## DJI: como en DJI Fly, el punto de despegue con su H amarilla y una linea del dron hasta el, recortada al mapa (casaDJI).
+func _es_dji() -> bool: return p.modelo != null and p.es_dron() and not p.es_fpv()
+func _casa_dji(a: Vector2, h: Vector2, W: float) -> void:
+	var d := h - a; var dentro := maxf(absf(h.x - W / 2), absf(h.y - W / 2)) <= W / 2 - 8
+	if not dentro:
+		var k := 1.0
+		if d.x > 0: k = minf(k, (W - 3 - a.x) / d.x)
+		elif d.x < 0: k = minf(k, (3 - a.x) / d.x)
+		if d.y > 0: k = minf(k, (W - 3 - a.y) / d.y)
+		elif d.y < 0: k = minf(k, (3 - a.y) / d.y)
+		d *= k
+	draw_dashed_line(a, a + d, Color(1, 1, 1, 0.9), 1.5, 4.0)
+	if dentro:
+		draw_circle(h, 7, Color("#ffc83d")); draw_arc(h, 7, 0, TAU, 20, Color.BLACK, 1, true)
+		draw_string(Tema.negrita, h + Vector2(-3.6, 3.6), "H", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("#111111"))
+
 func _gps_campo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 	draw_style_box(Tema.caja(Color(11 / 255.0, 15 / 255.0, 20 / 255.0, 0.85), Color(0, 0, 0, 0), 10), Rect2(Vector2.ZERO, size))
 	var cN := N / 2; var cE := E / 2
@@ -248,6 +274,8 @@ func _gps_campo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 		var pts := PackedVector2Array()
 		for s in estela: pts.append(Vector2(X.call(s[1]), Y.call(s[0])))
 		pts.append(Vector2(X.call(E), Y.call(N))); draw_polyline(pts, Color(1, 213 / 255.0, 79 / 255.0, 0.8), 1.5, true)
+	if _es_dji(): _casa_dji(Vector2(X.call(E), Y.call(N)), Vector2(X.call(0), Y.call(0)), W)
+	_otros_gps(X, Y, W)
 	_avion_gps(Vector2(X.call(E), Y.call(N)), rumbo, k0)
 	_flecha_viento(W, k0)
 	var esc := escala_redonda(semi)
@@ -300,6 +328,13 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			if dentro.size.x <= 0 or dentro.size.y <= 0: continue
 			var ts: Vector2 = (t["tex"] as Texture2D).get_size()
 			draw_texture_rect_region(t["tex"], dentro, Rect2((dentro.position - r.position) / r.size * ts, dentro.size / r.size * ts))
+	var op: Dictionary = Escenarios.datos()[p.sesion["escenario"]].get("operacion", {})
+	if op.has("planta"):                               # paneles: las filas de la planta, que no estan en la ortofoto
+		var PL: Dictionary = op["planta"]; var fondo: float = PL["ancho"] * cos(PL["inclinacion"] * PI / 180)
+		for i in int(PL["filas"]):
+			var n: float = PL["n0"] + i * PL["separacion"]
+			var r := Rect2(X.call(PL["e0"]), Y.call(n + fondo / 2), PL["largo"] * k, maxf(1, fondo * k)).intersection(Rect2(0, 0, W, W))
+			if r.size.x > 0 and r.size.y > 0: draw_rect(r, Color("#182c52"))
 	for l in p.mundo_datos["lugares"]:
 		if l[1] <= (5 if semi < 5000 else 3) and absf(l[2] - E) < semi and absf(l[3] - N) < semi:
 			var q := Vector2(X.call(l[2]), Y.call(l[3]))
@@ -309,6 +344,8 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 		for s in estela: pts.append(Vector2(X.call(s[1]), Y.call(s[0])))
 		pts.append(Vector2(W / 2, W / 2)); draw_polyline(pts, Color(1, 213 / 255.0, 79 / 255.0, 0.8), 1.5, true)
 	var C: Dictionary = p.casa; var d := Vector2(N - C["N"], E - C["E"]).length()
+	if _es_dji(): _casa_dji(Vector2(W / 2, W / 2), Vector2(X.call(C["E"]), Y.call(C["N"])), W)
+	_otros_gps(X, Y, W)
 	if absf(E - C["E"]) < semi and absf(N - C["N"]) < semi: draw_circle(Vector2(X.call(C["E"]), Y.call(C["N"])), 3.5, Color.WHITE)
 	else:
 		var a := atan2(C["E"] - E, C["N"] - N); var u := Vector2(sin(a), -cos(a)); var nn := Vector2(-u.y, u.x); var q := Vector2(W / 2, W / 2) + u * (W / 2 - 14)

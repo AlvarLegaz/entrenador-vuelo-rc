@@ -656,6 +656,38 @@ class Visor {
     this.pistaFpv = G; this.escenaIsla.add(G);
   }
 
+  /** Multijugador: los demas de la sala como "fantasmas", con su modelo y su nombre encima. lista: [{id, avion, nombre,
+   *  p, q, vn, recibido (performance.now() al llegar)}]. La posicion es la ultima recibida avanzada con su velocidad (como
+   *  mucho 0,3 s) y suavizada; la actitud, la recibida. */
+  ponerFantasmas(lista) {
+    this.fantasmas = this.fantasmas || new Map();
+    const vivos = new Set(), ahora = performance.now();
+    for (const f of lista || []) {
+      vivos.add(f.id);
+      let g = this.fantasmas.get(f.id);
+      if (!g || g.avion !== f.avion || g.nombre !== f.nombre) {
+        if (g) g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo);
+        const datos = Modelos.datos(f.avion); if (!datos) continue;
+        const obj = construirAvion(datos); obj.grupo.matrixAutoUpdate = false;
+        const [c, x] = lienzo(256, 48); x.font = "bold 26px sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
+        x.lineWidth = 6; x.strokeStyle = "rgba(0,0,0,0.75)"; x.strokeText(f.nombre, 128, 24); x.fillStyle = "#4fc3f7"; x.fillText(f.nombre, 128, 24);
+        const et = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(c), sizeAttenuation: false, depthTest: false, transparent: true }));
+        et.scale.set(0.16, 0.03, 1);
+        g = { obj, avion: f.avion, nombre: f.nombre, p: f.p.slice(), et };
+        this.fantasmas.set(f.id, g);
+      }
+      if (g.obj.grupo.parent !== this.escena) { this.escena.add(g.obj.grupo); this.escena.add(g.et); }
+      const dt = Math.min(0.3, (ahora - f.recibido) / 1000), obj = [0, 1, 2].map(i => f.p[i] + (f.vn ? f.vn[i] : 0) * dt);
+      const lejos = Math.hypot(obj[0] - g.p[0], obj[1] - g.p[1], obj[2] - g.p[2]) > 30;
+      for (let i = 0; i < 3; i++) g.p[i] = lejos ? obj[i] : g.p[i] + (obj[i] - g.p[i]) * 0.35;
+      const q = f.q, ex = ned2three(Cuat.rot(q, [1, 0, 0])), ey = ned2three(Cuat.rot(q, [0, 1, 0])), ez = ned2three(Cuat.rot(q, [0, 0, 1])), t = ned2three(g.p);
+      g.obj.grupo.matrix.set(ex[0], ey[0], ez[0], t[0], ex[1], ey[1], ez[1], t[1], ex[2], ey[2], ez[2], t[2], 0, 0, 0, 1);
+      if (g.obj.helice) g.obj.helice.visible = (f.gas || 0) > 0.05;
+      g.et.position.set(t[0], t[1] + 1.2, t[2]);
+    }
+    for (const [id, g] of [...this.fantasmas]) if (!vivos.has(id)) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); this.fantasmas.delete(id); }
+  }
+
   /** Punto de lanzamiento (N, E) en un mundo real: ahi van el piloto (camara 1), la manga y los arboles cercanos.
    *  En la isla siempre es el origen. */
   ponerBase(NE, forzar) {

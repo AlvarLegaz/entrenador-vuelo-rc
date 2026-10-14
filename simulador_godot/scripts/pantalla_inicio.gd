@@ -5,6 +5,7 @@ extends Control
 ## el piloto y el aula.
 
 const ICONOS := {
+	"multi": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg>',
 	"operaciones": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg>',
 	"volar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg>',
 	"entrenar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="#ffc83d"/></svg>',
@@ -40,6 +41,7 @@ func _init(p_: Node) -> void:
 	izq.add_child(Tema.margen(Control.new(), 0, 0, 0, 16))
 	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.con_piloto(p.ir_volar)))
 	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV", func(): p.con_piloto(p.ir_entrenamientos)))
+	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.con_piloto(p.ir_multi)))
 	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, líneas eléctricas y vídeo", func(): p.con_piloto(p.ir_operaciones)))
 	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))
 	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.ir_ajustes("")))

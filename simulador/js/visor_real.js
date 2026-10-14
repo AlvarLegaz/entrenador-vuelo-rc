@@ -158,25 +158,32 @@ Object.assign(Visor.prototype, {
       const s = new THREE.Shape(); for (let k = 0; k <= 24; k++) { const a = k / 24 * 2 * Math.PI, rr = r * (0.82 + 0.18 * Math.sin(3 * a + i) * Math.cos(2 * a - i)); k ? s.lineTo(rr * Math.cos(a), rr * Math.sin(a)) : s.moveTo(rr * Math.cos(a), rr * Math.sin(a)); }
       en(new THREE.Mesh(new THREE.ShapeGeometry(s), new THREE.MeshLambertMaterial({ color: 0xc9b13a, transparent: true, opacity: 0.85 })), N, E, alt(N, E) + 0.12).rotation.x = -Math.PI / 2;
     });
-    if (d.torres) {                                                     // linea: torres de celosia, crucetas, aisladores y cables
-      const op = new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), acero = std(0x9ea4a8, { metalness: 0.5, roughness: 0.5 });
-      const barra = (A, B, r, mat) => {                                 // cilindro de A a B (N, E, arriba)
-        const a = new THREE.Vector3(A[1], A[2], -A[0]), b = new THREE.Vector3(B[1], B[2], -B[0]), L = a.distanceTo(b);
-        const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 6), mat); o.position.copy(a).add(b).multiplyScalar(0.5);
-        o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); G.add(o);
-      };
-      d.torres.forEach(([tn, te], i) => {
-        const b0 = op.bases[i], L = op.laterales[i], F = [L[1], -L[0]];      // F: a lo largo de la linea
-        const pata = (s, t, h) => { const w = 1.3 - 0.75 * h / d.alto; return [tn + (s * L[0] + t * F[0]) * w, te + (s * L[1] + t * F[1]) * w, b0 + h]; };
-        for (const [s, t] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) barra(pata(s, t, 0), pata(s, t, d.alto - 1), 0.07, acero);
-        for (let h = 0; h < d.alto - 2; h += 4) for (const [s1, t1, s2, t2] of [[-1, -1, 1, -1], [-1, 1, 1, 1], [-1, -1, -1, 1], [1, -1, 1, 1]]) {
-          barra(pata(s1, t1, h), pata(s2, t2, h + 4), 0.03, acero); barra(pata(s2, t2, h), pata(s1, t1, h + 4), 0.03, acero);
-        }
-        barra([tn + L[0] * d.brazo, te + L[1] * d.brazo, b0 + d.fases + 1.2], [tn - L[0] * d.brazo, te - L[1] * d.brazo, b0 + d.fases + 1.2], 0.09, acero);   // cruceta
-        barra(pata(0, 0, d.alto - 1), [tn, te, b0 + d.alto], 0.08, acero);
-        for (const k of [0, 1]) { const A = op.enganches[i][k]; barra([A[0], A[1], A[2] + 1.2], A, 0.07, std(0x8d6e63)); }   // cadenas de aisladores
+    if (d.planta) {                                                     // paneles: mesas de modulos inclinadas al sur, patas y los modulos danados
+      const op = new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), P = d.planta, inc = P.inclinacion * D2R;
+      const [cm, gm] = lienzo(256, 64); gm.fillStyle = "#c9d3dc"; gm.fillRect(0, 0, 256, 64);            // 8 modulos de 1 x 2 m a lo ancho de la textura
+      for (let k = 0; k < 8; k++) { gm.fillStyle = "#14294d"; gm.fillRect(k * 32 + 1, 1, 30, 62); gm.strokeStyle = "rgba(160,190,230,0.35)"; gm.lineWidth = 0.6;
+        for (let y = 8; y < 64; y += 8) { gm.beginPath(); gm.moveTo(k * 32 + 1, y); gm.lineTo(k * 32 + 31, y); gm.stroke(); }
+        for (let x = 6; x < 32; x += 6) { gm.beginPath(); gm.moveTo(k * 32 + x, 1); gm.lineTo(k * 32 + x, 63); gm.stroke(); } }
+      const tm = texSRGB(cm); tm.wrapS = THREE.RepeatWrapping; tm.repeat.set(P.largo / 8, 1);
+      const mPanel = new THREE.MeshStandardMaterial({ map: tm, roughness: 0.25, metalness: 0.3 }), mAcero = std(0xb0b6bb, { metalness: 0.6, roughness: 0.4 });
+      for (const M of op.mesas) {
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(P.largo, 0.05, P.ancho), [mAcero, mAcero, mPanel, mAcero, mAcero, mAcero]);
+        panel.position.set((M.e0 + M.e1) / 2, M.y + P.h0 + P.ancho * Math.sin(inc) / 2, -M.n); panel.rotation.x = inc;       // el borde norte arriba (+z es el sur)
+        G.add(panel);
+      }
+      // patas (delante cortas, detras largas) cada 6 m: una sola malla instanciada para todas
+      const patas = []; for (const M of op.mesas) for (let x = M.e0 + 2; x < M.e1; x += 6) for (const s of [-1, 1]) patas.push([x, M, s]);
+      const ip = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 1, 0.08), mAcero, patas.length), Mx = new THREE.Matrix4();
+      patas.forEach(([x, M, s], k) => { const h = P.h0 + (s > 0 ? P.ancho * Math.sin(inc) : 0) * 0.92; ip.setMatrixAt(k, Mx.makeScale(1, h, 1).setPosition(x, M.y + h / 2, -(M.n + s * M.fondo * 0.42))); });
+      G.add(ip);
+      op.modulos.forEach(([n, e, y], k) => {                                 // modulos danados: cristal roto (blanco) o muy sucio (marron)
+        const [cd, gd] = lienzo(64, 128), roto = k % 2 === 0;
+        gd.fillStyle = roto ? "#24365c" : "#6b5a3a"; gd.fillRect(0, 0, 64, 128);
+        if (roto) { gd.strokeStyle = "#e8eef5"; gd.lineWidth = 2; for (let r = 0; r < 9; r++) { const a = r * 0.7; gd.beginPath(); gd.moveTo(32, 64); gd.lineTo(32 + 40 * Math.cos(a), 64 + 70 * Math.sin(a)); gd.stroke(); } }
+        else for (let r = 0; r < 40; r++) { gd.fillStyle = `rgba(${150 + (r * 37) % 60},${120 + (r * 23) % 40},80,0.6)`; gd.beginPath(); gd.arc((r * 29) % 64, (r * 53) % 128, 4 + r % 6, 0, 7); gd.fill(); }
+        const o = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), new THREE.MeshStandardMaterial({ map: texSRGB(cd), roughness: 0.5 }));
+        o.position.set(e, y + 0.04, -n); o.rotation.set(-Math.PI / 2 + inc, 0, 0); G.add(o);      // sobre el panel, con su inclinacion
       });
-      for (const [A, B] of op.cables) barra(A, B, 0.025, std(0x2f3133, { metalness: 0.6, roughness: 0.4 }));
     }
     G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.operacion = G; this.escena.add(G);
@@ -365,7 +372,7 @@ Object.assign(Visor.prototype, {
     Promise.all([z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b)), this._edificiosDe(z)]).then(([A, edificios]) => {
       const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0], enEdificio = this._filtroEdificios(edificios);
       // sin arboles donde no los hay aunque la ortofoto lo parezca (escenarios.js, "sin_arboles": el aparcamiento del CIFP)
-      const claros = Object.values(ESCENARIOS).filter(E => E.mundo === this.mundo.id).flatMap(E => E.destacados || []).filter(d => d.sin_arboles).map(d => d.sin_arboles);
+      const claros = Object.values(ESCENARIOS).filter(E => E.mundo === this.mundo.id).flatMap(E => (E.destacados || []).concat(E.operacion ? [E.operacion] : [])).filter(d => d.sin_arboles).map(d => d.sin_arboles);   // y donde va la planta fotovoltaica
       const enClaro = (e, n) => claros.some(P => { let k = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][0] > n) !== (P[j][0] > n) && e < (P[j][1] - P[i][1]) * (n - P[i][0]) / (P[j][0] - P[i][0]) + P[i][1]) k = !k; return k; });
       const arboles = [], matas = [];
       for (let i = 0; i < A.length; i += 3) {

@@ -6,7 +6,7 @@ extends Control
 
 var p: Node
 var modo: Button; var estado: Label; var rec: Label; var bat: Label; var bat_icono: Control
-var b_despegar: Button; var b_rth: Button
+var b_despegar: Button; var b_rth: Button; var b_briefing: Button
 var gimbal: Control; var gimbal_marca: ColorRect; var gimbal_txt: Label
 var disparo: Button; var cam_txt: Label
 var mapa: PanelContainer
@@ -16,6 +16,7 @@ var _bat_pct := 100.0; var _bat_rojo := false
 var _video := false; var _grabando := false
 # ⇧ y ⇩ de la web (flecha hueca), dibujadas en SVG
 static var FLECHA_ARRIBA: ImageTexture = Tema.svg('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M9 2 L16 9 H12 V16 H6 V9 H2 Z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>')
+static var MAPA: ImageTexture = Tema.svg('<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>')
 static var FLECHA_ABAJO: ImageTexture = Tema.svg('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M9 16 L16 9 H12 V2 H6 V9 H2 Z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>')
 
 static func _sombra(l: Label) -> void:
@@ -62,10 +63,12 @@ func _init(p_: Node) -> void:
 	bat = Tema.etiqueta("100 % · 30:00", 13, Tema.TEXTO, true); _sombra(bat); hb.add_child(bat); top.add_child(hb)
 	# ---- botones de la izquierda ----
 	var izq := VBoxContainer.new(); izq.add_theme_constant_override("separation", 10); izq.anchor_top = 0.5; izq.anchor_bottom = 0.5; izq.offset_left = 16
-	izq.grow_vertical = Control.GROW_DIRECTION_BOTH; izq.offset_top = -49; izq.offset_bottom = 49
+	izq.grow_vertical = Control.GROW_DIRECTION_BOTH; izq.offset_top = -49; izq.offset_bottom = 49   # el VBox crece por los dos lados con el tercer boton
 	b_despegar = _boton_redondo("", "", func(): p.dji_despegar()); b_despegar.icon = FLECHA_ARRIBA; b_despegar.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	izq.add_child(b_despegar)
 	b_rth = _boton_redondo("H", "Volver a casa (H, botón B)", func(): p.dji_rth()); izq.add_child(b_rth)
+	b_briefing = _boton_redondo("", "Briefing: mapa de la zona de trabajo (B)", func(): p.ver_briefing()); b_briefing.icon = MAPA; b_briefing.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b_briefing.visible = false; izq.add_child(b_briefing)                       # solo en los trabajos
 	add_child(izq)
 	# ---- gimbal ----
 	gimbal = Panel.new(); gimbal.add_theme_stylebox_override("panel", Tema.caja(Color(1, 1, 1, 0.25), Color(0, 0, 0, 0), 3))

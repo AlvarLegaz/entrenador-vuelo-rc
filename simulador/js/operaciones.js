@@ -1,10 +1,10 @@
 "use strict";
 // =====================================================================
 //  OPERACIONES: los trabajos de operador de dron (escenarios.js, "operacion") en el mapa real de Cartagena, con el DJI:
-//  inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, inspeccion de una linea electrica y grabacion
-//  de video. Evalua lo que pide cada orden de trabajo (las fotos, la cobertura, la posicion enviada, la orbita...) y las
+//  inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, inspeccion de paneles fotovoltaicos y
+//  grabacion de video. Evalua lo que pide cada orden de trabajo (las fotos, la cobertura, la posicion enviada, la orbita...) y las
 //  normas del operador en todas (120 m, a la vista, fuera de la zona del aeropuerto, aterrizar en el punto de despegue y
-//  con reserva de bateria), y detecta los choques con los cables, las torres y el faro. Lo dibuja js/visor_real.js
+//  con reserva de bateria), y detecta los choques con los paneles y el faro. Lo dibuja js/visor_real.js
 //  (ponerOperacion). simulador_godot/scripts/operaciones.gd es su traduccion literal: mismos datos, reglas y textos.
 //
 //  Uso: op = new Operacion(datos, marcar, anotar, {casa: [N, E], suelo(N, E), h0}); en cada paso de la fisica
@@ -27,14 +27,14 @@ class Operacion {
   constructor(d, marcar, anotar, mundo) {
     this.d = d; this.marcar = marcar; this.anotar = anotar; this.casa = mundo.casa; this.suelo = mundo.suelo; this.h0 = mundo.h0;
     this.choque = null; this.avisos = {}; this.t0 = null; this.fotos = 0;
-    this.hechos = [];                                                           // inspeccion, manchas, torres
+    this.hechos = [];                                                           // inspeccion, manchas, modulos
     if (d.parcela && d.solape) {                                                // fotogrametria: celdas de 5 m de la parcela
       const P = d.parcela; this.celdas = [];
       for (let n = P.n0 + 2.5; n < P.n1; n += 5) for (let e = P.e0 + 2.5; e < P.e1; e += 5) this.celdas.push([n, e, 0]);
     }
-    if (d.torres) this._linea();
+    if (d.planta) this._planta();
     this.encontrado = false; this.error = null;                                 // busqueda
-    this.orb = null; this.yawAnt = null; this.giro = 0; this.dCables = Infinity; // video y linea
+    this.orb = null; this.yawAnt = null; this.giro = 0;                         // video
   }
 
   /** Punto (N, E, arriba) de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo). */
@@ -52,26 +52,16 @@ class Operacion {
 
   _aviso(clave, texto, lista) { if (!this.avisos[clave]) { this.avisos[clave] = true; lista.push(texto); } }
 
-  /** Linea electrica: postes de cada torre y vanos de los cables (3: dos fases en la cruceta y el de tierra arriba), con
-   *  su flecha en el centro del vano. */
-  _linea() {
-    const d = this.d, T = d.torres, n = T.length;
-    this.bases = T.map(([N, E]) => this.suelo(N, E));
-    this.laterales = T.map((_, i) => {
-      const a = T[Math.max(0, i - 1)], b = T[Math.min(n - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      return [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
-    });
-    this.enganches = T.map(([N, E], i) => [-1, 1, 0].map(k => [N + this.laterales[i][0] * d.brazo * k, E + this.laterales[i][1] * d.brazo * k, this.bases[i] + (k === 0 ? d.alto : d.fases)]));
-    this.cables = [];
-    for (let i = 0; i + 1 < n; i++) for (let k = 0; k < 3; k++) {
-      const A = this.enganches[i][k], B = this.enganches[i + 1][k], M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2 - d.flecha];
-      this.cables.push([A, M], [M, B]);
+  /** Planta fotovoltaica: filas de mesas de paneles de este a oeste, inclinadas hacia el sur. Cada mesa: {n (centro),
+   *  e0, e1, fondo (en planta), y (suelo), alto (borde de arriba sobre el suelo)}; y los modulos danados (N, E, arriba). */
+  _planta() {
+    const P = this.d.planta, c = Math.cos(P.inclinacion * D2R), s = Math.sin(P.inclinacion * D2R);
+    this.mesas = [];
+    for (let i = 0; i < P.filas; i++) {
+      const n = P.n0 + i * P.separacion;
+      this.mesas.push({ n, e0: P.e0, e1: P.e0 + P.largo, fondo: P.ancho * c, y: this.suelo(n, P.e0 + P.largo / 2), alto: P.h0 + P.ancho * s });
     }
-  }
-  static distSegmento(P, A, B) {
-    const ab = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], ap = [P[0] - A[0], P[1] - A[1], P[2] - A[2]];
-    const t = Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2])));
-    return Math.hypot(ap[0] - t * ab[0], ap[1] - t * ab[1], ap[2] - t * ab[2]);
+    this.modulos = this.d.defectos.map(([f, x]) => { const M = this.mesas[f]; return [M.n, P.e0 + x, M.y + P.h0 + P.ancho * s / 2]; });
   }
 
   /** Un paso de la fisica. info: {gimbal (grados), grabando (video)}. */
@@ -79,16 +69,9 @@ class Operacion {
     const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), t = av.t, m = this.marcar;
     if (av.estado !== "volando") return T;
     if (this.t0 === null && !av.posado) this.t0 = t;                           // despegue: empieza a contar el tiempo
-    // ---- choques: cables y torres de la linea, faro ----
-    if (d.torres) {
-      this.dCables = Math.min(...this.cables.map(([A, B]) => Operacion.distSegmento([N, E, up], A, B)));
-      if (this.dCables < 0.6) this.choque = "choque con los cables";
-      d.torres.forEach(([tn, te], i) => {
-        const hb = up - this.bases[i], L = this.laterales[i], a = (N - tn) * L[0] + (E - te) * L[1], b = -(N - tn) * L[1] + (E - te) * L[0];
-        if (hb < d.alto && Math.abs(N - tn) < 1.6 && Math.abs(E - te) < 1.6) this.choque = `choque con la torre ${i + 1}`;
-        if (Math.abs(hb - d.fases - 1.2) < 0.6 && Math.abs(a) < d.brazo + 0.3 && Math.abs(b) < 0.6) this.choque = `choque con la cruceta de la torre ${i + 1}`;
-      });
-    }
+    // ---- choques: paneles de la planta, faro ----
+    if (d.planta) for (const M of this.mesas)
+      if (Math.abs(N - M.n) < M.fondo / 2 + 0.15 && E > M.e0 - 0.15 && E < M.e1 + 0.15 && up - M.y < M.alto + 0.15 && !av.posado) this.choque = "choque con los paneles";
     if (d.faro) {
       const F = d.faro;
       if (Math.hypot(N - F.n, E - F.e) < F.radio + 0.3 && up - this.suelo(F.n, F.e) < F.alto) this.choque = "choque con el faro";
@@ -103,8 +86,13 @@ class Operacion {
       const P = d.parcela;
       if (N > P.n0 && N < P.n1 && E > P.e0 && E < P.e1 && agl < d.minima && !av.posado) { m("baja", "mal"); this._aviso("baja", `¡A ${agl.toFixed(1)} m del cultivo! No bajes de ${d.minima} m`, T); }
     }
-    // ---- linea: distancia de seguridad a los cables ----
-    if (d.torres && this.dCables < d.seguridad) { m("distancia", "mal"); this._aviso("distancia", `¡A ${this.dCables.toFixed(1)} m de los cables! La distancia de seguridad son ${d.seguridad} m`, T); }
+    // ---- paneles: nunca a menos de 3 m sobre ellos ----
+    if (d.planta && !av.posado) {
+      const M0 = this.mesas[0], M1 = this.mesas[this.mesas.length - 1];
+      if (N > M0.n - M0.fondo && N < M1.n + M1.fondo && E > M0.e0 && E < M0.e1 && up - M0.y < M0.alto + d.minima) {
+        m("baja", "mal"); this._aviso("baja", `¡A menos de ${d.minima} m de los paneles! Sube`, T);
+      }
+    }
     // ---- busqueda: el tiempo ----
     if (d.zona && !this.encontrado && this.t0 !== null && t - this.t0 > d.limite_s) { m("tiempo", "mal"); this._aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T); }
     // ---- video: giro suave y orbita ----
@@ -200,18 +188,20 @@ class Operacion {
       if (this.hechos.filter(Boolean).length === d.manchas.length) m("manchas", "ok");
       if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ninguna mancha");
     }
-    if (d.torres) {                                    // linea: los aisladores de cada torre, de 8 a 25 m
+    if (d.planta) {                                    // paneles: cada modulo danado, desde arriba y de 4 a 20 m
       let motivo = null;
-      d.torres.forEach(([tn, te], i) => {
+      this.modulos.forEach((P, i) => {
         if (this.hechos[i]) return;
-        const c = Operacion.camara(av, gimbal, [tn, te, this.bases[i] + d.fases]);
-        if (!Operacion.enFoto(c, 0.8)) return;
-        if (c.d > d.dist[1]) motivo = motivo || `torre ${i + 1} demasiado lejos (${c.d.toFixed(0)} m; a menos de ${d.dist[1]} m)`;
-        else if (c.d < d.dist[0]) motivo = motivo || `torre ${i + 1} demasiado cerca`;
-        else { this.hechos[i] = true; T.push(`Torre ${i + 1} ✓ (${this.hechos.filter(Boolean).length}/${d.torres.length})`); }
+        const c = Operacion.camara(av, gimbal, P);
+        if (!Operacion.enFoto(c, 1)) return;
+        if (gimbal > d.gimbal) motivo = motivo || `los paneles se fotografían desde arriba (cámara a ${d.gimbal}° o más)`;
+        else if (c.d > d.dist[1]) motivo = motivo || `módulo ${i + 1} demasiado lejos (${c.d.toFixed(0)} m; a menos de ${d.dist[1]} m)`;
+        else if (c.d < d.dist[0]) motivo = motivo || `módulo ${i + 1} demasiado cerca`;
+        else if (!Operacion.enFoto(c, 0.8)) motivo = motivo || `módulo ${i + 1} en el borde de la foto: encuádralo`;
+        else { this.hechos[i] = true; T.push(`Módulo dañado ${i + 1} ✓ (${this.hechos.filter(Boolean).length}/${this.modulos.length})`); }
       });
-      if (this.hechos.filter(Boolean).length === d.torres.length) m("torres", "ok");
-      if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin los aisladores de ninguna torre");
+      if (this.hechos.filter(Boolean).length === this.modulos.length) m("defectos", "ok");
+      if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ningún módulo dañado");
     }
     if (d.faro) T.push("Este trabajo es de vídeo: pulsa V para grabar");
     return T;
@@ -232,7 +222,7 @@ class Operacion {
     if (d.solape) a("cobertura", `${(this.cobertura() * 100).toFixed(0)} %`);
     if (d.zona && this.error !== null) a("posicion", `error ${this.error.toFixed(1)} m`);
     if (d.manchas) a("manchas", `${n} de ${d.manchas.length}`);
-    if (d.torres) a("torres", `${n} de ${d.torres.length}`);
+    if (d.planta) a("defectos", `${n} de ${this.modulos.length}`);
   }
 
   /** Lo que toca ahora (texto del panel, con <b>). */
@@ -247,7 +237,7 @@ class Operacion {
     if (d.solape) return hecho("cobertura") ? volver : `Parcela cubierta con solape: <b>${(this.cobertura() * 100).toFixed(0)} %</b> (hace falta ${(d.cubrir * 100).toFixed(0)} %) · altura ${Math.max(0, -av.p[2] - this.suelo(N, E)).toFixed(0)} m`;
     if (d.zona) return this.encontrado ? volver : `Tiempo: <b>${opMMSS(Math.max(0, d.limite_s - (av.t - this.t0)))}</b> · busca la chaqueta roja dentro de los jalones amarillos`;
     if (d.manchas) return n === d.manchas.length ? volver : `Manchas fotografiadas: <b>${n} de ${d.manchas.length}</b> · fotos verticales de 10 a 30 m`;
-    if (d.torres) return n === d.torres.length ? volver : `Torres: <b>${n} de ${d.torres.length}</b> · a ${this.dCables.toFixed(0)} m de los cables`;
+    if (d.planta) return n === this.modulos.length ? volver : `Módulos dañados: <b>${n} de ${this.modulos.length}</b> · recorre las filas con la cámara hacia abajo`;
     if (d.faro) return hecho("orbita") ? volver : `Órbita: <b>${this.orb ? Math.abs(this.orb.acc * R2D).toFixed(0) : 0}°</b> de 330° · a ${Math.hypot(N - d.faro.n, E - d.faro.e).toFixed(0)} m del faro`;
     return volver;
   }

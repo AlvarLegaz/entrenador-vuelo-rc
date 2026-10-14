@@ -94,21 +94,22 @@ def agricultura(h=20, g=-90, baja=False):
 r, u = agricultura(); V.append(vuelo("agricultura ok", "op_agricultura", r + aterrizaje(u, C)))
 r, u = agricultura(40, -90, True); V.append(vuelo("agricultura alta y rozando el cultivo", "op_agricultura", r + aterrizaje(u, C)))
 r, u = agricultura(20, -45); V.append(vuelo("agricultura camara inclinada", "op_agricultura", r + aterrizaje(u, C)))
-# ---- linea ----
-O = ESC["op_linea"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); TT = O["torres"]
-def linea(lado=15, d=0):
+# ---- paneles fotovoltaicos ----
+O = ESC["op_paneles"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); PL = O["planta"]
+def modulo(f, x): s_ = math.sin(math.radians(PL["inclinacion"])); n = PL["n0"] + f * PL["separacion"]; e = PL["e0"] + x; return (n, e)
+def paneles(h=12, g=-90, todos=True):
     r = despegue(C); u = (C[0], C[1], 5)
-    for i, (tn, te) in enumerate(TT):
-        a, b = TT[max(0, i - 1)], TT[min(len(TT) - 1, i + 1)]; L = math.hypot(b[0] - a[0], b[1] - a[1]); lat = (-(b[1] - a[1]) / L, (b[0] - a[0]) / L)
-        p = (tn + lat[0] * lado, te + lat[1] * lado, O["fases"] + 2); pa = (p[0], p[1], suelo(p[0], p[1]) + p[2])
-        y, g = apuntar(pa, (tn, te, suelo(tn, te) + O["fases"]))
-        r += tramo(u, (p[0], p[1], 35)) + tramo((p[0], p[1], 35), p, v=4, y=y, g=g) + foto(p, y, g); u = p
+    for k, (f, x) in enumerate(O["defectos"]):
+        if not todos and k % 2: continue
+        n, e = modulo(f, x); p = (n, e, h); r += tramo(u, (n, e, max(h, 10))) + tramo((n, e, max(h, 10)), p, v=3) + foto(p, 0, g); u = p
     return r, u
-r, u = linea(); V.append(vuelo("linea ok", "op_linea", r + aterrizaje(u, C)))
-r, u = linea(lado=30); V.append(vuelo("linea desde lejos", "op_linea", r + aterrizaje(u, C)))
-mid = ((TT[0][0] + TT[1][0]) / 2, (TT[0][1] + TT[1][1]) / 2)
-V.append(vuelo("linea cruza bajo los cables", "op_linea", despegue(C) + tramo((C[0], C[1], 5), (mid[0], mid[1] - 20, 15)) + tramo((mid[0], mid[1] - 20, 15), (mid[0], mid[1] + 20, 15)) + aterrizaje((mid[0], mid[1] + 20, 15), C)))
-V.append(vuelo("linea choca con un cable", "op_linea", despegue(C) + tramo((C[0], C[1], 5), (mid[0], mid[1] - 20, 30)) + tramo((mid[0], mid[1] - 20, 30), (mid[0], mid[1] + 20, 0.5), v=3), final="roto"))
+r, u = paneles(); V.append(vuelo("paneles ok", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
+r, u = paneles(todos=False); V.append(vuelo("paneles la mitad", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
+r, u = paneles(g=-20); V.append(vuelo("paneles camara horizontal", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
+r, u = paneles(h=30); V.append(vuelo("paneles demasiado alto", "op_paneles", r + aterrizaje((u[0], u[1], 30), C)))
+n, e = modulo(5, 70)
+V.append(vuelo("paneles demasiado bajo", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 5), v=2) + aterrizaje((n, e, 12), C)))
+V.append(vuelo("choca con los paneles", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 1.5), v=2), final="roto"))
 # ---- video ----
 O = ESC["op_video"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); F = O["faro"]
 def orbita(r_=45, h=40, vueltas=1.0, salto=False, rec=1, cambio=0):

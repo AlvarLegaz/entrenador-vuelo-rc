@@ -38,7 +38,7 @@ static func icono(id: String) -> String:
 		"op_fotogrametria": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="40" width="150" height="60" fill="#8d6e63" stroke="#e53935" stroke-width="1.5" stroke-dasharray="5 3"/><rect x="30" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="60" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="90" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="120" y="67" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><rect x="150" y="45" width="40" height="30" fill="#fff" fill-opacity="0.12" stroke="#fff" stroke-opacity="0.7"/><path d="M30 25H170V35H30" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><g transform="translate(100 25) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
 		"op_busqueda": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M0 100L40 60L70 80L110 40L150 75L200 50V110H0z" fill="#5d4f3a"/><circle cx="128" cy="68" r="3.5" fill="#e53935"/><circle cx="128" cy="66" r="16" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M140 78L152 90" stroke="#fff" stroke-width="4" stroke-linecap="round"/><g transform="translate(60 22) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
 		"op_agricultura": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M15 50H185" stroke="#43a047" stroke-width="5"/><path d="M15 59H185" stroke="#43a047" stroke-width="5"/><path d="M15 68H185" stroke="#43a047" stroke-width="5"/><path d="M15 77H185" stroke="#43a047" stroke-width="5"/><path d="M15 86H185" stroke="#43a047" stroke-width="5"/><path d="M15 95H185" stroke="#43a047" stroke-width="5"/><ellipse cx="70" cy="68" rx="16" ry="9" fill="#d4c13a" fill-opacity="0.9"/><ellipse cx="140" cy="85" rx="12" ry="7" fill="#d4c13a" fill-opacity="0.9"/><path d="M110 18L52 66L90 70z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(110 18) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
-		"op_linea": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M37 105L42 50L48 50L53 105"/><path d="M38 95L50 75M52 95L40 75M40 75L48 55M50 75L42 55"/><path d="M29 63H61"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M31 63v6M59 63v6"/></g><g stroke="#b0bec5" stroke-width="1.6" fill="none"><path d="M147 105L152 50L158 50L163 105"/><path d="M148 95L160 75M162 95L150 75M150 75L158 55M160 75L152 55"/><path d="M139 63H171"/></g><g stroke="#8d6e63" stroke-width="2"><path d="M141 63v6M169 63v6"/></g><path d="M31 63Q100 85 141 63M59 63Q100 85 169 63" fill="none" stroke="#263238" stroke-width="1.5"/><circle cx="100" cy="40" r="20" fill="none" stroke="#ff5252" stroke-width="1.2" stroke-dasharray="3 3"/><g transform="translate(100 38) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
+		"op_paneles": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M20 48H180L172 58H28z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M42 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M58 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M74 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M90 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M106 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M122 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M138 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M154 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M170 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M28 63H172L164 73H36z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M50 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M66 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M82 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M98 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M114 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M130 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M146 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M162 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M36 78H164L156 88H44z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M58 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M74 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M90 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M106 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M122 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M138 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M154 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M44 93H156L148 103H52z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M66 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M82 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M98 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M114 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M130 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M146 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M84 64l8 8M92 64l-8 8M120 79l8 8M128 79l-8 8" stroke="#ff5252" stroke-width="2.4"/><g transform="translate(100 22)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g><path d="M100 30L84 64H116z" fill="#4fc3f7" fill-opacity="0.2" stroke="#4fc3f7" stroke-width="1"/></svg>'
 		"op_video": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><path d="M94 100L97 30H103L106 100z" fill="#cfd8dc"/><rect x="95" y="22" width="10" height="9" fill="#ffd54f"/><path d="M93 22H107L100 14z" fill="#b71c1c"/><ellipse cx="100" cy="60" rx="70" ry="22" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M168 64l4 -8 4 8" fill="none" stroke="#ffc83d" stroke-width="2"/><circle cx="45" cy="74" r="4" fill="#e53935"/><g transform="translate(45 74) rotate(0) scale(0.8)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>'
 		"fpv_estacionario": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="91" y="91" width="18" height="10" fill="#2b2b2b" stroke="#ff6d00" stroke-width="1.5"/><path d="M96 93V99M104 93V99M96 96H104" stroke="#fff" stroke-width="1.2"/><g fill="none" stroke="#4fc3f7" stroke-width="1.6"><ellipse cx="100" cy="30" rx="34" ry="8"/><ellipse cx="100" cy="74" rx="34" ry="8"/><path d="M66 30V74M134 30V74"/></g><g transform="translate(100 52) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M150 80V24" stroke="#ffc83d" stroke-width="1.5"/><path d="M146 28L150 22 154 28M146 76L150 82 154 76" fill="none" stroke="#ffc83d" stroke-width="1.5"/><text x="156" y="56" fill="#fff" font-size="10">20 s</text></svg>'
 		"fpv_caja": return '<svg viewBox="0 0 200 110" width="200" height="110" xmlns="http://www.w3.org/2000/svg"><rect x="55" y="25" width="90" height="60" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M55 19L60 31H50z" fill="#4caf50" stroke="#000" stroke-width="0.8"/><path d="M55 79L60 91H50z" fill="#ffeb3b" stroke="#000" stroke-width="0.8"/><path d="M145 79L150 91H140z" fill="#f44336" stroke="#000" stroke-width="0.8"/><path d="M145 19L150 31H140z" fill="#42a5f5" stroke="#000" stroke-width="0.8"/><g transform="translate(100 55) rotate(180)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>'
@@ -196,7 +196,7 @@ const COMPROBACIONES_OP := ["Operador registrado en AESA y piloto con el certifi
 const RUMBOS_VIENTO := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
 class Operaciones extends Control:
 	var p: Node; var d: Dictionary
-	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var checks: VBoxContainer; var b_volar: Button
+	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var checks: VBoxContainer; var b_volar: Button; var briefing: TextureRect
 	var sel := ""
 	var marcas := {}
 	func _init(p_: Node) -> void:
@@ -209,6 +209,8 @@ class Operaciones extends Control:
 		var der := VBoxContainer.new(); der.custom_minimum_size.x = 380; der.add_theme_constant_override("separation", 12)
 		var sd := Tema.desplazable(der); sd.size_flags_horizontal = Control.SIZE_FILL; dos.add_child(sd)
 		var cf := Tema.capa(6); der.add_child(cf[0])
+		briefing = TextureRect.new(); briefing.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; briefing.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; briefing.custom_minimum_size = Vector2(0, 228)
+		(cf[1] as VBoxContainer).add_child(briefing)                       # el mapa del briefing (simulador/operaciones/<id>.jpg)
 		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
 		var cc := Tema.capa(4); der.add_child(cc[0])
 		checks = cc[1]
@@ -228,6 +230,8 @@ class Operaciones extends Control:
 		bb += fila.call("Dron", "DJI Mini 4K (249 g, categoría abierta A1)") + "[/table][/font_size]\n\n[font_size=12][color=#9fb3c8][b]SE EVALÚA[/b][/color][/font_size]\n"
 		for o in M["objetivos"]: bb += "  •  %s\n" % o[1]
 		ficha_rt.text = bb
+		var img := Image.load_from_file(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) if FileAccess.file_exists(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) else null
+		briefing.texture = ImageTexture.create_from_image(img) if img != null else null
 		if not marcas.has(sel):
 			var a := []
 			for i in COMPROBACIONES_OP.size(): a.append(false)
@@ -256,6 +260,91 @@ class Operaciones extends Control:
 		var t := Tarjeta.new(v, 14, Vector2(0, 0)); t.elegida = id == sel
 		t.pulsada.connect(func(): sel = id; refrescar())
 		return t
+
+
+## Multijugador (#pMulti de la web): las salas abiertas del servidor del aula a la izquierda (se refrescan cada 2 s) y, a la
+## derecha, crear una sala (nombre y que se vuela) o el aviso de que hace falta el aula.
+class Multijugador extends Control:
+	var p: Node; var d: Dictionary
+	var lista: VBoxContainer; var vacio: Label; var crear: PanelContainer; var sin_aula: PanelContainer
+	var nombre: LineEdit; var esc: OptionButton; var nota: Label; var reloj: Timer
+	func _init(p_: Node) -> void:
+		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
+		d = Tema.pantalla("Multijugador", "Vuela con tus compañeros en la misma sala: cada uno con su avión, os veis unos a otros"); add_child(d["raiz"])
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
+		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
+		var sc := Tema.desplazable(lista); dos.add_child(sc)
+		var der := VBoxContainer.new(); der.custom_minimum_size.x = 380; der.add_theme_constant_override("separation", 12); dos.add_child(der)
+		var c := Tema.capa(8); crear = c[0]; der.add_child(crear)
+		c[1].add_child(Tema.h2("Crear una sala"))
+		nombre = LineEdit.new(); nombre.max_length = 60; nombre.size_flags_horizontal = Control.SIZE_EXPAND_FILL; c[1].add_child(Tema.fila("Nombre", nombre))
+		esc = OptionButton.new(); esc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; c[1].add_child(Tema.fila("Qué se vuela", esc))
+		esc.item_selected.connect(func(_i): _nota())
+		nota = Tema.sub("", 13); nota.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c[1].add_child(nota)
+		var b := Tema.boton("Crear y entrar →", "BotonPrimGrande", func(): _crear()); b.size_flags_horizontal = Control.SIZE_FILL; c[1].add_child(b)
+		var c2 := Tema.capa(8); sin_aula = c2[0]; der.add_child(sin_aula)
+		c2[1].add_child(Tema.h2("Hace falta el aula"))
+		var t := Tema.etiqueta("El multijugador va por el servidor del aula (el PC del profesor): pon su dirección en Ajustes › Registro y aula. En el registro local no hay multijugador.", 14, Tema.TEXTO, false, true)
+		c2[1].add_child(t)
+		reloj = Timer.new(); reloj.wait_time = 2.0; add_child(reloj); reloj.timeout.connect(func(): if visible: _salas())
+	func _ids_escenario() -> Array:
+		return [["Vuelo libre", Escenarios.datos().keys().filter(func(id): return Escenarios.libre(id))], ["Entrenamientos del avión", Escenarios.misiones_de("avion")],
+				["Entrenamientos del DJI", Escenarios.misiones_de("dron")], ["Entrenamientos del dron FPV", Escenarios.misiones_de("fpv")], ["Operaciones (DJI)", Escenarios.operaciones()]]
+	func refrescar() -> void:
+		var ok: bool = p.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
+		if esc.item_count == 0:
+			for g in _ids_escenario():
+				esc.add_separator(g[0])
+				for id in g[1]: esc.add_item(String(Escenarios.datos()[id]["nombre"])); esc.set_item_metadata(esc.item_count - 1, id)
+			for i in esc.item_count:
+				if not esc.is_item_separator(i): esc.select(i); break
+		if nombre.text == "": nombre.text = "Sala de " + p.nombre_piloto()
+		_nota(); _salas(); reloj.start()
+	func _nota() -> void:
+		var id = esc.get_item_metadata(esc.selected) if esc.selected >= 0 else null
+		if id == null: nota.text = ""; return
+		var E: Dictionary = Escenarios.datos()[id]; var veh: Array = E.get("vehiculos", ["avion"])
+		nota.text = "Cada uno vuela con su avión" + ((" (este es para %s: se cambia solo al entrar)" % ("el dron FPV" if "fpv" in veh else "el DJI")) if not "avion" in veh else "") + \
+			(". En el mapa real se sale del mismo punto." if E.has("mundo") else ".") + (" Cada uno tiene sus objetivos y su resultado, que se guarda como siempre." if not (E["objetivos"] as Array).is_empty() else "")
+	func _salas() -> void:
+		if not p.multi_posible():
+			for x in lista.get_children(): x.queue_free()
+			return
+		var r: Dictionary = await p.aula.api("GET", "salas")
+		for x in lista.get_children(): x.queue_free()
+		lista.add_child(Tema.etiqueta("SALAS ABIERTAS", 13, Tema.SUAVE, true))
+		if not r["ok"]: lista.add_child(Tema.sub("No se puede hablar con el servidor del aula.", 14)); return
+		if (r["datos"] as Array).is_empty(): lista.add_child(Tema.sub("No hay ninguna sala abierta: crea una y diles a tus compañeros que entren.", 14)); return
+		var rej := Tema.rejilla(230, 12); lista.add_child(rej)
+		for s in r["datos"]:
+			var E: Dictionary = Escenarios.datos().get(s["escenario"], { "nombre": s["escenario"] })
+			var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
+			v.add_child(PantallaMisiones.imagen(String(s["escenario"]), 110))
+			var tx := VBoxContainer.new(); tx.add_theme_constant_override("separation", 4)
+			tx.add_child(Tema.rico("[b]%s[/b] [color=#9fb3c8]· %s[/color]" % [s["nombre"], s["codigo"]], 15))
+			tx.add_child(Tema.etiqueta(String(E["nombre"]), 12, Tema.SUAVE, false, true))
+			var nombres := []
+			for j in s["jugadores"]: nombres.append(String(j["nombre"]))
+			tx.add_child(Tema.etiqueta(", ".join(nombres) if not nombres.is_empty() else "nadie todavía", 12, Tema.SUAVE, false, true))
+			v.add_child(Tema.margen(tx, 12, 10, 12, 12))
+			var t := Tarjeta.new(v, 14, Vector2(0, 0)); var sala: Dictionary = s
+			t.pulsada.connect(func(): p.entrar_sala(sala))
+			rej.add_child(t)
+	func _crear() -> void:
+		var id = esc.get_item_metadata(esc.selected)
+		if id == null: return
+		var E: Dictionary = Escenarios.datos()[id]; var lanz = null
+		if E.has("operacion"):
+			var S: Dictionary = E["operacion"]["salida"]; lanz = { "mundo": E["mundo"], "N": S["n"], "E": S["e"], "rumbo": S["rumbo"] }
+		elif E.has("mundo"):
+			if not p.sesion["lanz"].is_empty() and p.sesion["lanz"].get("mundo", "") == E["mundo"]: lanz = p.sesion["lanz"]
+			elif not (E.get("destacados", []) as Array).is_empty():
+				var dd: Dictionary = E["destacados"][0]; var ne: Array = p.lat_lon_a_ne(p.mundo_datos, dd["lat"], dd["lon"])
+				lanz = { "mundo": E["mundo"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": dd["rumbo"] }
+		var r: Dictionary = await p.aula.api("POST", "salas", { "nombre": nombre.text, "escenario": id, "lanz": lanz, "viento": E.get("viento", p.sesion["viento"]) })
+		if r["ok"]: p.entrar_sala(r["datos"])
+		else: p.poner_toast("No se pudo crear la sala: " + String(r["error"]))
 
 
 ## Vuelo libre: los dos sitios (campo del club y Campo de Cartagena), la nota, condiciones y Volar.

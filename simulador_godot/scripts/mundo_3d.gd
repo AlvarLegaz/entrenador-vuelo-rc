@@ -698,7 +698,7 @@ func _arboles_zona(z: Dictionary) -> void:
 	for id in Escenarios.datos():
 		var Es: Dictionary = Escenarios.datos()[id]
 		if Es.get("mundo", "") != m.get("id", ""): continue
-		for dd in Es.get("destacados", []):
+		for dd in Es.get("destacados", []) + ([Es["operacion"]] if Es.has("operacion") else []):      # y donde va la planta fotovoltaica
 			if not dd.has("sin_arboles"): continue
 			var pol := PackedVector2Array()
 			for q in dd["sin_arboles"]: pol.append(Vector2(q[1], q[0]))
@@ -822,32 +822,50 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 		var mt := StandardMaterial3D.new(); mt.albedo_color = Color(Color.html("#c9b13a"), 0.85); mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.cull_mode = BaseMaterial3D.CULL_DISABLED
 		en.call(am, mt, N, E, alt.call(N, E) + 0.12)
-	if d.has("torres"):                                                # linea: torres de celosia, crucetas, aisladores y cables
+	if d.has("planta"):                                                # paneles: mesas de modulos inclinadas al sur, patas y los modulos danados
 		var op := Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 })
-		var acero: StandardMaterial3D = std.call(Color.html("#9ea4a8"), 0.5, 0.5)
-		var barra := func(A: Array, B: Array, r: float, mt: Material) -> void:
-			var a := Vector3(A[1], A[2], -A[0]); var b := Vector3(B[1], B[2], -B[0]); var L := a.distance_to(b)
-			var c := CylinderMesh.new(); c.top_radius = r; c.bottom_radius = r; c.height = L; c.radial_segments = 6; c.rings = 0
-			var mi := MeshInstance3D.new(); mi.mesh = c; mi.material_override = mt; G.add_child(mi)
-			var dirv := (b - a).normalized(); var eje := Vector3.UP.cross(dirv)
-			mi.transform = Transform3D(Basis(eje.normalized(), Vector3.UP.angle_to(dirv)) if eje.length() > 1e-6 else Basis(), (a + b) / 2)
-		var TT: Array = d["torres"]
-		for i in TT.size():
-			var tn: float = TT[i][0]; var te: float = TT[i][1]; var b0: float = op.bases[i]; var L: Array = op.laterales[i]; var F := [L[1], -L[0]]
-			var pata := func(s: float, t: float, h: float) -> Array:
-				var w: float = 1.3 - 0.75 * h / d["alto"]; return [tn + (s * L[0] + t * F[0]) * w, te + (s * L[1] + t * F[1]) * w, b0 + h]
-			for st in [[-1, -1], [-1, 1], [1, -1], [1, 1]]: barra.call(pata.call(st[0], st[1], 0), pata.call(st[0], st[1], d["alto"] - 1), 0.07, acero)
-			var h := 0.0
-			while h < d["alto"] - 2:
-				for c in [[-1, -1, 1, -1], [-1, 1, 1, 1], [-1, -1, -1, 1], [1, -1, 1, 1]]:
-					barra.call(pata.call(c[0], c[1], h), pata.call(c[2], c[3], h + 4), 0.03, acero); barra.call(pata.call(c[2], c[3], h), pata.call(c[0], c[1], h + 4), 0.03, acero)
-				h += 4
-			barra.call([tn + L[0] * d["brazo"], te + L[1] * d["brazo"], b0 + d["fases"] + 1.2], [tn - L[0] * d["brazo"], te - L[1] * d["brazo"], b0 + d["fases"] + 1.2], 0.09, acero)
-			barra.call(pata.call(0, 0, d["alto"] - 1), [tn, te, b0 + d["alto"]], 0.08, acero)
-			for k in [0, 1]:
-				var A: Array = op.enganches[i][k]; barra.call([A[0], A[1], A[2] + 1.2], A, 0.07, std.call(Color.html("#8d6e63")))
-		var mc: StandardMaterial3D = std.call(Color.html("#2f3133"), 0.6, 0.4)
-		for c in op.cables: barra.call(c[0], c[1], 0.025, mc)
+		var P: Dictionary = d["planta"]; var inc: float = P["inclinacion"] * PI / 180
+		var img := Image.create(256, 64, false, Image.FORMAT_RGB8); img.fill(Color.html("#c9d3dc"))
+		for k in 8:
+			img.fill_rect(Rect2i(k * 32 + 1, 1, 30, 62), Color.html("#14294d"))
+			for y in range(8, 64, 8): img.fill_rect(Rect2i(k * 32 + 1, y, 30, 1), Color.html("#3d5277"))
+			for x in range(6, 32, 6): img.fill_rect(Rect2i(k * 32 + x, 1, 1, 62), Color.html("#3d5277"))
+		img.generate_mipmaps()
+		var m_panel := StandardMaterial3D.new(); m_panel.albedo_texture = ImageTexture.create_from_image(img); m_panel.roughness = 0.25; m_panel.metallic = 0.3
+		m_panel.uv1_scale = Vector3(P["largo"] / 8.0, 1, 1); m_panel.texture_repeat = true
+		var m_acero: StandardMaterial3D = std.call(Color.html("#b0b6bb"), 0.6, 0.4)
+		for M in op.mesas:
+			var q := QuadMesh.new(); q.size = Vector2(P["largo"], P["ancho"])
+			var mi := MeshInstance3D.new(); mi.mesh = q; mi.material_override = m_panel; G.add_child(mi)
+			mi.position = Vector3((M["e0"] + M["e1"]) / 2, M["y"] + P["h0"] + P["ancho"] * sin(inc) / 2 + 0.03, -M["n"])
+			mi.rotation.x = -(PI / 2 - inc)                       # cara hacia arriba y al sur, borde norte alto
+			var marco := BoxMesh.new(); marco.size = Vector3(P["largo"], 0.05, P["ancho"])
+			var mb: MeshInstance3D = en.call(marco, m_acero, M["n"], (M["e0"] + M["e1"]) / 2, M["y"] + P["h0"] + P["ancho"] * sin(inc) / 2); mb.rotation.x = inc
+
+		# patas (delante cortas, detras largas) cada 6 m: un solo MultiMesh para todas
+		var patas := []
+		for M in op.mesas:
+			var x: float = M["e0"] + 2
+			while x < M["e1"]:
+				for sg in [-1, 1]: patas.append([x, M, sg])
+				x += 6
+		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; var bp := BoxMesh.new(); bp.size = Vector3(0.08, 1, 0.08); mm.mesh = bp; mm.instance_count = patas.size()
+		for k in patas.size():
+			var q: Array = patas[k]; var Mq: Dictionary = q[1]; var h: float = P["h0"] + (P["ancho"] * sin(inc) if q[2] > 0 else 0.0) * 0.92
+			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(1, h, 1)), Vector3(q[0], Mq["y"] + h / 2, -(Mq["n"] + q[2] * Mq["fondo"] * 0.42))))
+		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.material_override = m_acero; G.add_child(mmi)
+		for k in op.modulos.size():                                   # modulos danados: cristal roto (blanco) o muy sucio (marron)
+			var md: Array = op.modulos[k]; var roto := k % 2 == 0
+			var im := Image.create(64, 128, false, Image.FORMAT_RGB8); im.fill(Color.html("#24365c" if roto else "#6b5a3a"))
+			if roto:
+				for r in 9:
+					var a := r * 0.7
+					for t in 40: var pt := Vector2(32, 64) + Vector2(40 * cos(a), 70 * sin(a)) * t / 40.0; if pt.x >= 0 and pt.y >= 0 and pt.x < 63 and pt.y < 127: im.fill_rect(Rect2i(int(pt.x), int(pt.y), 2, 2), Color.html("#e8eef5"))
+			else:
+				for r in 40: im.fill_rect(Rect2i((r * 29) % 64 - 3, (r * 53) % 128 - 3, 6 + r % 6, 6 + r % 6), Color8(150 + (r * 37) % 60, 120 + (r * 23) % 40, 80))
+			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
+			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
+			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.rotation.x = -(PI / 2 - inc)
 
 var _sing: Node3D
 func _singulares() -> void:

@@ -6,6 +6,7 @@
 <title>Entrenador Vuelo RC · Panel del profesor</title>
 <!-- Panel del profesor del simulador del aula. Necesita el servidor del aula (aula/servidor_aula.py)
      y el PIN del profesor. La sesion dura 8 h o hasta pulsar "Salir". -->
+<script src="escenarios.js"></script>
 <style>
   :root { --fondo: #0d1b2a; --panel: #13263b; --borde: #2c4a6b; --texto: #e8eef5; --suave: #9fb3c8; --acento: #ffd34d;
           --ok: #66d36e; --mal: #ff6e66; }
@@ -62,7 +63,7 @@
       <button id="salir">Salir</button></div>
     <div class="pestanas">
       <button data-p="alumnos" class="activa">Alumnos</button><button data-p="historial">Historial</button>
-      <button data-p="copias">Copias y registro</button><button data-p="ajustes">PIN</button>
+      <button data-p="multi">Multijugador</button><button data-p="copias">Copias y registro</button><button data-p="ajustes">PIN</button>
     </div>
     <div class="err" id="err"></div>
 
@@ -86,6 +87,18 @@
         <span class="sub" id="nVuelos"></span>
       </div>
       <div class="tarjeta tabla"><table id="tVuelos"></table></div>
+    </section>
+
+    <section id="p-multi" style="display:none">
+      <div class="barra"><span class="sub">Salas abiertas por los alumnos desde el simulador (Multijugador). Se ve en directo dónde está cada uno.</span></div>
+      <div id="mSalas" class="barra" style="flex-wrap:wrap"></div>
+      <div id="mSala" style="display:none">
+        <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div><button id="mCerrar">Cerrar la sala</button></div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+          <canvas id="mMapa" width="460" height="460" class="tarjeta" style="padding:0;max-width:100%"></canvas>
+          <div class="tarjeta tabla" style="flex:1;min-width:320px"><table id="tJugadores"></table></div>
+        </div>
+      </div>
     </section>
 
     <section id="p-copias" style="display:none">
@@ -168,7 +181,8 @@ async function abrirPanel() {
 // ---------- pestanas ----------
 document.querySelectorAll(".pestanas button").forEach(b => b.onclick = () => {
   document.querySelectorAll(".pestanas button").forEach(x => x.classList.toggle("activa", x === b));
-  for (const p of ["alumnos", "historial", "copias", "ajustes"]) $("p-" + p).style.display = p === b.dataset.p ? "" : "none";
+  for (const p of ["alumnos", "historial", "multi", "copias", "ajustes"]) $("p-" + p).style.display = p === b.dataset.p ? "" : "none";
+  clearInterval(MP.timer); if (b.dataset.p === "multi") { cargarSalas(); MP.timer = setInterval(cargarSalas, 1000); }
   if (b.dataset.p === "historial") cargarVuelos().catch(fallo);
   if (b.dataset.p === "copias") cargarCopias().catch(fallo);
   if (b.dataset.p === "alumnos") cargarAlumnos().catch(fallo);
@@ -285,6 +299,47 @@ async function exportar(tipo) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 $("exAlumnos").onclick = () => exportar("alumnos").catch(fallo); $("exVuelos").onclick = () => exportar("vuelos").catch(fallo);
+
+// ---------- multijugador: salas en directo ----------
+const MP = { timer: null, sel: null };
+const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
+async function cargarSalas() {
+  let salas = []; try { salas = await api("GET", "salas"); } catch (e) { fallo(e); return; }
+  if (!salas.some(x => x.codigo === MP.sel)) MP.sel = salas.length ? salas.reduce((m, x) => x.jugadores.length > m.jugadores.length ? x : m).codigo : null;   // la que tenga mas pilotos
+  $("mSalas").innerHTML = salas.length ? "" : '<span class="sub">No hay ninguna sala abierta.</span>';
+  for (const x of salas) {
+    const b = document.createElement("button"); b.className = x.codigo === MP.sel ? "prim" : "";
+    b.textContent = `${x.nombre} · ${x.codigo} · ${x.jugadores.length} piloto${x.jugadores.length === 1 ? "" : "s"}`; b.onclick = () => { MP.sel = x.codigo; cargarSalas(); };
+    $("mSalas").appendChild(b);
+  }
+  const s = salas.find(x => x.codigo === MP.sel);
+  $("mSala").style.display = s ? "" : "none"; if (!s) return;
+  $("mTitulo2").textContent = `${s.nombre} (sala ${s.codigo})`; $("mEsc").textContent = nombreEsc(s.escenario);
+  const J = s.jugadores, colores = ["#4fc3f7", "#ffd34d", "#66d36e", "#ff6e66", "#ce93d8", "#ffab40", "#80cbc4", "#f48fb1"];
+  $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th>Objetivos</th><th>En vuelo</th></tr>" +
+    J.map((j, i) => `<tr><td style="color:${colores[i % 8]}">●</td><td>${esc(j.nombre)}</td><td>${esc(j.avion)}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
+      <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td>${j.objs && j.objs[1] ? j.objs[0] + "/" + j.objs[1] : "—"}</td>
+      <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td></tr>`).join("") ||
+    '<tr><td colspan="8" class="sub">Nadie en la sala ahora mismo</td></tr>';
+  // mapa: el punto de salida y los pilotos, con la escala que haga falta para verlos a todos
+  const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : [0, 0];
+  const lejos = Math.max(60, ...J.map(j => Math.max(Math.abs(j.p[0] - c0[0]), Math.abs(j.p[1] - c0[1])))) * 1.25, k = W / 2 / lejos;
+  const X = e => W / 2 + (e - c0[1]) * k, Y = n => W / 2 - (n - c0[0]) * k;
+  g.fillStyle = "#0b1726"; g.fillRect(0, 0, W, W); g.strokeStyle = "#2c4a6b"; g.lineWidth = 1;
+  const paso = [10, 20, 50, 100, 200, 500, 1000, 2000].find(v => v * k > 45) || 5000;
+  for (let v = -Math.ceil(lejos / paso) * paso; v <= lejos; v += paso) { g.beginPath(); g.moveTo(X(c0[1] + v), 0); g.lineTo(X(c0[1] + v), W); g.moveTo(0, Y(c0[0] + v)); g.lineTo(W, Y(c0[0] + v)); g.stroke(); }
+  g.fillStyle = "#ff6d00"; g.beginPath(); g.arc(W / 2, W / 2, 7, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "bold 10px sans-serif"; g.textAlign = "center"; g.fillText("H", W / 2, W / 2 + 3.5);
+  J.forEach((j, i) => {
+    const x = X(j.p[1]), y = Y(j.p[0]), q = j.q || [1, 0, 0, 0], yaw = Math.atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] * q[2] + q[3] * q[3]));
+    g.save(); g.translate(x, y); g.rotate(yaw); g.fillStyle = colores[i % 8]; g.strokeStyle = "#000"; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
+    g.fillStyle = colores[i % 8]; g.textAlign = "left"; g.font = "12px sans-serif"; g.fillText(`${j.nombre} · ${Math.max(0, j.agl || 0).toFixed(0)} m`, x + 9, y - 6);
+  });
+  g.fillStyle = "#9fb3c8"; g.textAlign = "left"; g.fillText(`cuadrícula de ${paso} m · N arriba`, 8, W - 8);
+}
+$("mCerrar").onclick = async () => {
+  if (!MP.sel || !(await modal("Cerrar la sala", "Los alumnos que estén dentro seguirán volando solos.", [["Cancelar", false], ["Cerrar la sala", true, "peligro"]]))) return;
+  try { await api("DELETE", "salas/" + MP.sel); MP.sel = null; cargarSalas(); } catch (e) { fallo(e); }
+};
 
 // ---------- copias y registro ----------
 async function cargarCopias() {

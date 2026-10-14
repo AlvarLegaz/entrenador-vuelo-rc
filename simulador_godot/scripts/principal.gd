@@ -90,6 +90,7 @@ var sonido: Sonido
 var ui: CanvasLayer
 var hud: HudVuelo
 var hud_dji: HudDji
+var briefing: PanelContainer; var briefing_img: TextureRect
 var hud_fpv: HudFPV                 # OSD de Betaflight del dron FPV
 var pantallas := {}
 var condiciones: PantallaMisiones.Condiciones
@@ -403,10 +404,25 @@ func _construir_ui() -> void:
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
-				  "pOperaciones": PantallaMisiones.Operaciones.new(self),
+				  "pOperaciones": PantallaMisiones.Operaciones.new(self), "pMulti": PantallaMisiones.Multijugador.new(self),
 				  "pLanzamiento": PantallaLanzamiento.new(self), "pAjustes": PantallaAjustes.new(self),
 				  "pResultado": PantallaResultado.Resultado.new(self), "pProgreso": PantallaResultado.Progreso.new(self) }
 	for k in pantallas: pantallas[k].visible = false; raiz.add_child(pantallas[k])
+	# multijugador: quien hay en la sala (#salaInfo de la web), abajo a la derecha
+	sala_info = PanelContainer.new(); sala_info.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.5), Color(0, 0, 0, 0), 10, 0, 12, 8))
+	sala_info.anchor_left = 1; sala_info.anchor_right = 1; sala_info.anchor_top = 1; sala_info.anchor_bottom = 1
+	sala_info.offset_right = -16; sala_info.offset_bottom = -236; sala_info.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sala_info.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	sala_info.mouse_filter = Control.MOUSE_FILTER_IGNORE; sala_info.visible = false; raiz.add_child(sala_info)
+	sala_info_rt = Tema.rico("", 12); sala_info_rt.fit_content = true; sala_info_rt.autowrap_mode = TextServer.AUTOWRAP_OFF; sala_info.add_child(sala_info_rt)
+	# trabajos: el briefing (la imagen de la orden de trabajo) encima del vuelo, con B o el boton del mapa (#briefing de la web)
+	briefing = PanelContainer.new(); briefing.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.6), Color(1, 1, 1, 0.25), 12, 1, 8, 8))
+	briefing.visible = false; briefing.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; briefing.tooltip_text = "Pulsa B, Esc o haz clic para cerrarlo"
+	briefing.gui_input.connect(func(ev: InputEvent): if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT: ver_briefing(false))
+	var bv := VBoxContainer.new(); bv.add_theme_constant_override("separation", 6); bv.mouse_filter = Control.MOUSE_FILTER_IGNORE; briefing.add_child(bv)
+	briefing_img = TextureRect.new(); briefing_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; briefing_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	briefing_img.mouse_filter = Control.MOUSE_FILTER_IGNORE; bv.add_child(briefing_img)
+	var bl := Tema.rico("[center][color=#9fb3c8]Briefing de la orden de trabajo · [b]B[/b] o clic para cerrar[/color][/center]", 12); bl.fit_content = true; bl.autowrap_mode = TextServer.AUTOWRAP_OFF; bl.mouse_filter = Control.MOUSE_FILTER_IGNORE; bv.add_child(bl)
+	raiz.add_child(briefing)
 	pausa = Capas.pausa(self); raiz.add_child(pausa["raiz"])
 	carga = Capas.carga(); raiz.add_child(carga["raiz"])
 	modal = Capas.modal(); raiz.add_child(modal["raiz"])
@@ -459,6 +475,7 @@ func con_piloto(luego: Callable) -> void:
 	if aula.activo and sesion["alumno"] == null and not sesion["sin_registrar"]: ir_pilotos(luego)
 	else: luego.call()
 func ir_inicio() -> void:
+	salir_sala()                                 # al volver al inicio se sale de la sala multijugador
 	pantallas["pInicio"].refrescar(); mostrar("pInicio")
 func elegir_avion(id: String) -> void:
 	sesion["avion"] = id; _guardar()
@@ -466,6 +483,105 @@ func ir_hangar() -> void:
 	pantallas["pHangar"].refrescar(); mostrar("pHangar")
 func ir_entrenamientos() -> void:
 	mostrar("pEntrenamientos"); pantallas["pEntrenamientos"].refrescar()
+# =====================================================================
+#  MULTIJUGADOR: salas del servidor del aula (MULTI de la web; el mismo protocolo, se puede volar mezclado). Cada
+#  simulador manda su estado 10 veces por segundo y recibe el de los demas de su sala, que se dibujan como "fantasmas"
+#  (sin choques entre ellos, cada uno con su fisica).
+# =====================================================================
+var sala := {}                  # la sala en la que se esta ({} = ninguna)
+var multi_otros := {}           # id -> el ultimo estado recibido de cada uno, con "recibido" (s)
+var _multi_id := ""
+var _multi_enviando := false
+var _t_csc := 0.0               # DJI: tiempo con las palancas en la combinacion de arranque (CSC)
+var _multi_t := 0.0
+var _fantasmas := {}            # id -> { nodo: Avion3D, et: Label3D, p: Array (NED), avion, nombre }
+var sala_info: PanelContainer
+var sala_info_rt: RichTextLabel
+func multi_id() -> String:
+	if _multi_id == "": _multi_id = Aula.uuid4()
+	return _multi_id
+func multi_posible() -> bool: return aula.activo and aula.modo == "servidor" and aula.url != ""
+func nombre_piloto() -> String: return String(sesion["alumno"]["nombre"]) if sesion["alumno"] != null else "Invitado " + multi_id().substr(0, 4)
+func ir_multi() -> void:
+	mostrar("pMulti"); pantallas["pMulti"].refrescar()
+## Entra en una sala: su escenario, su punto de salida y su viento, con un vehiculo que valga para el; y a volar.
+func entrar_sala(s: Dictionary) -> void:
+	if not Escenarios.datos().has(s["escenario"]): poner_toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return
+	var E: Dictionary = Escenarios.datos()[s["escenario"]]
+	sala = s; multi_otros = {}
+	var veh: Array = E.get("vehiculos", ["avion", "dron", "fpv"])
+	if not Escenarios.vehiculo_de(sesion["avion"]) in veh:
+		for a in ids_aviones:
+			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
+	sesion["escenario"] = s["escenario"]
+	if s.get("lanz") != null: sesion["lanz"] = s["lanz"]
+	if s.get("viento") != null and not E.has("viento"): sesion["viento"] = s["viento"]
+	poner_toast("Sala %s: %s" % [s["codigo"], s["nombre"]]); empezar()
+func salir_sala() -> void:
+	if sala.is_empty(): return
+	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false
+	aula.api("POST", "salas/%s/salir" % s["codigo"], { "id": multi_id() })
+## Manda el estado propio y recoge el de los demas (enviarSala de la web).
+func _enviar_sala() -> void:
+	if sala.is_empty() or _multi_enviando or av.is_empty() or modelo == null: return
+	_multi_enviando = true
+	var ok := 0; var tot := 0
+	if ev != null:
+		for k in ev.obj:
+			tot += 1
+			if ev.obj[k]["estado"] == "ok": ok += 1
+	var e := { "id": multi_id(), "nombre": nombre_piloto(), "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
+			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot] if ev != null else null,
+			   "tvuelo": vuelo["tVuelo"] if vuelo != null else 0.0, "final": vuelo["final"] if vuelo != null else null, "gimbal": av.get("gimbal", 0.0) }
+	var cod: String = sala["codigo"]
+	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
+	_multi_enviando = false
+	if sala.is_empty() or sala["codigo"] != cod: return
+	if r["ok"]:
+		var t := Time.get_ticks_msec() / 1000.0; var vivos := {}
+		for o in r["datos"]["otros"]: o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true
+		for k in multi_otros.keys():
+			if not vivos.has(k): multi_otros.erase(k)
+	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
+## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
+## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
+func _poner_fantasmas() -> void:
+	var ahora := Time.get_ticks_msec() / 1000.0; var vivos := {}
+	for id in multi_otros:
+		var f: Dictionary = multi_otros[id]; vivos[id] = true
+		var g = _fantasmas.get(id)
+		if g == null or g["avion"] != f["avion"] or g["nombre"] != f["nombre"]:
+			if g != null: g["nodo"].queue_free(); g["et"].queue_free()
+			var datos := DatosComunes.avion(String(f["avion"]))
+			if datos.is_empty(): continue
+			var nodo := Avion3D.new(datos); add_child(nodo)
+			var et := Label3D.new(); et.text = String(f["nombre"]); et.billboard = BaseMaterial3D.BILLBOARD_ENABLED; et.fixed_size = true; et.pixel_size = 0.0009
+			et.font_size = 26; et.outline_size = 8; et.modulate = Color("#4fc3f7"); et.no_depth_test = true; et.font = Tema.negrita; add_child(et)
+			g = { "nodo": nodo, "et": et, "p": (f["p"] as Array).duplicate(), "avion": f["avion"], "nombre": f["nombre"] }; _fantasmas[id] = g
+		var dt := minf(0.3, ahora - float(f["recibido"])); var vn: Array = f.get("vn", [0.0, 0.0, 0.0])
+		var obj := [f["p"][0] + vn[0] * dt, f["p"][1] + vn[1] * dt, f["p"][2] + vn[2] * dt]
+		var lejos := Vector3(obj[0] - g["p"][0], obj[1] - g["p"][1], obj[2] - g["p"][2]).length() > 30
+		for i in 3: g["p"][i] = obj[i] if lejos else g["p"][i] + (obj[i] - g["p"][i]) * 0.35
+		var gas: float = f.get("gas", 0.0)
+		g["nodo"].actualizar({ "p": g["p"], "q": f["q"], "de": 0.0, "dr": 0.0, "da": 0.0, "gases": gas, "estado": f.get("estado", "volando"),
+							   "gimbal": f.get("gimbal", 0.0) if f.get("gimbal") != null else 0.0, "motores": [gas, gas, gas, gas] })
+		g["et"].position = Avion3D.ned(g["p"]) + Vector3(0, 1.2, 0)
+	for id in _fantasmas.keys():
+		if not vivos.has(id): _fantasmas[id]["nodo"].queue_free(); _fantasmas[id]["et"].queue_free(); _fantasmas.erase(id)
+## Panel de la sala en vuelo: quien esta y como va.
+func _pintar_sala_info() -> void:
+	sala_info.visible = not sala.is_empty() and pantalla_actual == ""
+	if briefing.visible and pantalla_actual != "": briefing.visible = false
+	if not sala_info.visible: return
+	var t := "[color=#4fc3f7][b]Sala %s[/b][/color] · %s" % [sala["codigo"], sala["nombre"]]
+	if multi_otros.is_empty(): t += "\nTodavía no hay nadie más"
+	for id in multi_otros:
+		var o: Dictionary = multi_otros[id]; var objs = o.get("objs")
+		t += "\n● %s · %s · %s%s" % [o["nombre"], String(DatosComunes.avion(String(o["avion"])).get("nombre", o["avion"])),
+			("%d m" % int(round(maxf(0, o.get("agl", 0.0))))) if o.get("estado", "") == "volando" else String(o.get("estado", "")),
+			(" · %d/%d" % [objs[0], objs[1]]) if objs != null and objs[1] > 0 else ""]
+	sala_info_rt.text = t
+
 func ir_operaciones() -> void:
 	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
 ## Empieza el trabajo elegido: con el DJI (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
@@ -548,6 +664,7 @@ func empezar() -> void:
 	if avion3d: avion3d.queue_free()
 	avion3d = Avion3D.new(A); add_child(avion3d)
 	_texto_ayuda(A)
+	hud_dji.b_briefing.visible = E.has("operacion"); ver_briefing(false)   # trabajos: el briefing a mano (B)
 	# el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
 	if es_dron() != era_dron: camara = 3 if es_dron() else 1
 	era_dron = es_dron()
@@ -562,6 +679,20 @@ func empezar() -> void:
 	carga["raiz"].visible = false
 	reiniciar(); mostrar("")
 
+## Briefing de los trabajos: la misma imagen de la orden de trabajo (la zona y el despegue, sin las soluciones), encima del vuelo.
+func ver_briefing(ver = null) -> void:
+	var op: bool = Escenarios.datos()[sesion["escenario"]].has("operacion")
+	var abrir: bool = op and (not briefing.visible if ver == null else bool(ver))
+	if abrir:
+		var f := DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sesion["escenario"])
+		var img := Image.load_from_file(f) if FileAccess.file_exists(f) else null
+		briefing_img.texture = ImageTexture.create_from_image(img) if img != null else null
+		var w := minf(900, get_viewport().get_visible_rect().size.x * 0.7); briefing_img.custom_minimum_size = Vector2(w, w * 2 / 3.0)
+		briefing.size = Vector2.ZERO; briefing.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	briefing.visible = abrir
+	var s := HudDji._redondo(44, Color("#ffb74d") if abrir else Color(0, 0, 0, 0.55), Color("#ffb74d") if abrir else Color(1, 1, 1, 0.4))
+	for e in ["normal", "focus", "hover", "pressed"]: hud_dji.b_briefing.add_theme_stylebox_override(e, s)
+
 func _texto_ayuda(A: Dictionary) -> void:
 	var t := "[font_size=18][b]Controles[/b][/font_size]\n"
 	if es_fpv():
@@ -572,9 +703,9 @@ func _texto_ayuda(A: Dictionary) -> void:
 		t += "[color=#8be08f]Mejor con una emisora RC por USB (el gas no tiene muelle) o un mando; con el teclado es muy difícil. Empieza en ANGLE.[/color]\n"
 	elif es_dron():
 		t += "[b]↓ ↑[/b] atrás / adelante · [b]← →[/b] laterales · [b]W[/b] / [b]S[/b] sube / baja · [b]A[/b] / [b]D[/b] gira sobre sí mismo\n"
-		t += "[b]M[/b] modo Cine / Normal / Sport · [b]Q[/b] / [b]E[/b] gimbal · [b]F[/b] foto · [b]V[/b] vídeo · [b]H[/b] volver a casa · [b]L[/b] armar · [b]R[/b] empezar de nuevo\n"
+		t += "[b]M[/b] modo Cine / Normal / Sport · [b]Q[/b] / [b]E[/b] gimbal · [b]F[/b] foto · [b]V[/b] vídeo · [b]H[/b] volver a casa · [b]L[/b] armar · [b]R[/b] empezar de nuevo · [b]B[/b] briefing (trabajos)\n"
 		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / del dron · [b]I[/b] pantalla de la app · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b] (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa\n"
+		t += "[b]Mando[/b] (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · combinación de palancas (CSC: las dos abajo y hacia dentro o hacia fuera, medio segundo): arrancar motores · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa\n"
 	else:
 		t += "[b]↓ ↑[/b] profundidad (↓ tira: morro arriba) · [b]← →[/b] %s\n" % String(A.get("mandos", {}).get("izq_der", "timón"))
 		t += "[b]W[/b] / [b]S[/b] gases · [b]Espacio[/b] cortar gases · [b]L[/b] lanzar · [b]R[/b] empezar de nuevo\n"
@@ -601,7 +732,7 @@ func reiniciar() -> void:
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
 	if E.has("enVuelo"): _empezar_en_vuelo(); return
-	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧) o L para armar" if es_dron() else "Pulsa L para lanzar")
+	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" if es_dron() else "Pulsa L para lanzar")
 
 func _nuevo_vuelo(h0: float) -> void:
 	vuelo = { "id": Aula.uuid4(), "inicio": Aula.ahora_iso(), "inicio_local": Time.get_datetime_dict_from_system(), "tVuelo": 0.0, "filas": [], "final": "",
@@ -974,7 +1105,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_3: camara = 3
 		get_viewport().set_input_as_handled(); return
 	if k == KEY_ESCAPE:     # con la ventana de controles abierta, Esc la cierra (y sigue el vuelo); si no, pausa
-		if hud.ayuda.visible: hud.ayuda.visible = false; poner_pausa(false)
+		if briefing.visible: ver_briefing(false)
+		elif hud.ayuda.visible: hud.ayuda.visible = false; poner_pausa(false)
 		else: poner_pausa(not pausado)
 		get_viewport().set_input_as_handled(); return
 	if pausado: return
@@ -993,6 +1125,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_L:
 			if not es_fpv(): lanzar()
 		KEY_R: reiniciar()
+		KEY_B: ver_briefing()
 		KEY_SPACE: av["gases"] = 0.0
 		KEY_1: camara = 1
 		KEY_2: camara = 2
@@ -1045,6 +1178,10 @@ func _leer_mando(dt: float) -> bool:
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
 		if bs[JOY_BUTTON_BACK]: reiniciar()
 		if M.perfil == "consola": M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)   # gatillos: rueda del gimbal
+		# CSC (combinacion de palancas de DJI): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
+		var csc := ly > 0.8 and ry > 0.8 and ((lx > 0.6 and rx < -0.6) or (lx < -0.6 and rx > 0.6))
+		_t_csc = _t_csc + dt if csc else 0.0
+		if _t_csc > 0.5 and av.get("estado", "") == "en mano": _t_csc = -1e9; lanzar(); poner_toast("Motores en marcha (CSC): sube la palanca izquierda para despegar")
 	elif pantalla_actual == "" and not pausado:
 		if bs[JOY_BUTTON_A]: lanzar()
 		if bs[JOY_BUTTON_B]: av["gases"] = 0.0
@@ -1100,6 +1237,9 @@ func _leer_gas_teclado(dt: float) -> void:
 # =====================================================================
 func _process(dt_real: float) -> void:
 	var dt := minf(0.1, dt_real)
+	if not sala.is_empty():                           # multijugador: 10 veces por segundo
+		_multi_t += dt_real
+		if _multi_t >= 0.1: _multi_t = 0.0; _enviar_sala()
 	if pantalla_actual != "" or av.is_empty() or modelo == null:
 		_acum = 0.0
 		if pantalla_actual != "": _leer_mando_en_menu()
@@ -1116,10 +1256,11 @@ func _process(dt_real: float) -> void:
 		var b: Vector3 = vista.base + Vector3(1.5, 1.7, 2)
 		sonido.actualizar(av, Sonido.lejos_de(b.distance_to(Avion3D.ned(av["p"]))), camara == 1)
 		_t_obj += dt
-		if _t_obj > 0.2: _t_obj = 0; _pintar_objetivos()
+		if _t_obj > 0.2: _t_obj = 0; _pintar_objetivos(); _pintar_sala_info()
 	var t_fis := Time.get_ticks_usec() - t_us
 	avion3d.camara_fpv = es_fpv() and camara == 3     # con la camara FPV el dron no se dibuja
 	avion3d.actualizar(av)
+	if not sala.is_empty() or not _fantasmas.is_empty(): _poner_fantasmas()
 	vista.actualizar_manga(ent.viento["actual"])
 	_camara()
 	_hud()

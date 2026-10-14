@@ -2,9 +2,9 @@ class_name Operacion
 extends RefCounted
 ## OPERACIONES: los trabajos de operador de dron (escenarios.js, "operacion") en el mapa real de Cartagena, con el DJI.
 ## Traduccion literal de simulador/js/operaciones.js (pruebas/prueba_operaciones.gd la compara con la web): evalua lo que
-## pide cada orden de trabajo (inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, linea electrica y
-## video) y las normas del operador (120 m, a la vista, fuera de la zona del aeropuerto, aterrizar en el punto de despegue
-## y con reserva de bateria), y detecta los choques con los cables, las torres y el faro. Lo dibuja mundo_3d.gd
+## pide cada orden de trabajo (inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, paneles
+## fotovoltaicos y video) y las normas del operador (120 m, a la vista, fuera de la zona del aeropuerto, aterrizar en el punto de despegue
+## y con reserva de bateria), y detecta los choques con los paneles y el faro. Lo dibuja mundo_3d.gd
 ## (poner_operacion).
 ##
 ## Uso: op = Operacion.new(datos, marcar, anotar, {casa: [N, E], suelo: Callable(N, E), h0}); en cada paso de la fisica
@@ -33,16 +33,13 @@ var t0 = null
 var fotos := 0
 var hechos := []
 var celdas := []
-var bases := []
-var laterales := []
-var enganches := []
-var cables := []
+var mesas := []
+var modulos := []
 var encontrado := false
 var error = null
 var orb = null
 var yaw_ant = null
 var giro := 0.0
-var d_cables := INF
 
 static func desenrollar(x: float) -> float: return x - TAU * round(x / TAU)
 static func _n(x) -> String: return PasadaBaja._num(float(x))
@@ -52,7 +49,7 @@ func _cuenta() -> int: return hechos.filter(func(x): return x).size()
 func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dictionary) -> void:
 	d = datos; marcar = marcar_; anotar = anotar_; casa = mundo["casa"]; suelo = mundo["suelo"]; h0 = mundo["h0"]
 	var nh := 0
-	for k in ["puntos", "manchas", "torres"]:
+	for k in ["puntos", "manchas", "defectos"]:
 		if d.has(k): nh = (d[k] as Array).size()
 	for i in nh: hechos.append(false)
 	if d.has("parcela") and d.has("solape"):                   # fotogrametria: celdas de 5 m de la parcela
@@ -61,7 +58,7 @@ func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dicti
 			var e: float = P["e0"] + 2.5
 			while e < P["e1"]: celdas.append([n, e, 0]); e += 5
 			n += 5
-	if d.has("torres"): _linea()
+	if d.has("planta"): _planta()
 
 ## Punto de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo).
 func z(n: float, e: float, q: Dictionary) -> float:
@@ -79,44 +76,24 @@ static func en_foto(c: Dictionary, k: float) -> bool:
 func _aviso(clave: String, texto: String, lista: Array) -> void:
 	if not avisos.get(clave, false): avisos[clave] = true; lista.append(texto)
 
-## Linea electrica: postes de cada torre y vanos de los cables (dos fases y el de tierra), con su flecha.
-func _linea() -> void:
-	var T: Array = d["torres"]; var n := T.size()
-	for q in T: bases.append(suelo.call(q[0], q[1]))
-	for i in n:
-		var a: Array = T[maxi(0, i - 1)]; var b: Array = T[mini(n - 1, i + 1)]; var L := Vector2(b[0] - a[0], b[1] - a[1]).length()
-		laterales.append([-(b[1] - a[1]) / L, (b[0] - a[0]) / L])
-	for i in n:
-		var r := []
-		for k in [-1, 1, 0]:
-			r.append([T[i][0] + laterales[i][0] * d["brazo"] * k, T[i][1] + laterales[i][1] * d["brazo"] * k, bases[i] + (d["alto"] if k == 0 else d["fases"])])
-		enganches.append(r)
-	for i in n - 1:
-		for k in 3:
-			var A: Array = enganches[i][k]; var B: Array = enganches[i + 1][k]
-			var M := [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2 - d["flecha"]]
-			cables.append([A, M]); cables.append([M, B])
-static func dist_segmento(P: Array, A: Array, B: Array) -> float:
-	var ab := Vector3(B[0] - A[0], B[1] - A[1], B[2] - A[2]); var ap := Vector3(P[0] - A[0], P[1] - A[1], P[2] - A[2])
-	var t := clampf(ap.dot(ab) / ab.dot(ab), 0, 1)
-	return (ap - t * ab).length()
+## Planta fotovoltaica: filas de mesas de paneles de este a oeste, inclinadas hacia el sur (_planta de la web).
+func _planta() -> void:
+	var P: Dictionary = d["planta"]; var c := cos(P["inclinacion"] * D2R); var s := sin(P["inclinacion"] * D2R)
+	for i in int(P["filas"]):
+		var n: float = P["n0"] + i * P["separacion"]
+		mesas.append({ "n": n, "e0": float(P["e0"]), "e1": P["e0"] + P["largo"], "fondo": P["ancho"] * c, "y": suelo.call(n, P["e0"] + P["largo"] / 2), "alto": P["h0"] + P["ancho"] * s })
+	for q in d["defectos"]:
+		var M: Dictionary = mesas[int(q[0])]; modulos.append([M["n"], P["e0"] + q[1], M["y"] + P["h0"] + P["ancho"] * s / 2])
 
 ## Un paso de la fisica. info: {gimbal (grados), grabando (video)}.
 func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	var T := []; var N: float = av["p"][0]; var E: float = av["p"][1]; var up: float = -av["p"][2]; var agl: float = up - suelo.call(N, E); var t: float = av["t"]; var m := marcar
 	if av["estado"] != "volando": return T
 	if t0 == null and not av.get("posado", false): t0 = t                   # despegue: empieza a contar el tiempo
-	# ---- choques: cables y torres de la linea, faro ----
-	if d.has("torres"):
-		d_cables = INF
-		for c in cables: d_cables = minf(d_cables, dist_segmento([N, E, up], c[0], c[1]))
-		if d_cables < 0.6: choque = "choque con los cables"
-		var TT: Array = d["torres"]
-		for i in TT.size():
-			var tn: float = TT[i][0]; var te: float = TT[i][1]; var hb: float = up - bases[i]; var L: Array = laterales[i]
-			var a: float = (N - tn) * L[0] + (E - te) * L[1]; var b: float = -(N - tn) * L[1] + (E - te) * L[0]
-			if hb < d["alto"] and absf(N - tn) < 1.6 and absf(E - te) < 1.6: choque = "choque con la torre %d" % (i + 1)
-			if absf(hb - d["fases"] - 1.2) < 0.6 and absf(a) < d["brazo"] + 0.3 and absf(b) < 0.6: choque = "choque con la cruceta de la torre %d" % (i + 1)
+	# ---- choques: paneles de la planta, faro ----
+	if d.has("planta"):
+		for M in mesas:
+			if absf(N - M["n"]) < M["fondo"] / 2 + 0.15 and E > M["e0"] - 0.15 and E < M["e1"] + 0.15 and up - M["y"] < M["alto"] + 0.15 and not av.get("posado", false): choque = "choque con los paneles"
 	if d.has("faro"):
 		var F: Dictionary = d["faro"]
 		if Vector2(N - F["n"], E - F["e"]).length() < F["radio"] + 0.3 and up - suelo.call(F["n"], F["e"]) < F["alto"]: choque = "choque con el faro"
@@ -130,9 +107,11 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 		var P: Dictionary = d["parcela"]
 		if N > P["n0"] and N < P["n1"] and E > P["e0"] and E < P["e1"] and agl < d["minima"] and not av.get("posado", false):
 			m.call("baja", "mal"); _aviso("baja", "¡A %.1f m del cultivo! No bajes de %s m" % [agl, _n(d["minima"])], T)
-	# ---- linea: distancia de seguridad a los cables ----
-	if d.has("torres") and d_cables < d["seguridad"]:
-		m.call("distancia", "mal"); _aviso("distancia", "¡A %.1f m de los cables! La distancia de seguridad son %s m" % [d_cables, _n(d["seguridad"])], T)
+	# ---- paneles: nunca a menos de 3 m sobre ellos ----
+	if d.has("planta") and not av.get("posado", false):
+		var M0: Dictionary = mesas[0]; var M1: Dictionary = mesas[mesas.size() - 1]
+		if N > M0["n"] - M0["fondo"] and N < M1["n"] + M1["fondo"] and E > M0["e0"] and E < M0["e1"] and up - M0["y"] < M0["alto"] + d["minima"]:
+			m.call("baja", "mal"); _aviso("baja", "¡A menos de %s m de los paneles! Sube" % _n(d["minima"]), T)
 	# ---- busqueda: el tiempo ----
 	if d.has("zona") and not encontrado and t0 != null and t - t0 > d["limite_s"]:
 		m.call("tiempo", "mal"); _aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T)
@@ -225,20 +204,24 @@ func foto(av: Dictionary, gimbal: float) -> Array:
 				hechos[i] = true; T.append("Mancha %d ✓ (%d/%d)" % [i + 1, _cuenta(), Ms.size()])
 		if _cuenta() == Ms.size(): m.call("manchas", "ok")
 		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ninguna mancha")
-	if d.has("torres"):                                # linea: los aisladores de cada torre, de 8 a 25 m
-		var motivo := ""; var TT: Array = d["torres"]
-		for i in TT.size():
+	if d.has("planta"):                                # paneles: cada modulo danado, desde arriba y de 4 a 20 m
+		var motivo := ""
+		for i in modulos.size():
 			if hechos[i]: continue
-			var c := camara(av, gimbal, [TT[i][0], TT[i][1], bases[i] + d["fases"]])
-			if not en_foto(c, 0.8): continue
-			if c["d"] > d["dist"][1]:
-				if motivo == "": motivo = "torre %d demasiado lejos (%d m; a menos de %s m)" % [i + 1, int(round(c["d"])), _n(d["dist"][1])]
+			var c := camara(av, gimbal, modulos[i])
+			if not en_foto(c, 1): continue
+			if gimbal > d["gimbal"]:
+				if motivo == "": motivo = "los paneles se fotografían desde arriba (cámara a %s° o más)" % _n(d["gimbal"])
+			elif c["d"] > d["dist"][1]:
+				if motivo == "": motivo = "módulo %d demasiado lejos (%d m; a menos de %s m)" % [i + 1, int(round(c["d"])), _n(d["dist"][1])]
 			elif c["d"] < d["dist"][0]:
-				if motivo == "": motivo = "torre %d demasiado cerca" % (i + 1)
+				if motivo == "": motivo = "módulo %d demasiado cerca" % (i + 1)
+			elif not en_foto(c, 0.8):
+				if motivo == "": motivo = "módulo %d en el borde de la foto: encuádralo" % (i + 1)
 			else:
-				hechos[i] = true; T.append("Torre %d ✓ (%d/%d)" % [i + 1, _cuenta(), TT.size()])
-		if _cuenta() == TT.size(): m.call("torres", "ok")
-		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin los aisladores de ninguna torre")
+				hechos[i] = true; T.append("Módulo dañado %d ✓ (%d/%d)" % [i + 1, _cuenta(), modulos.size()])
+		if _cuenta() == modulos.size(): m.call("defectos", "ok")
+		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ningún módulo dañado")
 	if d.has("faro"): T.append("Este trabajo es de vídeo: pulsa V para grabar")
 	return T
 
@@ -260,7 +243,7 @@ func final(fin: String, av: Dictionary, info: Dictionary) -> void:
 	if d.has("solape"): a.call("cobertura", "%d %%" % int(round(cobertura() * 100)))
 	if d.has("zona") and error != null: a.call("posicion", "error %.1f m" % error)
 	if d.has("manchas"): a.call("manchas", "%d de %d" % [n, (d["manchas"] as Array).size()])
-	if d.has("torres"): a.call("torres", "%d de %d" % [n, (d["torres"] as Array).size()])
+	if d.has("planta"): a.call("defectos", "%d de %d" % [n, modulos.size()])
 
 ## Lo que toca ahora (texto del panel, con <b>).
 func ahora(obj: Dictionary, av: Dictionary) -> String:
@@ -276,6 +259,6 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 	if d.has("solape"): return volver if hecho.call("cobertura") else "Parcela cubierta con solape: <b>%d %%</b> (hace falta %d %%) · altura %d m" % [int(round(cobertura() * 100)), int(round(d["cubrir"] * 100)), int(round(maxf(0, -av["p"][2] - suelo.call(N, E))))]
 	if d.has("zona"): return volver if encontrado else "Tiempo: <b>%s</b> · busca la chaqueta roja dentro de los jalones amarillos" % mmss(maxf(0, d["limite_s"] - (av["t"] - t0)))
 	if d.has("manchas"): return volver if n == (d["manchas"] as Array).size() else "Manchas fotografiadas: <b>%d de %d</b> · fotos verticales de 10 a 30 m" % [n, (d["manchas"] as Array).size()]
-	if d.has("torres"): return volver if n == (d["torres"] as Array).size() else "Torres: <b>%d de %d</b> · a %d m de los cables" % [n, (d["torres"] as Array).size(), int(round(d_cables))]
+	if d.has("planta"): return volver if n == modulos.size() else "Módulos dañados: <b>%d de %d</b> · recorre las filas con la cámara hacia abajo" % [n, modulos.size()]
 	if d.has("faro"): return volver if hecho.call("orbita") else "Órbita: <b>%d°</b> de 330° · a %d m del faro" % [int(round(absf(orb["acc"] * R2D))) if orb != null else 0, int(round(Vector2(N - d["faro"]["n"], E - d["faro"]["e"]).length()))]
 	return volver
