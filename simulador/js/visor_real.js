@@ -212,8 +212,14 @@ Object.assign(Visor.prototype, {
     const alt = this.entorno.altura, T = Visor.texturaSingular;
     const mat = (tex, rep, extra) => { const t = tex.clone(); t.needsUpdate = true; if (rep) t.repeat.set(rep[0], rep[1]); return new THREE.MeshStandardMaterial(Object.assign({ map: t, roughness: 0.9, metalness: 0 }, extra || {})); };
     const cara = (obj, rumbo) => { obj.rotation.y = Math.PI - rumbo * Math.PI / 180; };      // la cara +z de la pieza mira a "rumbo"
+    const prims = [], solidos = [];                    // instalaciones industriales (js/industria.js): instancias
     for (const S of (window.SINGULARES || []).filter(q => q.mundo === m.id)) for (const p of S.piezas) {
-      if (p.tipo === "muro") {
+      if (Industria.TIPOS.includes(p.tipo)) {
+        for (const q of Industria.primitivas(p)) prims.push(q);
+        const [P, h] = Industria.solido(p); let e = 0, n = 0;
+        for (let i = 0; i < P.length; i += 2) { e += P[i] * 2 / P.length; n += P[i + 1] * 2 / P.length; }
+        const y = alt(n, e); solidos.push([P, y - 0.3, y + h]);
+      } else if (p.tipo === "muro") {
         const de = p.e1 - p.e0, dn = p.n1 - p.n0, L = Math.hypot(de, dn), y0 = Math.min(alt(p.n0, p.e0), alt(p.n1, p.e1)) - 0.3;
         const o = new THREE.Mesh(new THREE.BoxGeometry(L, p.alto + 0.3, p.grosor), mat(T(p.textura), [L / 1.6, (p.alto + 0.3) / 1.6]));
         o.position.set((p.e0 + p.e1) / 2, y0 + (p.alto + 0.3) / 2, -(p.n0 + p.n1) / 2); o.rotation.y = Math.atan2(dn, de); g.add(o);
@@ -263,6 +269,22 @@ Object.assign(Visor.prototype, {
         b.position.set(p.e, y + p.alto - 0.6, -(p.n - 0.78)); b.rotation.y = Math.PI / 2; g.add(b);      // ondea hacia el sur: de cara al aparcamiento (oeste)
       }
     }
+    if (prims.length) {
+      const formas = [new THREE.BoxGeometry(1, 1, 1), new THREE.CylinderGeometry(0.5, 0.5, 1, 20), new THREE.CylinderGeometry(0.5, 0.5, 1, 16).rotateZ(Math.PI / 2), new THREE.SphereGeometry(0.5, 20, 12)];
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), E = new THREE.Vector3(), C = new THREE.Color(), Y = new THREE.Vector3(0, 1, 0);
+      const colores = Industria.COLORES.map(h => new THREE.Color(h));
+      formas.forEach((geo, f) => {
+        geo.translate(0, 0.5, 0); const L = prims.filter(q => q[0] === f);
+        if (!L.length) return;
+        const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.15 }), L.length);
+        L.forEach(([, e, n, y0, sx, sy, sz, R, c], i) => {
+          Q.setFromAxisAngle(Y, (90 - R) * Math.PI / 180); M.compose(V.set(e, alt(n, e) + y0, -n), Q, E.set(sx, sy, sz));
+          im.setMatrixAt(i, M); im.setColorAt(i, C.copy(colores[c]));
+        });
+        im.computeBoundingSphere(); g.add(im);
+      });
+    }
+    this.entorno.ponerEdificios("singulares", solidos);
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   },
 

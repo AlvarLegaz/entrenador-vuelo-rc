@@ -8,7 +8,7 @@ la fabrica: aqui se quitan los arboles que caen en los paneles (textura de filas
 a oeste que de norte a sur, en ventanas de 12,5 m) y dentro del recinto de la fabrica (poligono medido en la ortofoto).
 
     python analisis/mundo_cartagena/zona_fotovoltaica.py            (unos 20 min; la zona no va al repositorio)
-    python analisis/mundo_cartagena/zona_fotovoltaica.py limpiar    (solo vuelve a quitar los arboles falsos)
+    python analisis/mundo_cartagena/zona_fotovoltaica.py limpiar    (solo vuelve a quitar los arboles falsos y los contornos)
 """
 import json, os, subprocess, sys
 import numpy as np
@@ -56,6 +56,14 @@ def limpiar(zdir):
     b = a[~fuera]; b.astype("<f4").tofile(os.path.join(zdir, "arboles.bin"))
     Z["arboles"]["n"] = int(len(b)); json.dump(Z, open(os.path.join(zdir, "zona.json"), "w"), indent=1)
     print("arboles: %d -> %d (quitados %d en paneles y fabrica)" % (len(a), len(b), int(fuera.sum())))
+    # el Catastro trae como "edificio" de una planta el contorno entero de algunas unidades de proceso (hasta 24.000 m2):
+    # bloques planos que tapan las instalaciones de singulares.js (sabic_industria.py); fuera los de mas de 7.000 m2
+    ed = json.load(open(os.path.join(zdir, "edificios.json")))
+    def area(q): x, y = np.array(q[0::2]) - E0, np.array(q[1::2]) - N0; return 0.5 * abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+    def en_fabrica(q): return dentro(np.array([np.mean(q[0::2]) - E0]), np.array([np.mean(q[1::2]) - N0]), FABRICA)[0]
+    quedan = [d for d in ed if not (d["pl"] == 1 and area(d["p"]) > 7000 and en_fabrica(d["p"]))]
+    if len(quedan) != len(ed): json.dump(quedan, open(os.path.join(zdir, "edificios.json"), "w"), separators=(",", ":"))
+    print("edificios: %d -> %d (contornos de unidades de proceso)" % (len(ed), len(quedan)))
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import empaquetar_fichero
     empaquetar_fichero.zona(zdir); empaquetar_fichero.indice(os.path.dirname(os.path.abspath(zdir)))

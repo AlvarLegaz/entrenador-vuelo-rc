@@ -899,9 +899,16 @@ func _singulares() -> void:
 	var pon := func(mesh: Mesh, mt: Material, pos: Vector3, rot_y := 0.0, padre: Node3D = null) -> MeshInstance3D:
 		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mt; mi.position = pos; mi.rotation.y = rot_y
 		(padre if padre else _sing).add_child(mi); return mi
+	var prims := []; var solidos := []                  # instalaciones industriales (industria.gd): MultiMesh
 	for S in singulares_datos():
 		if S["mundo"] != m.get("id", ""): continue
 		for p in S["piezas"]:
+			if Industria.TIPOS.has(String(p["tipo"])):
+				prims.append_array(Industria.primitivas(p))
+				var so: Array = Industria.solido(p); var P: Array = so[0]; var ce := 0.0; var cn := 0.0
+				for i in range(0, P.size(), 2): ce += P[i] * 2 / P.size(); cn += P[i + 1] * 2 / P.size()
+				var y: float = alt.call(cn, ce); solidos.append([P, y - 0.3, y + so[1]])
+				continue
 			match String(p["tipo"]):
 				"muro":
 					var de: float = p["e1"] - p["e0"]; var dn: float = p["n1"] - p["n0"]; var L := Vector2(de, dn).length()
@@ -952,6 +959,26 @@ func _singulares() -> void:
 					var mb := StandardMaterial3D.new(); mb.albedo_texture = textura_bandera(p["bandera"]); mb.cull_mode = BaseMaterial3D.CULL_DISABLED; mb.roughness = 0.8
 					pon.call(qm, mb, Vector3(p["e"], y + p["alto"] - 0.6, -(p["n"] - 0.78)), PI / 2)      # ondea hacia el sur: de cara al aparcamiento
 	for mi in _sing.find_children("*", "MeshInstance3D", true, false): (mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if not prims.is_empty():
+		var caja := BoxMesh.new(); var cil := CylinderMesh.new(); cil.top_radius = 0.5; cil.bottom_radius = 0.5; cil.height = 1.0; cil.radial_segments = 20
+		var tum := CylinderMesh.new(); tum.top_radius = 0.5; tum.bottom_radius = 0.5; tum.height = 1.0; tum.radial_segments = 16
+		var esf := SphereMesh.new(); esf.radius = 0.5; esf.height = 1.0; esf.radial_segments = 20; esf.rings = 12
+		var colores := []
+		for h in Industria.COLORES: colores.append(Color(h))
+		var mt := StandardMaterial3D.new(); mt.vertex_color_use_as_albedo = true; mt.vertex_color_is_srgb = true; mt.roughness = 0.6; mt.metallic = 0.15
+		var formas := [caja, cil, tum, esf]
+		for f in 4:
+			var L := prims.filter(func(q): return q[0] == f)
+			if L.is_empty(): continue
+			var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = formas[f]; mm.instance_count = L.size()
+			for i in L.size():
+				var q: Array = L[i]
+				var b := Basis(Vector3.UP, deg_to_rad(90.0 - q[7])) * Basis.from_scale(Vector3(q[4], q[5], q[6]))
+				if f == 2: b = b * Basis(Vector3(0, 0, 1), PI / 2)               # tumbado: el eje del cilindro hacia el rumbo
+				mm.set_instance_transform(i, Transform3D(b, Vector3(q[1], alt.call(q[2], q[1]) + q[3] + q[5] / 2, -q[2])))
+				mm.set_instance_color(i, colores[q[8]])
+			var mi := MultiMeshInstance3D.new(); mi.multimesh = mm; mi.material_override = mt; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON; _sing.add_child(mi)
+	ent.poner_edificios("singulares", solidos)
 
 ## Casco del submarino: torno de un perfil de puro (como LatheGeometry en la web), eje a lo largo de z.
 static func _casco_submarino(largo: float, radio: float) -> ArrayMesh:
