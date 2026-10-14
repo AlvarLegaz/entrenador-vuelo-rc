@@ -13,11 +13,13 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1); args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 	p = load("res://escenas/principal.tscn").instantiate(); root.add_child(p)
-	while p.aula == null or p.pantallas.is_empty() or not p.pantallas["pInicio"].visible: await create_timer(0.2).timeout   # que acabe su arranque (aula e inicio)
-	# el aula de la prueba (sin guardar nada en la configuracion del usuario, que puede tener el registro local)
-	p.aula.url = args.get("aula", "http://localhost:8080"); p.aula.activo = false; p.aula.modo = "servidor"
-	p.aula.activo = (await p.aula.api("GET", "estado"))["ok"]
-	print("AULA ", p.aula.activo, " ", p.aula.modo, " ", p.aula.url, " ", p.multi_posible())
+	while p.aula == null or p.pantallas.is_empty() or not p.pantallas["pAlumno"].visible: await create_timer(0.2).timeout   # que acabe su arranque (pantalla de acceso)
+	# el aula de la prueba: se entra a mano (Aula.entrar guardaria la direccion y el usuario en la configuracion del usuario)
+	p.aula.url = Aula.normalizar_url(args.get("aula", "http://127.0.0.1:8080"))
+	var r: Dictionary = await p.aula.api("POST", "entrar", { "usuario": "Prueba Godot", "clave": "prueba", "crear": true }, "-")
+	if not r["ok"]: print("MAL no se pudo entrar en el aula: ", r["error"]); quit(1); return
+	p.aula.activo = true; p.aula.pase = String(r["datos"]["pase"]); p.aula.pase_id = String(r["datos"]["alumno"]["id"]); p.dentro_del_aula(r["datos"]["alumno"])
+	print("AULA ", p.aula.activo, " ", p.aula.url, " ", p.multi_posible())
 	p.sesion["avion"] = "E1"
 	# las salas las crea el profesor (con su PIN): la prueba entra como profesor para crearla
 	var tok: Dictionary = await p.aula.api("POST", "profesor/entrar", { "pin": args.get("pin", "1234") })

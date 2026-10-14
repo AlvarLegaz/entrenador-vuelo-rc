@@ -453,6 +453,29 @@ class Manejador(BaseHTTPRequestHandler):
             d["vuelos"] = [vuelo_dict(v) for v in con.execute(
                 "SELECT * FROM vuelos WHERE alumno_id = ? ORDER BY inicio DESC", (p[1],))]
             return d
+        if p == ["entrar"] and m == "POST":     # pantalla de inicio del simulador: usuario y contrasena -> { alumno, pase }
+            d = self.cuerpo(); nombre = re.sub(r"\s+", " ", str(d.get("usuario", ""))).strip()
+            if not nombre: raise Error(400, "Escribe tu usuario")
+            r = con.execute("SELECT * FROM alumnos WHERE nombre_norm = ? AND archivado = 0", (normalizar(nombre),)).fetchone()
+            if not r:
+                if not d.get("crear"): raise Error(404, "No existe el usuario «%s» en este aula" % nombre)
+                al = self.alta(con, dict(nombre=nombre, clave=d.get("clave")))      # alta del alumno con su contrasena
+                return dict(alumno={k: v for k, v in al.items() if k != "pase"}, pase=al["pase"])
+            clave = clave_valida(d.get("clave"))
+            if not r["clave"]:                  # el profesor lo dio de alta sin contrasena: la primera que escribe se queda
+                with con:
+                    con.execute("UPDATE alumnos SET clave = ? WHERE id = ?", (hash_pin(clave), r["id"]))
+                    registrar(con, "clave", "%s (%s) desde %s" % (r["nombre"], r["id"], self.address_string()))
+            else:
+                ip = (self.client_address[0], r["id"]); n, hasta = FALLOS.get(ip, (0, 0))
+                if hasta > time.time(): raise Error(429, "Demasiados intentos. Espera %d s." % (hasta - time.time()))
+                sal = r["clave"].split("$", 1)[0]
+                if not hmac.compare_digest(hash_pin(clave, sal), r["clave"]):
+                    n += 1; FALLOS[ip] = (0, time.time() + 60) if n >= 5 else (n, 0)
+                    raise Error(403, "Contraseña incorrecta")
+                FALLOS.pop(ip, None)
+            r = con.execute("SELECT * FROM alumnos WHERE id = ?", (r["id"],)).fetchone()
+            return dict(alumno=alumno_dict(con, r), pase=pase_alumno(con, r))
         if len(p) == 3 and p[0] == "alumnos" and p[2] == "entrar" and m == "POST":     # el alumno entra en su perfil
             r = con.execute("SELECT * FROM alumnos WHERE id = ? AND archivado = 0", (p[1],)).fetchone()
             if not r: raise Error(404, "alumno no encontrado")
@@ -730,7 +753,7 @@ def main():
     ips = ips_locales() or ["localhost"]
     print("\nServidor del aula en marcha (solo administra: el simulador se abre en cada ordenador).")
     print("   Panel del profesor:        http://localhost:%d/profesor.html" % a.puerto)
-    print("   En el simulador (web o Godot) de cada alumno, Perfil > Online, escribid:")
+    print("   En la pantalla de acceso del simulador (web o Godot) de cada alumno, escribid:")
     for ip in ips: print("                              http://%s:%d" % (ip, a.puerto))
     print("Ctrl+C para parar.\n")
     try:

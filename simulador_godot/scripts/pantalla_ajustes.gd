@@ -17,7 +17,7 @@ var monitor: GridContainer; var mon := {}
 var o_calidad: OptionButton; var t_calidad: Label; var o_zoom: OptionButton
 var c_sonido: CheckBox; var s_vol: HSlider; var t_vol: Label
 var o_dif: OptionButton; var t_dif: Label
-var c_cn: CheckBox; var t_aula: Label; var e_url: LineEdit; var t_url: Label; var b_profesor: Button
+var c_cn: CheckBox; var t_aula: Label; var b_profesor: Button
 
 const ZOOMS := [0.0, 0.03, 0.05, 0.1, 0.15, 0.22]
 
@@ -169,15 +169,10 @@ func _datos(c: VBoxContainer) -> void:
 	c_cn = Tema.casilla("un CSV a 20 Hz de cada vuelo (también se puede guardar desde el resultado)", false)
 	c_cn.toggled.connect(func(x): p.aj["cn_auto"] = x; p.guardar_ajustes())
 	c.add_child(Tema.fila("Descarga automática", c_cn))
-	c.add_child(Tema.margen(Tema.h2("Perfiles y registro de vuelos"), 0, 18, 0, 0))
+	c.add_child(Tema.margen(Tema.h2("Aula y progreso"), 0, 18, 0, 0))
 	t_aula = Tema.sub("", 13); c.add_child(t_aula)
-	e_url = LineEdit.new(); e_url.placeholder_text = "http://192.168.1.20:8000 (vacío: sin servidor)"; e_url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var fu := HBoxContainer.new(); fu.add_theme_constant_override("separation", 10); fu.add_child(e_url)
-	fu.add_child(Tema.boton("Conectar", "", func(): p.aula.url = e_url.text.strip_edges(); p.aula._guardar_cfg("servidor"); await p.reiniciar_aula(); refrescar()))
-	c.add_child(Tema.fila("Servidor del aula", fu))
-	t_url = Tema.sub("La dirección que muestra SERVIDOR_AULA.bat en el PC del profesor. El simulador se abre en cada ordenador; el aula guarda los perfiles online, los vuelos y las salas.", 13); c.add_child(t_url)
 	var fb := HBoxContainer.new(); fb.add_theme_constant_override("separation", 12)
-	fb.add_child(Tema.boton("Perfiles…", "", func(): p.ir_pilotos(func(): p.ir_ajustes("datos"))))
+	fb.add_child(Tema.boton("Cambiar de usuario o de servidor…", "", func(): p.ir_acceso()))
 	b_profesor = Tema.boton("Panel del profesor", "", func(): if p.aula.url != "": OS.shell_open(p.aula.url.trim_suffix("/") + "/profesor.html"))
 	fb.add_child(b_profesor); c.add_child(fb)
 
@@ -205,10 +200,9 @@ func refrescar() -> void:
 	t_dif.text = p.DIFICULTAD_INFO[p.sesion["dificultad"]]
 	c_cn.button_pressed = p.aj.get("cn_auto", false)
 	var A: Aula = p.aula
-	t_aula.text = (("Registro local: los alumnos y los vuelos se guardan en este ordenador (y en un archivo, si lo eliges)." if A.modo == "local" else "Aula «%s»: los vuelos se guardan en el servidor." % A.nombre_aula)
-				   if A.activo else "Sin aula ni registro: los vuelos no se guardan. Desde «Perfil» puedes usar los perfiles locales.")
-	if not e_url.has_focus(): e_url.text = A.url
-	b_profesor.disabled = A.url == "" or A.modo == "local"
+	t_aula.text = ("Conectado al aula «%s» (%s) como %s: los vuelos y el progreso se guardan en el servidor." % [A.nombre_aula, A.url, p.sesion["alumno"]["nombre"]]
+				   if A.activo and p.sesion["alumno"] != null else "Sin conexión: se vuela igual, pero los vuelos y el progreso no se guardan.")
+	b_profesor.disabled = A.url == ""
 	_pintando = false
 
 func _texto_expo() -> String:

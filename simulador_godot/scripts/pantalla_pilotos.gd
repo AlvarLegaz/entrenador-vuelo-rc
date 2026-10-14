@@ -1,177 +1,80 @@
 class_name PantallaPilotos
 extends Control
-## Perfil (#pAlumno de simulador/simulador.html): pestanas Local (este ordenador) y Online (servidor del aula); sin
-## servidor, su direccion o los perfiles locales; con registro, buscar, anadir perfiles, sus tarjetas (horas, vuelos,
-## escenarios superados, si estan autorizados para el avion real; el elegido resaltado) con Progreso y la papelera, los
-## vuelos pendientes de enviar y la barra de los perfiles locales (guardar o abrir un archivo, exportar e importar).
+## Acceso (#pAlumno de simulador/simulador.html): lo primero al abrir el simulador. La ortofoto de fondo y, en el
+## centro, la direccion del servidor del aula, el usuario y la contrasena; "Conectar" entra en el aula (si el usuario no
+## existe, ofrece crearlo) y "Continuar sin conexion" deja volar sin guardar los vuelos ni el progreso.
 
 var p: Node
-var d: Dictionary
-var b_profesor: Button
-var pest_local: Button; var pest_online: Button; var e_url: LineEdit
-var sin_aula: PanelContainer
-var con_aula: VBoxContainer
-var e_buscar: LineEdit; var e_nuevo: LineEdit; var err: Label
-var lista: GridAdaptable
+var e_url: LineEdit; var e_usuario: LineEdit; var e_clave: LineEdit
+var err: Label
 var pendientes: Label
-var barra_local: VBoxContainer
-var alumnos := []
-var dialogo: FileDialog
 
 func _init(p_: Node) -> void:
-	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
-	d = Tema.pantalla("Perfil", "Conectando con el aula…"); add_child(d["raiz"])
-	b_profesor = Tema.boton("Panel del profesor", "", func(): OS.shell_open(p.aula.url.trim_suffix("/") + "/profesor.html")); d["botones"].add_child(b_profesor)
-	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 10); d["cuerpo"].add_child(Tema.desplazable(v))
-	# pestanas: perfiles locales u online
-	var pest := HBoxContainer.new(); pest.add_theme_constant_override("separation", 4)
-	pest_local = Tema.boton("Local · este ordenador", "Pestana", func(): _modo("local")); pest_online = Tema.boton("Online · servidor del aula", "Pestana", func(): _modo("servidor"))
-	pest.add_child(pest_local); pest.add_child(pest_online); v.add_child(pest); v.add_child(Tema.linea(0.1))
-	# sin servidor
-	sin_aula = PanelContainer.new(); sin_aula.add_theme_stylebox_override("panel", Tema.caja(Color(1, 0.78, 0.24, 0.1), Color(1, 0.78, 0.24, 0.35), 12, 1, 16, 12))
-	var sv := VBoxContainer.new(); sv.add_theme_constant_override("separation", 8); sin_aula.add_child(sv)
-	sv.add_child(Tema.etiqueta("No hay servidor del aula: los perfiles online están en el PC del profesor (aula/servidor_aula.py). Escribe la dirección que indica el servidor, o usa los perfiles locales de este ordenador.", 15, Color("#ffe6a6"), false, true))
-	var su := HBoxContainer.new(); su.add_theme_constant_override("separation", 8)
-	e_url = LineEdit.new(); e_url.placeholder_text = "http://192.168.1.20:8000"; e_url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	e_url.text_submitted.connect(func(_t): _conectar())
-	su.add_child(e_url); su.add_child(Tema.boton("Conectar", "", _conectar)); sv.add_child(su)
-	var sb := HBoxContainer.new(); sb.add_theme_constant_override("separation", 8)
-	sb.add_child(Tema.boton("Usar perfiles locales", "BotonPrim", func(): _modo("local")))
-	sb.add_child(Tema.boton("Volar sin perfil", "", func(): p.elegir_piloto(null)))
-	sv.add_child(sb)
-	sv.add_child(Tema.sub("Los perfiles locales guardan vuelos y progreso en este ordenador y, si quieres, en un archivo JSON que puedes copiar a otro ordenador.", 14))
-	v.add_child(sin_aula)
-	# con aula
-	con_aula = VBoxContainer.new(); con_aula.add_theme_constant_override("separation", 10); v.add_child(con_aula)
-	var f := HBoxContainer.new(); f.add_theme_constant_override("separation", 12)
-	e_buscar = LineEdit.new(); e_buscar.placeholder_text = "Buscar perfil…"; e_buscar.size_flags_horizontal = Control.SIZE_EXPAND_FILL; e_buscar.custom_minimum_size.x = 200
-	e_buscar.text_changed.connect(func(_t): pintar_alumnos())
-	e_nuevo = LineEdit.new(); e_nuevo.placeholder_text = "Nombre del perfil nuevo"; e_nuevo.max_length = 60; e_nuevo.custom_minimum_size.x = 220
-	e_nuevo.text_submitted.connect(func(_t): _anadir())
-	f.add_child(e_buscar); f.add_child(e_nuevo); f.add_child(Tema.boton("Añadir", "", _anadir)); var bsp := Tema.boton("Volar sin perfil", "", func(): p.elegir_piloto(null)); bsp.tooltip_text = "Los vuelos no se guardan"; f.add_child(bsp)
-	con_aula.add_child(f)
-	err = Tema.etiqueta("", 14, Color("#ff8a80")); con_aula.add_child(err)
-	lista = Tema.rejilla(260, 10); con_aula.add_child(lista)
-	pendientes = Tema.sub("", 14); con_aula.add_child(pendientes)
-	barra_local = VBoxContainer.new(); barra_local.add_theme_constant_override("separation", 8); con_aula.add_child(barra_local)
-	dialogo = FileDialog.new(); dialogo.access = FileDialog.ACCESS_FILESYSTEM; dialogo.use_native_dialog = true
-	dialogo.filters = PackedStringArray(["*.json ; Registro JSON"]); add_child(dialogo)
+	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT); mouse_filter = Control.MOUSE_FILTER_STOP
+	# fondo: como el inicio, la ortofoto con el degradado
+	var fondo := ColorRect.new(); fondo.color = Tema.FONDO; fondo.set_anchors_preset(Control.PRESET_FULL_RECT); add_child(fondo)
+	if p.orto.size() > 1:
+		var foto := TextureRect.new(); foto.texture = p.orto[1]; foto.set_anchors_preset(Control.PRESET_FULL_RECT)
+		foto.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; foto.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; add_child(foto)
+	add_child(PantallaInicio._degradado(true)); add_child(PantallaInicio._degradado(false))
+	var v := VBoxContainer.new(); v.set_anchors_preset(Control.PRESET_FULL_RECT); v.add_theme_constant_override("separation", 0); add_child(v)
+	var centro := CenterContainer.new(); centro.size_flags_horizontal = Control.SIZE_EXPAND_FILL; centro.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var sc := Tema.desplazable(centro); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; v.add_child(sc)
+	# la caja (#accesoCaja)
+	var caja := PanelContainer.new(); caja.add_theme_stylebox_override("panel", Tema.caja(Tema.PANEL, Tema.BORDE, 14, 1, 28, 26))
+	caja.custom_minimum_size.x = 440; centro.add_child(Tema.margen(caja, 16, 24, 16, 24))
+	var c := VBoxContainer.new(); c.add_theme_constant_override("separation", 6); caja.add_child(c)
+	var pre := Tema.etiqueta("ENTRENADOR DE VUELO RC", 11, Tema.ACENTO, true)
+	var fv := FontVariation.new(); fv.base_font = Tema.negrita; fv.spacing_glyph = 2; pre.add_theme_font_override("font", fv); c.add_child(pre)
+	c.add_child(Tema.etiqueta("Entrar en el aula", 26, Tema.TEXTO, true))
+	var txt := Tema.etiqueta("Con tu usuario se guardan tus vuelos y tu progreso en el servidor del aula (el PC del profesor).", 14, Tema.SUAVE, false, true)
+	txt.custom_minimum_size.x = 384; c.add_child(txt)
+	e_url = _campo(c, "Servidor del aula", "http://192.168.1.20:8080", false)
+	e_usuario = _campo(c, "Usuario", "", false); e_usuario.max_length = 60
+	e_clave = _campo(c, "Contraseña", "", true); e_clave.max_length = 20
+	err = Tema.etiqueta("", 14, Color("#ff8a80"), false, true); err.custom_minimum_size = Vector2(384, 18); c.add_child(Tema.margen(err, 0, 6, 0, 0))
+	c.add_child(Tema.boton("Conectar", "BotonPrim", func(): _entrar(false)))
+	c.add_child(Tema.boton("Continuar sin conexión", "", func(): p.salir_del_aula(); p.ir_inicio()))
+	var nota := Tema.etiqueta("Sin conexión se vuela igual, pero no se guardan los vuelos ni el progreso.", 13, Tema.SUAVE, false, true)
+	nota.custom_minimum_size.x = 384; c.add_child(Tema.margen(nota, 0, 4, 0, 0))
+	pendientes = Tema.etiqueta("", 13, Tema.SUAVE, false, true); pendientes.custom_minimum_size.x = 384; c.add_child(pendientes)
+	var bp := Tema.boton("Panel del profesor", "", func():
+		var u := Aula.normalizar_url(e_url.text)
+		if u != "": OS.shell_open(u + "/profesor.html")
+		else: err.text = "Escribe la dirección del servidor del aula")
+	bp.add_theme_font_size_override("font_size", 13); c.add_child(Tema.margen(bp, 0, 10, 0, 0))
+	# pie
+	var pie := HBoxContainer.new(); pie.add_child(Tema.espacio())
+	pie.add_child(Tema.etiqueta("Entrenador de vuelo RC · v2 Godot · © 2026 Álvar Legaz Aparicio · todos los derechos reservados", 13, Tema.SUAVE))
+	v.add_child(Tema.margen(pie, 48, 12, 48, 18))
 
-func _modo(m: String) -> void:
-	p.aula._guardar_cfg(m); await p.reiniciar_aula(); refrescar()   # otro registro: reiniciar_aula olvida el perfil de antes
+func _campo(c: VBoxContainer, titulo: String, ejemplo: String, secreto: bool) -> LineEdit:
+	c.add_child(Tema.margen(Tema.etiqueta(titulo, 13, Tema.SUAVE), 0, 8, 0, 0))
+	var e := LineEdit.new(); e.placeholder_text = ejemplo; e.secret = secreto; e.custom_minimum_size = Vector2(384, 38)
+	e.text_submitted.connect(func(_t): _entrar(false)); c.add_child(e)
+	return e
 
-func _conectar() -> void:
-	p.aula.url = e_url.text.strip_edges(); await _modo("servidor")
+## La pantalla al llegar (irAcceso): la ultima direccion y el ultimo usuario ya puestos; la contrasena, vacia.
+func refrescar(msg := "") -> void:
+	e_url.text = p.aula.url; e_usuario.text = p.aula.usuario; e_clave.text = ""; err.text = msg
+	var n: int = p.aula._leer_cola().size()
+	pendientes.text = ("%d vuelo(s) de este ordenador pendientes de enviar al aula." % n) if n else ""
+	(e_clave if e_usuario.text != "" else e_usuario).grab_focus.call_deferred()
 
-func refrescar() -> void:
-	var A: Aula = p.aula; var local := A.modo == "local"
-	pest_local.theme_type_variation = "PestanaSel" if local else "Pestana"; pest_online.theme_type_variation = "Pestana" if local else "PestanaSel"
-	if e_url.text == "": e_url.text = A.url
-	sin_aula.visible = not A.activo; con_aula.visible = A.activo
-	b_profesor.visible = A.activo and not local
-	d["subtitulo"].text = "Sin servidor del aula" if not A.activo else ("Perfiles locales de este ordenador · elige el tuyo" if local else "Perfiles online del aula %s · elige el tuyo" % A.nombre_aula)
-	_pintar_barra_local()
-	if A.activo: await cargar_alumnos(); A.vaciar_cola()
-
-func cargar_alumnos() -> void:
-	var r: Dictionary = await p.aula.api("GET", "alumnos")
-	if r["ok"]: alumnos = r["datos"]; err.text = ""
-	else: err.text = "No se pudo leer la lista: " + String(r["error"])
-	if p.sesion["alumno"] == null and not p.sesion["sin_registrar"]:               # el ultimo perfil usado
-		for a in alumnos: if String(a["id"]) == p.aula.perfil_recordado(): p.sesion["alumno"] = a
-	pintar_alumnos()
+func _entrar(crear: bool) -> void:
+	var usuario := " ".join(e_usuario.text.split(" ", false))
+	if Aula.normalizar_url(e_url.text) == "": err.text = "Escribe la dirección del servidor del aula"; return
+	if usuario == "": err.text = "Escribe tu usuario"; return
+	if e_clave.text == "": err.text = "Escribe tu contraseña"; return
+	err.text = "Conectando…"
+	var r: Dictionary = await p.aula.entrar(e_url.text, usuario, e_clave.text, crear)
+	if r["ok"]: err.text = ""; p.dentro_del_aula(r["alumno"]); p.ir_inicio(); return
+	if r["status"] == 404 and not crear:
+		err.text = ""
+		if await p.confirmar("¿Crear el usuario «%s»?" % usuario, "No hay ningún alumno con ese nombre en el aula. Si eres nuevo, se crea con la contraseña que has escrito (de 4 a 20 caracteres).", "Crear usuario"):
+			await _entrar(true)
+		return
+	err.text = String(r["error"])
 
 static func fmt_horas(h: float) -> String:
 	var m := int(round(h * 60)); return "%d h %02d min" % [m / 60, m % 60]
-
-func pintar_alumnos() -> void:
-	for x in lista.get_children(): x.queue_free()
-	var f := Aula.norm(e_buscar.text)
-	var vis := alumnos.filter(func(a): return f == "" or Aula.norm(a["nombre"]).contains(f))   # en Godot contains("") es false
-	pendientes.text = ("%d vuelo(s) de este ordenador pendientes de enviar." % p.aula.pendientes) if p.aula.pendientes else ""
-	if vis.is_empty():
-		lista.add_child(Tema.sub("Nadie coincide con la búsqueda." if not alumnos.is_empty() else "Todavía no hay perfiles: añade el primero arriba.", 14)); return
-	for a in vis:
-		var g: Dictionary = a["progreso"]
-		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10)
-		var cv := VBoxContainer.new(); cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cv.add_theme_constant_override("separation", 2)
-		cv.add_child(Tema.etiqueta(String(a["nombre"]), 16, Tema.TEXTO, true))
-		var det := HBoxContainer.new(); det.add_theme_constant_override("separation", 6)
-		det.add_child(Tema.etiqueta("%s · %d vuelos · %d/%d pruebas" % [fmt_horas(g["horas"]), int(g["vuelos"]), int(g["escenarios_superados"]), int(g.get("escenarios_total", (g["escenarios"] as Dictionary).size()))], 12, Tema.SUAVE))
-		if a.get("habilitado", false): det.add_child(Tema.chip("certificado", "ok"))
-		cv.add_child(det); h.add_child(cv)
-		var borrar := Tema.boton("🗑", "BotonPlano"); borrar.tooltip_text = "Quitar de la lista"; borrar.add_theme_color_override("font_color", Color("#cc9988"))
-		borrar.pressed.connect(func():
-			var ok: bool = await p.confirmar("¿Quitar a %s?" % a["nombre"], "Desaparecerá de esta lista. Sus [b]%d vuelos[/b] y sus horas se conservan, y el profesor puede devolverlo a la lista." % int(g["vuelos"]), "Quitar")
-			if not ok: return
-			var r: Dictionary = await p.aula.api("DELETE", "alumnos/" + String(a["id"]))
-			if not r["ok"]: err.text = r["error"]
-			elif p.sesion["alumno"] != null and String(p.sesion["alumno"]["id"]) == String(a["id"]): p.sesion["alumno"] = null; p.aula.recordar_perfil("")
-			cargar_alumnos())
-		var bp := Tema.boton("Progreso", ""); bp.size_flags_vertical = Control.SIZE_SHRINK_CENTER; bp.add_theme_font_size_override("font_size", 13)
-		bp.pressed.connect(func(): p.ir_progreso("pAlumno", a)); h.add_child(bp)
-		h.add_child(borrar)
-		if p.aula.modo != "local":
-			var cl := Tema.etiqueta("🔒" if a.get("tiene_clave", false) else "🔓", 14, Tema.SUAVE); cl.tooltip_text = "Con clave" if a.get("tiene_clave", false) else "Todavía sin clave: la crea al entrar"
-			cl.size_flags_vertical = Control.SIZE_SHRINK_CENTER; cl.mouse_filter = Control.MOUSE_FILTER_PASS; h.add_child(cl); h.move_child(cl, 1)
-		var t := Tarjeta.new(h, 12, Vector2(14, 12)); t.pulsada.connect(func(): _entrar(a))
-		t.elegida = p.sesion["alumno"] != null and String(p.sesion["alumno"]["id"]) == String(a["id"])
-		lista.add_child(t)
-
-func _anadir() -> void:
-	var nombre := e_nuevo.text.strip_edges()
-	if nombre == "": return
-	var cuerpo := { "nombre": nombre }
-	if p.aula.modo != "local":                     # online: el perfil nuevo lleva su clave
-		var c = await p.pedir_clave("Clave de " + nombre, "Elige tu clave (de 4 a 20 caracteres). Te la pedirá al entrar en tu perfil online.", true)
-		if c == null: return
-		if c[0] != c[1]: err.text = "Las dos claves no coinciden"; return
-		cuerpo["clave"] = c[0]
-	var r: Dictionary = await p.aula.api("POST", "alumnos", cuerpo)
-	if r["ok"]:
-		if r["datos"].has("pase"): p.aula.pase = String(r["datos"]["pase"]); p.aula.pase_id = String(r["datos"]["id"])
-		e_nuevo.text = ""; await cargar_alumnos(); err.text = "Añadido: " + String(r["datos"]["nombre"])
-	else: err.text = r["error"]
-
-## Elegir un perfil (entrarPerfil de la web): en local, sin mas; online, con su clave (o creandola si aun no tiene).
-func _entrar(a: Dictionary) -> void:
-	var A: Aula = p.aula; err.text = ""
-	if A.modo == "local": p.elegir_piloto(a); return
-	if A.pase_id == String(a["id"]) and A.pase != "": p.elegir_piloto(a); return
-	var r: Dictionary
-	if not a.get("tiene_clave", false):
-		var c = await p.pedir_clave("Crea tu clave, " + String(a["nombre"]), "Todavía no tienes clave. Elige una (de 4 a 20 caracteres): te la pedirá cada vez que entres online.", true)
-		if c == null: return
-		if c[0] != c[1]: err.text = "Las dos claves no coinciden"; return
-		r = await A.api("POST", "alumnos/%s/clave" % a["id"], { "nueva": c[0] }, "-")
-	else:
-		var c = await p.pedir_clave("Hola, " + String(a["nombre"]), "Escribe tu clave para entrar en tu perfil online.", false)
-		if c == null: return
-		r = await A.api("POST", "alumnos/%s/entrar" % a["id"], { "clave": c[0] }, "-")
-	if not r["ok"]: err.text = r["error"]; return
-	A.pase = String(r["datos"]["pase"]); A.pase_id = String(a["id"]); p.elegir_piloto(a)
-
-func _dialogo(modo: FileDialog.FileMode, titulo: String, sugerido: String, f: Callable) -> void:
-	dialogo.file_mode = modo; dialogo.title = titulo; dialogo.current_file = sugerido
-	for c in dialogo.file_selected.get_connections(): dialogo.file_selected.disconnect(c["callable"])
-	dialogo.file_selected.connect(f, CONNECT_ONE_SHOT); dialogo.popup_centered_ratio(0.6)
-
-func _pintar_barra_local() -> void:
-	for x in barra_local.get_children(): x.queue_free()
-	var A: Aula = p.aula
-	if A.modo != "local" or not A.activo: return
-	var n := (A.datos["alumnos"] as Array).filter(func(a): return not a.get("archivado", false)).size()
-	var arch := "Solo en este ordenador (en el perfil del simulador)"
-	if A.archivo != "": arch = "Archivo: [b]%s[/b]%s" % [A.archivo.get_file(), (" [color=#ff8a80](%s)[/color]" % A.error_archivo) if A.error_archivo != "" else " (se actualiza tras cada vuelo)"]
-	barra_local.add_child(Tema.rico("[color=#9fb3c8]Perfiles locales · %d perfil(es) · %d vuelo(s) · %s[/color]" % [n, (A.datos["vuelos"] as Array).size(), arch], 14))
-	var b := HBoxContainer.new(); b.add_theme_constant_override("separation", 8)
-	b.add_child(Tema.boton("Guardar en un archivo…", "", func(): _dialogo(FileDialog.FILE_MODE_SAVE_FILE, "Guardar el registro", "entrenador_vuelo_rc_registro.json",
-		func(ruta): err.text = A.usar_archivo(ruta, true); refrescar())))
-	b.add_child(Tema.boton("Abrir un archivo…", "", func(): _dialogo(FileDialog.FILE_MODE_OPEN_FILE, "Abrir un registro", "",
-		func(ruta): err.text = A.usar_archivo(ruta, false); refrescar())))
-	b.add_child(Tema.boton("Exportar copia", "", func(): _dialogo(FileDialog.FILE_MODE_SAVE_FILE, "Exportar una copia", "entrenador_vuelo_rc_registro_%s.json" % Time.get_date_string_from_system(),
-		func(ruta): A.exportar(ruta))))
-	b.add_child(Tema.boton("Importar copia", "", func(): _dialogo(FileDialog.FILE_MODE_OPEN_FILE, "Importar una copia", "",
-		func(ruta): err.text = A.importar(ruta); refrescar())))
-	barra_local.add_child(b)

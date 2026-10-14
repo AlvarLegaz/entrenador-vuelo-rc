@@ -280,7 +280,7 @@ class Multijugador extends Control:
 		c[1].add_child(Tema.h2("¿Y crear una sala?")); c[1].add_child(Tema.etiqueta("Las salas las crea el profesor en su panel del aula, con lo que se vuela, el punto de salida y el viento. Entra en la de tu clase: verás a tus compañeros y el profesor te verá a ti.", 14, Tema.TEXTO, false, true))
 		var c2 := Tema.capa(8); sin_aula = c2[0]; der.add_child(sin_aula)
 		c2[1].add_child(Tema.h2("Hace falta el aula"))
-		var t := Tema.etiqueta("El multijugador va por el servidor del aula (el PC del profesor): pon su dirección en Ajustes › Registro y aula. En el registro local no hay multijugador.", 14, Tema.TEXTO, false, true)
+		var t := Tema.etiqueta("El multijugador va por el servidor del aula (el PC del profesor): entra en el aula con tu usuario y tu contraseña (Perfil › Cerrar sesión, o al abrir el simulador).", 14, Tema.TEXTO, false, true)
 		c2[1].add_child(t)
 		reloj = Timer.new(); reloj.wait_time = 2.0; add_child(reloj); reloj.timeout.connect(func(): if visible: _salas())
 	## Pedir entrar en una sala (pedirSala de la web): con su clave, si la tiene; el servidor mira tambien las expulsiones.

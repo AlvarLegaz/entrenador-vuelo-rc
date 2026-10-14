@@ -1,7 +1,7 @@
 extends Node3D
 ## Simulador de vuelo RC, version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador/simulador.html): las
 ## mismas pantallas (inicio, pilotos, hangar, entrenamientos, vuelo libre, punto de lanzamiento, ajustes, resultado y
-## progreso), el mismo HUD, las mismas misiones (simulador/escenarios.js), el aula (servidor o registro local), la caja
+## progreso), el mismo HUD, las mismas misiones (simulador/escenarios.js), el aula (pantalla de acceso: servidor, usuario y contrasena, o sin conexion), la caja
 ## negra, la repeticion, el sonido y el dron comercial con su app. Los aviones, el mundo y la fisica son comunes (modelo_avion.gd,
 ## modelo_cuadricoptero.gd y entorno.gd traducen modelos.js, DJI_MINI.js y entorno.js; ver pruebas/). Este fichero es
 ## la parte <script> de simulador.html: sesion, navegacion entre pantallas, vuelo (500 pasos por segundo), teclado,
@@ -136,8 +136,8 @@ func _ready() -> void:
 							   "rumbo": float(_args["rumbo"]) if _args.has("rumbo") else rumbo_despejado(ne[0], ne[1]) }
 		call_deferred("empezar")
 		return
-	await aula.iniciar(); await perfil_al_arrancar()
-	ir_inicio()
+	if _args.has("pantalla") or _args.has("captura"): ir_inicio()        # capturas: sin conexion
+	else: ir_acceso()                            # lo primero: la pantalla de acceso (aula o sin conexion)
 	if _args.has("pantalla"):
 		var id: String = _args["pantalla"]
 		match id:
@@ -146,7 +146,7 @@ func _ready() -> void:
 			"pVolar": ir_volar()
 			"pOperaciones": ir_operaciones()
 			"pAjustes": ir_ajustes(_args.get("seccion", ""))
-			"pAlumno": ir_pilotos(ir_inicio)
+			"pAlumno": ir_acceso()
 			"pLanzamiento":
 				sesion["escenario"] = "libre_cartagena"; ir_lanzamiento()
 				if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)]); pantallas["pLanzamiento"].pintar()
@@ -477,28 +477,20 @@ func mostrar_carga(titulo: String, texto: String, frac: float) -> void:
 	await get_tree().process_frame; await get_tree().process_frame
 
 # ---- navegacion ----
-var _tras_piloto = null
-func ir_pilotos(luego = null) -> void:
-	_tras_piloto = luego; mostrar("pAlumno"); await reiniciar_aula(); pantallas["pAlumno"].refrescar()
-## Arranca el aula en el modo guardado; si cambia de registro (local / online / ninguno), el perfil de antes no vale.
-func reiniciar_aula() -> void:
-	var antes: String = aula.modo if aula.activo else ""
-	await aula.iniciar()
-	if (aula.modo if aula.activo else "") != antes: sesion["alumno"] = null; sesion["sin_registrar"] = false; aula.pase = ""; aula.pase_id = ""
-## Al arrancar, el ultimo perfil usado en el modo guardado.
-func perfil_al_arrancar() -> void:
-	if not aula.activo or sesion["alumno"] != null or sesion["sin_registrar"]: return
-	var id := aula.perfil_recordado()
-	if id == "": return
-	var r: Dictionary = await aula.api("GET", "alumnos")
-	if r["ok"]:                                  # online, solo si no tiene clave (con clave la pide al entrar)
-		for a in r["datos"]: if String(a["id"]) == id and (aula.modo == "local" or not a.get("tiene_clave", false)): sesion["alumno"] = a
-func elegir_piloto(a) -> void:
-	if a == null or aula.pase_id != String(a["id"]): aula.pase = ""; aula.pase_id = ""
-	sesion["alumno"] = a; sesion["sin_registrar"] = a == null; aula.recordar_perfil(String(a["id"]) if a != null else "")
-	var f = _tras_piloto; _tras_piloto = null
-	if f != null: f.call()
-	else: ir_inicio()
+## La pantalla de acceso (irAcceso de la web): servidor del aula, usuario y contrasena, o sin conexion.
+func ir_acceso(msg := "") -> void:
+	pantallas["pAlumno"].refrescar(msg); mostrar("pAlumno")
+## Perfil (menu o el recuadro encima del dron): dentro del aula, su progreso (con Cerrar sesion); si no, el acceso.
+func ir_perfil() -> void:
+	if sesion["alumno"] != null: ir_progreso("pInicio")
+	else: ir_acceso()
+func dentro_del_aula(alumno: Dictionary) -> void:
+	sesion["alumno"] = alumno; sesion["sin_registrar"] = false
+func salir_del_aula() -> void:
+	aula.salir(); sesion["alumno"] = null; sesion["sin_registrar"] = true
+func cerrar_sesion() -> void:
+	var n = sesion["alumno"]["nombre"] if sesion["alumno"] != null else null
+	salir_del_aula(); salir_sala(); ir_acceso(("Sesión de %s cerrada." % n) if n != null else "")
 func ir_inicio() -> void:
 	salir_sala()                                 # al volver al inicio se sale de la sala multijugador
 	pantallas["pInicio"].refrescar(); mostrar("pInicio")
@@ -532,7 +524,7 @@ var sala_info_rt: RichTextLabel
 func multi_id() -> String:
 	if _multi_id == "": _multi_id = Aula.uuid4()
 	return _multi_id
-func multi_posible() -> bool: return aula.activo and aula.modo == "servidor" and aula.url != ""
+func multi_posible() -> bool: return aula.activo and sesion["alumno"] != null
 func nombre_piloto() -> String: return String(sesion["alumno"]["nombre"]) if sesion["alumno"] != null else "Invitado " + multi_id().substr(0, 4)
 func ir_multi() -> void:
 	mostrar("pMulti"); pantallas["pMulti"].refrescar()
@@ -1042,12 +1034,12 @@ func mostrar_resultado(v: Dictionary) -> void:
 	v["mostrado"] = true
 	var r := datos_resultado(v)
 	R.pintar(v, r); mostrar("pResultado")
-	if sesion["alumno"] == null: R.guardado.text = "Sin piloto registrado: este vuelo no se ha guardado."; return
+	if sesion["alumno"] == null: R.guardado.text = "Sin conexión con el aula: este vuelo no se ha guardado."; return
 	R.guardado.text = "Guardando…"
 	var g := await guardar_vuelo(v, r)
 	match String(g["estado"]):
 		"ok":
-			R.guardado.text = ("✓ Guardado en el registro local" + ((" y en %s." % aula.archivo.get_file()) if aula.archivo != "" else " de este ordenador.")) if aula.modo == "local" else "✓ Guardado en el registro del aula."
+			R.guardado.text = "✓ Guardado en el registro del aula."
 			sesion["alumno"]["progreso"] = g.get("progreso", {})
 		"cola": R.guardado.text = "Sin conexión con el aula: se guardará solo en cuanto vuelva (no se perderá)."
 		_: R.guardado.text = "No se pudo guardar: " + String(g.get("msg", ""))

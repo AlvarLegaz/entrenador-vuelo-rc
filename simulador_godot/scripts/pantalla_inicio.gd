@@ -41,12 +41,12 @@ func _init(p_: Node) -> void:
 	izq.add_child(Tema.etiqueta("Entrenador de vuelo", 44, Tema.TEXTO, true))
 	var lp := Tema.sub("Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.", 15); lp.custom_minimum_size.x = 372; izq.add_child(lp)
 	izq.add_child(Tema.margen(Control.new(), 0, 0, 0, 16))
-	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.ir_volar()))   # se vuela con el perfil activo (o sin perfil)
+	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.ir_volar()))   # se vuela con el usuario del aula (o sin conexion)
 	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV", func(): p.ir_entrenamientos()))
 	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.ir_multi()))
 	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.ir_operaciones()))
 	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))
-	izq.add_child(_boton_menu("perfil", "Perfil", "Elige tu perfil, local u online, y mira tu progreso", func(): p.ir_pilotos(p.ir_inicio)))
+	izq.add_child(_boton_menu("perfil", "Perfil", "Tu progreso y tu sesión en el aula", func(): p.ir_perfil()))
 	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.ir_ajustes("")))
 	# derecha: el avion girando y su nombre
 	var der := Control.new(); der.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cuerpo.add_child(der)
@@ -57,12 +57,12 @@ func _init(p_: Node) -> void:
 	desc_avion = Tema.etiqueta("", 14, Tema.SUAVE); desc_avion.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; na.add_child(desc_avion)
 	der.add_child(na)
 	# encima del dron: el perfil elegido (#inicioPerfil de la web); pulsandolo se cambia
-	perfil = Button.new(); perfil.focus_mode = Control.FOCUS_NONE; perfil.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; perfil.tooltip_text = "Cambiar de perfil"
+	perfil = Button.new(); perfil.focus_mode = Control.FOCUS_NONE; perfil.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; perfil.tooltip_text = "Tu progreso y tu sesión"
 	perfil.add_theme_stylebox_override("normal", Tema.caja(Color(0, 0, 0, 0.35), Color(1, 1, 1, 0.12), 14, 1, 22, 8))
 	perfil.add_theme_stylebox_override("hover", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
 	perfil.add_theme_stylebox_override("pressed", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
 	perfil.anchor_left = 0.5; perfil.anchor_right = 0.5; perfil.offset_top = 36; perfil.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	perfil.pressed.connect(func(): p.ir_pilotos(p.ir_inicio))
+	perfil.pressed.connect(func(): p.ir_perfil())
 	var pv := VBoxContainer.new(); pv.add_theme_constant_override("separation", 0); pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var pt := Tema.etiqueta("PERFIL", 11, Tema.ACENTO, true); var fv2 := FontVariation.new(); fv2.base_font = Tema.negrita; fv2.spacing_glyph = 2; pt.add_theme_font_override("font", fv2)
 	perfil_nombre = Tema.etiqueta("", 26, Tema.TEXTO, true); perfil_modo = Tema.etiqueta("", 13, Tema.SUAVE)
@@ -112,9 +112,8 @@ func refrescar() -> void:
 	nombre_avion.text = String(A.get("nombre", ""))
 	desc_avion.text = String(A.get("descripcion", "")).split(". ")[0]
 	var al = p.sesion["alumno"]; var A_: Aula = p.aula
-	perfil_nombre.text = String(al["nombre"]) if al != null else "Sin perfil"
-	perfil_modo.text = "los vuelos no se guardan" if not A_.activo else ("elige tu perfil para guardar los vuelos" if al == null
-		else ("local · este ordenador" if A_.modo == "local" else "online · aula " + A_.nombre_aula))
+	perfil_nombre.text = String(al["nombre"]) if al != null else "Sin conexión"
+	perfil_modo.text = ("online · aula " + A_.nombre_aula) if al != null else "el progreso no se guarda"
 	perfil.custom_minimum_size = Vector2.ZERO; perfil.reset_size()
 	var w := maxf(perfil_nombre.get_minimum_size().x, perfil_modo.get_minimum_size().x) + 44
 	perfil.custom_minimum_size = Vector2(w, 84); perfil.offset_left = -w / 2; perfil.offset_right = w / 2
