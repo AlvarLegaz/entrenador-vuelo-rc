@@ -175,7 +175,7 @@ func _datos(c: VBoxContainer) -> void:
 	var fu := HBoxContainer.new(); fu.add_theme_constant_override("separation", 10); fu.add_child(e_url)
 	fu.add_child(Tema.boton("Conectar", "", func(): p.aula.url = e_url.text.strip_edges(); p.aula._guardar_cfg("servidor"); await p.reiniciar_aula(); refrescar()))
 	c.add_child(Tema.fila("Servidor del aula", fu))
-	t_url = Tema.sub("La dirección que muestra aula/servidor_aula.py al arrancarlo. En la versión del navegador no hace falta: es la de la propia página.", 13); c.add_child(t_url)
+	t_url = Tema.sub("La dirección que muestra SERVIDOR_AULA.bat en el PC del profesor. El simulador se abre en cada ordenador; el aula guarda los perfiles online, los vuelos y las salas.", 13); c.add_child(t_url)
 	var fb := HBoxContainer.new(); fb.add_theme_constant_override("separation", 12)
 	fb.add_child(Tema.boton("Perfiles…", "", func(): p.ir_pilotos(func(): p.ir_ajustes("datos"))))
 	b_profesor = Tema.boton("Panel del profesor", "", func(): if p.aula.url != "": OS.shell_open(p.aula.url.trim_suffix("/") + "/profesor.html"))

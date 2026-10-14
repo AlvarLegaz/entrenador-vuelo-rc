@@ -18,6 +18,8 @@ var activo := false            # sesion.aula
 var modo := "servidor"         # "servidor" | "local"
 var nombre_aula := ""
 var url := ""                  # servidor del aula (vacio = no hay)
+var pase := ""                 # el pase del alumno online (al entrar con su clave; solo mientras el simulador esta abierto)
+var pase_id := ""
 var datos := {}                # registro local: { version, creado, alumnos: [], vuelos: [] }
 var archivo := ""              # archivo JSON del registro local (ademas de user://)
 var error_archivo := ""
@@ -71,11 +73,13 @@ func texto_estado() -> String:
 #  API (la misma que el servidor)
 # =====================================================================
 ## Devuelve { ok, status, datos, error }.
-func api(metodo: String, ruta: String, cuerpo = null) -> Dictionary:
+func api(metodo: String, ruta: String, cuerpo = null, con_pase = null) -> Dictionary:
 	if modo == "local" and activo: return _api_local(metodo, ruta, cuerpo)
 	if url == "": return { "ok": false, "status": 0, "datos": null, "error": "no hay servidor del aula" }
 	var req := HTTPRequest.new(); req.timeout = 6; add_child(req)
 	var cab := PackedStringArray(["Content-Type: application/json"]) if cuerpo != null else PackedStringArray()
+	var P: String = String(con_pase) if con_pase != null else pase
+	if P != "": cab.append("X-Alumno: " + P)       # sin el, el servidor no acepta los vuelos del alumno
 	var m: int = { "GET": HTTPClient.METHOD_GET, "POST": HTTPClient.METHOD_POST, "DELETE": HTTPClient.METHOD_DELETE }[metodo]
 	var err := req.request(url.trim_suffix("/") + "/api/" + ruta, cab, m, JSON.stringify(cuerpo) if cuerpo != null else "")
 	if err != OK: req.queue_free(); return { "ok": false, "status": 0, "datos": null, "error": "sin conexión" }
@@ -102,8 +106,9 @@ func vaciar_cola() -> void:
 	if not activo or modo == "local": return
 	var quedan := []
 	for v in _leer_cola():
-		var r := await api("POST", "vuelos", v)
-		if not r["ok"] and not (r["status"] >= 400 and r["status"] < 500): quedan.append(v)
+		var cuerpo: Dictionary = v.duplicate(); var p_: String = String(cuerpo.get("_pase", "")); cuerpo.erase("_pase")
+		var r := await api("POST", "vuelos", cuerpo, p_)
+		if not r["ok"] and not (r["status"] >= 400 and r["status"] < 500 and r["status"] != 401 and r["status"] != 429): quedan.append(v)
 	_guardar_cola(quedan); pendientes = quedan.size()
 
 ## Envia un vuelo (enviarVuelo): { estado: "ok" | "cola" | "error" | "sin_aula", progreso, msg }.
@@ -111,8 +116,9 @@ func enviar_vuelo(v: Dictionary) -> Dictionary:
 	if not activo: return { "estado": "sin_aula" }
 	var r := await api("POST", "vuelos", v)
 	if r["ok"]: vaciar_cola(); return { "estado": "ok", "progreso": r["datos"].get("progreso", {}) }
-	if r["status"] >= 400 and r["status"] < 500: return { "estado": "error", "msg": r["error"] }
-	var c := _leer_cola(); c.append(v); _guardar_cola(c)
+	if r["status"] >= 400 and r["status"] < 500 and r["status"] != 401 and r["status"] != 429: return { "estado": "error", "msg": r["error"] }
+	var vc := v.duplicate(); vc["_pase"] = pase
+	var c := _leer_cola(); c.append(vc); _guardar_cola(c)
 	return { "estado": "cola" }
 
 # =====================================================================
@@ -184,7 +190,7 @@ func progreso(id: String) -> Dictionary:
 		esc[e] = { "superado": sup.has(e), "intentos": vs.filter(func(v): return v["escenario"] == e).size() }
 		if sup.has(e): n_sup += 1
 	return { "vuelos": vs.size(), "horas": snappedf(horas, 0.001), "accidentes": acc, "aterrizajes": ate, "ultimo_vuelo": ult if ult != "" else null,
-			 "escenarios": esc, "escenarios_superados": n_sup, "horas_minimas": HORAS_MINIMAS,
+			 "escenarios": esc, "escenarios_superados": n_sup, "escenarios_total": ESC.size(), "horas_minimas": HORAS_MINIMAS, "certificado": "Certificado de pilotaje",
 			 "requisitos_cumplidos": horas >= HORAS_MINIMAS and n_sup == ESC.size() }
 
 func _alumno(a: Dictionary) -> Dictionary:

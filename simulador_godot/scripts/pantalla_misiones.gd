@@ -147,7 +147,7 @@ class Entrenamientos extends Control:
 		var E := Escenarios.datos(); var al = p.sesion["alumno"]
 		var g = al["progreso"] if al != null and al.has("progreso") else null
 		var veh := Escenarios.vehiculo_de(p.sesion["avion"]); var ids := Escenarios.misiones_de(veh)
-		d["subtitulo"].text = String(DatosComunes.avion(p.sesion["avion"]).get("nombre", "")) + " · %d entrenamientos" % ids.size() + 			("" if veh != "avion" else ((" · %d/4 escenarios superados" % int(g["escenarios_superados"])) if g != null else " · sin registro"))
+		d["subtitulo"].text = String(DatosComunes.avion(p.sesion["avion"]).get("nombre", "")) + " · %d entrenamientos" % ids.size() + 			((" · %d/%d pruebas del certificado superadas" % [int(g["escenarios_superados"]), int(g.get("escenarios_total", (g["escenarios"] as Dictionary).size()))]) if g != null else " · sin registro")
 		if not sel in ids: sel = ids[0]
 		for x in lista.get_children(): x.queue_free()
 		var rejilla: GridAdaptable = null
@@ -267,7 +267,7 @@ class Operaciones extends Control:
 class Multijugador extends Control:
 	var p: Node; var d: Dictionary
 	var lista: VBoxContainer; var vacio: Label; var crear: PanelContainer; var sin_aula: PanelContainer
-	var nombre: LineEdit; var esc: OptionButton; var nota: Label; var reloj: Timer
+	var reloj: Timer
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Multijugador", "Vuela con tus compañeros en la misma sala: cada uno con su avión, os veis unos a otros"); add_child(d["raiz"])
@@ -276,37 +276,16 @@ class Multijugador extends Control:
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
 		var sc := Tema.desplazable(lista); dos.add_child(sc)
 		var der := VBoxContainer.new(); der.custom_minimum_size.x = 380; der.add_theme_constant_override("separation", 12); dos.add_child(der)
-		var c := Tema.capa(8); crear = c[0]; der.add_child(crear)
-		c[1].add_child(Tema.h2("Crear una sala"))
-		nombre = LineEdit.new(); nombre.max_length = 60; nombre.size_flags_horizontal = Control.SIZE_EXPAND_FILL; c[1].add_child(Tema.fila("Nombre", nombre))
-		esc = OptionButton.new(); esc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; c[1].add_child(Tema.fila("Qué se vuela", esc))
-		esc.item_selected.connect(func(_i): _nota())
-		nota = Tema.sub("", 13); nota.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c[1].add_child(nota)
-		var b := Tema.boton("Crear y entrar →", "BotonPrimGrande", func(): _crear()); b.size_flags_horizontal = Control.SIZE_FILL; c[1].add_child(b)
+		var c := Tema.capa(8); crear = c[0]; der.add_child(crear)      # las salas las crea el profesor (#multiCrear de la web)
+		c[1].add_child(Tema.h2("¿Y crear una sala?")); c[1].add_child(Tema.etiqueta("Las salas las crea el profesor en su panel del aula, con lo que se vuela, el punto de salida y el viento. Entra en la de tu clase: verás a tus compañeros y el profesor te verá a ti.", 14, Tema.TEXTO, false, true))
 		var c2 := Tema.capa(8); sin_aula = c2[0]; der.add_child(sin_aula)
 		c2[1].add_child(Tema.h2("Hace falta el aula"))
 		var t := Tema.etiqueta("El multijugador va por el servidor del aula (el PC del profesor): pon su dirección en Ajustes › Registro y aula. En el registro local no hay multijugador.", 14, Tema.TEXTO, false, true)
 		c2[1].add_child(t)
 		reloj = Timer.new(); reloj.wait_time = 2.0; add_child(reloj); reloj.timeout.connect(func(): if visible: _salas())
-	func _ids_escenario() -> Array:
-		return [["Vuelo libre", Escenarios.datos().keys().filter(func(id): return Escenarios.libre(id))], ["Entrenamientos del avión", Escenarios.misiones_de("avion")],
-				["Entrenamientos del DJI", Escenarios.misiones_de("dron")], ["Entrenamientos del dron FPV", Escenarios.misiones_de("fpv")], ["Operaciones (DJI)", Escenarios.operaciones()]]
 	func refrescar() -> void:
 		var ok: bool = p.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
-		if esc.item_count == 0:
-			for g in _ids_escenario():
-				esc.add_separator(g[0])
-				for id in g[1]: esc.add_item(String(Escenarios.datos()[id]["nombre"])); esc.set_item_metadata(esc.item_count - 1, id)
-			for i in esc.item_count:
-				if not esc.is_item_separator(i): esc.select(i); break
-		if nombre.text == "": nombre.text = "Sala de " + p.nombre_piloto()
-		_nota(); _salas(); reloj.start()
-	func _nota() -> void:
-		var id = esc.get_item_metadata(esc.selected) if esc.selected >= 0 else null
-		if id == null: nota.text = ""; return
-		var E: Dictionary = Escenarios.datos()[id]; var veh: Array = E.get("vehiculos", ["avion"])
-		nota.text = "Cada uno vuela con su avión" + ((" (este es para %s: se cambia solo al entrar)" % ("el dron FPV" if "fpv" in veh else "el DJI")) if not "avion" in veh else "") + \
-			(". En el mapa real se sale del mismo punto." if E.has("mundo") else ".") + (" Cada uno tiene sus objetivos y su resultado, que se guarda como siempre." if not (E["objetivos"] as Array).is_empty() else "")
+		_salas(); reloj.start()
 	func _salas() -> void:
 		if not p.multi_posible():
 			for x in lista.get_children(): x.queue_free()
@@ -315,7 +294,7 @@ class Multijugador extends Control:
 		for x in lista.get_children(): x.queue_free()
 		lista.add_child(Tema.etiqueta("SALAS ABIERTAS", 13, Tema.SUAVE, true))
 		if not r["ok"]: lista.add_child(Tema.sub("No se puede hablar con el servidor del aula.", 14)); return
-		if (r["datos"] as Array).is_empty(): lista.add_child(Tema.sub("No hay ninguna sala abierta: crea una y diles a tus compañeros que entren.", 14)); return
+		if (r["datos"] as Array).is_empty(): lista.add_child(Tema.sub("No hay ninguna sala abierta: espera a que el profesor cree la de tu clase.", 14)); return
 		var rej := Tema.rejilla(230, 12); lista.add_child(rej)
 		for s in r["datos"]:
 			var E: Dictionary = Escenarios.datos().get(s["escenario"], { "nombre": s["escenario"] })
@@ -331,20 +310,6 @@ class Multijugador extends Control:
 			var t := Tarjeta.new(v, 14, Vector2(0, 0)); var sala: Dictionary = s
 			t.pulsada.connect(func(): p.entrar_sala(sala))
 			rej.add_child(t)
-	func _crear() -> void:
-		var id = esc.get_item_metadata(esc.selected)
-		if id == null: return
-		var E: Dictionary = Escenarios.datos()[id]; var lanz = null
-		if E.has("operacion"):
-			var S: Dictionary = E["operacion"]["salida"]; lanz = { "mundo": E["mundo"], "N": S["n"], "E": S["e"], "rumbo": S["rumbo"] }
-		elif E.has("mundo"):
-			if not p.sesion["lanz"].is_empty() and p.sesion["lanz"].get("mundo", "") == E["mundo"]: lanz = p.sesion["lanz"]
-			elif not (E.get("destacados", []) as Array).is_empty():
-				var dd: Dictionary = E["destacados"][0]; var ne: Array = p.lat_lon_a_ne(p.mundo_datos, dd["lat"], dd["lon"])
-				lanz = { "mundo": E["mundo"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": dd["rumbo"] }
-		var r: Dictionary = await p.aula.api("POST", "salas", { "nombre": nombre.text, "escenario": id, "lanz": lanz, "viento": E.get("viento", p.sesion["viento"]) })
-		if r["ok"]: p.entrar_sala(r["datos"])
-		else: p.poner_toast("No se pudo crear la sala: " + String(r["error"]))
 
 
 ## Vuelo libre: los dos sitios (campo del club y Campo de Cartagena), la nota, condiciones y Volar.

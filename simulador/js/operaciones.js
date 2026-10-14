@@ -73,6 +73,31 @@ class Operacion {
     return d;
   }
 
+  /** Los ajustes del profesor al crear la sala ({cubiertas, fachadas, defectos, manchas, minutos, cobertura}) sobre los
+   *  datos de un trabajo (antes de sortear): cuantos desperfectos hay, el tiempo del rescate y la cobertura. */
+  static ajustar(O, A) {
+    if (!A) return O;
+    const d = Object.assign({}, O), n = (v, a, b) => Math.max(a, Math.min(b, Math.round(+v)));
+    if (O.candidatos && (A.cubiertas != null || A.fachadas != null)) {
+      const C = O.candidatos, cu = n(A.cubiertas ?? C.elegir[0], 0, C.cubiertas.length), fa = n(A.fachadas ?? C.elegir[1], 0, C.fachadas.length);
+      d.candidatos = Object.assign({}, C, { elegir: cu + fa ? [cu, fa] : [1, 0] });
+    }
+    if (O.defectos && A.defectos != null) { const k = n(A.defectos, 1, 30); d.defectos = Array.from({ length: k }, (_, i) => O.defectos[i % O.defectos.length]); }
+    if (O.manchas && A.manchas != null) { const k = n(A.manchas, 1, 12); d.manchas = Array.from({ length: k }, (_, i) => O.manchas[i % O.manchas.length]); }
+    if (O.limite_s && A.minutos != null) d.limite_s = n(A.minutos, 1, 60) * 60;
+    if (O.cubrir && A.cobertura != null) d.cubrir = n(A.cobertura, 30, 100) / 100;
+    return d;
+  }
+  /** El texto de un objetivo con los numeros del trabajo ajustado ("Fotografiar los 12 modulos..."). */
+  static textoObjetivo(id, t, d) {
+    if (id === "puntos" && d.candidatos) return t.replace(/los \d+ puntos/, `los ${d.candidatos.elegir[0] + d.candidatos.elegir[1]} puntos`);
+    if (id === "defectos" && d.defectos) return t.replace(/los \d+ módulos/, `los ${d.defectos.length} módulos`);
+    if (id === "manchas" && d.manchas) return t.replace(/las \d+ manchas/, `las ${d.manchas.length} manchas`);
+    if (id === "tiempo" && d.limite_s) return t.replace(/\d+ minutos/, `${Math.round(d.limite_s / 60)} minutos`);
+    if (id === "cobertura" && d.cubrir) return t.replace(/el \d+ %/, `el ${Math.round(d.cubrir * 100)} %`);
+    return t;
+  }
+
   constructor(d, marcar, anotar, mundo) {
     this.d = d; this.marcar = marcar; this.anotar = anotar; this.casa = mundo.casa; this.suelo = mundo.suelo; this.h0 = mundo.h0;
     this.choque = null; this.avisos = {}; this.t0 = null; this.fotos = 0;

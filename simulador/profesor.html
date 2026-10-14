@@ -63,7 +63,7 @@
       <button id="salir">Salir</button></div>
     <div class="pestanas">
       <button data-p="alumnos" class="activa">Alumnos</button><button data-p="historial">Historial</button>
-      <button data-p="multi">Multijugador</button><button data-p="copias">Copias y registro</button><button data-p="ajustes">PIN</button>
+      <button data-p="multi">Multijugador</button><button data-p="cert">Certificado</button><button data-p="copias">Copias y registro</button><button data-p="ajustes">PIN</button>
     </div>
     <div class="err" id="err"></div>
 
@@ -72,10 +72,10 @@
         <input type="search" id="buscar" placeholder="Buscar alumno…" style="min-width:220px">
         <label class="sub"><input type="checkbox" id="verArchivados"> ver archivados</label>
         <div class="esp"></div>
-        <input type="text" id="nuevo" placeholder="Nombre del alumno nuevo" maxlength="60"><button id="anadir">Añadir</button>
+        <input type="text" id="nuevo" placeholder="Nombre del alumno nuevo" maxlength="60"><input type="password" id="nuevoClave" placeholder="Clave (opcional)" maxlength="20" autocomplete="new-password" style="width:150px" title="Si la dejas vacía, el alumno la crea la primera vez que entra online"><button id="anadir">Añadir</button>
       </div>
       <div class="tarjeta tabla"><table id="tAlumnos"></table></div>
-      <p class="sub" style="font-size:13px">Requisitos para la maqueta real: 10 h de vuelo y los 4 escenarios superados. La autorización la da el profesor a mano.
+      <p class="sub" style="font-size:13px"><span id="reqTxt"></span> El certificado lo concede el profesor a mano; sus requisitos se cambian en la pestaña Certificado.
         «Archivar» quita al alumno de la lista conservando sus vuelos; «Borrar» (solo archivados) lo elimina con sus vuelos, después de una copia de seguridad.</p>
     </section>
 
@@ -90,7 +90,19 @@
     </section>
 
     <section id="p-multi" style="display:none">
-      <div class="barra"><span class="sub">Salas abiertas por los alumnos desde el simulador (Multijugador). Se ve en directo dónde está cada uno.</span></div>
+      <div class="barra"><span class="sub">Salas del multijugador: las crea el profesor aquí o los alumnos desde el simulador. Se ve en directo dónde está cada uno.</span></div>
+      <div class="tarjeta" style="margin-bottom:12px">
+        <h3 style="margin:0 0 8px">Crear una sala</h3>
+        <div class="fila"><b style="min-width:150px">Nombre</b><input type="text" id="cNombre" maxlength="60" style="flex:1;min-width:240px" placeholder="p. ej. 2.º B · búsqueda y rescate"></div>
+        <div class="fila"><b style="min-width:150px">Qué se vuela</b><select id="cEsc" style="flex:1;min-width:240px"></select></div>
+        <div class="fila" id="cFilaSalida"><b style="min-width:150px">Punto de salida</b><select id="cSalida" style="flex:1;min-width:240px"></select></div>
+        <div class="fila" id="cFilaViento"><b style="min-width:150px">Viento</b>
+          <input type="number" id="cVel" min="0" max="12" step="1" value="2" style="width:70px"> m/s del <select id="cDir"><option value="0">norte</option><option value="45">nordeste</option><option value="90">este</option><option value="135">sudeste</option><option value="180">sur</option><option value="225">sudoeste</option><option value="270">oeste</option><option value="315">noroeste</option></select>
+          <label class="sub"><input type="checkbox" id="cRachas" checked> con rachas</label></div>
+        <div id="cAjustes"></div>
+        <div class="fila"><button id="cCrear" class="prim">Crear la sala</button><span class="sub" id="cMsg"></span></div>
+        <p class="sub" style="margin:6px 0 0">Los alumnos la ven en el simulador, en Multijugador, y entran con un clic; cada uno vuela con su avión o dron y se guardan sus vuelos como siempre.</p>
+      </div>
       <div id="mSalas" class="barra" style="flex-wrap:wrap"></div>
       <div id="mSala" style="display:none">
         <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div>
@@ -130,6 +142,18 @@
       <div class="tarjeta tabla"><table id="tRegistro"></table></div>
     </section>
 
+    <section id="p-cert" style="display:none">
+      <div class="tarjeta">
+        <h3 style="margin:0 0 6px">El certificado de pilotaje</h3>
+        <p class="sub" style="margin:0 0 12px">Lo que tiene que cumplir un alumno para que puedas concedérselo: horas de vuelo y pruebas superadas (APTO en cada una).
+          Los alumnos lo ven en su progreso, en el simulador. Se concede a mano en la pestaña Alumnos.</p>
+        <div class="fila"><b style="min-width:170px">Nombre</b><input type="text" id="kNombre" maxlength="80" style="flex:1;min-width:260px" placeholder="p. ej. Certificado de piloto de dron (A1/A3)"></div>
+        <div class="fila"><b style="min-width:170px">Horas de vuelo mínimas</b><input type="number" id="kHoras" min="0" max="500" step="0.5" style="width:90px"> h</div>
+        <div class="fila" style="align-items:flex-start"><b style="min-width:170px">Pruebas a superar</b><div id="kPruebas" style="flex:1"></div></div>
+        <div class="fila"><button id="kGuardar" class="prim">Guardar el certificado</button><span class="sub" id="kMsg"></span></div>
+      </div>
+    </section>
+
     <section id="p-ajustes" style="display:none">
       <div class="tarjeta" style="max-width:420px">
         <h2 style="margin-top:0">Cambiar el PIN</h2>
@@ -147,7 +171,6 @@
 <script>
 "use strict";
 const ESC = { primer_vuelo: "Primer vuelo", orientacion: "Orientación", viento_cruzado: "Viento cruzado", emergencia: "Emergencia", libre: "Vuelo libre" };
-const ORDEN = ["primer_vuelo", "orientacion", "viento_cruzado", "emergencia"];
 let token = sessionStorage.getItem("prof_token") || "";
 let alumnos = [];
 const $ = id => document.getElementById(id);
@@ -203,19 +226,21 @@ async function abrirPanel() {
 // ---------- pestanas ----------
 document.querySelectorAll(".pestanas button").forEach(b => b.onclick = () => {
   document.querySelectorAll(".pestanas button").forEach(x => x.classList.toggle("activa", x === b));
-  for (const p of ["alumnos", "historial", "multi", "copias", "ajustes"]) $("p-" + p).style.display = p === b.dataset.p ? "" : "none";
+  for (const p of ["alumnos", "historial", "multi", "cert", "copias", "ajustes"]) $("p-" + p).style.display = p === b.dataset.p ? "" : "none";
   clearInterval(MP.timer); if (b.dataset.p === "multi") { cargarSalas(); MP.timer = setInterval(cargarSalas, 1000); }
   if (b.dataset.p === "historial") cargarVuelos().catch(fallo);
   if (b.dataset.p === "copias") cargarCopias().catch(fallo);
   if (b.dataset.p === "alumnos") cargarAlumnos().catch(fallo);
+  if (b.dataset.p === "cert") cargarCert().then(pintarCert);
 });
 
 // ---------- alumnos ----------
 async function cargarAlumnos() {
+  await cargarCert();
   alumnos = await api("GET", "profesor/alumnos");
   const act = alumnos.filter(a => !a.archivado);
   $("resumen").textContent = `${act.length} alumnos · ${fmtHoras(act.reduce((s, a) => s + a.progreso.horas, 0))} de vuelo en total · ` +
-    `${act.filter(a => a.habilitado).length} autorizados para la maqueta real`;
+    `${act.filter(a => a.habilitado).length} con el certificado`;
   const sel = $("fAlumno"), v = sel.value;
   sel.innerHTML = '<option value="">Todos los alumnos</option>' + alumnos.map(a => `<option value="${a.id}">${esc(a.nombre)}${a.archivado ? " (archivado)" : ""}</option>`).join("");
   sel.value = v;
@@ -225,22 +250,22 @@ function norm(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase
 function pintarAlumnos() {
   const f = norm($("buscar").value), arch = $("verArchivados").checked;
   const lista = alumnos.filter(a => (arch || !a.archivado) && norm(a.nombre).includes(f));
-  $("tAlumnos").innerHTML = `<tr><th>Alumno</th><th>Horas</th><th>Vuelos</th><th>Aterrizajes / accidentes</th><th>Escenarios</th><th>Último vuelo</th><th>Maqueta real</th><th>Acciones</th></tr>` +
+  $("tAlumnos").innerHTML = `<tr><th>Alumno</th><th>Horas</th><th>Vuelos</th><th>Aterrizajes / accidentes</th><th>Pruebas</th><th>Último vuelo</th><th>Certificado</th><th>Acciones</th></tr>` +
     (lista.length ? lista.map(a => {
       const g = a.progreso, pct = Math.min(100, 100 * g.horas / g.horas_minimas);
-      const estado = a.archivado ? '<span class="chip">archivado</span>' : a.habilitado ? `<span class="chip ok">autorizado</span><br><span class="sub" style="font-size:12px">${fmtFecha(a.habilitado_en)}</span>`
-        : g.requisitos_cumplidos ? '<span class="chip ama">cumple: pendiente de autorizar</span>' : '<span class="chip mal">no cumple</span>';
+      const estado = a.archivado ? '<span class="chip">archivado</span>' : a.habilitado ? `<span class="chip ok">concedido</span><br><span class="sub" style="font-size:12px">${fmtFecha(a.habilitado_en)}</span>`
+        : g.requisitos_cumplidos ? '<span class="chip ama">cumple: pendiente de concederlo</span>' : '<span class="chip mal">no cumple</span>';
       return `<tr class="${a.archivado ? "archivado" : ""}"><td><b>${esc(a.nombre)}</b>${a.notas ? `<br><span class="sub" style="font-size:12px">${esc(a.notas)}</span>` : ""}</td>
         <td>${fmtHoras(g.horas)}<div class="progreso"><i style="width:${pct}%"></i></div></td><td>${g.vuelos}</td>
         <td>${g.aterrizajes} / ${g.accidentes}</td>
-        <td class="esc4">${ORDEN.map(e => `<span title="${ESC[e]}: ${g.escenarios[e].intentos} intentos" class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔" : "○"}</span>`).join("")}</td>
+        <td class="esc4">${Object.keys(g.escenarios).map(e => `<span title="${esc(nombreEsc(e))}: ${g.escenarios[e].intentos} intentos" class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔" : "○"}</span>`).join("") || "—"}</td>
         <td>${fmtFecha(g.ultimo_vuelo)}</td><td>${estado}</td>
         <td><div class="acciones">
-          <button data-a="ver" data-id="${a.id}">Ver</button><button data-a="editar" data-id="${a.id}">Editar</button>
+          <button data-a="ver" data-id="${a.id}">Ver</button><button data-a="editar" data-id="${a.id}">Editar</button><button data-a="clave" data-id="${a.id}" title="${a.tiene_clave ? "Tiene clave" : "Sin clave: la creará al entrar online"}">${a.tiene_clave ? "🔒" : "🔓"} Clave</button>
           ${a.archivado ? `<button data-a="restaurar" data-id="${a.id}">Restaurar</button><button class="peligro" data-a="borrar" data-id="${a.id}">Borrar</button>`
                         : `<button data-a="archivar" data-id="${a.id}">Archivar</button>`}
           ${a.archivado ? "" : a.habilitado ? `<button data-a="retirar" data-id="${a.id}">Retirar autorización</button>`
-                        : `<button class="prim" data-a="autorizar" data-id="${a.id}" ${g.requisitos_cumplidos ? "" : "disabled title='Necesita 10 h y los 4 escenarios'"}>Autorizar maqueta real</button>`}
+                        : `<button class="prim" data-a="autorizar" data-id="${a.id}" ${g.requisitos_cumplidos ? "" : `disabled title='Necesita ${String(CERT.horas).replace(".", ",")} h y las ${CERT.pruebas.length} pruebas'`}>Conceder el certificado</button>`}
         </div></td></tr>`;
     }).join("") : `<tr><td colspan="8" class="sub">No hay alumnos${f ? " que coincidan" : ""}.</td></tr>`);
   $("tAlumnos").querySelectorAll("button[data-a]").forEach(b => b.onclick = () => accion(b.dataset.a, alumnos.find(a => a.id === b.dataset.id)).catch(fallo));
@@ -248,7 +273,8 @@ function pintarAlumnos() {
 $("buscar").addEventListener("input", pintarAlumnos); $("verArchivados").addEventListener("change", pintarAlumnos);
 async function anadir() {
   const n = $("nuevo").value.trim(); if (!n) return;
-  await api("POST", "profesor/alumnos", { nombre: n }); $("nuevo").value = ""; await cargarAlumnos();
+  const c = $("nuevoClave").value;
+  await api("POST", "profesor/alumnos", c ? { nombre: n, clave: c } : { nombre: n }); $("nuevo").value = ""; $("nuevoClave").value = ""; await cargarAlumnos();
 }
 $("anadir").onclick = () => anadir().catch(fallo); $("nuevo").addEventListener("keydown", e => { if (e.key === "Enter") anadir().catch(fallo); });
 
@@ -272,12 +298,18 @@ async function accion(a, al) {
     if (document.getElementById("confNombre").value.trim() !== al.nombre) throw new Error("El nombre no coincide: no se ha borrado nada");
     const r = await api("DELETE", "profesor/alumnos/" + al.id);
     fallo(new Error("Borrado. Copia previa: " + r.copia));
+  } else if (a === "clave") {                      // clave de acceso online del alumno
+    const r = await modal("Clave de " + al.nombre, `<p>${al.tiene_clave ? "Tiene clave." : "Todavía no tiene clave: la creará la primera vez que entre online."}
+      Puedes ponerle una nueva (de 4 a 20 caracteres) o quitársela para que la cree él.</p><input type="password" id="mClave" maxlength="20" autocomplete="new-password" style="width:100%" placeholder="Clave nueva">`,
+      [["Cancelar", false], ["Quitar la clave", "quitar", "peligro"], ["Poner esta clave", "poner", "prim"]]);
+    if (r === "poner") await api("POST", `profesor/alumnos/${al.id}/clave`, { clave: $("mClave").value });
+    else if (r === "quitar") await api("POST", `profesor/alumnos/${al.id}/clave`, { clave: null });
   } else if (a === "autorizar" || a === "retirar") {
     const si = a === "autorizar";
-    const ok = await modal(si ? "Autorizar la maqueta real" : "Retirar la autorización",
-      si ? `<p><b>${esc(al.nombre)}</b> tiene ${fmtHoras(al.progreso.horas)} de vuelo y los 4 escenarios superados.</p><p>¿Le autorizas a volar la maqueta RC real?</p>`
-         : `<p>¿Retirar a <b>${esc(al.nombre)}</b> la autorización para la maqueta real?</p>`,
-      [["Cancelar", false], [si ? "Autorizar" : "Retirar", true, si ? "prim" : "peligro"]]);
+    const ok = await modal(si ? "Conceder el certificado" : "Retirar el certificado",
+      si ? `<p><b>${esc(al.nombre)}</b> tiene ${fmtHoras(al.progreso.horas)} de vuelo y las ${al.progreso.escenarios_total} pruebas superadas.</p><p>¿Le concedes «${esc(CERT.nombre)}»?</p>`
+         : `<p>¿Retirar a <b>${esc(al.nombre)}</b> «${esc(CERT.nombre)}»?</p>`,
+      [["Cancelar", false], [si ? "Conceder" : "Retirar", true, si ? "prim" : "peligro"]]);
     if (!ok) return;
     await api("POST", `profesor/alumnos/${al.id}/habilitar`, { autorizar: si });
   }
@@ -296,7 +328,7 @@ const CAB_VUELOS = c => `<tr>${c ? "<th>Alumno</th>" : ""}<th>Fecha</th><th>Equi
 async function verAlumno(al) {
   const vs = await api("GET", "profesor/vuelos?alumno=" + encodeURIComponent(al.id)), g = al.progreso;
   await modal(al.nombre, `<p>${fmtHoras(g.horas)} de vuelo · ${g.vuelos} vuelos · ${g.aterrizajes} aterrizajes · ${g.accidentes} accidentes</p>
-    <table>${ORDEN.map(e => `<tr><td class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔ superado" : "○ pendiente"}</td><td>${ESC[e]}</td><td>${g.escenarios[e].intentos} intentos</td></tr>`).join("")}</table>
+    <table>${Object.keys(g.escenarios).map(e => `<tr><td class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔ superado" : "○ pendiente"}</td><td>${esc(nombreEsc(e))}</td><td>${g.escenarios[e].intentos} intentos</td></tr>`).join("")}</table>
     <h2>Historial</h2><div class="tabla"><table>${CAB_VUELOS(false)}${vs.map(v => filaVuelo(v, false)).join("") || '<tr><td colspan="9" class="sub">Sin vuelos</td></tr>'}</table></div>`,
     [["Cerrar", true]]);
 }
@@ -338,18 +370,86 @@ function foto(url) {
   if (!FOTOS.has(url)) { const i = new Image(); i.onload = () => cargarSalas(); i.src = url; FOTOS.set(url, i); }
   const i = FOTOS.get(url); return i.complete && i.naturalWidth ? i : null;
 }
-async function mundo(id) {                      // el rectangulo de su ortofoto: la cabecera de mundos/<id>.js (terreno)
-  if (!(id in MUNDOS)) {
-    MUNDOS[id] = null;
+function mundo(id) {                            // el rectangulo de su ortofoto y su origen: la cabecera de mundos/<id>.js (una sola carga)
+  return MUNDOS[id] = MUNDOS[id] || (async () => {
+    let r = null;
     try {
-      const t = await (await fetch("mundos/" + id + ".js")).text(), m = t.match(/"terreno":\{"origen":\{[^}]*\},"paso":([\d.]+),"N0":([-\d.]+),"E0":([-\d.]+),"nN":(\d+),"nE":(\d+)/);
-      if (m) MUNDOS[id] = { paso: +m[1], N0: +m[2], E0: +m[3], nN: +m[4], nE: +m[5] };
+      const t = await (await fetch("mundos/" + id + ".js")).text(), m = t.match(/"terreno":\{"origen":\{"lat":([-\d.]+),"lon":([-\d.]+)\},"paso":([\d.]+),"N0":([-\d.]+),"E0":([-\d.]+),"nN":(\d+),"nE":(\d+)/);
+      if (m) r = { lat0: +m[1], lon0: +m[2], paso: +m[3], N0: +m[4], E0: +m[5], nN: +m[6], nE: +m[7] };
     } catch (e) {}
     try { ZONAS = ZONAS || await (await fetch("zonas/indice.json")).json(); } catch (e) { ZONAS = []; }
-    cargarSalas();
-  }
-  return MUNDOS[id];
+    setTimeout(cargarSalas, 0);
+    return r;
+  })();
 }
+// ---- crear una sala desde el panel (las mismas opciones que la pantalla Multijugador del simulador) ----
+function opcionesSala() {
+  const E = window.ESCENARIOS || {}, ids = Object.keys(E);
+  const mis = v => ids.filter(id => E[id].objetivos.length && !E[id].operacion && (E[id].vehiculos || ["avion"]).includes(v));
+  const G = [["Vuelo libre", ids.filter(id => !E[id].objetivos.length)], ["Entrenamientos del avión", mis("avion")], ["Entrenamientos del DJI", mis("dron")],
+             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (DJI)", ids.filter(id => E[id].operacion)]];
+  return G.map(([t, l]) => `<optgroup label="${esc(t)}">${l.map(id => `<option value="${id}">${esc(E[id].nombre)}</option>`).join("")}</optgroup>`).join("");
+}
+/** Lo que se puede ajustar de cada trabajo al crear la sala: [clave, texto, minimo, maximo, valor de partida]. */
+function ajustesDe(E) {
+  const O = E.operacion; if (!O) return [];
+  const r = [];
+  if (O.candidatos) r.push(["cubiertas", "Placas en cubiertas", 0, O.candidatos.cubiertas.length, O.candidatos.elegir[0]], ["fachadas", "Placas en fachadas", 0, O.candidatos.fachadas.length, O.candidatos.elegir[1]]);
+  if (O.defectos) r.push(["defectos", "Módulos dañados", 1, 30, O.defectos.length]);
+  if (O.manchas) r.push(["manchas", "Manchas de plaga", 1, 12, O.manchas.length]);
+  if (O.limite_s) r.push(["minutos", "Tiempo para encontrarlo (min)", 1, 60, Math.round(O.limite_s / 60)]);
+  if (O.cubrir) r.push(["cobertura", "Cobertura de la parcela (%)", 30, 100, Math.round(O.cubrir * 100)]);
+  return r;
+}
+function pintarCrear() {
+  const E = (window.ESCENARIOS || {})[$("cEsc").value] || {}, D = E.destacados || [];
+  $("cFilaSalida").style.display = D.length ? "" : "none";
+  $("cSalida").innerHTML = D.map((d, i) => `<option value="${i}">${esc(d.nombre)}</option>`).join("");
+  if (E.viento) { $("cVel").value = E.viento.vel; $("cDir").value = String(Math.round(E.viento.desde / 45) * 45 % 360); $("cRachas").checked = !!E.viento.rachas; }   // el previsto, que se puede cambiar
+  const A = ajustesDe(E);
+  $("cAjustes").innerHTML = A.length ? '<div class="sub" style="font-weight:600;margin:6px 0 2px">Ajustes del trabajo (los sitios se sortean en cada vuelo)</div>' +
+    A.map(([k, t, a, b, v]) => `<div class="fila"><b style="min-width:150px;font-weight:400">${t}</b><input type="number" data-k="${k}" min="${a}" max="${b}" step="1" value="${v}" style="width:80px"><span class="sub">de ${a} a ${b}</span></div>`).join("") : "";
+}
+$("cEsc").innerHTML = opcionesSala(); $("cEsc").onchange = pintarCrear; pintarCrear();
+$("cCrear").onclick = async () => {
+  const id = $("cEsc").value, E = ESCENARIOS[id]; let lanz = null;
+  if (E.operacion) lanz = { mundo: E.mundo, N: E.operacion.salida.n, E: E.operacion.salida.e, rumbo: E.operacion.salida.rumbo };
+  else if (E.mundo && (E.destacados || []).length) {
+    const M = await mundo(E.mundo), d = E.destacados[+$("cSalida").value || 0];
+    if (M && M.lat0 !== undefined) lanz = { mundo: E.mundo, N: Math.round((d.lat - M.lat0) * 110574), E: Math.round((d.lon - M.lon0) * 111320 * Math.cos(M.lat0 * Math.PI / 180)), rumbo: d.rumbo, destacado: d.nombre };
+  }
+  const viento = { vel: Math.max(0, Math.min(12, +$("cVel").value || 0)), desde: +$("cDir").value, rachas: $("cRachas").checked };
+  const ajustes = {}; $("cAjustes").querySelectorAll("input[data-k]").forEach(i => { ajustes[i.dataset.k] = Math.max(+i.min, Math.min(+i.max, Math.round(+i.value || 0))); });
+  try {
+    const sa = await api("POST", "salas", { nombre: $("cNombre").value.trim() || "Sala del profesor", escenario: id, lanz, viento, ajustes: Object.keys(ajustes).length ? ajustes : null });
+    MP.sel = sa.codigo; $("cMsg").textContent = `Sala ${sa.codigo} creada: los alumnos ya la ven en Multijugador.`; $("cNombre").value = ""; cargarSalas();
+  } catch (e) { fallo(e); }
+};
+
+// ---- el certificado: nombre, horas y pruebas (POST /api/profesor/certificado) ----
+let CERT = { nombre: "Certificado de pilotaje", horas: 10, pruebas: [] };
+async function cargarCert() {
+  try { const e = await api("GET", "estado"); if (e.certificado) CERT = e.certificado; } catch (e) {}
+  $("reqTxt").textContent = `Requisitos de «${CERT.nombre}»: ${String(CERT.horas).replace(".", ",")} h de vuelo y ${CERT.pruebas.length} prueba${CERT.pruebas.length === 1 ? "" : "s"} superada${CERT.pruebas.length === 1 ? "" : "s"}.`;
+}
+function pintarCert() {
+  $("kNombre").value = CERT.nombre; $("kHoras").value = CERT.horas;
+  const E = window.ESCENARIOS || {}, ids = Object.keys(E), sel = new Set(CERT.pruebas);
+  const mis = v => ids.filter(id => E[id].objetivos.length && !E[id].operacion && (E[id].vehiculos || ["avion"]).includes(v));
+  const G = [["Entrenamientos del avión", mis("avion")], ["Entrenamientos del DJI", mis("dron").filter(id => !mis("avion").includes(id))],
+             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (DJI)", ids.filter(id => E[id].operacion)]];
+  $("kPruebas").innerHTML = G.map(([t, l]) => `<div style="margin-bottom:10px"><div class="sub" style="font-weight:600;margin-bottom:4px">${esc(t)}</div>` +
+    l.map(id => `<label style="display:inline-block;min-width:260px;margin:2px 10px 2px 0"><input type="checkbox" value="${id}" ${sel.has(id) ? "checked" : ""}> ${esc(E[id].nombre)}</label>`).join("") + "</div>").join("") +
+    '<p class="sub" style="margin:0">Los entrenamientos que comparten el avión y el DJI cuentan con cualquiera de los dos.</p>';
+}
+$("kGuardar").onclick = async () => {
+  const pruebas = [...$("kPruebas").querySelectorAll("input:checked")].map(i => i.value);
+  try {
+    CERT = await api("POST", "profesor/certificado", { nombre: $("kNombre").value.trim(), horas: +$("kHoras").value || 0, pruebas });
+    $("kMsg").textContent = `Guardado: ${CERT.horas} h y ${CERT.pruebas.length} pruebas.`; cargarCert(); cargarAlumnos().catch(fallo);
+  } catch (e) { fallo(e); }
+};
+
 /** Ordenes del profesor a la sala (aula/servidor_aula.py, POST /api/salas/<cod>/orden). */
 const RUMBOS = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
 async function orden(d, msg) {

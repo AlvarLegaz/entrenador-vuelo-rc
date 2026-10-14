@@ -13,6 +13,7 @@ function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
 function construirAvion(datos) {
   if (datos.tipo === "fpv" && window.ModeloFPV && ModeloFPV.construir3D) return ModeloFPV.construir3D(datos);     // dron FPV: su modelo, en aviones/FPV.js
+  if (datos.tipo === "cuadricoptero" && window.ModeloDJI && ModeloDJI.construir3D) return ModeloDJI.construir3D(datos);   // DJI: el modelo detallado, en aviones/DJI_MINI.js (el de Godot)
   const grupo = new THREE.Group(), K = datos.malla;
   const geom = m => {
     const g = new THREE.BufferGeometry();

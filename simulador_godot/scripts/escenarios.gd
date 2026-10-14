@@ -120,7 +120,7 @@ class Evaluador extends RefCounted:
 		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]:
 			if obj.has(k): obj[k]["estado"] = "curso"
 		if E.has("operacion") and not ent.mundo.is_empty():    # el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
-			var dd: Dictionary = Operacion.sortear(E["operacion"])
+			var dd: Dictionary = Operacion.sortear(Operacion.ajustar(E["operacion"], p.sala.get("ajustes")))
 			var anotar := func(k: String, tx: String) -> void:
 				if obj.has(k): obj[k]["texto"] += " (%s)" % tx
 			op = Operacion.new(dd, marcar, anotar, { "casa": [p.casa["N"], p.casa["E"]], "suelo": func(N: float, Ee: float) -> float: return ent.altura(N, Ee), "h0": float(ent.terreno["h0"]) })

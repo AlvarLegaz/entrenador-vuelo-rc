@@ -216,3 +216,446 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   Object.assign(DATOS.malla, { fuselaje: V.fuselaje, estab: V.estab, helices: brazos.map(([x, y]) => [x, y, -0.018]) });
   Modelos.registrar(DATOS, ModeloCuadricoptero);
 })();
+
+// =====================================================================
+//  MODELO 3D DETALLADO del DJI Mini 4K para la web: traduccion LITERAL de simulador_godot/scripts/modelo_dji_3d.gd
+//  (ModeloDJI3D): la misma geometria parametrica (carcasa, cuerpo, brazos y patas por secciones superelipticas con
+//  tapas redondeadas; motores, objetivo, sensores y botones por revolucion; palas con perfil NACA, cuerda, torsion y
+//  flecha), los mismos materiales PBR (plastico satinado con barniz, metal de las campanas, cristal del objetivo, goma
+//  de los pies) y el mismo sombreado de la carcasa (rejillas de ventilacion, tomas de aire, juntas) y del disco de
+//  desenfoque de las helices. Si se cambia alli, hay que cambiarlo aqui. construirAvion (js/visor.js) lo usa en lugar
+//  de la malla de cajas cuando el avion es un cuadricoptero.
+//  Ejes cuerpo NED (x adelante, y derecha, z abajo; metros; origen en el CG = centro de los motores).
+// =====================================================================
+(function () {
+  const TAU = 2 * Math.PI, SUELO = 0.020;
+  const MOTORES = [[0.064, 0.090, -0.0355, -1], [0.064, -0.090, -0.0355, 1], [-0.064, 0.085, -0.0170, 1], [-0.064, -0.085, -0.0170, -1]];
+  const R_HELICE = 0.0595, R0_HELICE = 0.0055, PASO = 0.066, RPM_PALAS = 250, RPM_DISCO = 1100;
+  const G_GUI = [0.0590, 0, -0.0080], G_ALA = [0.0592, 0, 0.0015], G_CAB = [0.0692, 0, 0.0015];
+  const C_CARCASA = 0xe3e3e0, C_CUERPO = 0xc4c5c4, C_BRAZO = 0xcdcecc, C_HELICE = 0x3a3b3e, C_PUNTA = 0xf0782a;
+
+  // ---- vectores como [x, y, z] ----
+  const sum = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], res = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cruz = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const largo2 = a => dot(a, a), unit = a => { const l = Math.sqrt(dot(a, a)); return l > 0 ? mul(a, 1 / l) : [0, 0, 0]; };
+  const lerp = (a, b, t) => a + (b - a) * t, clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const lineal = hex => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };      // sRGB -> lineal (ColorManagement)
+  const casi = (a, b) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7 && Math.abs(a[2] - b[2]) < 1e-7;
+
+  /** Acumulador de una superficie (un material): vertices, normales, color (o marcas) de vertice e indices. */
+  class Acum {
+    constructor() { this.pos = []; this.nor = []; this.col = []; this.idx = []; }
+    static igual(A, B) { return casi(A[0], B[0]) && casi(A[Math.floor(A.length / 2)], B[Math.floor(B.length / 2)]) && casi(A[Math.floor(A.length / 4)], B[Math.floor(B.length / 4)]); }
+    static centro(A) { let c = [0, 0, 0]; for (const p of A) c = sum(c, p); return mul(c, 1 / A.length); }
+    /** Rejilla de filas cerradas (anillos) del mismo numero de puntos. Normales por diferencias centrales (dos filas
+     *  iguales seguidas = arista viva), hacia fuera; en los polos, la media de las de la fila vecina. */
+    rejilla(P, c, cols = []) {
+      const nf = P.length, nc = P[0].length, base = this.pos.length / 3, N = [];
+      for (let i = 0; i < nf; i++) {
+        const ip = i > 0 && !Acum.igual(P[i - 1], P[i]) ? i - 1 : i, inx = i < nf - 1 && !Acum.igual(P[i], P[i + 1]) ? i + 1 : i;
+        const F = P[i], Fp = P[ip], Fn = P[inx], fila = [];
+        for (let j = 0; j < nc; j++) fila.push(cruz(res(F[(j + 1) % nc], F[(j - 1 + nc) % nc]), res(Fn[j], Fp[j])));
+        N.push(fila);
+      }
+      let suma = 0;
+      for (let i = 0; i < nf; i++) { const F = P[i], cen = Acum.centro(F); for (let j = 0; j < nc; j++) suma += dot(unit(N[i][j]), res(F[j], cen)); }
+      const signo = suma < 0 ? -1 : 1;
+      for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) N[i][j] = largo2(N[i][j]) > 1e-24 ? unit(mul(N[i][j], signo)) : [0, 0, 0];
+      for (let i = 0; i < nf; i++) {                  // polos
+        if (N[i][0][0] !== 0 || N[i][0][1] !== 0 || N[i][0][2] !== 0) continue;
+        const vec = i > 0 ? N[i - 1] : N[i + 1]; let m = [0, 0, 0]; for (const v of vec) m = sum(m, v);
+        m = unit(m); for (let j = 0; j < nc; j++) N[i][j] = m;
+      }
+      for (let i = 0; i < nf; i++) {
+        const ci = i < cols.length ? cols[i] : c;
+        for (let j = 0; j < nc; j++) { this.pos.push(...P[i][j]); this.nor.push(...N[i][j]); this.col.push(...ci); }
+      }
+      for (let i = 0; i < nf - 1; i++) {
+        if (Acum.igual(P[i], P[i + 1])) continue;
+        for (let j = 0; j < nc; j++) {
+          const a = base + i * nc + j, b = base + (i + 1) * nc + j, cc = base + (i + 1) * nc + (j + 1) % nc, d = base + i * nc + (j + 1) % nc;
+          this.tri(a, b, cc); this.tri(a, cc, d);
+        }
+      }
+    }
+    tri(a, b, c) {
+      const p = k => [this.pos[3 * k], this.pos[3 * k + 1], this.pos[3 * k + 2]], n = k => [this.nor[3 * k], this.nor[3 * k + 1], this.nor[3 * k + 2]];
+      const fn = cruz(res(p(b), p(a)), res(p(c), p(a)));          // cara delantera de Three (sentido antihorario)
+      if (largo2(fn) < 1e-22) return;
+      if (dot(fn, sum(sum(n(a), n(b)), n(c))) < 0) this.idx.push(a, c, b); else this.idx.push(a, b, c);
+    }
+  }
+
+  // ---- geometria parametrica ----
+  /** Seccion superelíptica (exponente n) en el plano (l, u) alrededor de o: semiancho w, hacia arriba hu, hacia abajo hd. */
+  function seccion(o, l, u, w, hu, hd, n, nc) {
+    const f = [], e = 2 / n;
+    for (let j = 0; j < nc; j++) {
+      const a = TAU * j / nc, c = Math.cos(a), s = Math.sin(a);
+      f.push(sum(sum(o, mul(l, Math.sign(c) * Math.pow(Math.abs(c), e) * w)), mul(u, Math.sign(s) * Math.pow(Math.abs(s), e) * (s > 0 ? hu : hd))));
+    }
+    return f;
+  }
+  /** Pieza alargada: estaciones [punto, semiancho, alto arriba, alto abajo] a lo largo de una linea, con tapas redondeadas. */
+  function loft(acum, est, n, tapa0, tapa1, arriba = [0, 0, -1], nc = 32, m0 = 2, m1 = 2, col = [0, 0, 0], nt = 6) {
+    const k = est.length, filas = [], T = [];
+    for (let i = 0; i < k; i++) T.push(unit(res(est[Math.min(i + 1, k - 1)][0], est[Math.max(i - 1, 0)][0])));
+    const marco = t => { const l = unit(cruz(arriba, t)); return [l, cruz(t, l)]; };
+    if (tapa0 > 0) {
+      const fr = marco(T[0]);
+      for (let q = nt; q > 0; q--) {
+        const th = Math.PI / 2 * q / nt, esc = q === nt ? 0 : Math.pow(Math.max(Math.cos(th), 0), 2 / m0), dd = tapa0 * Math.pow(Math.sin(th), 2 / m0);
+        filas.push(seccion(res(est[0][0], mul(T[0], dd)), fr[0], fr[1], est[0][1] * esc, est[0][2] * esc, est[0][3] * esc, n, nc));
+      }
+    }
+    for (let i = 0; i < k; i++) { const fr = marco(T[i]); filas.push(seccion(est[i][0], fr[0], fr[1], est[i][1], est[i][2], est[i][3], n, nc)); }
+    if (tapa1 > 0) {
+      const fr = marco(T[k - 1]);
+      for (let q = 1; q <= nt; q++) {
+        const th = Math.PI / 2 * q / nt, esc = q === nt ? 0 : Math.pow(Math.max(Math.cos(th), 0), 2 / m1), dd = tapa1 * Math.pow(Math.sin(th), 2 / m1);
+        filas.push(seccion(sum(est[k - 1][0], mul(T[k - 1], dd)), fr[0], fr[1], est[k - 1][1] * esc, est[k - 1][2] * esc, est[k - 1][3] * esc, n, nc));
+      }
+    }
+    acum.rejilla(filas, col);
+  }
+  /** Pieza de revolucion alrededor de eje desde o: perfil [[radio, altura], ...]; un punto repetido = arista viva. */
+  function torno(acum, o, eje, perfil, nc = 24, col = [0, 0, 0]) {
+    eje = unit(eje);
+    const ref = Math.abs(eje[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], u = unit(cruz(eje, ref)), v = cruz(eje, u), filas = [];
+    for (const p of perfil) {
+      const fila = [];
+      for (let j = 0; j < nc; j++) { const a = TAU * j / nc; fila.push(sum(sum(o, mul(eje, p[1])), mul(sum(mul(u, Math.cos(a)), mul(v, Math.sin(a))), p[0]))); }
+      filas.push(fila);
+    }
+    acum.rejilla(filas, col);
+  }
+  function interp(xs, tabla, x) {       // Catmull-Rom sobre una tabla
+    const n = xs.length;
+    if (x <= xs[0]) return tabla[0];
+    if (x >= xs[n - 1]) return tabla[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    const t = (x - xs[i]) / (xs[i + 1] - xs[i]), p0 = tabla[Math.max(i - 1, 0)], p1 = tabla[i], p2 = tabla[i + 1], p3 = tabla[Math.min(i + 2, n - 1)];
+    return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+  }
+  const bezier = (a, b, c, t) => { const ab = sum(a, mul(res(b, a), t)), bc = sum(b, mul(res(c, b), t)); return sum(ab, mul(res(bc, ab), t)); };
+
+  // ---- carcasa superior y cuerpo inferior ----
+  const CX = [-0.050, -0.040, -0.025, -0.005, 0.015, 0.035, 0.050, 0.062, 0.070];
+  const C_ANCHO = [0.0228, 0.0250, 0.0275, 0.0300, 0.0311, 0.0313, 0.0311, 0.0304, 0.0294];
+  const C_TECHO = [-0.0265, -0.0288, -0.0304, -0.0310, -0.0304, -0.0284, -0.0258, -0.0228, -0.0205];
+  const C_LABIO = [-0.0180, -0.0177, -0.0174, -0.0171, -0.0168, -0.0165, -0.0162, -0.0159, -0.0156];
+  const BX = [-0.047, -0.035, -0.015, 0.010, 0.030, 0.042, 0.052];
+  const B_ANCHO = [0.0190, 0.0218, 0.0246, 0.0262, 0.0262, 0.0252, 0.0238];
+  const B_PANZA = [0.0042, 0.0058, 0.0064, 0.0064, 0.0054, 0.0035, -0.0005];
+  function cuerpo(f) {
+    let est = [];
+    for (let k = 0; k < 25; k++) {
+      const x = lerp(CX[0], CX[CX.length - 1], k / 24), zc = interp(CX, C_LABIO, x);
+      est.push([[x, 0, zc], interp(CX, C_ANCHO, x), zc - interp(CX, C_TECHO, x), 0.0034]);
+    }
+    loft(f.casco, est, 3.4, 0.0065, 0.0115, [0, 0, -1], 64, 3.2, 3.4, [1, 0, 0], 9);
+    est = [];
+    for (let k = 0; k < 17; k++) {
+      const x = lerp(BX[0], BX[BX.length - 1], k / 16), bot = interp(BX, B_PANZA, x), top = -0.0225, zc = (top + bot) / 2;
+      est.push([[x, 0, zc], interp(BX, B_ANCHO, x), zc - top, bot - zc]);
+    }
+    loft(f.casco, est, 4.0, 0.0060, 0.0060, [0, 0, -1], 56, 3.2, 3.0, [0, 1, 0], 8);
+    // extremo de la bateria: boton y 4 luces de carga
+    torno(f.oscuro, [-0.0528, -0.0105, -0.0060], [-1, 0, 0], [[0, 0], [0.0023, 0], [0.0023, 0], [0.0023, 0.0012], [0.0018, 0.0016], [0, 0.0017]], 16);
+    for (let k = 0; k < 4; k++) torno(f.led, [-0.0531, -0.0030 + 0.0040 * k, -0.0060], [-1, 0, 0], [[0, 0], [0.0007, 0], [0.0007, 0.0009], [0, 0.0011]], 8);
+    // lentes de las luces: en los motores traseros y en la cola
+    for (const lado of [1, -1]) {
+      const dir = [-0.6, 0.8 * lado, 0];
+      torno(f.led, sum([-0.064, 0.085 * lado, -0.0050], mul(dir, 0.0068)), dir, [[0, 0], [0.0024, 0], [0.0024, 0.0012], [0, 0.0018]], 12);
+    }
+    torno(f.led, [-0.0535, 0, -0.0125], [-1, 0, 0], [[0, 0], [0.0034, 0], [0.0034, 0], [0.0034, 0.0010], [0, 0.0014]], 14);
+    // panza: sensores de vision hacia abajo, ToF y luz auxiliar
+    for (const y of [-0.0085, 0.0085]) {
+      torno(f.oscuro, [0.022, y, 0.0058], [0, 0, 1], [[0, 0], [0.0040, 0], [0.0040, 0], [0.0040, 0.0010], [0.0032, 0.0012], [0.0032, 0.0012], [0, 0.0008]], 18);
+      torno(f.sensor, [0.022, y, 0.0064], [0, 0, 1], [[0, 0], [0.0025, 0], [0.0017, 0.0007], [0, 0.0009]], 16);
+    }
+    torno(f.sensor, [0.006, 0, 0.0062], [0, 0, 1], [[0, 0], [0.0028, 0], [0.0028, 0], [0.0028, 0.0009], [0, 0.0010]], 14);
+    torno(f.led, [-0.004, 0, 0.0062], [0, 0, 1], [[0, 0], [0.0022, 0], [0.0022, 0], [0.0022, 0.0009], [0, 0.0011]], 12);
+    // puerto USB-C a un lado de la trasera
+    loft(f.oscuro, [[[-0.0440, -0.0205, -0.0080], 0.0012, 0.0016, 0.0016], [[-0.0395, -0.0222, -0.0080], 0.0012, 0.0016, 0.0016]], 4.0, 0.0006, 0.0006, [0, 0, -1], 16, 2.0, 2.0, [0, 0, 0], 3);
+  }
+
+  // ---- brazos ----
+  function brazoDelantero(f, lado) {
+    const a = [0.042, 0.022 * lado, -0.0100], c = [0.064, 0.090 * lado, -0.0195], b = [0.056, 0.054 * lado, -0.0120], est = [];
+    for (let k = 0; k < 10; k++) { const t = k / 9; est.push([bezier(a, b, c, t), lerp(0.0076, 0.0062, t), lerp(0.0036, 0.0033, t), lerp(0.0036, 0.0033, t)]); }
+    loft(f.casco, est, 3.6, 0, 0, [0, 0, -1], 28);
+    torno(f.casco, [0.0445, 0.0240 * lado, -0.0040], [0, 0, -1], [[0, 0], [0.0050, 0], [0.0064, 0.0009], [0.0068, 0.0030], [0.0068, 0.0092], [0.0060, 0.0106], [0, 0.0110]], 24);   // bisagra
+    torno(f.casco, [0.064, 0.090 * lado, -0.0200], [0, 0, -1], [[0, 0], [0.0068, 0], [0.0078, 0.0030], [0.0084, 0.0062], [0.0085, 0.0075], [0.0085, 0.0075], [0.0076, 0.0080], [0, 0.0080]], 28);   // asiento del motor
+    const pe = [];                // pata: de seccion ovalada, algo abierta hacia afuera
+    for (let k = 0; k < 8; k++) {
+      const t = k / 7, p = [lerp(0.0640, 0.0628, t), lado * lerp(0.0900, 0.0950, t * t), lerp(-0.0215, 0.0172, t)];
+      pe.push([p, lerp(0.0050, 0.0036, t), lerp(0.0085, 0.0056, t), lerp(0.0085, 0.0056, t)]);
+    }
+    loft(f.casco, pe, 3.4, 0, 0, [1, 0, 0], 24);
+    loft(f.goma, [[[0.0628, 0.0950 * lado, 0.0170], 0.0037, 0.0057, 0.0057], [[0.0628, 0.0950 * lado, 0.0186], 0.0036, 0.0055, 0.0055]], 3.4, 0, 0.0014, [1, 0, 0], 24, 2.0, 3.0, [0, 0, 0], 4);
+  }
+  function brazoTrasero(f, lado) {
+    const a = [-0.026, 0.020 * lado, -0.0125], c = [-0.064, 0.085 * lado, -0.0040], b = [-0.044, 0.050 * lado, -0.0100], est = [];
+    for (let k = 0; k < 10; k++) { const t = k / 9; est.push([bezier(a, b, c, t), lerp(0.0072, 0.0058, t), lerp(0.0035, 0.0032, t), lerp(0.0035, 0.0032, t)]); }
+    loft(f.casco, est, 3.6, 0, 0, [0, 0, -1], 28);
+    torno(f.casco, [-0.0262, 0.0215 * lado, -0.0070], [0, 0, -1], [[0, 0], [0.0050, 0], [0.0062, 0.0009], [0.0066, 0.0028], [0.0066, 0.0082], [0.0058, 0.0096], [0, 0.0100]], 24);
+    torno(f.casco, [-0.064, 0.085 * lado, SUELO - 0.0016], [0, 0, -1],
+      [[0, 0], [0.0050, 0], [0.0058, 0.0010], [0.0060, 0.0040], [0.0062, 0.0150], [0.0074, 0.0210], [0.0084, 0.0258], [0.0085, 0.0266], [0.0085, 0.0266], [0.0076, 0.0272], [0, 0.0272]], 28);
+    torno(f.goma, [-0.064, 0.085 * lado, SUELO], [0, 0, -1], [[0, 0], [0.0040, 0], [0.0050, 0.0007], [0.0052, 0.0020], [0, 0.0020]], 20);
+  }
+  function motor(f, m) {
+    const zp = m[2], o = [m[0], m[1], zp + 0.0080];
+    torno(f.metal, o, [0, 0, -1], [[0, 0], [0.0064, 0], [0.0064, 0], [0.0069, 0.0006], [0.0070, 0.0040], [0.0067, 0.0058], [0.0061, 0.0064], [0.0061, 0.0064], [0, 0.0064]], 28);
+    torno(f.goma, sum(o, [0, 0, -0.0010]), [0, 0, -1], [[0.00700, 0], [0.00706, 0.0004], [0.00706, 0.0016], [0.00700, 0.0020]], 28);
+    torno(f.buje, [m[0], m[1], zp + 0.0016], [0, 0, -1], [[0, 0], [0.0062, 0], [0.0066, 0.0008], [0.0066, 0.0024], [0.0058, 0.0031], [0, 0.0032]], 24);
+  }
+
+  // ---- gimbal y camara ----
+  function gimbal(g1, g2, g3) {
+    torno(g1.casco, sum(G_GUI, [0, 0, -0.0030]), [0, 0, 1], [[0, 0], [0.0056, 0], [0.0060, 0.0010], [0.0060, 0.0040], [0.0054, 0.0050], [0, 0.0052]], 24);
+    loft(g1.oscuro, [[sum(G_GUI, [-0.0012, 0, 0.0018]), 0.0040, 0.0024, 0.0024], [sum(G_ALA, [-0.0030, 0, -0.0010]), 0.0040, 0.0024, 0.0024]], 3.0, 0, 0.0016, [1, 0, 0], 20);
+    torno(g2.oscuro, sum(G_ALA, [-0.0040, 0, 0]), [1, 0, 0], [[0, 0], [0.0046, 0], [0.0052, 0.0008], [0.0052, 0.0036], [0.0046, 0.0044], [0, 0.0046]], 24);
+    const ra = [], pa = G_ALA, pb = [G_ALA[0], -0.0150, G_ALA[2]], pc = [G_CAB[0] - 0.0015, -0.0150, G_CAB[2]];
+    for (let k = 0; k < 7; k++) ra.push([bezier(pa, pb, pc, k / 6), 0.0015, 0.0040, 0.0040]);
+    loft(g2.oscuro, ra, 3.0, 0, 0.0012, [0, 0, -1], 20);
+    torno(g2.oscuro, [G_CAB[0], -0.0174, G_CAB[2]], [0, 1, 0], [[0, 0], [0.0048, 0], [0.0055, 0.0008], [0.0055, 0.0040], [0.0050, 0.0050], [0, 0.0052]], 24);
+    const cx = G_CAB[0], cz = G_CAB[2];
+    loft(g3.camara, [[[cx - 0.0062, 0, cz], 0.0106, 0.0086, 0.0086], [[cx + 0.0068, 0, cz], 0.0106, 0.0086, 0.0086]], 4.5, 0.0018, 0.0008, [0, 0, -1], 44, 2.6, 3.0, [0, 0, 0], 6);
+    loft(g3.frontal, [[[cx + 0.0068, 0, cz], 0.0088, 0.0076, 0.0076], [[cx + 0.0082, 0, cz], 0.0086, 0.0074, 0.0074]], 5.0, 0, 0.0006, [0, 0, -1], 44, 3.0, 3.0, [0, 0, 0], 4);
+    torno(g3.camara, [cx, -0.0106, cz], [0, -1, 0], [[0, 0], [0.0040, 0], [0.0040, 0.0016], [0.0034, 0.0022], [0, 0.0024]], 20);
+    const lo = [cx + 0.0087, 0, cz];
+    torno(g3.aro, lo, [1, 0, 0], [[0.0062, -0.0006], [0.0062, 0.0006], [0.0058, 0.0012], [0.0058, 0.0012], [0.0049, 0.0012], [0.0049, 0.0012], [0.0047, 0.0004]], 44);
+    torno(g3.oscuro, lo, [1, 0, 0], [[0.0047, 0.0004], [0.0042, 0.0002], [0.0042, 0.0002], [0.0042, 0.0005]], 44);
+    torno(g3.vidrio, lo, [1, 0, 0], [[0.0042, 0.0005], [0.0032, 0.0009], [0.0016, 0.0011], [0, 0.0012]], 44);
+  }
+
+  // ---- pala de helice ----
+  function cuerda(xi) {
+    let c = 0.0072 + 0.0064 * smooth(0, 0.3, xi) - 0.0034 * smooth(0.3, 0.9, xi);
+    if (xi > 0.8) c *= Math.sqrt(Math.max(0, 1 - Math.pow((xi - 0.8) / 0.2, 2)));
+    return c;
+  }
+  const naca = u => 5 * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u * u * u - 0.1036 * u * u * u * u);
+  /** Una pala en ejes del rotor (z abajo), a lo largo de +x girada giro sobre z; s = sentido de giro. */
+  function pala(acum, s, giro) {
+    const filas = [], cols = [], nfil = 24, M = 10, cg = Math.cos(giro), sg = Math.sin(giro), rot = v => [v[0] * cg - v[1] * sg, v[0] * sg + v[1] * cg, v[2]];
+    const cH = lineal(C_HELICE), cP = lineal(C_PUNTA);
+    for (let k = 0; k <= nfil; k++) {
+      const xi = 1 - Math.pow(1 - k / nfil, 1.5), r = R0_HELICE + (R_HELICE - R0_HELICE) * xi, c = cuerda(xi);
+      const beta = Math.min(Math.atan(PASO / (TAU * r)), 30 * Math.PI / 180), esp = 0.12 - 0.065 * xi, flecha = 0.0060 * xi * xi;
+      const d = [0, s * Math.cos(beta), -Math.sin(beta)], nn = [0, -s * Math.sin(beta), -Math.cos(beta)], centro = [r, -s * flecha, -0.0005 * xi], fila = [];
+      for (let j = 0; j < M; j++) { const u = (1 - Math.cos(Math.PI * j / (M - 1))) / 2; fila.push(rot(sum(sum(centro, mul(d, (0.35 - u) * c)), mul(nn, c * (0.16 * u * (1 - u) + esp * naca(u)))))); }
+      for (let j = M - 2; j > 0; j--) { const u = (1 - Math.cos(Math.PI * j / (M - 1))) / 2; fila.push(rot(sum(sum(centro, mul(d, (0.35 - u) * c)), mul(nn, c * (0.16 * u * (1 - u) - esp * naca(u)))))); }
+      filas.push(fila); cols.push(xi > 0.895 ? cP : cH);
+    }
+    acum.rejilla(filas, [0, 0, 0], cols);
+  }
+
+  // ---- mallas (una vez, compartidas) ----
+  function nuevo(ks) { const o = {}; for (const k of ks) o[k] = new Acum(); return o; }
+  function mallas() {
+    if (mallas.c) return mallas.c;
+    const f = nuevo(["casco", "oscuro", "metal", "goma", "sensor", "led", "buje"]);
+    cuerpo(f);
+    for (const lado of [1, -1]) { brazoDelantero(f, lado); brazoTrasero(f, lado); }
+    for (const m of MOTORES) motor(f, m);
+    const g1 = nuevo(["casco", "oscuro"]), g2 = nuevo(["oscuro"]), g3 = nuevo(["camara", "frontal", "aro", "vidrio", "oscuro"]);
+    gimbal(g1, g2, g3);
+    const palas = {};
+    for (const s of [1, -1]) {
+      const p = nuevo(["palas", "tornillo"]);
+      pala(p.palas, s, 0); pala(p.palas, s, Math.PI);
+      for (let k = 0; k < 2; k++) {
+        const a = Math.PI * k + 0.35 * s;
+        torno(p.tornillo, [Math.cos(a) * 0.0040, Math.sin(a) * 0.0040, -0.0016], [0, 0, -1], [[0, 0], [0.0013, 0], [0.0013, 0], [0.0013, 0.0005], [0.0010, 0.0009], [0, 0.0010]], 10);
+      }
+      palas[s] = p;
+    }
+    // disco de desenfoque: anillo en el plano del rotor
+    const dpos = [], didx = [], n = 64;
+    for (let j = 0; j < n; j++) { const a = TAU * j / n; dpos.push(Math.cos(a) * R0_HELICE * 0.9, Math.sin(a) * R0_HELICE * 0.9, 0, Math.cos(a) * R_HELICE, Math.sin(a) * R_HELICE, 0); }
+    for (let j = 0; j < n; j++) { const a = 2 * j, b = 2 * j + 1, c = 2 * ((j + 1) % n), d = c + 1; didx.push(a, b, c, b, d, c); }
+    const disco = new THREE.BufferGeometry(); disco.setAttribute("position", new THREE.Float32BufferAttribute(dpos, 3));
+    disco.setAttribute("normal", new THREE.Float32BufferAttribute(new Array(dpos.length).fill(0).map((_, i) => i % 3 === 2 ? -1 : 0), 3)); disco.setIndex(didx);
+    const geo = A => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(A.pos, 3)); g.setAttribute("normal", new THREE.Float32BufferAttribute(A.nor, 3));
+                       g.setAttribute("color", new THREE.Float32BufferAttribute(A.col, 3)); g.setIndex(A.idx); g.computeBoundingSphere(); return g; };
+    const geos = o => Object.fromEntries(Object.entries(o).filter(([, a]) => a.idx.length).map(([k, a]) => [k, geo(a)]));
+    return (mallas.c = { fijo: geos(f), g_guinada: geos(g1), g_alabeo: geos(g2), g_cabeceo: geos(g3), palas: { 1: geos(palas[1]), "-1": geos(palas[-1]) }, disco });
+  }
+
+  // ---- materiales ----
+  function entorno() {          // reflejos (como el del FPV): cielo, horizonte y suelo
+    if (entorno.tex) return entorno.tex;
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 128;
+    const g = cv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, "#9fb9d6"); gr.addColorStop(0.47, "#eef2f6"); gr.addColorStop(0.53, "#8a8076"); gr.addColorStop(1, "#4a423b");
+    g.fillStyle = gr; g.fillRect(0, 0, 256, 128); g.fillStyle = "#ffffff"; g.fillRect(40, 18, 46, 20); g.fillRect(170, 26, 20, 14);
+    const t = new THREE.CanvasTexture(cv); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
+    return (entorno.tex = t);
+  }
+  const std = (c, rug, met, barniz, extra) => new THREE.MeshPhysicalMaterial(Object.assign({ color: c, roughness: rug, metalness: met, clearcoat: barniz, clearcoatRoughness: 0.3, envMap: entorno() }, extra || {}));
+  /** Plastico gris satinado con barniz ligero (SHADER_CASCO de Godot). Marcas de vertice (atributo color): r = 1
+   *  carcasa superior (rejillas de ventilacion detras y junta de la tapa de la bateria), g = 1 cuerpo inferior (tomas
+   *  de aire, rejilla de la panza y extremo de la bateria), resto brazos. */
+  function materialCasco() {
+    const m = std(0xffffff, 0.42, 0, 0.25);
+    const u = { uCarcasa: { value: new THREE.Color(C_CARCASA) }, uCuerpo: { value: new THREE.Color(C_CUERPO) }, uBrazo: { value: new THREE.Color(C_BRAZO) }, uOscuro: { value: new THREE.Color(0.0222, 0.0234, 0.0247) } };
+    m.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute vec3 color;\nvarying vec3 vLp;\nvarying vec3 vLn;\nvarying vec2 vMarca;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLp = position; vLn = normal; vMarca = color.rg;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>
+uniform vec3 uCarcasa; uniform vec3 uCuerpo; uniform vec3 uBrazo; uniform vec3 uOscuro;
+varying vec3 vLp; varying vec3 vLn; varying vec2 vMarca;
+float dj_linea(float d, float ancho, float fw0) { float fw = max(fw0, 1e-7); return (1.0 - smoothstep(ancho * 0.5, ancho * 0.5 + fw, abs(d))) * clamp(ancho / fw, 0.0, 1.0); }
+float dj_caja(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + vec2(r); return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r; }
+float dj_ranuras(float t, float periodo, float ancho) { float d = (fract(t / periodo) - 0.5) * periodo; return dj_linea(d, ancho, fwidth(t)); }
+float dj_dentro(vec2 p, vec2 b, float r) { float d = dj_caja(p, b, r); return 1.0 - smoothstep(-0.0002, 0.0002, d); }`)
+        .replace("#include <color_fragment>", `#include <color_fragment>
+vec3 dCol = uBrazo; float dRug = 0.42; float dHueco = 0.0; float dJunta = 0.0; float dCc = 0.25;
+vec3 lp = vLp; vec3 ln = normalize(vLn);
+if (vMarca.r > 0.5) {
+  dCol = uCarcasa; dRug = 0.36; dCc = 0.4;
+  float zl = dj_dentro(vec2(lp.x + 0.0395, lp.z + 0.0215), vec2(0.0075, 0.0021), 0.0018) * smoothstep(0.45, 0.65, abs(ln.y));
+  dHueco = max(dHueco, zl * dj_ranuras(lp.x, 0.0021, 0.0011));
+  dJunta = dj_linea(lp.x + 0.031, 0.0005, fwidth(lp.x)) * smoothstep(0.2, 0.4, abs(ln.y) + max(-ln.z, 0.0));
+} else if (vMarca.g > 0.5) {
+  dCol = uCuerpo; dRug = 0.45;
+  float tf = dj_dentro(vec2(abs(lp.y) - 0.0165, lp.z + 0.0105), vec2(0.0055, 0.0022), 0.0018) * smoothstep(0.3, 0.55, ln.x);
+  dHueco = max(dHueco, tf * 0.92);
+  float zb = dj_dentro(vec2(lp.x + 0.030, lp.y), vec2(0.0130, 0.0110), 0.003) * smoothstep(0.5, 0.75, ln.z);
+  dHueco = max(dHueco, zb * dj_ranuras(lp.y, 0.0024, 0.0011));
+  float bat = smoothstep(-0.3, -0.55, ln.x) * smoothstep(-0.0470, -0.0490, lp.x);
+  dCol = mix(dCol, uOscuro, bat); dRug = mix(dRug, 0.62, bat);
+  dJunta = dj_linea(lp.x + 0.0478, 0.0005, fwidth(lp.x)) * (1.0 - bat);
+}
+dCol *= 1.0 - 0.7 * dJunta;
+dCol = mix(dCol, vec3(0.012), dHueco);
+diffuseColor.rgb = dCol;
+float dAo = 1.0 - 0.6 * max(dJunta, dHueco);`)
+        .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(dRug, 0.9, dHueco);")
+        .replace("#include <lights_physical_fragment>", "#include <lights_physical_fragment>\nmaterial.clearcoat = dCc * (1.0 - dHueco); material.clearcoatRoughness = 0.22;")
+        .replace("#include <aomap_fragment>", "#include <aomap_fragment>\nreflectedLight.indirectDiffuse *= dAo; reflectedLight.indirectSpecular *= mix(1.0, dAo, 0.4);");
+    };
+    m.customProgramCacheKey = () => "dji3d_casco";
+    return m;
+  }
+  /** Disco de desenfoque de la helice (SHADER_DISCO de Godot): opacidad = fraccion de la circunferencia que tapan las
+   *  dos palas a ese radio, con la punta naranja y un fantasma tenue de las palas. */
+  function materialDisco() {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const u = { uColor: { value: new THREE.Color(C_HELICE) }, uPunta: { value: new THREE.Color(C_PUNTA) }, uInt: { value: 1 }, uFase: { value: 0 } };
+    m.userData.u = u;
+    m.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vDp;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvDp = position.xy;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>
+uniform vec3 uColor; uniform vec3 uPunta; uniform float uInt; uniform float uFase; varying vec2 vDp;
+float dj_cuerda(float xi) { float c = 0.0072 + 0.0064 * smoothstep(0.0, 0.3, xi) - 0.0034 * smoothstep(0.3, 0.9, xi); if (xi > 0.8) c *= sqrt(max(0.0, 1.0 - pow((xi - 0.8) / 0.2, 2.0))); return c; }`)
+        .replace("#include <color_fragment>", `#include <color_fragment>
+float r = length(vDp); float xi = clamp((r - ${R0_HELICE.toFixed(4)}) / (${(R_HELICE - R0_HELICE).toFixed(4)}), 0.0, 1.0);
+float cob = clamp(2.0 * dj_cuerda(xi) / (6.2831853 * max(r, 1e-4)), 0.0, 1.0);
+float fantasma = pow(abs(cos(atan(vDp.y, vDp.x) - uFase)), 16.0);
+diffuseColor.rgb = mix(uColor, uPunta, smoothstep(0.885, 0.905, xi));
+diffuseColor.a = uInt * clamp(cob * 1.6 * (0.75 + 0.6 * fantasma), 0.0, 1.0) * smoothstep(${R0_HELICE.toFixed(4)}, ${(R0_HELICE + 0.0015).toFixed(4)}, r);`);
+    };
+    m.customProgramCacheKey = () => "dji3d_disco";
+    return m;
+  }
+  function materiales() {
+    const vidrio = std(0x04060a, 0.02, 0, 1, { clearcoatRoughness: 0, specularIntensity: 1 });
+    return {
+      casco: materialCasco(), oscuro: std(0x2b2c2f, 0.5, 0, 0.2), camara: std(0x232427, 0.42, 0, 0.35), frontal: std(0xb9bbbc, 0.35, 0, 0.4),
+      metal: std(0x6a6e74, 0.32, 0.85, 0), aro: std(0x3c3e42, 0.25, 0.9, 0), goma: std(0x1b1b1c, 0.9, 0, 0), tornillo: std(0x8d9095, 0.3, 1, 0),
+      vidrio, sensor: std(0x0a0b0d, 0.06, 0, 0.8), led: std(0xe6e9eb, 0.1, 0, 0.7), buje: std(0x47484c, 0.4, 0.2, 0.2),
+      palas: std(0xffffff, 0.38, 0, 0.25, { vertexColors: true, side: THREE.DoubleSide, transparent: true, depthWrite: false }),
+    };
+  }
+
+  /** Posicion de una luz de los datos (malla.luces) sobre este modelo: las de los brazos traseros, por fuera de la
+   *  carcasa de sus motores; la de la cola, en la trasera del cuerpo (posicion_luz de Godot). */
+  function posicionLuz(p) {
+    const [x, y] = p;
+    if (x < -0.05 && Math.abs(y) > 0.05) return [-0.0695, Math.sign(y) * 0.0924, -0.0050];
+    if (x < 0 && Math.abs(y) < 0.01) return [-0.0548, 0, -0.0125];
+    return p;
+  }
+
+  window.ModeloDJI = {
+    construir3D(datos) {
+      const C = mallas(), M = materiales(), grupo = new THREE.Group(), todos = Object.values(M);
+      const instancia = (padre, geos, pos) => {
+        const g = new THREE.Group(); g.position.set(...pos); padre.add(g);
+        for (const [k, geo] of Object.entries(geos)) { const ms = new THREE.Mesh(geo, M[k]); ms.castShadow = k !== "palas"; ms.receiveShadow = true; g.add(ms); }
+        return g;
+      };
+      instancia(grupo, C.fijo, [0, 0, 0]);
+      // gimbal de 3 ejes: guinada -> alabeo -> cabeceo (camara); cada malla esta en ejes cuerpo y se desplaza a su eje
+      const gGui = new THREE.Group(); gGui.position.set(...G_GUI); grupo.add(gGui); instancia(gGui, C.g_guinada, mul(G_GUI, -1));
+      const gAla = new THREE.Group(); gAla.position.set(...res(G_ALA, G_GUI)); gGui.add(gAla); instancia(gAla, C.g_alabeo, mul(G_ALA, -1));
+      const gCab = new THREE.Group(); gCab.position.set(...res(G_CAB, G_ALA)); gAla.add(gCab); instancia(gCab, C.g_cabeceo, mul(G_CAB, -1));
+      // rotores: palas (giran) y disco de desenfoque (translucido, sin sombra)
+      const rotores = MOTORES.map(m => {
+        const r = new THREE.Group(); r.position.set(m[0], m[1], m[2]); grupo.add(r);
+        const palas = instancia(r, C.palas[m[3]], [0, 0, 0]);
+        const md = materialDisco(), disco = new THREE.Mesh(C.disco, md); disco.visible = false; disco.renderOrder = 1; r.add(disco); todos.push(md);
+        return { palas, disco, md, s: m[3], fase: Math.random() * TAU };
+      });
+      // luces de los datos (las enciende y escala el visor, como en construirAvion)
+      const K = datos.malla || {};
+      if (!construirAvion.texLuz) {
+        const cv = document.createElement("canvas"); cv.width = cv.height = 32; const g = cv.getContext("2d");
+        const gr = g.createRadialGradient(16, 16, 2, 16, 16, 16); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.45, "rgba(255,255,255,0.95)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = gr; g.fillRect(0, 0, 32, 32); construirAvion.texLuz = new THREE.CanvasTexture(cv);
+      }
+      const luces = (K.luces || []).map(l => {
+        const g = new THREE.Group(); g.position.set(...posicionLuz(l.p)); g.patron = l.patron || "fijo";
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color: l.color, map: construirAvion.texLuz, sizeAttenuation: false, transparent: true, depthWrite: false }));
+        sp.scale.set(0.01, 0.01, 1); g.add(sp);
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.0022, 8, 6), new THREE.MeshBasicMaterial({ color: l.color }))); grupo.add(g); return g;
+      });
+      const rpmMax = (datos.propulsion && datos.propulsion.rpm_max) || 16000;
+      let rpm = 0, t = 0, oculto = false, enVisor = false;
+      /** Orientacion de la camara respecto al cuerpo repartida entre los tres motores del gimbal (poner_gimbal de Godot). */
+      const mx = new THREE.Matrix4(), mA = new THREE.Matrix4(), mB = new THREE.Matrix4(), ejeZ = new THREE.Vector3(0, 0, 1), ejeX = new THREE.Vector3(1, 0, 0), ejeY = new THREE.Vector3(0, 1, 0);
+      function ponerGimbal(loc) {
+        const e = loc.elements, y = [e[4], e[5], e[6]];             // segunda columna
+        const b = clamp(Math.asin(clamp(y[2], -1, 1)), -0.7, 0.7), a = clamp(Math.atan2(-y[0], y[1]), -0.6, 0.6);
+        mA.makeRotationAxis(ejeZ, a); mB.makeRotationAxis(ejeX, b);
+        gGui.quaternion.setFromRotationMatrix(mA); gAla.quaternion.setFromRotationMatrix(mB);
+        mx.multiplyMatrices(mA, mB).transpose().multiply(loc);
+        gCab.quaternion.setFromRotationMatrix(mx).normalize();
+      }
+      ponerGimbal(new THREE.Matrix4());
+      const rb = new THREE.Matrix4(), rz = new THREE.Matrix4(), ry = new THREE.Matrix4();
+      /** Cada cuadro: helices (con la inercia de los motores: palas nitidas despacio, disco de desenfoque deprisa),
+       *  camara del gimbal estabilizada y, con la camara del dron, el dron solo como sombra. */
+      function animar(av, dt, visor) {
+        t += dt;
+        if (visor && !enVisor) { enVisor = true; for (const m of todos) if (m.envMap) m.envMapIntensity = 2; }      // la escena de vuelo va con exposicion 0,5
+        const obj = av.estado === "en mano" ? 0 : (av.rpm !== undefined ? av.rpm : (av.gases || 0) * rpmMax);
+        rpm += (obj - rpm) * (1 - Math.exp(-dt / (obj > rpm ? 0.12 : 0.45)));
+        if (obj <= 0) rpm = Math.max(0, rpm - 300 * dt);
+        const dentro = !!(visor && visor.camara === 3);
+        if (dentro !== oculto) { oculto = dentro; for (const m of todos) { m.colorWrite = !oculto; m.depthWrite = !oculto && !m.transparent; } }
+        const aP = 1 - smooth(RPM_PALAS, RPM_PALAS * 3, rpm), kD = smooth(RPM_PALAS, RPM_DISCO, rpm);
+        M.palas.opacity = aP;
+        for (const R of rotores) {
+          R.fase = (R.fase + R.s * rpm / 60 * TAU * dt) % TAU;
+          R.palas.rotation.z = R.fase; R.palas.visible = aP > 0.01;
+          R.md.userData.u.uInt.value = kD; R.md.userData.u.uFase.value = R.s * t * 1.7; R.disco.visible = kD > 0.01 && !oculto;
+        }
+        // gimbal: nivelado y con el rumbo del dron, inclinado av.gimbal (grados, 0 horizontal, -90 abajo)
+        const q = av.q, X = Cuat.rot(q, [1, 0, 0]), Y = Cuat.rot(q, [0, 1, 0]), Z = Cuat.rot(q, [0, 0, 1]);
+        rb.set(X[0], Y[0], Z[0], 0, X[1], Y[1], Z[1], 0, X[2], Y[2], Z[2], 0, 0, 0, 0, 1);
+        rz.makeRotationAxis(ejeZ, Cuat.euler(q)[2]); ry.makeRotationAxis(ejeY, (av.gimbal || 0) * Math.PI / 180);
+        ponerGimbal(rb.transpose().multiply(rz.multiply(ry)));
+        if (oculto) for (const l of luces) l.visible = false;
+      }
+      return { grupo, prof: new THREE.Group(), timon: new THREE.Group(), alerones: [], helice: new THREE.Group(), luces, dron: true, animar };
+    },
+  };
+})();

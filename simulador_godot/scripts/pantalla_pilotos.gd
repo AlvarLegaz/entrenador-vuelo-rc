@@ -98,8 +98,8 @@ func pintar_alumnos() -> void:
 		var cv := VBoxContainer.new(); cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cv.add_theme_constant_override("separation", 2)
 		cv.add_child(Tema.etiqueta(String(a["nombre"]), 16, Tema.TEXTO, true))
 		var det := HBoxContainer.new(); det.add_theme_constant_override("separation", 6)
-		det.add_child(Tema.etiqueta("%s · %d vuelos · %d/4 escenarios" % [fmt_horas(g["horas"]), int(g["vuelos"]), int(g["escenarios_superados"])], 12, Tema.SUAVE))
-		if a.get("habilitado", false): det.add_child(Tema.chip("avión real", "ok"))
+		det.add_child(Tema.etiqueta("%s · %d vuelos · %d/%d pruebas" % [fmt_horas(g["horas"]), int(g["vuelos"]), int(g["escenarios_superados"]), int(g.get("escenarios_total", (g["escenarios"] as Dictionary).size()))], 12, Tema.SUAVE))
+		if a.get("habilitado", false): det.add_child(Tema.chip("certificado", "ok"))
 		cv.add_child(det); h.add_child(cv)
 		var borrar := Tema.boton("🗑", "BotonPlano"); borrar.tooltip_text = "Quitar de la lista"; borrar.add_theme_color_override("font_color", Color("#cc9988"))
 		borrar.pressed.connect(func():
@@ -112,16 +112,45 @@ func pintar_alumnos() -> void:
 		var bp := Tema.boton("Progreso", ""); bp.size_flags_vertical = Control.SIZE_SHRINK_CENTER; bp.add_theme_font_size_override("font_size", 13)
 		bp.pressed.connect(func(): p.ir_progreso("pAlumno", a)); h.add_child(bp)
 		h.add_child(borrar)
-		var t := Tarjeta.new(h, 12, Vector2(14, 12)); t.pulsada.connect(func(): p.elegir_piloto(a))
+		if p.aula.modo != "local":
+			var cl := Tema.etiqueta("🔒" if a.get("tiene_clave", false) else "🔓", 14, Tema.SUAVE); cl.tooltip_text = "Con clave" if a.get("tiene_clave", false) else "Todavía sin clave: la crea al entrar"
+			cl.size_flags_vertical = Control.SIZE_SHRINK_CENTER; cl.mouse_filter = Control.MOUSE_FILTER_PASS; h.add_child(cl); h.move_child(cl, 1)
+		var t := Tarjeta.new(h, 12, Vector2(14, 12)); t.pulsada.connect(func(): _entrar(a))
 		t.elegida = p.sesion["alumno"] != null and String(p.sesion["alumno"]["id"]) == String(a["id"])
 		lista.add_child(t)
 
 func _anadir() -> void:
 	var nombre := e_nuevo.text.strip_edges()
 	if nombre == "": return
-	var r: Dictionary = await p.aula.api("POST", "alumnos", { "nombre": nombre })
-	if r["ok"]: e_nuevo.text = ""; await cargar_alumnos(); err.text = "Añadido: " + String(r["datos"]["nombre"])
+	var cuerpo := { "nombre": nombre }
+	if p.aula.modo != "local":                     # online: el perfil nuevo lleva su clave
+		var c = await p.pedir_clave("Clave de " + nombre, "Elige tu clave (de 4 a 20 caracteres). Te la pedirá al entrar en tu perfil online.", true)
+		if c == null: return
+		if c[0] != c[1]: err.text = "Las dos claves no coinciden"; return
+		cuerpo["clave"] = c[0]
+	var r: Dictionary = await p.aula.api("POST", "alumnos", cuerpo)
+	if r["ok"]:
+		if r["datos"].has("pase"): p.aula.pase = String(r["datos"]["pase"]); p.aula.pase_id = String(r["datos"]["id"])
+		e_nuevo.text = ""; await cargar_alumnos(); err.text = "Añadido: " + String(r["datos"]["nombre"])
 	else: err.text = r["error"]
+
+## Elegir un perfil (entrarPerfil de la web): en local, sin mas; online, con su clave (o creandola si aun no tiene).
+func _entrar(a: Dictionary) -> void:
+	var A: Aula = p.aula; err.text = ""
+	if A.modo == "local": p.elegir_piloto(a); return
+	if A.pase_id == String(a["id"]) and A.pase != "": p.elegir_piloto(a); return
+	var r: Dictionary
+	if not a.get("tiene_clave", false):
+		var c = await p.pedir_clave("Crea tu clave, " + String(a["nombre"]), "Todavía no tienes clave. Elige una (de 4 a 20 caracteres): te la pedirá cada vez que entres online.", true)
+		if c == null: return
+		if c[0] != c[1]: err.text = "Las dos claves no coinciden"; return
+		r = await A.api("POST", "alumnos/%s/clave" % a["id"], { "nueva": c[0] }, "-")
+	else:
+		var c = await p.pedir_clave("Hola, " + String(a["nombre"]), "Escribe tu clave para entrar en tu perfil online.", false)
+		if c == null: return
+		r = await A.api("POST", "alumnos/%s/entrar" % a["id"], { "clave": c[0] }, "-")
+	if not r["ok"]: err.text = r["error"]; return
+	A.pase = String(r["datos"]["pase"]); A.pase_id = String(a["id"]); p.elegir_piloto(a)
 
 func _dialogo(modo: FileDialog.FileMode, titulo: String, sugerido: String, f: Callable) -> void:
 	dialogo.file_mode = modo; dialogo.title = titulo; dialogo.current_file = sugerido

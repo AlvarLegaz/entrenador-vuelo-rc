@@ -148,12 +148,16 @@ class Progreso extends Control:
 		var g: Dictionary = a["progreso"]; var pct := minf(100, 100 * g["horas"] / g["horas_minimas"]); var faltan := []
 		if g["horas"] < g["horas_minimas"]: faltan.append(PantallaPilotos.fmt_horas(g["horas_minimas"] - g["horas"]) + " de vuelo")
 		var E := Escenarios.datos(); var pend := []
+		var cert := String(g.get("certificado", "Certificado de pilotaje")); var total := int(g.get("escenarios_total", (g["escenarios"] as Dictionary).size()))
+		var nom_esc := func(k: String) -> String: return String(E.get(k, { "nombre": k })["nombre"])
 		for k in g["escenarios"]:
-			if not g["escenarios"][k]["superado"]: pend.append(String(E[k]["nombre"]).substr(4))
+			var nm: String = nom_esc.call(k)
+			if nm.length() > 4 and nm.substr(1, 3) == " · " and nm.substr(0, 1).is_valid_int(): nm = nm.substr(4)
+			if not g["escenarios"][k]["superado"]: pend.append(nm)
 		if not pend.is_empty(): faltan.append("superar " + ", ".join(pend))
 		cont.add_child(PantallaResultado.estadisticas([[PantallaPilotos.fmt_horas(g["horas"]), "horas de vuelo"], [str(int(g["vuelos"])), "vuelos"], [str(int(g["aterrizajes"])), "aterrizajes"],
-			[str(int(g["accidentes"])), "accidentes"], ["%d/4" % int(g["escenarios_superados"]), "escenarios superados"]]))
-		cont.add_child(Tema.etiqueta("Camino a la maqueta real", 20, Tema.TEXTO, true))
+			[str(int(g["accidentes"])), "accidentes"], ["%d/%d" % [int(g["escenarios_superados"]), total], "pruebas superadas"]]))
+		cont.add_child(Tema.etiqueta("Camino al certificado: " + cert, 20, Tema.TEXTO, true))
 		var c := Tema.capa(10); cont.add_child(c[0]); var cv: VBoxContainer = c[1]
 		cv.add_child(Tema.etiqueta("%s de %d h mínimas" % [PantallaPilotos.fmt_horas(g["horas"]), int(g["horas_minimas"])], 14, Tema.TEXTO, true))
 		var fondo := Panel.new(); fondo.custom_minimum_size.y = 14; fondo.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.4), Tema.BORDE, 7))
@@ -163,14 +167,14 @@ class Progreso extends Control:
 		for k in g["escenarios"]:
 			var s: Dictionary = g["escenarios"][k]; var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10)
 			var ic := Tema.etiqueta("✓" if s["superado"] else "○", 14, Color("#8be08f") if s["superado"] else Color("#dddddd")); ic.custom_minimum_size.x = 20; h.add_child(ic)
-			var n := Tema.etiqueta(E[k]["nombre"], 14); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(n)
+			var n := Tema.etiqueta(nom_esc.call(k), 14); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(n)
 			h.add_child(Tema.etiqueta("%d intentos" % int(s["intentos"]), 14, Tema.SUAVE))
 			t.add_child(Tema.margen(h, 8, 6, 8, 6)); t.add_child(Tema.linea())
 		cv.add_child(t)
 		var estado := ""
-		if a.get("habilitado", false): estado = "[bgcolor=#58d06a33][color=#9be59f] AUTORIZADO [/color][/bgcolor] para volar la maqueta real desde %s." % String(a.get("habilitado_en", ""))
-		elif g["requisitos_cumplidos"]: estado = "[bgcolor=#ffffff1a] Requisitos cumplidos [/bgcolor] Pide al profesor que te autorice para la maqueta real."
-		else: estado = "[bgcolor=#ff6e6633][color=#ffb4ab] No habilitado [/color][/bgcolor] Te falta: %s." % " y ".join(faltan)
+		if a.get("habilitado", false): estado = "[bgcolor=#58d06a33][color=#9be59f] CONCEDIDO [/color][/bgcolor] %s desde %s." % [cert, String(a.get("habilitado_en", ""))]
+		elif g["requisitos_cumplidos"]: estado = "[bgcolor=#ffffff1a] Requisitos cumplidos [/bgcolor] Pide al profesor que te conceda el certificado."
+		else: estado = "[bgcolor=#ff6e6633][color=#ffb4ab] Todavía no [/color][/bgcolor] Te falta: %s." % " y ".join(faltan)
 		cv.add_child(Tema.rico(estado, 15))
 		cont.add_child(Tema.etiqueta("Historial", 20, Tema.TEXTO, true))
 		var c2 := Tema.capa(0); cont.add_child(c2[0])

@@ -4,7 +4,7 @@ extends SceneTree
 ## otro simulador (la web o este mismo) que entre en la sala que anuncia ("SALA <codigo>"). Al final guarda una captura
 ## con la camara de persecucion y sale de la sala.
 ## Uso (necesita ventana):
-##   herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/prueba_multijugador.gd -- --aula=http://localhost:8080 --foto=multi.png
+##   herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/prueba_multijugador.gd -- --aula=http://127.0.0.1:8080 --pin=PIN_DEL_PROFESOR --foto=multi.png
 
 var p: Node
 
@@ -19,10 +19,17 @@ func _initialize() -> void:
 	p.aula.activo = (await p.aula.api("GET", "estado"))["ok"]
 	print("AULA ", p.aula.activo, " ", p.aula.modo, " ", p.aula.url, " ", p.multi_posible())
 	p.sesion["avion"] = "E1"
-	var r: Dictionary = await p.aula.api("POST", "salas", { "nombre": "Prueba Godot", "escenario": "libre", "lanz": null, "viento": { "vel": 0, "desde": 0, "rachas": false } })
-	if not r["ok"]: print("MAL no se pudo crear la sala: ", r["error"]); quit(1); return
-	print("SALA ", r["datos"]["codigo"])
-	p.entrar_sala(r["datos"])
+	# las salas las crea el profesor (con su PIN): la prueba entra como profesor para crearla
+	var tok: Dictionary = await p.aula.api("POST", "profesor/entrar", { "pin": args.get("pin", "1234") })
+	if not tok["ok"]: print("MAL no se pudo entrar como profesor: ", tok["error"]); quit(1); return
+	var req := HTTPRequest.new(); root.add_child(req)
+	req.request(p.aula.url.trim_suffix("/") + "/api/salas", PackedStringArray(["Content-Type: application/json", "Authorization: Bearer " + String(tok["datos"]["token"])]), HTTPClient.METHOD_POST,
+		JSON.stringify({ "nombre": "Prueba Godot", "escenario": "libre", "lanz": null, "viento": { "vel": 0, "desde": 0, "rachas": false } }))
+	var res: Array = await req.request_completed; req.queue_free()
+	var sala = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	if res[1] < 200 or res[1] >= 300 or not (sala is Dictionary): print("MAL no se pudo crear la sala: ", res[1]); quit(1); return
+	print("SALA ", sala["codigo"])
+	p.entrar_sala(sala)
 	await create_timer(2.0).timeout
 	p.av["gases"] = 1.0; p.lanzar()
 	for k in 20:

@@ -457,10 +457,11 @@
   <div class="cuerpo">
   <div class="pestanas" id="perfilModo"><button data-m="local">Local · este ordenador</button><button data-m="servidor">Online · servidor del aula</button></div>
   <div id="sinAula" class="aviso-aula" style="display:none">
-    No hay servidor del aula: los perfiles online están en el PC del profesor (<code>aula/servidor_aula.py</code>). Abre el simulador desde
-    la dirección que indica el servidor, o usa los perfiles locales de este ordenador.
+    <span id="sinAulaTxt">No hay servidor del aula</span>: los perfiles online están en el PC del profesor (<code>SERVIDOR_AULA.bat</code>).
+    Escribe la dirección que muestra al arrancarlo, o usa los perfiles locales de este ordenador.
+    <div class="fila" style="margin-top:8px"><input type="text" id="urlAula" placeholder="http://192.168.1.20:8080" style="flex:1;min-width:240px" autocomplete="off"><button class="btn prim" id="btnConectarAula">Conectar</button></div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn prim" id="btnAulaLocal">Usar perfiles locales</button>
+      <button class="btn" id="btnAulaLocal">Usar perfiles locales</button>
       <button class="btn" id="btnSinAlumno">Volar sin perfil</button></div>
     <p class="sub" style="margin:8px 0 0">Los perfiles locales guardan vuelos y progreso en este navegador y, si quieres, en un
     archivo JSON que puedes copiar a otro ordenador.</p>
@@ -536,13 +537,7 @@
   <div class="cuerpo"><div class="dos">
     <div><div class="zonaTitulo">Salas abiertas</div><div class="misiones" id="listaSalas"></div><p class="sub" id="multiVacio" style="font-size:14px"></p></div>
     <div>
-      <div class="capa" id="multiCrear">
-        <h2>Crear una sala</h2>
-        <div class="fila"><label for="multiNombre">Nombre</label><input type="text" id="multiNombre" maxlength="60" style="flex:1"></div>
-        <div class="fila"><label for="multiEsc">Qué se vuela</label><select id="multiEsc" style="flex:1"></select></div>
-        <p class="sub" id="multiNota" style="font-size:13px;margin:6px 0 0"></p>
-        <button class="btn prim grande" id="btnMultiCrear" style="width:100%;margin-top:12px">Crear y entrar →</button>
-      </div>
+      <div class="capa" id="multiCrear"><h2>¿Y crear una sala?</h2><p style="font-size:14px">Las salas las crea el profesor en su panel del aula, con lo que se vuela, el punto de salida y el viento. Entra en la de tu clase: verás a tus compañeros y el profesor te verá a ti.</p></div>
       <div class="capa" id="multiSinAula" style="display:none"><h2>Hace falta el aula</h2><p style="font-size:14px">El multijugador va por el servidor del aula (el PC del profesor): abre el simulador desde la dirección del aula, no con doble clic ni en el registro local.</p></div>
     </div>
   </div></div>
@@ -669,6 +664,8 @@
         <div class="fila"><label for="cnAuto">Descarga automática</label><input type="checkbox" id="cnAuto"><span class="sub" style="font-size:13px">un CSV a 20 Hz de cada vuelo (también se puede bajar desde el resultado)</span></div>
         <h2 style="margin-top:18px">Perfiles y registro de vuelos</h2>
         <p class="sub" id="datosAula" style="font-size:13px"></p>
+        <div class="fila"><label for="urlAula2">Servidor del aula</label><input type="text" id="urlAula2" placeholder="http://192.168.1.20:8080 (vacío: sin servidor)" style="flex:1" autocomplete="off"><button class="btn" id="btnConectarAula2">Conectar</button></div>
+        <p class="sub" style="font-size:13px;margin-top:0">La dirección que muestra <code>SERVIDOR_AULA.bat</code> en el PC del profesor. El simulador se abre en cada ordenador; el aula guarda los perfiles online, los vuelos y las salas.</p>
         <div class="fila"><button class="btn" id="btnDatosPilotos">Perfiles…</button><button class="btn" id="btnDatosProfesor">Panel del profesor</button></div>
       </div>
     </div>
@@ -796,21 +793,35 @@ function fmtFecha(iso) { const d = new Date(iso); return isNaN(d) ? iso : d.toLo
 // =====================================================================
 //  AULA: API del servidor y cola de vuelos sin enviar
 // =====================================================================
-async function api(metodo, ruta, cuerpo) {
+/** Direccion del servidor del aula (Perfil > Online o Ajustes): el simulador se abre en cada ordenador y el aula solo
+ *  administra. Sin direccion guardada y servido por SERVIDOR_WEB.bat, el mismo ordenador en el puerto 8080. */
+function urlAula() {
+  let u = ""; try { u = localStorage.getItem("evrc_url_aula") || ""; } catch (e) {}
+  // servido por SERVIDOR_WEB.bat (u otro servidor de ficheros): el aula, en el mismo ordenador y el puerto 8080
+  return (u || (location.protocol.startsWith("http") ? `${location.protocol}//${location.hostname}:8080` : "")).replace(/\/+$/, "");
+}
+async function conectarAula(u) {
+  u = (u || "").trim(); if (u && !/^https?:\/\//.test(u)) u = "http://" + u;
+  try { localStorage.setItem("evrc_url_aula", u); } catch (e) {}
+  await cambiarModoPerfil("servidor");
+  if (pantallaActual === "pAjustes") irAjustes("datos");
+}
+async function api(metodo, ruta, cuerpo, pase) {
   if (sesion.modo === "local") return AulaLocal.api(metodo, ruta, cuerpo);
-  const r = await fetch("/api/" + ruta, { method: metodo, headers: cuerpo ? { "Content-Type": "application/json" } : {},
-                                         body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  const h = cuerpo ? { "Content-Type": "application/json" } : {}, P = pase || sesion.pase;
+  if (P) h["X-Alumno"] = P;                        // el pase del alumno: sin el, el servidor no acepta sus vuelos
+  const r = await fetch(urlAula() + "/api/" + ruta, { method: metodo, headers: h, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
   let d = null; try { d = await r.json(); } catch (e) {}
   if (!r.ok) { const e = new Error((d && d.error) || ("error " + r.status)); e.status = r.status; throw e; }
   return d;
 }
-const esDefinitivo = e => e.status >= 400 && e.status < 500;      // error del vuelo, no de la red: no reintentar
+const esDefinitivo = e => e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429;   // error del vuelo, no de la red ni de la clave: no reintentar
 function cola() { try { return JSON.parse(localStorage.getItem("sim_cola_vuelos") || "[]"); } catch (e) { return []; } }
 function guardarCola(c) { try { localStorage.setItem("sim_cola_vuelos", JSON.stringify(c)); } catch (e) {} }
 async function vaciarCola() {
   if (!sesion.aula || sesion.modo !== "servidor") return;        // la cola es solo del servidor: nunca al registro local
   const quedan = [];
-  for (const v of cola()) { try { await api("POST", "vuelos", v); } catch (e) { if (!esDefinitivo(e)) quedan.push(v); } }
+  for (const v of cola()) { const { _pase, ...cuerpo } = v; try { await api("POST", "vuelos", cuerpo, _pase); } catch (e) { if (!esDefinitivo(e)) quedan.push(v); } }
   guardarCola(quedan);
   document.getElementById("pendientes").textContent = quedan.length ? `${quedan.length} vuelo(s) de este ordenador pendientes de enviar.` : "";
 }
@@ -820,7 +831,7 @@ async function enviarVuelo(v) {
   try { const r = await api("POST", "vuelos", v); vaciarCola(); return { estado: "ok", progreso: r.progreso }; }
   catch (e) {
     if (esDefinitivo(e)) return { estado: "error", msg: e.message };
-    const c = cola(); c.push(v); guardarCola(c);        // sin red: se envia en cuanto vuelva (el id evita duplicados)
+    const c = cola(); c.push(Object.assign({ _pase: sesion.pase }, v)); guardarCola(c);   // sin red: se envia en cuanto vuelva (el id evita duplicados), con el pase de su alumno
     return { estado: "cola" };
   }
 }
@@ -893,7 +904,8 @@ const AulaLocal = {
     for (const e of this.ESC) esc[e] = { superado: sup.has(e), intentos: vs.filter(v => v.escenario === e).length };
     return { vuelos: vs.length, horas: +horas.toFixed(3), accidentes: vs.reduce((a, v) => a + (+v.accidentes || 0), 0),
              aterrizajes: vs.reduce((a, v) => a + (+v.aterrizajes || 0), 0), ultimo_vuelo: vs.map(v => v.inicio).sort().pop() || null,
-             escenarios: esc, escenarios_superados: this.ESC.filter(e => sup.has(e)).length, horas_minimas: this.HORAS_MINIMAS,
+             escenarios: esc, escenarios_superados: this.ESC.filter(e => sup.has(e)).length, escenarios_total: this.ESC.length, horas_minimas: this.HORAS_MINIMAS,
+             certificado: "Certificado de pilotaje",
              requisitos_cumplidos: horas >= this.HORAS_MINIMAS && this.ESC.every(e => sup.has(e)) };
   },
   _alumno(a) { return Object.assign({}, a, { progreso: this.progreso(a.id) }); },
@@ -966,10 +978,10 @@ async function iniciarAula() {
   const antes = sesion.aula && sesion.modo;
   sesion.aula = false; sesion.modo = "servidor";
   if (modoGuardado() === "local") await activarAulaLocal();
-  else if (location.protocol.startsWith("http")) {
+  else if (urlAula()) {
     try { const e = await api("GET", "estado"); sesion.aula = true; sesion.nombreAula = e.aula; } catch (e) {}
   }
-  if ((sesion.aula && sesion.modo) !== antes) { sesion.alumno = null; sesion.sinRegistrar = false; }   // otro registro: otros perfiles
+  if ((sesion.aula && sesion.modo) !== antes) { sesion.alumno = null; sesion.sinRegistrar = false; sesion.pase = null; }   // otro registro: otros perfiles
   await pintarPantallaAula();
 }
 async function cambiarModoPerfil(m) {
@@ -987,6 +999,8 @@ async function pintarPantallaAula() {
   const local = sesion.modo === "local";
   document.querySelectorAll("#perfilModo button").forEach(b => b.classList.toggle("sel", b.dataset.m === (local ? "local" : "servidor")));
   document.getElementById("sinAula").style.display = sesion.aula ? "none" : "";
+  document.getElementById("urlAula").value = urlAula();
+  document.getElementById("sinAulaTxt").textContent = urlAula() ? `No se puede hablar con el aula en ${urlAula()}` : "No hay servidor del aula";
   document.getElementById("conAula").style.display = sesion.aula ? "" : "none";
   document.getElementById("btnProfesor").style.display = sesion.aula && !local ? "" : "none";
   document.getElementById("aulaInfo").textContent = !sesion.aula ? "Sin servidor del aula" : local
@@ -995,10 +1009,16 @@ async function pintarPantallaAula() {
   if (sesion.aula) { await cargarAlumnos(); vaciarCola(); }
 }
 document.getElementById("btnAulaLocal").onclick = () => cambiarModoPerfil("local");
+document.getElementById("btnConectarAula").onclick = () => conectarAula(document.getElementById("urlAula").value);
+document.getElementById("urlAula").addEventListener("keydown", e => { if (e.key === "Enter") conectarAula(e.target.value); });
+document.getElementById("btnConectarAula2").onclick = () => conectarAula(document.getElementById("urlAula2").value);
 async function cargarAlumnos() {
   try { alumnos = await api("GET", "alumnos"); document.getElementById("errAlumno").textContent = ""; }
   catch (e) { document.getElementById("errAlumno").textContent = "No se pudo leer la lista: " + e.message; }
-  if (!sesion.alumno && !sesion.sinRegistrar) sesion.alumno = alumnos.find(a => a.id === perfilRecordado()) || null;   // el ultimo perfil usado
+  if (!sesion.alumno && !sesion.sinRegistrar) {                  // el ultimo perfil usado (online, solo si ya ha entrado con su clave en esta sesion)
+    const a = alumnos.find(a => a.id === perfilRecordado()), P = paseGuardado(a && a.id);
+    if (a && (sesion.modo === "local" || P || !a.tiene_clave)) { sesion.alumno = a; if (P) sesion.pase = P; }
+  }
   pintarAlumnos();
 }
 function norm(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
@@ -1010,10 +1030,11 @@ function pintarAlumnos() {
     const g = a.progreso, d = document.createElement("div");
     d.className = "alumno" + (sesion.alumno && sesion.alumno.id === a.id ? " sel" : "");
     d.innerHTML = `<div class="crece"><div class="nom">${esc(a.nombre)}</div>
-      <div class="det">${fmtHoras(g.horas)} · ${g.vuelos} vuelos · ${g.escenarios_superados}/4 escenarios
-      ${a.habilitado ? '<span class="chip ok">avión real</span>' : ""}</div></div>
+      <div class="det">${fmtHoras(g.horas)} · ${g.vuelos} vuelos · ${g.escenarios_superados}/${g.escenarios_total ?? Object.keys(g.escenarios).length} pruebas
+      ${a.habilitado ? '<span class="chip ok">certificado</span>' : ""}</div></div>
+      ${sesion.modo === "servidor" ? `<span class="sub" title="${a.tiene_clave ? "Con clave" : "Todavía sin clave: la crea al entrar"}">${a.tiene_clave ? "🔒" : "🔓"}</span>` : ""}
       <button class="btn progreso-btn">Progreso</button><button class="borrar" title="Quitar de la lista">🗑</button>`;
-    d.onclick = () => elegirPiloto(a);
+    d.onclick = () => entrarPerfil(a);
     d.querySelector(".progreso-btn").onclick = e => { e.stopPropagation(); irProgreso("pAlumno", a); };
     d.querySelector(".borrar").onclick = async e => {
       e.stopPropagation();
@@ -1031,13 +1052,52 @@ document.getElementById("buscar").addEventListener("input", pintarAlumnos);
 async function anadirAlumno() {
   const inp = document.getElementById("nuevoNombre"), nombre = inp.value.trim();
   if (!nombre) return;
-  try { const a = await api("POST", "alumnos", { nombre }); inp.value = ""; await cargarAlumnos();
-        document.getElementById("errAlumno").textContent = `Añadido: ${a.nombre}`; }
-  catch (e) { document.getElementById("errAlumno").textContent = e.message; }
+  let clave = null;
+  if (sesion.modo === "servidor") {                // online: el perfil nuevo lleva su clave
+    const r = await pedirClave("Clave de " + nombre, "Elige tu clave (de 4 a 20 caracteres). Te la pedirá al entrar en tu perfil online.", true);
+    if (!r) return;
+    if (r[0] !== r[1]) { document.getElementById("errAlumno").textContent = "Las dos claves no coinciden"; return; }
+    clave = r[0];
+  }
+  try {
+    const a = await api("POST", "alumnos", clave ? { nombre, clave } : { nombre }); inp.value = "";
+    if (a.pase) { guardarPase(a.id, a.pase); sesion.pase = a.pase; }
+    await cargarAlumnos(); document.getElementById("errAlumno").textContent = `Añadido: ${a.nombre}`;
+  } catch (e) { document.getElementById("errAlumno").textContent = e.message; }
+}
+// ---- claves de los perfiles online: se piden al entrar; el pase dura lo que esta pestaña del navegador ----
+function paseGuardado(id) { try { const x = JSON.parse(sessionStorage.getItem("evrc_pase") || "null"); return x && x.id === id ? x.pase : null; } catch (e) { return null; } }
+function guardarPase(id, pase) { try { sessionStorage.setItem("evrc_pase", JSON.stringify({ id, pase })); } catch (e) {} }
+function pedirClave(titulo, texto, nueva) {
+  const html = `<p>${esc(texto)}</p><input type="password" id="modClave" maxlength="20" autocomplete="off" style="width:100%">` +
+    (nueva ? '<input type="password" id="modClave2" maxlength="20" autocomplete="off" placeholder="Repítela" style="width:100%;margin-top:8px">' : "");
+  setTimeout(() => { const i = document.getElementById("modClave"); if (i) i.focus();
+    document.querySelectorAll("#modClave, #modClave2").forEach(x => x.onkeydown = e => { if (e.key === "Enter") document.getElementById("modSi").click(); }); }, 30);
+  return confirmar(titulo, html, nueva ? "Guardar" : "Entrar").then(ok => ok ? [document.getElementById("modClave").value, nueva ? document.getElementById("modClave2").value : null] : null);
+}
+/** Elegir un perfil: en local, sin mas; online, con su clave (o creandola si aun no tiene). */
+async function entrarPerfil(a) {
+  if (sesion.modo !== "servidor") return elegirPiloto(a);
+  const err = document.getElementById("errAlumno"); err.textContent = "";
+  const P = paseGuardado(a.id); if (P) { sesion.pase = P; return elegirPiloto(a); }
+  try {
+    let pase;
+    if (!a.tiene_clave) {
+      const r = await pedirClave("Crea tu clave, " + a.nombre, "Todavía no tienes clave. Elige una (de 4 a 20 caracteres): te la pedirá cada vez que entres online.", true);
+      if (!r) return;
+      if (r[0] !== r[1]) { err.textContent = "Las dos claves no coinciden"; return; }
+      pase = (await api("POST", `alumnos/${a.id}/clave`, { nueva: r[0] }, "-")).pase;
+    } else {
+      const r = await pedirClave("Hola, " + a.nombre, "Escribe tu clave para entrar en tu perfil online.", false);
+      if (!r) return;
+      pase = (await api("POST", `alumnos/${a.id}/entrar`, { clave: r[0] }, "-")).pase;
+    }
+    guardarPase(a.id, pase); sesion.pase = pase; elegirPiloto(a);
+  } catch (e) { err.textContent = e.message; }
 }
 document.getElementById("btnAnadir").onclick = anadirAlumno;
 document.getElementById("nuevoNombre").addEventListener("keydown", e => { if (e.key === "Enter") anadirAlumno(); });
-document.getElementById("btnProfesor").onclick = () => window.open("profesor.html", "_blank");
+document.getElementById("btnProfesor").onclick = () => window.open(urlAula() + "/profesor.html", "_blank");
 
 // =====================================================================
 //  2. AVION Y VIENTO
@@ -1403,7 +1463,7 @@ function nuevoEvaluador() {
   const O = ESCENARIOS[sesion.escenario].operacion;
   ev.op = null;
   if (O && entorno.mundo) {                    // operaciones: el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
-    const d = Operacion.sortear(O), c = casa();
+    const d = Operacion.sortear(Operacion.ajustar(O, MULTI.sala && MULTI.sala.ajustes)), c = casa();
     ev.op = new Operacion(d, (k, e) => marcar(k, e), (k, t) => { if (ev.obj[k]) ev.obj[k].texto += ` (${t})`; }, { casa: [c.N, c.E], suelo: (N, E) => entorno.altura(N, E), h0: entorno.terreno.h0 });
   }
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
@@ -1885,21 +1945,22 @@ async function irProgreso(desde, al = sesion.alumno) {
   catch (e) { el.innerHTML = `<p class="err">No se pudo leer el progreso: ${esc(e.message)}</p>`; return; }
   const g = a.progreso, pct = Math.min(100, 100 * g.horas / g.horas_minimas), faltan = [];
   if (g.horas < g.horas_minimas) faltan.push(`${fmtHoras(g.horas_minimas - g.horas)} de vuelo`);
-  const pend = Object.entries(g.escenarios).filter(([, s]) => !s.superado).map(([k]) => ESCENARIOS[k].nombre.replace(/^\d · /, ""));
+  const nomEsc = k => (ESCENARIOS[k] || { nombre: k }).nombre, cert = g.certificado || "Certificado de pilotaje", total = g.escenarios_total ?? Object.keys(g.escenarios).length;
+  const pend = Object.entries(g.escenarios).filter(([, s]) => !s.superado).map(([k]) => nomEsc(k).replace(/^\d · /, ""));
   if (pend.length) faltan.push("superar " + pend.join(", "));
-  const estado = a.habilitado ? `<span class="chip ok">AUTORIZADO</span> para volar la maqueta real desde ${fmtFecha(a.habilitado_en)}.`
-    : g.requisitos_cumplidos ? `<span class="chip">Requisitos cumplidos</span> Pide al profesor que te autorice para la maqueta real.`
-    : `<span class="chip mal">No habilitado</span> Te falta: ${faltan.join(" y ")}.`;
+  const estado = a.habilitado ? `<span class="chip ok">CONCEDIDO</span> ${esc(cert)} desde ${fmtFecha(a.habilitado_en)}.`
+    : g.requisitos_cumplidos ? `<span class="chip">Requisitos cumplidos</span> Pide al profesor que te conceda el certificado.`
+    : `<span class="chip mal">Todavía no</span> Te falta: ${faltan.join(" y ")}.`;
   el.innerHTML = `
     <div class="estadisticas">
       <div><b>${fmtHoras(g.horas)}</b><span>horas de vuelo</span></div><div><b>${g.vuelos}</b><span>vuelos</span></div>
       <div><b>${g.aterrizajes}</b><span>aterrizajes</span></div><div><b>${g.accidentes}</b><span>accidentes</span></div>
-      <div><b>${g.escenarios_superados}/4</b><span>escenarios superados</span></div></div>
-    <h2>Camino a la maqueta real</h2>
+      <div><b>${g.escenarios_superados}/${total}</b><span>pruebas superadas</span></div></div>
+    <h2>Camino al certificado: ${esc(cert)}</h2>
     <div class="tarjeta"><div class="fila" style="margin-top:0"><b>${fmtHoras(g.horas)} de ${g.horas_minimas} h mínimas</b></div>
       <div class="progreso"><i style="width:${pct}%"></i></div>
       <table class="datos" style="margin-top:12px">${Object.entries(g.escenarios).map(([k, s]) =>
-        `<tr><td class="${s.superado ? "ob-ok" : "ob-pend"}">${s.superado ? "✔" : "○"}</td><td>${esc(ESCENARIOS[k].nombre)}</td><td>${s.intentos} intentos</td></tr>`).join("")}</table>
+        `<tr><td class="${s.superado ? "ob-ok" : "ob-pend"}">${s.superado ? "✔" : "○"}</td><td>${esc(nomEsc(k))}</td><td>${s.intentos} intentos</td></tr>`).join("")}</table>
       <p style="margin:12px 0 0">${estado}</p></div>
     <h2>Historial</h2>
     <div class="tarjeta" style="overflow-x:auto"><table class="datos"><tr><th>Fecha</th><th>Avión</th><th>Entrenamiento</th><th>Tiempo</th><th>Objetivos</th><th>Final</th><th>Resultado</th></tr>
@@ -1946,6 +2007,7 @@ document.getElementById("cnAuto").addEventListener("change", e => e.target.blur(
 let trasPiloto = null;                        // a donde ir despues de elegir piloto
 function irPilotos(luego) { trasPiloto = luego || null; mostrar("pAlumno"); iniciarAula(); }
 function elegirPiloto(a) {
+  if (!a || !paseGuardado(a.id)) sesion.pase = null;
   sesion.alumno = a; sesion.sinRegistrar = !a; recordarPerfil(a);
   const f = trasPiloto; trasPiloto = null;
   if (f) f(); else irInicio();
@@ -2032,7 +2094,7 @@ function misionesDe(veh) { return Object.keys(ESCENARIOS).filter(id => ESCENARIO
 function irEntrenamientos() {
   const g = sesion.alumno && sesion.alumno.progreso, veh = vehiculoDe(sesion.avion), lista = misionesDe(veh);
   document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + " · " + lista.length + " entrenamientos" +
-    (veh !== "avion" ? "" : g ? ` · ${g.escenarios_superados}/4 escenarios superados` : " · sin registro");
+    (g ? ` · ${g.escenarios_superados}/${g.escenarios_total ?? Object.keys(g.escenarios).length} pruebas del certificado superadas` : " · sin registro");
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
   if (!lista.includes(misionSel)) misionSel = lista[0];
   for (const id of lista) {
@@ -2068,21 +2130,9 @@ function multiId() {
 const multiPosible = () => !!(sesion.aula && sesion.modo === "servidor");
 const nombrePiloto = () => sesion.alumno ? sesion.alumno.nombre : "Invitado " + multiId().slice(0, 4);
 /** Lo que se puede volar en una sala: vuelos libres, entrenamientos (de cada vehiculo) y operaciones. */
-function opcionesMulti() {
-  const G = [["Vuelo libre", Object.keys(ESCENARIOS).filter(id => !ESCENARIOS[id].objetivos.length)],
-    ["Entrenamientos del avión", misionesDe("avion")], ["Entrenamientos del DJI", misionesDe("dron")], ["Entrenamientos del dron FPV", misionesDe("fpv")],
-    ["Operaciones (DJI)", operacionesLista()]];
-  return G.map(([t, ids]) => `<optgroup label="${esc(t)}">${ids.map(id => `<option value="${id}">${esc(ESCENARIOS[id].nombre)}</option>`).join("")}</optgroup>`).join("");
-}
 function irMulti() {
   const ok = multiPosible();
   document.getElementById("multiCrear").style.display = ok ? "" : "none"; document.getElementById("multiSinAula").style.display = ok ? "none" : "";
-  const sel = document.getElementById("multiEsc"); if (!sel.options.length) sel.innerHTML = opcionesMulti();
-  const nom = document.getElementById("multiNombre"); if (!nom.value) nom.value = "Sala de " + nombrePiloto();
-  sel.onchange = () => { const E = ESCENARIOS[sel.value];
-    document.getElementById("multiNota").textContent = "Cada uno vuela con su avión" + (E.vehiculos && !E.vehiculos.includes("avion") ? ` (este es para ${E.vehiculos.includes("fpv") ? "el dron FPV" : "el DJI"}: se cambia solo al entrar)` : "") +
-      (E.mundo ? ". En el mapa real se sale del mismo punto." : ".") + (E.objetivos.length ? " Cada uno tiene sus objetivos y su resultado, que se guarda como siempre." : ""); };
-  sel.onchange();
   mostrar("pMulti"); refrescarSalas();
   clearInterval(MULTI.tSalas); MULTI.tSalas = setInterval(() => { if (pantallaActual === "pMulti") refrescarSalas(); else clearInterval(MULTI.tSalas); }, 2000);
 }
@@ -2090,7 +2140,7 @@ async function refrescarSalas() {
   const el = document.getElementById("listaSalas"), vacio = document.getElementById("multiVacio");
   if (!multiPosible()) { el.innerHTML = ""; vacio.textContent = ""; return; }
   let lista = []; try { lista = await api("GET", "salas"); } catch (e) { vacio.textContent = "No se puede hablar con el servidor del aula."; return; }
-  vacio.textContent = lista.length ? "" : "No hay ninguna sala abierta: crea una y diles a tus compañeros que entren.";
+  vacio.textContent = lista.length ? "" : "No hay ninguna sala abierta: espera a que el profesor cree la de tu clase.";
   el.innerHTML = "";
   for (const s of lista) {
     const E = ESCENARIOS[s.escenario] || { nombre: s.escenario }, d = document.createElement("div"); d.className = "mision";
@@ -2100,18 +2150,6 @@ async function refrescarSalas() {
   }
 }
 document.getElementById("btnMultiVolver").onclick = irInicio;
-document.getElementById("btnMultiCrear").onclick = async () => {
-  const id = document.getElementById("multiEsc").value, E = ESCENARIOS[id];
-  let lanz = null;
-  if (E.operacion) lanz = { mundo: E.mundo, N: E.operacion.salida.n, E: E.operacion.salida.e, rumbo: E.operacion.salida.rumbo };
-  else if (E.mundo) {
-    if (sesion.lanz && sesion.lanz.mundo === E.mundo) lanz = sesion.lanz;
-    else { const M = Mundos.datos(E.mundo), dd = (E.destacados || [])[0]; if (dd) { const [N, Ee] = latLonANE(M, dd.lat, dd.lon); lanz = { mundo: E.mundo, N: Math.round(N), E: Math.round(Ee), rumbo: dd.rumbo }; } }
-  }
-  leerViento();
-  try { entrarSala(await api("POST", "salas", { nombre: document.getElementById("multiNombre").value, escenario: id, lanz, viento: E.viento || sesion.viento })); }
-  catch (e) { toast("No se pudo crear la sala: " + e.message); }
-};
 /** Entra en una sala: su escenario, su punto de salida y su viento, con un vehiculo que valga para el; y a volar. */
 function entrarSala(s) {
   const E = ESCENARIOS[s.escenario]; if (!E) { toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return; }
@@ -2198,7 +2236,9 @@ function moverDesaparecido() {
 /** Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion. */
 function ordenesAlEvaluador() {
   if (!MULTI.sala || !ev) return;
-  if (ORDENES.viento && !ev.vientoProfesor) { entorno.configurarViento(ORDENES.viento); ev.vientoProfesor = true; }
+  if (ev.op && MULTI.sala.ajustes) for (const k in ev.obj) ev.obj[k].texto = Operacion.textoObjetivo(k, ev.obj[k].texto, ev.op.d);   // "los 12 modulos..."
+  const V = ORDENES.viento || MULTI.sala.viento;                  // el viento de la sala (o el que haya mandado el profesor despues)
+  if (V && !ev.vientoProfesor) { entorno.configurarViento(V); ev.vientoProfesor = true; }
   if (ORDENES.persona && ev.op && ev.op.d.zona && (ev.op.d.persona[0] !== ORDENES.persona[0] || ev.op.d.persona[1] !== ORDENES.persona[1])) moverDesaparecido();
   if (ORDENES.zonas.length && !ev.obj.exclusion) ev.obj.exclusion = { texto: EXCLUSION_TXT, estado: "curso" };
 }
@@ -2343,6 +2383,7 @@ document.getElementById("btnVolarYa").onclick = () => { leerViento(); sesion.esc
 // ---- ajustes ----
 function irAjustes(seccion) {
   pintarMandoCfg(); pintarDificultad(); pintarCalidad(); pintarZoomPiloto(); pintarSonidoCfg();
+  document.getElementById("urlAula2").value = urlAula();
   document.getElementById("datosAula").textContent = sesion.aula
     ? (sesion.modo === "local" ? "Registro local: los alumnos y los vuelos se guardan en este navegador (y en un archivo, si lo eliges)." : `Aula «${sesion.nombreAula}»: los vuelos se guardan en el servidor.`)
     : "Sin aula ni registro: los vuelos no se guardan. Desde «Perfil» puedes usar los perfiles locales.";
@@ -2356,7 +2397,7 @@ function seleccionarAjuste(a) {
 document.querySelectorAll("#ajustesMenu button").forEach(b => b.onclick = () => seleccionarAjuste(b.dataset.a));
 document.getElementById("btnAjustesVolver").onclick = irInicio;
 document.getElementById("btnDatosPilotos").onclick = () => irPilotos(() => irAjustes("datos"));
-document.getElementById("btnDatosProfesor").onclick = () => window.open("profesor.html", "_blank");
+document.getElementById("btnDatosProfesor").onclick = () => { if (urlAula()) window.open(urlAula() + "/profesor.html", "_blank"); else toast("Primero escribe la dirección del servidor del aula"); };
 // calidad grafica: automatica (baja sola si no llega a 35 fps) o fija
 function pintarCalidad() {
   let m = "auto"; try { m = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}

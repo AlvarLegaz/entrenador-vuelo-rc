@@ -432,6 +432,7 @@ func _construir_ui() -> void:
 	modal = Capas.modal(); raiz.add_child(modal["raiz"])
 	modal["si"].pressed.connect(func(): modal["raiz"].visible = false; _modal_resp.emit(true))
 	modal["no"].pressed.connect(func(): modal["raiz"].visible = false; _modal_resp.emit(false))
+	for c in [modal["clave"], modal["clave2"]]: c.text_submitted.connect(func(_t): modal["raiz"].visible = false; _modal_resp.emit(true))
 	dialogo = FileDialog.new(); dialogo.access = FileDialog.ACCESS_FILESYSTEM; dialogo.use_native_dialog = true
 	dialogo.file_mode = FileDialog.FILE_MODE_SAVE_FILE; dialogo.filters = PackedStringArray(["*.csv ; Caja negra CSV"]); raiz.add_child(dialogo)
 
@@ -450,6 +451,15 @@ func mostrar(id: String) -> void:
 func confirmar(titulo: String, bb: String, texto_si := "Sí") -> bool:
 	modal["titulo"].text = titulo; modal["texto"].text = bb; modal["si"].text = texto_si; modal["raiz"].visible = true
 	return await _modal_resp
+
+## La clave de un perfil online (pedirClave de la web): [clave, repetida o null], o null si cancela.
+func pedir_clave(titulo: String, texto: String, nueva: bool):
+	modal["clave"].text = ""; modal["clave2"].text = ""; modal["clave"].visible = true; modal["clave2"].visible = nueva
+	modal["titulo"].text = titulo; modal["texto"].text = texto; modal["si"].text = "Guardar" if nueva else "Entrar"; modal["raiz"].visible = true
+	modal["clave"].grab_focus.call_deferred()
+	var ok: bool = await _modal_resp
+	modal["clave"].visible = false; modal["clave2"].visible = false
+	return [modal["clave"].text, modal["clave2"].text if nueva else null] if ok else null
 
 func poner_aviso(txt: String, segundos := 0.0) -> void:
 	hud.aviso.text = txt
@@ -474,16 +484,17 @@ func ir_pilotos(luego = null) -> void:
 func reiniciar_aula() -> void:
 	var antes: String = aula.modo if aula.activo else ""
 	await aula.iniciar()
-	if (aula.modo if aula.activo else "") != antes: sesion["alumno"] = null; sesion["sin_registrar"] = false
+	if (aula.modo if aula.activo else "") != antes: sesion["alumno"] = null; sesion["sin_registrar"] = false; aula.pase = ""; aula.pase_id = ""
 ## Al arrancar, el ultimo perfil usado en el modo guardado.
 func perfil_al_arrancar() -> void:
 	if not aula.activo or sesion["alumno"] != null or sesion["sin_registrar"]: return
 	var id := aula.perfil_recordado()
 	if id == "": return
 	var r: Dictionary = await aula.api("GET", "alumnos")
-	if r["ok"]:
-		for a in r["datos"]: if String(a["id"]) == id: sesion["alumno"] = a
+	if r["ok"]:                                  # online, solo si no tiene clave (con clave la pide al entrar)
+		for a in r["datos"]: if String(a["id"]) == id and (aula.modo == "local" or not a.get("tiene_clave", false)): sesion["alumno"] = a
 func elegir_piloto(a) -> void:
+	if a == null or aula.pase_id != String(a["id"]): aula.pase = ""; aula.pase_id = ""
 	sesion["alumno"] = a; sesion["sin_registrar"] = a == null; aula.recordar_perfil(String(a["id"]) if a != null else "")
 	var f = _tras_piloto; _tras_piloto = null
 	if f != null: f.call()
@@ -590,8 +601,11 @@ func mover_desaparecido() -> bool:
 ## Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion.
 func ordenes_al_evaluador() -> void:
 	if sala.is_empty() or ev == null or ordenes.is_empty(): return
-	if ordenes["viento"] != null and not ev.get_meta("viento_profesor", false):
-		var V: Dictionary = ordenes["viento"]; ent.configurar_viento(V["vel"], V["desde"], V["rachas"]); ev.set_meta("viento_profesor", true)
+	if ev.op != null and sala.get("ajustes") != null:              # "los 12 modulos..."
+		for k in ev.obj: ev.obj[k]["texto"] = Operacion.texto_objetivo(k, ev.obj[k]["texto"], ev.op.d)
+	var V = ordenes["viento"] if ordenes["viento"] != null else sala.get("viento")   # el viento de la sala (o el que haya mandado el profesor despues)
+	if V != null and not ev.get_meta("viento_profesor", false):
+		ent.configurar_viento(float(V["vel"]), float(V["desde"]), bool(V.get("rachas", false))); ev.set_meta("viento_profesor", true)
 	var P = ordenes["persona"]
 	if P != null and ev.op != null and ev.op.d.has("zona") and (float(ev.op.d["persona"][0]) != P[0] or float(ev.op.d["persona"][1]) != P[1]): mover_desaparecido()
 	if not (ordenes["zonas"] as Array).is_empty() and not ev.obj.has("exclusion"):

@@ -59,6 +59,40 @@ static func _tomar(lista: Array, k: int, rnd: Callable, lejos := 0.0) -> Array:
 		var q = de[int(floor(rnd.call() * de.size()))]; r.append(q); L.remove_at(L.find(q))
 	return r
 
+## Los ajustes del profesor al crear la sala ({cubiertas, fachadas, defectos, manchas, minutos, cobertura}) sobre los datos
+## de un trabajo, antes de sortear (ajustar de operaciones.js).
+static func ajustar(O: Dictionary, A) -> Dictionary:
+	if A == null or not (A is Dictionary) or (A as Dictionary).is_empty(): return O
+	var dd := O.duplicate()
+	var n := func(v, a: int, b: int) -> int: return clampi(int(round(float(v))), a, b)
+	if O.has("candidatos") and (A.get("cubiertas") != null or A.get("fachadas") != null):
+		var C: Dictionary = O["candidatos"]
+		var cu: int = n.call(A.get("cubiertas") if A.get("cubiertas") != null else C["elegir"][0], 0, (C["cubiertas"] as Array).size())
+		var fa: int = n.call(A.get("fachadas") if A.get("fachadas") != null else C["elegir"][1], 0, (C["fachadas"] as Array).size())
+		var C2 := C.duplicate(); C2["elegir"] = [cu, fa] if cu + fa > 0 else [1, 0]; dd["candidatos"] = C2
+	if O.has("defectos") and A.get("defectos") != null:
+		var k: int = n.call(A["defectos"], 1, 30); var r := []
+		for i in k: r.append(O["defectos"][i % (O["defectos"] as Array).size()])
+		dd["defectos"] = r
+	if O.has("manchas") and A.get("manchas") != null:
+		var k: int = n.call(A["manchas"], 1, 12); var r := []
+		for i in k: r.append(O["manchas"][i % (O["manchas"] as Array).size()])
+		dd["manchas"] = r
+	if O.has("limite_s") and A.get("minutos") != null: dd["limite_s"] = n.call(A["minutos"], 1, 60) * 60
+	if O.has("cubrir") and A.get("cobertura") != null: dd["cubrir"] = n.call(A["cobertura"], 30, 100) / 100.0
+	return dd
+
+## El texto de un objetivo con los numeros del trabajo ajustado (textoObjetivo de operaciones.js).
+static func texto_objetivo(id: String, t: String, dd: Dictionary) -> String:
+	var cambia := func(patron: String, nuevo: String) -> String:
+		var re := RegEx.new(); re.compile(patron); return re.sub(t, nuevo)
+	if id == "puntos" and dd.has("candidatos"): return cambia.call("los \\d+ puntos", "los %d puntos" % (int(dd["candidatos"]["elegir"][0]) + int(dd["candidatos"]["elegir"][1])))
+	if id == "defectos" and dd.has("defectos"): return cambia.call("los \\d+ módulos", "los %d módulos" % (dd["defectos"] as Array).size())
+	if id == "manchas" and dd.has("manchas"): return cambia.call("las \\d+ manchas", "las %d manchas" % (dd["manchas"] as Array).size())
+	if id == "tiempo" and dd.has("limite_s"): return cambia.call("\\d+ minutos", "%d minutos" % int(round(float(dd["limite_s"]) / 60)))
+	if id == "cobertura" and dd.has("cubrir"): return cambia.call("el \\d+ %", "el %d %%" % int(round(float(dd["cubrir"]) * 100)))
+	return t
+
 static func sortear(O: Dictionary, azar = null) -> Dictionary:
 	var rnd: Callable = azar if azar != null else func() -> float: return randf()
 	var dd := O.duplicate()

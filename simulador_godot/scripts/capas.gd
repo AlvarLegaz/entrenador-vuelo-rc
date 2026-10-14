@@ -54,7 +54,9 @@ static func modal() -> Dictionary:
 	panel.custom_minimum_size.x = 440; v.get_node("Centro").add_child(panel)
 	var t := Tema.etiqueta("", 18, Tema.TEXTO, true); caja.add_child(t)
 	var tx := Tema.rico("", 15); tx.custom_minimum_size.x = 400; caja.add_child(tx)
+	var clave := LineEdit.new(); clave.secret = true; clave.max_length = 20; clave.visible = false; caja.add_child(clave)          # claves de los perfiles online
+	var clave2 := LineEdit.new(); clave2.secret = true; clave2.max_length = 20; clave2.placeholder_text = "Repítela"; clave2.visible = false; caja.add_child(clave2)
 	var bb := HBoxContainer.new(); bb.add_theme_constant_override("separation", 10); bb.alignment = BoxContainer.ALIGNMENT_END
 	var no := Tema.boton("Cancelar"); var si := Tema.boton("Sí", "BotonPeligro"); bb.add_child(no); bb.add_child(si)
 	caja.add_child(Tema.margen(bb, 0, 8, 0, 0))
-	return { "raiz": v, "titulo": t, "texto": tx, "si": si, "no": no }
+	return { "raiz": v, "titulo": t, "texto": tx, "si": si, "no": no, "clave": clave, "clave2": clave2 }
