@@ -35,7 +35,7 @@ const NOMBRES_MODO := { "C": "Cine", "N": "Normal", "S": "Sport" }
 
 # ---- sesion y ajustes (se guardan en user://) ----
 var sesion := { "alumno": null, "sin_registrar": false, "avion": "", "escenario": "libre", "viento": { "vel": 2.0, "desde": 0, "rachas": true },
-				"dificultad": "real", "lanz": {}, "lanz_real": true }
+				"dificultad": "facil", "lanz": {}, "lanz_real": true }
 var aj := { "calidad_modo": "auto", "zoom_piloto": 0.03, "zoom_v": 0, "cn_auto": false, "cm": {}, "cfg_avion": {} }
 var sitio_sel := "libre"
 var ids_aviones := []
