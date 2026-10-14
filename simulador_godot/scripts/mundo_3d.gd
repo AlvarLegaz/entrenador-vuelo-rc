@@ -846,27 +846,31 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			for x in range(6, 32, 6): img.fill_rect(Rect2i(k * 32 + x, 1, 1, 62), Color.html("#3d5277"))
 		img.generate_mipmaps()
 		var m_panel := StandardMaterial3D.new(); m_panel.albedo_texture = ImageTexture.create_from_image(img); m_panel.roughness = 0.25; m_panel.metallic = 0.3
-		m_panel.uv1_scale = Vector3(P["largo"] / 8.0, 1, 1); m_panel.texture_repeat = true
+		m_panel.uv1_scale = Vector3(float(P.get("tramo", P["largo"])) / 8.0, 1, 1); m_panel.texture_repeat = true
 		var m_acero: StandardMaterial3D = std.call(Color.html("#b0b6bb"), 0.6, 0.4)
+		# giro de las mesas: su eje x a lo largo de la fila (rumbo), inclinadas sobre ese eje con el borde alto hacia la fila siguiente
+		var yaw := atan2(float(op.pl["cr"]), float(op.pl["sr"]))
 		for M in op.mesas:
-			var q := QuadMesh.new(); q.size = Vector2(P["largo"], P["ancho"])
+			var L: float = M["l1"] - M["l0"]; var c := op.ne((M["l0"] + M["l1"]) / 2, M["t"]); var yc: float = M["y"] + P["h0"] + P["ancho"] * sin(inc) / 2
+			var q := QuadMesh.new(); q.size = Vector2(L, P["ancho"])
 			var mi := MeshInstance3D.new(); mi.mesh = q; mi.material_override = m_panel; G.add_child(mi)
-			mi.position = Vector3((M["e0"] + M["e1"]) / 2, M["y"] + P["h0"] + P["ancho"] * sin(inc) / 2 + 0.03, -M["n"])
-			mi.rotation.x = -(PI / 2 - inc)                       # cara hacia arriba y al sur, borde norte alto
-			var marco := BoxMesh.new(); marco.size = Vector3(P["largo"], 0.05, P["ancho"])
-			var mb: MeshInstance3D = en.call(marco, m_acero, M["n"], (M["e0"] + M["e1"]) / 2, M["y"] + P["h0"] + P["ancho"] * sin(inc) / 2); mb.rotation.x = inc
+			mi.position = Vector3(c[1], yc + 0.03, -c[0])
+			mi.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))       # cara hacia arriba, borde alto hacia la fila siguiente
+			var marco := BoxMesh.new(); marco.size = Vector3(L, 0.05, P["ancho"])
+			var mb: MeshInstance3D = en.call(marco, m_acero, c[0], c[1], yc); mb.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, inc)
 
 		# patas (delante cortas, detras largas) cada 6 m: un solo MultiMesh para todas
 		var patas := []
 		for M in op.mesas:
-			var x: float = M["e0"] + 2
-			while x < M["e1"]:
+			var x: float = M["l0"] + 2
+			while x < M["l1"]:
 				for sg in [-1, 1]: patas.append([x, M, sg])
 				x += 6
 		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; var bp := BoxMesh.new(); bp.size = Vector3(0.08, 1, 0.08); mm.mesh = bp; mm.instance_count = patas.size()
 		for k in patas.size():
 			var q: Array = patas[k]; var Mq: Dictionary = q[1]; var h: float = P["h0"] + (P["ancho"] * sin(inc) if q[2] > 0 else 0.0) * 0.92
-			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(1, h, 1)), Vector3(q[0], Mq["y"] + h / 2, -(Mq["n"] + q[2] * Mq["fondo"] * 0.42))))
+			var pq := op.ne(q[0], Mq["t"] + q[2] * Mq["fondo"] * 0.42)
+			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(1, h, 1)), Vector3(pq[1], Mq["y"] + h / 2, -pq[0])))
 		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.material_override = m_acero; G.add_child(mmi)
 		for k in op.modulos.size():                                   # modulos danados: cristal roto (blanco) o muy sucio (marron)
 			var md: Array = op.modulos[k]; var roto := k % 2 == 0
@@ -879,7 +883,7 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 				for r in 40: im.fill_rect(Rect2i((r * 29) % 64 - 3, (r * 53) % 128 - 3, 6 + r % 6, 6 + r % 6), Color8(150 + (r * 37) % 60, 120 + (r * 23) % 40, 80))
 			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
 			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
-			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.rotation.x = -(PI / 2 - inc)
+			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))
 
 var _sing: Node3D
 func _singulares() -> void:

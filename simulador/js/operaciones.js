@@ -68,6 +68,7 @@ class Operacion {
       const P = O.planta, r = [];
       while (r.length < O.defectos.length) {
         const f = azar(P.filas), x = 3 + azar(P.largo - 6);
+        if (P.huecos && P.huecos.includes(f)) continue;               // pasillo sin paneles
         if (r.every(([g, y]) => g !== f || Math.abs(y - x) >= 10)) r.push([f, x]);
       }
       d.defectos = r;
@@ -142,17 +143,33 @@ class Operacion {
 
   _aviso(clave, texto, lista) { if (!this.avisos[clave]) { this.avisos[clave] = true; lista.push(texto); } }
 
-  /** Planta fotovoltaica: filas de mesas de paneles de este a oeste, inclinadas hacia el sur. Cada mesa: {n (centro),
-   *  e0, e1, fondo (en planta), y (suelo), alto (borde de arriba sobre el suelo)}; y los modulos danados (N, E, arriba). */
+  /** Planta fotovoltaica: filas de mesas de paneles que salen de (n0, e0) hacia "rumbo" (grados; 90 = hacia el este, lo
+   *  de siempre) y se apilan a su derecha cada "separacion" m, inclinadas con el borde alto hacia la fila siguiente (al
+   *  norte con rumbo 90: miran al sur). Cada fila se parte en mesas de "tramo" m (si lo trae) que se asientan en el
+   *  terreno; "huecos": filas que son pasillos. En coordenadas de la planta: l a lo largo de la fila, t a traves (t = fila
+   *  x separacion). Cada mesa: {fila, t, l0, l1, fondo (en planta), y (suelo), alto (borde de arriba sobre el suelo)}; y
+   *  los modulos danados (N, E, arriba). */
   _planta() {
-    const P = this.d.planta, c = Math.cos(P.inclinacion * D2R), s = Math.sin(P.inclinacion * D2R);
-    this.mesas = [];
+    const P = this.d.planta, c = Math.cos(P.inclinacion * D2R), s = Math.sin(P.inclinacion * D2R), r = (P.rumbo === undefined ? 90 : P.rumbo) * D2R;
+    this.pl = { cr: Math.cos(r), sr: Math.sin(r) };
+    const tr = P.tramo || P.largo, hueco = P.tramo ? 0.4 : 0;
+    this.mesas = []; this.mesasFila = [];
     for (let i = 0; i < P.filas; i++) {
-      const n = P.n0 + i * P.separacion;
-      this.mesas.push({ n, e0: P.e0, e1: P.e0 + P.largo, fondo: P.ancho * c, y: this.suelo(n, P.e0 + P.largo / 2), alto: P.h0 + P.ancho * s });
+      const t = i * P.separacion, fila = [];
+      if (!(P.huecos && P.huecos.includes(i))) for (let l0 = 0; l0 < P.largo - 0.01; l0 += tr) {
+        const l1 = Math.min(P.largo, l0 + tr - hueco), [n, e] = this.ne((l0 + l1) / 2, t);
+        const M = { fila: i, t, l0, l1, fondo: P.ancho * c, y: this.suelo(n, e), alto: P.h0 + P.ancho * s }; this.mesas.push(M); fila.push(M);
+      }
+      this.mesasFila.push(fila);
     }
-    this.modulos = this.d.defectos.map(([f, x]) => { const M = this.mesas[f]; return [M.n, P.e0 + x, M.y + P.h0 + P.ancho * s / 2]; });
+    this.modulos = this.d.defectos.map(([f, x]) => {
+      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion);
+      return [n, e, M.y + P.h0 + P.ancho * s / 2];
+    });
   }
+  /** De coordenadas de la planta (l a lo largo de la fila, t a traves) a (N, E), y al reves. */
+  ne(l, t) { const P = this.d.planta, { cr, sr } = this.pl; return [P.n0 + l * cr + t * sr, P.e0 + l * sr - t * cr]; }
+  lt(N, E) { const P = this.d.planta, { cr, sr } = this.pl, dn = N - P.n0, de = E - P.e0; return [dn * cr + de * sr, dn * sr - de * cr]; }
 
   /** Un paso de la fisica. info: {gimbal (grados), grabando (video)}. */
   paso(pAnt, av, dt, info) {
@@ -160,8 +177,11 @@ class Operacion {
     if (av.estado !== "volando") return T;
     if (this.t0 === null && !av.posado) this.t0 = t;                           // despegue: empieza a contar el tiempo
     // ---- choques: paneles de la planta, faro ----
-    if (d.planta) for (const M of this.mesas)
-      if (Math.abs(N - M.n) < M.fondo / 2 + 0.15 && E > M.e0 - 0.15 && E < M.e1 + 0.15 && up - M.y < M.alto + 0.15 && !av.posado) this.choque = "choque con los paneles";
+    if (d.planta && !av.posado) {                    // solo las mesas de la fila mas cercana y sus vecinas
+      const [l, tt] = this.lt(N, E), i0 = Math.round(tt / d.planta.separacion);
+      for (let i = i0 - 1; i <= i0 + 1; i++) for (const M of this.mesasFila[i] || [])
+        if (Math.abs(tt - M.t) < M.fondo / 2 + 0.15 && l > M.l0 - 0.15 && l < M.l1 + 0.15 && up - M.y < M.alto + 0.15) this.choque = "choque con los paneles";
+    }
     if (d.faro) {
       const F = d.faro;
       if (Math.hypot(N - F.n, E - F.e) < F.radio + 0.3 && up - this.suelo(F.n, F.e) < F.alto) this.choque = "choque con el faro";
@@ -174,12 +194,13 @@ class Operacion {
     // ---- agricultura: nunca a menos de 5 m sobre el cultivo ----
     if (d.manchas) {
       const P = d.parcela;
-      if (N > P.n0 && N < P.n1 && E > P.e0 && E < P.e1 && agl < d.minima && !av.posado) { m("baja", "mal"); this._aviso("baja", `¡A ${agl.toFixed(1)} m del cultivo! No bajes de ${d.minima} m`, T); }
+      const enParcela = P.poligono ? Operacion.dentro(P.poligono, N, E) : N > P.n0 && N < P.n1 && E > P.e0 && E < P.e1;
+      if (enParcela && agl < d.minima && !av.posado) { m("baja", "mal"); this._aviso("baja", `¡A ${agl.toFixed(1)} m del cultivo! No bajes de ${d.minima} m`, T); }
     }
     // ---- paneles: nunca a menos de 3 m sobre ellos ----
     if (d.planta && !av.posado) {
-      const M0 = this.mesas[0], M1 = this.mesas[this.mesas.length - 1];
-      if (N > M0.n - M0.fondo && N < M1.n + M1.fondo && E > M0.e0 && E < M0.e1 && up - M0.y < M0.alto + d.minima) {
+      const P = d.planta, [l, tt] = this.lt(N, E), M0 = this.mesas[0], f = M0.fondo;
+      if (tt > -f && tt < (P.filas - 1) * P.separacion + f && l > 0 && l < P.largo && agl < M0.alto + d.minima) {
         m("baja", "mal"); this._aviso("baja", `¡A menos de ${d.minima} m de los paneles! Sube`, T);
       }
     }

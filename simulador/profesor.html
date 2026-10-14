@@ -507,7 +507,11 @@ function zonaTrabajo(O) {
   }
   const G = [];                                    // poligonos [[n, e], ...] (el bancal de la agricultura)
   for (const P of [O.parcela, O.zona]) if (P && P.poligono) G.push(P.poligono); else if (P) R.push([P.n0, P.e0, P.n1, P.e1]);
-  if (O.planta) { const P = O.planta, f = P.ancho * Math.cos(P.inclinacion * Math.PI / 180); R.push([P.n0 - f, P.e0, P.n0 + (P.filas - 1) * P.separacion + f, P.e0 + P.largo]); }
+  if (O.planta) {                                  // el bloque de filas, con su rumbo (90 = filas hacia el este)
+    const P = O.planta, f = P.ancho * Math.cos(P.inclinacion * Math.PI / 180), r = (P.rumbo === undefined ? 90 : P.rumbo) * Math.PI / 180, t1 = (P.filas - 1) * P.separacion + f;
+    const ne = (l, t) => [P.n0 + l * Math.cos(r) + t * Math.sin(r), P.e0 + l * Math.sin(r) - t * Math.cos(r)];
+    G.push([ne(0, -f), ne(P.largo, -f), ne(P.largo, t1), ne(0, t1)]);
+  }
   if (O.faro) for (const r of O.orbita) A.push([O.faro.n, O.faro.e, r]);
   return { R, A, G };
 }

@@ -125,6 +125,7 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 		var P: Dictionary = O["planta"]; var r := []
 		while r.size() < (O["defectos"] as Array).size():
 			var f := int(floor(rnd.call() * P["filas"])); var x := 3 + int(floor(rnd.call() * (P["largo"] - 6)))
+			if P.has("huecos") and f in P["huecos"]: continue               # pasillo sin paneles
 			if r.all(func(g): return g[0] != f or absi(g[1] - x) >= 10): r.append([f, x])
 		dd["defectos"] = r
 	if O.has("parcela") and O.has("manchas"):         # agricultura: las manchas en la parcela (o en su poligono), sin pisarse
@@ -177,14 +178,33 @@ static func en_foto(c: Dictionary, k: float) -> bool:
 func _aviso(clave: String, texto: String, lista: Array) -> void:
 	if not avisos.get(clave, false): avisos[clave] = true; lista.append(texto)
 
-## Planta fotovoltaica: filas de mesas de paneles de este a oeste, inclinadas hacia el sur (_planta de la web).
+## Planta fotovoltaica (_planta de la web): filas que salen de (n0, e0) hacia "rumbo" (90 = este), apiladas a su derecha
+## cada "separacion" m, inclinadas con el borde alto hacia la fila siguiente; mesas de "tramo" m asentadas en el terreno;
+## "huecos": filas que son pasillos. l a lo largo de la fila, t a traves.
+var pl := {}
+var mesas_fila := []
+func ne(l: float, t: float) -> Array:
+	var P: Dictionary = d["planta"]; return [P["n0"] + l * pl["cr"] + t * pl["sr"], P["e0"] + l * pl["sr"] - t * pl["cr"]]
+func lt(N: float, E: float) -> Array:
+	var P: Dictionary = d["planta"]; var dn: float = N - P["n0"]; var de: float = E - P["e0"]
+	return [dn * pl["cr"] + de * pl["sr"], dn * pl["sr"] - de * pl["cr"]]
 func _planta() -> void:
-	var P: Dictionary = d["planta"]; var c := cos(P["inclinacion"] * D2R); var s := sin(P["inclinacion"] * D2R)
+	var P: Dictionary = d["planta"]; var c := cos(P["inclinacion"] * D2R); var s := sin(P["inclinacion"] * D2R); var r: float = float(P.get("rumbo", 90)) * D2R
+	pl = { "cr": cos(r), "sr": sin(r) }
+	var tr: float = float(P.get("tramo", P["largo"])); var hueco := 0.4 if P.has("tramo") else 0.0
 	for i in int(P["filas"]):
-		var n: float = P["n0"] + i * P["separacion"]
-		mesas.append({ "n": n, "e0": float(P["e0"]), "e1": P["e0"] + P["largo"], "fondo": P["ancho"] * c, "y": suelo.call(n, P["e0"] + P["largo"] / 2), "alto": P["h0"] + P["ancho"] * s })
+		var t: float = i * P["separacion"]; var fila := []
+		if not (P.has("huecos") and i in P["huecos"]):
+			var l0 := 0.0
+			while l0 < P["largo"] - 0.01:
+				var l1 := minf(P["largo"], l0 + tr - hueco); var q := ne((l0 + l1) / 2, t)
+				var M := { "fila": i, "t": t, "l0": l0, "l1": l1, "fondo": P["ancho"] * c, "y": suelo.call(q[0], q[1]), "alto": P["h0"] + P["ancho"] * s }
+				mesas.append(M); fila.append(M); l0 += tr
+		mesas_fila.append(fila)
 	for q in d["defectos"]:
-		var M: Dictionary = mesas[int(q[0])]; modulos.append([M["n"], P["e0"] + q[1], M["y"] + P["h0"] + P["ancho"] * s / 2])
+		var F: Array = mesas_fila[int(q[0])]; var M: Dictionary = F[0]; var x: float = q[1]
+		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
+		var pq := ne(x, int(q[0]) * P["separacion"]); modulos.append([pq[0], pq[1], M["y"] + P["h0"] + P["ancho"] * s / 2])
 
 ## Un paso de la fisica. info: {gimbal (grados), grabando (video)}.
 func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
@@ -192,9 +212,12 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	if av["estado"] != "volando": return T
 	if t0 == null and not av.get("posado", false): t0 = t                   # despegue: empieza a contar el tiempo
 	# ---- choques: paneles de la planta, faro ----
-	if d.has("planta"):
-		for M in mesas:
-			if absf(N - M["n"]) < M["fondo"] / 2 + 0.15 and E > M["e0"] - 0.15 and E < M["e1"] + 0.15 and up - M["y"] < M["alto"] + 0.15 and not av.get("posado", false): choque = "choque con los paneles"
+	if d.has("planta") and not av.get("posado", false):          # solo las mesas de la fila mas cercana y sus vecinas
+		var q := lt(N, E); var i0 := int(round(q[1] / d["planta"]["separacion"]))
+		for i in range(i0 - 1, i0 + 2):
+			if i < 0 or i >= mesas_fila.size(): continue
+			for M in mesas_fila[i]:
+				if absf(q[1] - M["t"]) < M["fondo"] / 2 + 0.15 and q[0] > M["l0"] - 0.15 and q[0] < M["l1"] + 0.15 and up - M["y"] < M["alto"] + 0.15: choque = "choque con los paneles"
 	if d.has("faro"):
 		var F: Dictionary = d["faro"]
 		if Vector2(N - F["n"], E - F["e"]).length() < F["radio"] + 0.3 and up - suelo.call(F["n"], F["e"]) < F["alto"]: choque = "choque con el faro"
@@ -206,12 +229,13 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	# ---- agricultura: nunca a menos de 5 m sobre el cultivo ----
 	if d.has("manchas"):
 		var P: Dictionary = d["parcela"]
-		if N > P["n0"] and N < P["n1"] and E > P["e0"] and E < P["e1"] and agl < d["minima"] and not av.get("posado", false):
+		var en_parcela: bool = dentro(P["poligono"], N, E) if P.has("poligono") else (N > P["n0"] and N < P["n1"] and E > P["e0"] and E < P["e1"])
+		if en_parcela and agl < d["minima"] and not av.get("posado", false):
 			m.call("baja", "mal"); _aviso("baja", "¡A %.1f m del cultivo! No bajes de %s m" % [agl, _n(d["minima"])], T)
 	# ---- paneles: nunca a menos de 3 m sobre ellos ----
 	if d.has("planta") and not av.get("posado", false):
-		var M0: Dictionary = mesas[0]; var M1: Dictionary = mesas[mesas.size() - 1]
-		if N > M0["n"] - M0["fondo"] and N < M1["n"] + M1["fondo"] and E > M0["e0"] and E < M0["e1"] and up - M0["y"] < M0["alto"] + d["minima"]:
+		var P: Dictionary = d["planta"]; var q := lt(N, E); var M0: Dictionary = mesas[0]; var f: float = M0["fondo"]
+		if q[1] > -f and q[1] < (P["filas"] - 1) * P["separacion"] + f and q[0] > 0 and q[0] < P["largo"] and agl < M0["alto"] + d["minima"]:
 			m.call("baja", "mal"); _aviso("baja", "¡A menos de %s m de los paneles! Sube" % _n(d["minima"]), T)
 	# ---- busqueda: el tiempo ----
 	if d.has("zona") and not encontrado and t0 != null and t - t0 > d["limite_s"]:

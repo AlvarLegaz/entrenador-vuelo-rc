@@ -1299,7 +1299,7 @@ window.ESCENARIOS = {
    "desde": 300,
    "rachas": true
   },
-  "desc": "La planta fotovoltaica de El Mingrano (20 filas de 150 m, unos 3.000 módulos) produce menos de lo que debería. Recorre las filas, encuentra los 8 módulos dañados (cristal roto o muy sucio) y fotografía cada uno desde arriba, sin bajar a menos de 3 m de los paneles.",
+  "desc": "La planta fotovoltaica de La Aljorra, junto a la fábrica de SABIC (83 filas de seguidores solares de 320 m, unos 24.000 módulos), produce menos de lo que debería. Recorre las filas, encuentra los 8 módulos dañados (cristal roto o muy sucio) y fotografía cada uno desde arriba, sin bajar a menos de 3 m de los paneles.",
   "objetivos": [
    [
     "defectos",
@@ -1335,57 +1335,59 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
-   "cliente": "Planta fotovoltaica de El Mingrano · mantenimiento",
-   "lugar": "El Mingrano (Fuente Álamo, Campo de Cartagena). Despegue desde el camino junto a la planta.",
+   "cliente": "Planta fotovoltaica de La Aljorra · mantenimiento",
+   "lugar": "La Aljorra (Cartagena), junto a la fábrica de SABIC. Despegue desde el camino al norte del bloque de paneles.",
    "trabajo": "Inspección visual de los módulos fila por fila, con la cámara hacia abajo. En una inspección real se usa además una cámara térmica para ver los puntos calientes.",
    "entrega": "8 fotos, una por módulo dañado, para cambiarlos.",
    "salida": {
-    "n": 3232,
-    "e": -15115,
-    "rumbo": 0
+    "n": 9539.4,
+    "e": -5195.7,
+    "rumbo": 180
    },
    "planta": {
-    "n0": 3262,
-    "e0": -15190,
-    "filas": 20,
-    "largo": 150,
-    "ancho": 4,
-    "separacion": 8,
-    "inclinacion": 30,
-    "h0": 0.6
+    "n0": 9527.38,
+    "e0": -5419.44,
+    "rumbo": 181.157,
+    "filas": 83,
+    "largo": 323,
+    "ancho": 2.2,
+    "separacion": 5.5109,
+    "inclinacion": 15,
+    "h0": 1.0,
+    "tramo": 30
    },
    "defectos": [
     [
-     1,
+     3,
      23
     ],
     [
-     3,
+     11,
      118
     ],
     [
-     6,
+     19,
      61
     ],
     [
-     8,
+     28,
      140
     ],
     [
-     11,
+     37,
      9
     ],
     [
-     13,
-     87
+     46,
+     287
     ],
     [
-     16,
-     44
+     58,
+     200
     ],
     [
-     19,
-     131
+     71,
+     255
     ]
    ],
    "dist": [
@@ -1396,20 +1398,20 @@ window.ESCENARIOS = {
    "minima": 3,
    "sin_arboles": [
     [
-     3248,
-     -15200
+     9530.5,
+     -5423.4
     ],
     [
-     3248,
-     -15030
+     9201.5,
+     -5430.0
     ],
     [
-     3424,
-     -15030
+     9192.2,
+     -4970.2
     ],
     [
-     3424,
-     -15200
+     9521.2,
+     -4963.6
     ]
    ]
   }

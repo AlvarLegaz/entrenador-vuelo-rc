@@ -178,17 +178,19 @@ Object.assign(Visor.prototype, {
       for (let k = 0; k < 8; k++) { gm.fillStyle = "#14294d"; gm.fillRect(k * 32 + 1, 1, 30, 62); gm.strokeStyle = "rgba(160,190,230,0.35)"; gm.lineWidth = 0.6;
         for (let y = 8; y < 64; y += 8) { gm.beginPath(); gm.moveTo(k * 32 + 1, y); gm.lineTo(k * 32 + 31, y); gm.stroke(); }
         for (let x = 6; x < 32; x += 6) { gm.beginPath(); gm.moveTo(k * 32 + x, 1); gm.lineTo(k * 32 + x, 63); gm.stroke(); } }
-      const tm = texSRGB(cm); tm.wrapS = THREE.RepeatWrapping; tm.repeat.set(P.largo / 8, 1);
+      const tm = texSRGB(cm); tm.wrapS = THREE.RepeatWrapping; tm.repeat.set((P.tramo || P.largo) / 8, 1);
       const mPanel = new THREE.MeshStandardMaterial({ map: tm, roughness: 0.25, metalness: 0.3 }), mAcero = std(0xb0b6bb, { metalness: 0.6, roughness: 0.4 });
+      // giro de las mesas: su eje x a lo largo de la fila (rumbo), inclinadas sobre ese eje con el borde alto hacia la fila siguiente
+      const yaw = Math.atan2(op.pl.cr, op.pl.sr), geoP = new THREE.BoxGeometry(1, 0.05, P.ancho);
       for (const M of op.mesas) {
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(P.largo, 0.05, P.ancho), [mAcero, mAcero, mPanel, mAcero, mAcero, mAcero]);
-        panel.position.set((M.e0 + M.e1) / 2, M.y + P.h0 + P.ancho * Math.sin(inc) / 2, -M.n); panel.rotation.x = inc;       // el borde norte arriba (+z es el sur)
+        const panel = new THREE.Mesh(geoP, [mAcero, mAcero, mPanel, mAcero, mAcero, mAcero]), [n, e] = op.ne((M.l0 + M.l1) / 2, M.t);
+        panel.scale.x = M.l1 - M.l0; panel.position.set(e, M.y + P.h0 + P.ancho * Math.sin(inc) / 2, -n); panel.rotation.order = "YXZ"; panel.rotation.set(inc, yaw, 0);
         G.add(panel);
       }
       // patas (delante cortas, detras largas) cada 6 m: una sola malla instanciada para todas
-      const patas = []; for (const M of op.mesas) for (let x = M.e0 + 2; x < M.e1; x += 6) for (const s of [-1, 1]) patas.push([x, M, s]);
+      const patas = []; for (const M of op.mesas) for (let x = M.l0 + 2; x < M.l1; x += 6) for (const s of [-1, 1]) patas.push([x, M, s]);
       const ip = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 1, 0.08), mAcero, patas.length), Mx = new THREE.Matrix4();
-      patas.forEach(([x, M, s], k) => { const h = P.h0 + (s > 0 ? P.ancho * Math.sin(inc) : 0) * 0.92; ip.setMatrixAt(k, Mx.makeScale(1, h, 1).setPosition(x, M.y + h / 2, -(M.n + s * M.fondo * 0.42))); });
+      patas.forEach(([x, M, s], k) => { const h = P.h0 + (s > 0 ? P.ancho * Math.sin(inc) : 0) * 0.92, [n, e] = op.ne(x, M.t + s * M.fondo * 0.42); ip.setMatrixAt(k, Mx.makeScale(1, h, 1).setPosition(e, M.y + h / 2, -n)); });
       G.add(ip);
       op.modulos.forEach(([n, e, y], k) => {                                 // modulos danados: cristal roto (blanco) o muy sucio (marron)
         const [cd, gd] = lienzo(64, 128), roto = k % 2 === 0;
@@ -196,7 +198,7 @@ Object.assign(Visor.prototype, {
         if (roto) { gd.strokeStyle = "#e8eef5"; gd.lineWidth = 2; for (let r = 0; r < 9; r++) { const a = r * 0.7; gd.beginPath(); gd.moveTo(32, 64); gd.lineTo(32 + 40 * Math.cos(a), 64 + 70 * Math.sin(a)); gd.stroke(); } }
         else for (let r = 0; r < 40; r++) { gd.fillStyle = `rgba(${150 + (r * 37) % 60},${120 + (r * 23) % 40},80,0.6)`; gd.beginPath(); gd.arc((r * 29) % 64, (r * 53) % 128, 4 + r % 6, 0, 7); gd.fill(); }
         const o = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), new THREE.MeshStandardMaterial({ map: texSRGB(cd), roughness: 0.5 }));
-        o.position.set(e, y + 0.04, -n); o.rotation.set(-Math.PI / 2 + inc, 0, 0); G.add(o);      // sobre el panel, con su inclinacion
+        o.position.set(e, y + 0.04, -n); o.rotation.order = "YXZ"; o.rotation.set(-Math.PI / 2 + inc, yaw, 0); G.add(o);      // sobre el panel, con su inclinacion
       });
     }
     G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });

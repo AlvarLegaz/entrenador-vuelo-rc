@@ -45,10 +45,11 @@ def briefing(id_):
         zona = [tuple(q) for q in O["parcela"]["poligono"]]          # el bancal con su forma
     elif "parcela" in O or "zona" in O:
         P = O.get("parcela") or O["zona"]; zona = [(P["n0"], P["e0"]), (P["n0"], P["e1"]), (P["n1"], P["e1"]), (P["n1"], P["e0"])]
-    elif "planta" in O:
-        P = O["planta"]; fondo = P["ancho"] * math.cos(math.radians(P["inclinacion"]))
-        n0, n1 = P["n0"] - fondo, P["n0"] + (P["filas"] - 1) * P["separacion"] + fondo
-        zona = [(n0, P["e0"]), (n0, P["e0"] + P["largo"]), (n1, P["e0"] + P["largo"]), (n1, P["e0"])]
+    elif "planta" in O:                                  # el bloque de filas, con su rumbo (90 = filas hacia el este)
+        P = O["planta"]; fondo = P["ancho"] * math.cos(math.radians(P["inclinacion"])); r = math.radians(P.get("rumbo", 90))
+        ne = lambda l, t: (P["n0"] + l * math.cos(r) + t * math.sin(r), P["e0"] + l * math.sin(r) - t * math.cos(r))
+        t1 = (P["filas"] - 1) * P["separacion"] + fondo
+        zona = [ne(0, -fondo), ne(P["largo"], -fondo), ne(P["largo"], t1), ne(0, t1)]
     else: zona = None
     if "faro" in O:
         Fr = O["faro"]; r0, r1 = O["orbita"]; pts += [(Fr["n"] - r1, Fr["e"] - r1), (Fr["n"] + r1, Fr["e"] + r1)]
@@ -60,7 +61,7 @@ def briefing(id_):
     img = img.resize((W, H), Image.LANCZOS); k = W / lado_e
     X = lambda e: (e - (ce - lado_e / 2)) * k; Y = lambda n: ((cn + lado_n / 2) - n) * k
     d = ImageDraw.Draw(img, "RGBA")
-    if "planta" in O:                                             # paneles: las filas de la planta, que no estan en la ortofoto
+    if "planta" in O and "rumbo" not in O["planta"]:              # paneles: las filas de la planta, si no estan en la ortofoto (en SABIC si)
         P = O["planta"]; fondo = P["ancho"] * math.cos(math.radians(P["inclinacion"]))
         for i in range(P["filas"]):                               # mismas mesas que Operacion._planta (sin los modulos danados)
             n = P["n0"] + i * P["separacion"]; x0, x1 = X(P["e0"]), X(P["e0"] + P["largo"])

@@ -98,7 +98,9 @@ r, u = agricultura(40, -90, True); V.append(vuelo("agricultura alta y rozando el
 r, u = agricultura(20, -45); V.append(vuelo("agricultura camara inclinada", "op_agricultura", r + aterrizaje(u, C)))
 # ---- paneles fotovoltaicos ----
 O = ESC["op_paneles"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); PL = O["planta"]
-def modulo(f, x): s_ = math.sin(math.radians(PL["inclinacion"])); n = PL["n0"] + f * PL["separacion"]; e = PL["e0"] + x; return (n, e)
+def modulo(f, x):                                      # Operacion.ne: filas con su rumbo (90 = hacia el este)
+    r = math.radians(PL.get("rumbo", 90)); t = f * PL["separacion"]
+    return (PL["n0"] + x * math.cos(r) + t * math.sin(r), PL["e0"] + x * math.sin(r) - t * math.cos(r))
 def paneles(h=12, g=-90, todos=True):
     r = despegue(C); u = (C[0], C[1], 5)
     for k, (f, x) in enumerate(O["defectos"]):
@@ -110,8 +112,8 @@ r, u = paneles(todos=False); V.append(vuelo("paneles la mitad", "op_paneles", r 
 r, u = paneles(g=-20); V.append(vuelo("paneles camara horizontal", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
 r, u = paneles(h=30); V.append(vuelo("paneles demasiado alto", "op_paneles", r + aterrizaje((u[0], u[1], 30), C)))
 n, e = modulo(5, 70)
-V.append(vuelo("paneles demasiado bajo", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 5), v=2) + aterrizaje((n, e, 12), C)))
-V.append(vuelo("choca con los paneles", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 1.5), v=2), final="roto"))
+V.append(vuelo("paneles demasiado bajo", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 3.5), v=2) + aterrizaje((n, e, 12), C)))
+V.append(vuelo("choca con los paneles", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 0.8), v=2), final="roto"))
 # ---- video ----
 O = ESC["op_video"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); F = O["faro"]
 def orbita(r_=45, h=40, vueltas=1.0, salto=False, rec=1, cambio=0):
