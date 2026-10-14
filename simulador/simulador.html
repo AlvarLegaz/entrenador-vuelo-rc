@@ -1750,14 +1750,14 @@ function terminarVuelo(final, vn) {
 // =====================================================================
 /** Entrenamiento del FPV que se vuela con las gafas (solo cuenta la camara 3). */
 const conGafas = () => { const F = ESCENARIOS[sesion.escenario].pista_fpv; return !!(F && F.camara === "gafas" && modelo.esFPV); };
-const camaraValida = () => conGafas() ? visor.camara === 3 : visor.camara === 1 || (!!modelo.esCuadricoptero && visor.camara === 3);
+const camaraValida = () => !!ESCENARIOS[sesion.escenario].operacion || (conGafas() ? visor.camara === 3 : visor.camara === 1 || (!!modelo.esCuadricoptero && visor.camara === 3));   // en las operaciones vale cualquier camara
 /** Texto de la pista FPV con los conos de colores: {cono:i} -> el pilon de color i (HTML o solo el nombre). */
 const textoFpv = (s, html) => s.replace(/\{cono:(\d)\}/g, (_, i) => html ? pilonHTML(+i, true) : entorno.circuito.colores[+i].nombre);
 /** Objetivos y veredicto de un vuelo (lo que se guarda). Ademas de los objetivos, la camara: solo cuenta visto desde el piloto. */
 function datosResultado(v) {
   const E = ESCENARIOS[v.escenario], libre = !E.objetivos.length;
   const objs = Object.entries(ev.obj).map(([id, o]) => ({ id, texto: o.texto, ok: o.estado === "ok" }));
-  if (!libre) objs.push({ id: "camara", texto: conGafas() ? "Volar con las gafas FPV (cámara 3)" : modelo.esFPV ? "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" : modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
+  if (!libre && !E.operacion) objs.push({ id: "camara", texto: conGafas() ? "Volar con las gafas FPV (cámara 3)" : modelo.esFPV ? "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" : modelo.esCuadricoptero ? "Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" : "Volar desde el puesto del piloto (cámara 1)", ok: !v.otraCamara });
   const apto = !libre && v.final === "aterrizado" && objs.every(o => o.ok);
   return { E, libre, objs, apto, resultado: libre ? "LIBRE" : apto ? "APTO" : "NO APTO" };
 }

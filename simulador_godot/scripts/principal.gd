@@ -966,7 +966,7 @@ func lanzar() -> void:
 func con_gafas() -> bool:
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
 	return F.get("camara", "") == "gafas" and es_fpv()
-func camara_valida() -> bool: return camara == 3 if con_gafas() else (camara == 1 or (es_dron() and camara == 3))
+func camara_valida() -> bool: return Escenarios.datos()[sesion["escenario"]].has("operacion") or (camara == 3 if con_gafas() else (camara == 1 or (es_dron() and camara == 3)))   # en las operaciones vale cualquier camara
 ## Texto de la pista FPV: {cono:i} -> el pilon de color i (BBCode o solo el nombre) y <b> -> [b] (textoFpv de la web).
 func texto_fpv(s: String, bb: bool) -> String:
 	var re := RegEx.new(); re.compile("\\{cono:(\\d)\\}")
@@ -1187,7 +1187,7 @@ func datos_resultado(v: Dictionary) -> Dictionary:
 	var E: Dictionary = Escenarios.datos()[v["escenario"]]; var libre := (E["objetivos"] as Array).is_empty()
 	var objs := []
 	for k in ev.orden: objs.append({ "id": k, "texto": ev.obj[k]["texto"], "ok": ev.obj[k]["estado"] == "ok" })
-	if not libre: objs.append({ "id": "camara", "texto": "Volar con las gafas FPV (cámara 3)" if con_gafas() else "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
+	if not libre and not E.has("operacion"): objs.append({ "id": "camara", "texto": "Volar con las gafas FPV (cámara 3)" if con_gafas() else "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
 	var apto: bool = not libre and v["final"] == "aterrizado" and objs.all(func(o): return o["ok"])
 	return { "E": E, "libre": libre, "objs": objs, "apto": apto, "resultado": "LIBRE" if libre else ("APTO" if apto else "NO APTO") }
 
