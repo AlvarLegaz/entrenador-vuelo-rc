@@ -3151,7 +3151,7 @@ function pintarGPSMundo(cv, rumbo, N, E) {
     g.drawImage(img, X(t.E0), Y(t.N0 + t.lado), t.lado * k, t.lado * k);       // la fila de arriba de la foto es el norte
   }
   const PL = (ESCENARIOS[sesion.escenario].operacion || {}).planta;   // paneles: las filas de la planta, que no estan en la ortofoto
-  if (PL) {
+  if (PL && PL.rumbo === undefined) {                                  // con rumbo (SABIC) las filas ya estan en la ortofoto
     const fondo = PL.ancho * Math.cos(PL.inclinacion * D2R); g.fillStyle = "#182c52";
     for (let i = 0; i < PL.filas; i++) { const n = PL.n0 + i * PL.separacion; g.fillRect(X(PL.e0), Y(n + fondo / 2), PL.largo * k, Math.max(1, fondo * k)); }
   }

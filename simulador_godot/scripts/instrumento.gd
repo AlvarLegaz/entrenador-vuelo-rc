@@ -333,7 +333,7 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			var ts: Vector2 = (t["tex"] as Texture2D).get_size()
 			draw_texture_rect_region(t["tex"], dentro, Rect2((dentro.position - r.position) / r.size * ts, dentro.size / r.size * ts))
 	var op: Dictionary = Escenarios.datos()[p.sesion["escenario"]].get("operacion", {})
-	if op.has("planta"):                               # paneles: las filas de la planta, que no estan en la ortofoto
+	if op.has("planta") and not op["planta"].has("rumbo"):     # paneles: las filas de la planta, si no estan en la ortofoto (en SABIC si)
 		var PL: Dictionary = op["planta"]; var fondo: float = PL["ancho"] * cos(PL["inclinacion"] * PI / 180)
 		for i in int(PL["filas"]):
 			var n: float = PL["n0"] + i * PL["separacion"]
