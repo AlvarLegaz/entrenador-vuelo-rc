@@ -502,6 +502,10 @@ class Visor {
       if (tipo) C.setHSL(0.25 + 0.05 * r(), 0.3 + 0.2 * r(), 0.22 + 0.1 * r()); else C.setHSL(0.2 + 0.05 * r(), 0.22, 0.3 + 0.08 * r());
     }, 1e9);
     this.prescindibles.push(...this.escena.children.slice(antes));          // las matas sobran en calidad 0
+    // arboles solidos de la isla (Entorno.chocaArbol): almendros (copa de 1,1 s de radio hasta 2,4 s) y los grandes
+    E.ponerArboles("campo", arboles.map(([Ex, Nn, s]) => [Ex, Nn, 1.1 * s, 0, 2.4 * s]).concat(grandes.map(([Ex, Nn, s, pino]) => {
+      const h = alturaTerreno(Ex, Nn); return [Ex, Nn, 0.9 * s, h, h + (pino ? 3.2 * s / 2.5 + 2.2 * s : 1.1 * s / 2.5 + 1.4 * s)];
+    })));
     // cortijo y naves: cajas blancas con azotea; una con tejado
     for (const [Ex, Nn, a, b, h] of CAMPO.cortijo) {
       const nave = a > 20, caja = new THREE.Mesh(new THREE.BoxGeometry(a, h, b), lam(nave ? 0xd9d6cf : 0xeae4d8));
@@ -812,7 +816,8 @@ class Visor {
       if (Math.hypot(ee - cE, nn - cN) > 2200) continue;
       const P = Visor.parcela(ee, nn); if (P.tipo !== 0 || P.u < 12 || P.v < 12) continue;
       const h = apto(nn, ee); if (!h || h > 110) continue;
-      arboles.push([ee + (r() - 0.5) * 2, nn + (r() - 0.5) * 2, 0.75 + r() * 0.35, 0]);
+      const a = [ee + (r() - 0.5) * 2, nn + (r() - 0.5) * 2, 0.75 + r() * 0.35, 0];
+      if (Math.hypot(a[0] - cE, a[1] - cN) >= 25) arboles.push(a);          // claro de 25 m en el punto de salida
     }
     // mas lejos: sueltos (almendros en la llanura, pinos en el monte), hasta 9 km (mas alla lo tapa la calima)
     for (let n = -9000; n <= 9000; n += 70) for (let e = -9000; e <= 9000; e += 70) {
@@ -829,6 +834,8 @@ class Visor {
       Cc.setHex(pino ? 0x3b5f34 : [0x6e8a44, 0x76924a, 0x66823e][Math.floor(s * 7) % 3]);
     }, 1000, 4000, [cE, -cN]);
     for (const o of esc.children) if (!antes.has(o)) esc.userData.arboles.push(o);
+    // solidos (Entorno.chocaArbol): el cono de la copa, de 2,4 s de radio abajo (1,9 s en los pinos) y 3,6 s de alto (7,9 s)
+    ent.ponerArboles("region", arboles.map(([e, n, s, pino]) => { const y = alt(n, e); return [e, n, (pino ? 1.3 : 1.6) * s, y, y + (pino ? 7.9 : 3.6) * s]; }));
   }
 
   /** Cintas de carretera: dos vertices por punto, a 1 m sobre el terreno, subdivididas a 120 m para seguirlo. */
@@ -947,12 +954,12 @@ class Visor {
     const cam = this.cam, t = ned2three(av.p);
     if (this.camara === 1) {
       // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: el campo de vision se cierra con la distancia
-      // para que la envergadura ocupe siempre la fraccion zoomPiloto del alto de la pantalla (10 % por defecto; 0 = sin
+      // para que la envergadura ocupe siempre la fraccion zoomPiloto del alto de la pantalla (3 % por defecto; 0 = sin
       // zoom, como lo ve el ojo), entre 50 y 1,5 grados. Asi el avion no se pierde de vista y cada avion se ve segun su
       // tamano (el dron de 25 cm cierra antes). Suavizado para que no de saltos al cambiar de camara
       const b = this.base || [0, 0, 0];
       cam.position.set(b[0] + 1.5, b[1] + 1.7, b[2] + 2);
-      const env = (this.avion && this.avion.envergadura) || 1, zp = this.zoomPiloto === undefined ? 0.10 : this.zoomPiloto;
+      const env = (this.avion && this.avion.envergadura) || 1, zp = this.zoomPiloto === undefined ? 0.03 : this.zoomPiloto;
       const d = Math.hypot(t[0] - b[0] - 1.5, t[1] - b[1] - 1.7, t[2] - b[2] - 2);
       const fovObj = zp > 0 ? Math.max(1.5, Math.min(50, env / (zp * Math.max(d, 0.5)) * 180 / Math.PI)) : 50;
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;

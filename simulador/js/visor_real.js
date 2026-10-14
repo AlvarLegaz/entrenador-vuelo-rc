@@ -90,6 +90,8 @@ Object.assign(Visor.prototype, {
       esc.remove(g);
     }
     esc.userData.zonaGrupos = [];
+    this.entorno.quitarArboles("zona:");             // los arboles solidos de las zonas que se quitan
+    this.mapaZonas = [];                              // teselas de ortofoto de las zonas para el GPS: { tex, N0, E0, lado }
     const terr = esc.userData.terreno, pos = terr && terr.geometry.attributes.position, Y0 = esc.userData.yOriginal;
     if (pos) pos.array.set(Y0);
     this.zonasBBox = lista.map(z => [z.meta.N0, z.meta.N0 + z.meta.lado_m, z.meta.E0, z.meta.E0 + z.meta.lado_m]);
@@ -269,6 +271,7 @@ Object.assign(Visor.prototype, {
       const tex = cargador.load(z.datos ? z.datos.orto[ti + "_" + tj] : z.base + Z.orto.archivo.replace("{i}", ti).replace("{j}", tj));
       tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
       (g.userData.orto = g.userData.orto || {})[ti + "_" + tj] = tex;
+      (this.mapaZonas = this.mapaZonas || []).push({ tex, N0: Z.N0 + ti * Z.orto.tesela_m, E0: Z.E0 + tj * Z.orto.tesela_m, lado: Z.orto.tesela_m });
       const malla = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
       malla.receiveShadow = true; g.add(malla);
     }
@@ -361,10 +364,13 @@ Object.assign(Visor.prototype, {
   _arbolesZona(g, z) {
     Promise.all([z.datos ? Promise.resolve(z.datos.arboles) : fetch(z.base + z.meta.arboles.archivo).then(r => r.arrayBuffer()).then(b => new Float32Array(b)), this._edificiosDe(z)]).then(([A, edificios]) => {
       const alt = this.entorno.altura, r = semilla(29), base = this.baseNE || [0, 0], enEdificio = this._filtroEdificios(edificios);
+      // sin arboles donde no los hay aunque la ortofoto lo parezca (escenarios.js, "sin_arboles": el aparcamiento del CIFP)
+      const claros = Object.values(ESCENARIOS).filter(E => E.mundo === this.mundo.id).flatMap(E => E.destacados || []).filter(d => d.sin_arboles).map(d => d.sin_arboles);
+      const enClaro = (e, n) => claros.some(P => { let k = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][0] > n) !== (P[j][0] > n) && e < (P[j][1] - P[i][1]) * (n - P[i][0]) / (P[j][0] - P[i][0]) + P[i][1]) k = !k; return k; });
       const arboles = [], matas = [];
       for (let i = 0; i < A.length; i += 3) {
-        if (Math.hypot(A[i] - base[1], A[i + 1] - base[0]) < 8) continue;        // claro de 8 m alrededor del piloto (como en Godot)
-        if (enEdificio(A[i], A[i + 1], A[i + 2])) continue;                      // ni dentro de los edificios ni metidos en sus muros
+        if (Math.hypot(A[i] - base[1], A[i + 1] - base[0]) < 25 + A[i + 2]) continue;   // claro de 25 m alrededor del piloto (como en Godot)
+        if (enEdificio(A[i], A[i + 1], A[i + 2]) || enClaro(A[i], A[i + 1])) continue;   // ni dentro de los edificios (ni metidos en sus muros) ni en los despegues destacados
         (A[i + 2] < 1.3 ? matas : arboles).push([A[i], A[i + 1], Math.min(3.5, A[i + 2])]);     // mas de 3,5 m de radio es un grupo de copas pegadas, no un arbol
       }
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);
@@ -390,6 +396,8 @@ Object.assign(Visor.prototype, {
         C.setHSL(0.17 + 0.06 * r(), 0.22 + 0.1 * r(), 0.2 + 0.08 * r());
       }, 500);
       for (const o of g.children) if (!antes.has(o)) { o.castShadow = true; o.receiveShadow = false; }   // las copas no necesitan recibir sombra
+      if ((this.escena.userData.zonaGrupos || []).includes(g))       // solidos (Entorno.chocaArbol), si la zona sigue puesta
+        this.entorno.ponerArboles("zona:" + z.meta.id, arboles.map(([e, n, rc]) => [e, n, ...arbolZona(rc, alt(n, e))]));
     }).catch(e => console.warn("Sin arboles de la zona:", e));
   },
 });

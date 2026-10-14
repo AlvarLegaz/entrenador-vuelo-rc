@@ -19,7 +19,7 @@ var c_sonido: CheckBox; var s_vol: HSlider; var t_vol: Label
 var o_dif: OptionButton; var t_dif: Label
 var c_cn: CheckBox; var t_aula: Label; var e_url: LineEdit; var t_url: Label; var b_profesor: Button
 
-const ZOOMS := [0.0, 0.05, 0.1, 0.15, 0.22]
+const ZOOMS := [0.0, 0.03, 0.05, 0.1, 0.15, 0.22]
 
 func _init(p_: Node) -> void:
 	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -139,10 +139,10 @@ func _graficos(c: VBoxContainer) -> void:
 	c.add_child(Tema.fila("Calidad", o_calidad))
 	t_calidad = Tema.sub("", 13); c.add_child(t_calidad)
 	c.add_child(Tema.margen(Tema.h2("Cámara del piloto"), 0, 18, 0, 0))
-	o_zoom = Tema.desplegable(["Sin zoom: como lo ve el ojo (el avión se hace pequeño al alejarse)", "Poco: la envergadura ocupa un 5 % de la pantalla", "Normal: un 10 % de la pantalla",
+	o_zoom = Tema.desplegable(["Sin zoom: como lo ve el ojo (el avión se hace pequeño al alejarse)", "Por defecto: la envergadura ocupa un 3 % de la pantalla", "Poco: un 5 % de la pantalla", "Medio: un 10 % de la pantalla",
 							   "Mucho: un 15 % de la pantalla", "Máximo: un 22 % de la pantalla", "Ajustado con la rueda del ratón"])
-	o_zoom.set_item_disabled(5, true)
-	o_zoom.item_selected.connect(func(i): if i < 5: p.poner_zoom_piloto(ZOOMS[i]))
+	o_zoom.set_item_disabled(6, true)
+	o_zoom.item_selected.connect(func(i): if i < 6: p.poner_zoom_piloto(ZOOMS[i]))
 	c.add_child(Tema.fila("Zoom automático", o_zoom))
 	c.add_child(Tema.sub("Con zoom, el campo de visión se cierra al alejarse el avión para que se vea siempre del mismo tamaño (hasta un teleobjetivo de 1,5°). En vuelo, con la cámara del piloto, la rueda del ratón lo ajusta.", 13))
 
@@ -194,10 +194,10 @@ func refrescar() -> void:
 	var modo: String = p.aj.get("calidad_modo", "auto")
 	o_calidad.selected = ["auto", "2", "1", "0"].find(modo)
 	t_calidad.text = "Ahora: %s%s. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel." % [["baja", "media", "alta"][p.calidad_actual()], " (automática)" if modo == "auto" else ""]
-	var z: float = p.aj.get("zoom_piloto", 0.1); var iz := -1
+	var z: float = p.aj.get("zoom_piloto", 0.03); var iz := -1
 	for i in ZOOMS.size():
 		if absf(ZOOMS[i] - z) < 0.004: iz = i
-	if iz < 0: o_zoom.set_item_text(5, "Ajustado con la rueda del ratón: un %d %% de la pantalla" % int(round(z * 100))); iz = 5
+	if iz < 0: o_zoom.set_item_text(6, "Ajustado con la rueda del ratón: un %d %% de la pantalla" % int(round(z * 100))); iz = 6
 	o_zoom.selected = iz
 	c_sonido.button_pressed = p.sonido.on if p.sonido else true
 	s_vol.value = round((p.sonido.vol if p.sonido else 0.6) * 100); t_vol.text = "%d %%" % int(s_vol.value)

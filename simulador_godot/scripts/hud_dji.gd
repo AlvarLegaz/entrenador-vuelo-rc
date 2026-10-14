@@ -149,7 +149,7 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	bat.add_theme_color_override("font_color", Color("#ff5252") if _bat_rojo else Tema.TEXTO)
 	var c: Dictionary = p.casa; var h_casa: float = p.ent.altura(c["N"], c["E"])
 	t_d.text = (_f1(dist / 1000) + " km") if dist >= 1000 else ("%d m" % int(round(dist)))
-	t_h.text = "%d m" % int(round(maxf(0, h - h_casa)))
+	t_h.text = "%d m" % int(round(maxf(0, -p.av["p"][2] - h_casa)))      # sobre el punto de despegue (h viene recortado a 0)
 	t_hs.text = _f1(Vector2(vn[0], vn[1]).length()) + " m/s"; t_vs.text = _f1(vs) + " m/s"
 	var g: float = av.get("gimbal", -10.0)
 	var y := (10 - g) / 100.0 * 130

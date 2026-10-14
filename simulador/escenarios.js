@@ -4,7 +4,8 @@
 // version. Campos: nombre, desc, objetivos [[id, texto]], sentido (circuito: 1 o -1), zona (2: detras del piloto;
 // 3: mundo real), mundo (id del mundo real), viento fijo {vel, desde, rachas}, guia, enVuelo {N, E, h, rumbo, gas},
 // dificultad (estrellas, 1-3), titulo_grupo (cabecera de su grupo en la pantalla de entrenamientos) y destacados
-// (vuelo libre en un mundo real: puntos de despegue resaltados en el mapa de salida, con contorno lat/lon y rumbo),
+// (vuelo libre en un mundo real: puntos de despegue resaltados en el mapa de salida, con contorno lat/lon y rumbo, y
+// sin_arboles: poligono [N, E] del plano del mundo donde no se ponen los arboles detectados en la ortofoto),
 // vehiculos (en que vehiculos sale en la pantalla de entrenamientos: "avion", "dron" (el DJI) y "fpv") y pista_fpv (los
 // entrenamientos del dron FPV: plataforma de salida, modo de Betaflight, camara, y los conos, postes, puertas y torre de
 // cada uno, en (N, E) metros desde el piloto; los evaluan js/pista_fpv.js y simulador_godot/scripts/pista_fpv.gd) y
@@ -1272,7 +1273,8 @@ window.ESCENARIOS = {
     "lat": 37.613315,
     "lon": -0.974488,
     "rumbo": 110,
-    "contorno": [[37.613164, -0.975122], [37.613178, -0.974609], [37.613191, -0.974021], [37.613200, -0.973826], [37.614295, -0.972974], [37.615252, -0.974800], [37.613979, -0.975854], [37.613164, -0.975122]]
+    "contorno": [[37.613164, -0.975122], [37.613178, -0.974609], [37.613191, -0.974021], [37.613200, -0.973826], [37.614295, -0.972974], [37.615252, -0.974800], [37.613979, -0.975854], [37.613164, -0.975122]],
+    "sin_arboles": [[43, 6597], [43, 6702], [82, 6702], [82, 6597]]
    },
    {
     "nombre": "Los Halcones de la Rambla",

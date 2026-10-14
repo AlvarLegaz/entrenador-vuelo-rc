@@ -814,6 +814,13 @@ func _campo() -> void:
 		var s := 2.6 + r.r() * 2.4
 		grandes.append([rambla(Nn) + lado * dd, Nn, s, false])
 	for a in [[52, 240, 4.2, false], [100, 198, 3.6, false], [-18, 207, 3.4, true], [120, 240, 3.8, false]]: grandes.append(a)
+	# arboles solidos de la isla (Entorno.choca_arbol): almendros (copa de 1,1 s de radio hasta 2,4 s) y los grandes
+	var solidos := []
+	for a in _arboles: solidos.append([a[0], a[1], 1.1 * a[2], 0.0, 2.4 * a[2]])
+	for a in grandes:
+		var hg := altura_terreno(a[0], a[1]); var sg: float = a[2]
+		solidos.append([a[0], a[1], 0.9 * sg, hg, hg + (3.2 * sg / 2.5 + 2.2 * sg if a[3] else 1.1 * sg / 2.5 + 1.4 * sg)])
+	ent.poner_arboles("campo", solidos)
 	_instanciar(cilindro(0.2, 0.32, 1, 6), lambert(Color.hex(0x5a4634ff), null, true), grandes, func(it: Array) -> Array:
 		var s: float = it[2]; var ht: float = 3.2 * s / 2.5 if it[3] else 1.1 * s / 2.5; var h := altura_terreno(it[0], it[1])
 		return [_tr(Vector3(it[0], h + ht / 2, -it[1]), 0, Vector3(s / 2.5, ht, s / 2.5)), Color.WHITE], 1e9)

@@ -287,11 +287,19 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 	var T: Dictionary = p.ent.terreno; var PX := 2.0
 	var tex := _mapa_del_mundo()
 	draw_style_box(Tema.caja(Color("#0b0f14"), Color(0, 0, 0, 0), 10), Rect2(Vector2.ZERO, size))
-	var semi := 3000.0 * gps_zoom; var k := W / (2 * semi); var mpx: float = PX / T["paso"]
+	var semi := (400.0 if (p.es_dron() and not p.es_fpv()) else 3000.0) * gps_zoom; var k := W / (2 * semi); var mpx: float = PX / T["paso"]   # un dron trabaja a cientos de metros
 	var sx: float = (E - T["E0"]) / T["paso"] * PX - semi * mpx; var sy: float = (T["nN"] - 1 - (N - T["N0"]) / T["paso"]) * PX - semi * mpx
 	draw_texture_rect_region(tex, Rect2(Vector2.ZERO, size), Rect2(sx, sy, 2 * semi * mpx, 2 * semi * mpx))
 	var X := func(e: float) -> float: return W / 2 + (e - E) * k
 	var Y := func(n: float) -> float: return W / 2 - (n - N) * k
+	if p.mundo3d != null:                              # dentro de las zonas de detalle, su ortofoto (0,25-0,5 m) encima, recortada al mapa
+		var vista := Rect2(Vector2.ZERO, Vector2(W, W))
+		for t in p.mundo3d.mapa_zonas:
+			var r := Rect2(X.call(t["E0"]), Y.call(t["N0"] + t["lado"]), t["lado"] * k, t["lado"] * k)
+			var dentro := r.intersection(vista)
+			if dentro.size.x <= 0 or dentro.size.y <= 0: continue
+			var ts: Vector2 = (t["tex"] as Texture2D).get_size()
+			draw_texture_rect_region(t["tex"], dentro, Rect2((dentro.position - r.position) / r.size * ts, dentro.size / r.size * ts))
 	for l in p.mundo_datos["lugares"]:
 		if l[1] <= (5 if semi < 5000 else 3) and absf(l[2] - E) < semi and absf(l[3] - N) < semi:
 			var q := Vector2(X.call(l[2]), Y.call(l[3]))

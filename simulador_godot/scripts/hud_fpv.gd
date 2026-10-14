@@ -57,7 +57,7 @@ func pintar(h: float, vn: Array) -> void:
 	modo.text = NOMBRES.get(modelo.modo, modelo.modo)
 	tiempo.text = "TIME " + fmt_tiempo(av.get("tArmado", 0.0))
 	gas.text = "THR %d" % int(round(av["gases"] * 100))
-	alt.text = "ALT %.1fm" % (h - h_casa)
+	alt.text = "ALT %.1fm" % (-p.av["p"][2] - h_casa)      # sobre el punto de despegue, como Betaflight (h viene recortado a 0)
 	vel.text = "%dkm/h" % int(round(V * 3.6))
 	bat.text = "%.1fV %.2fV" % [av["Vbat"], celda]
 	_color(bat, "rojo" if celda < F["critico_celda_V"] else ("ambar" if celda < F["aviso_celda_V"] else ""))

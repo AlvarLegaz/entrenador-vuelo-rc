@@ -19,6 +19,10 @@ function cargarScript(src) {
 const ABIERTO_COMO_FICHERO = typeof location !== "undefined" && location.protocol === "file:";
 function base64ABytes(b64) { const t = atob(b64), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u.buffer; }
 
+/** Copa solida de un arbol de las zonas de detalle de radio de copa rc sobre el suelo y: [radio, y0, y1] (lo que dibujan
+ *  visor_real.js y mundo_3d.gd: tronco de 1 + 0,3 rc m en los almendros, 1,5 + 0,4 rc en los grandes, y la copa encima). */
+function arbolZona(rc, y) { return rc < 2.5 ? [0.9 * rc, y, y + 1.0 + 0.3 * rc + 1.15 * rc] : [0.9 * rc, y, y + 1.5 + 0.4 * rc + 1.7 * rc]; }
+
 class Entorno {
   constructor() {
     this.mundo = null;                 // mundo real activo (null = la isla del campo de pilones)
@@ -118,7 +122,7 @@ class Entorno {
    *  int16 (base64) sobre el nivel del mar; aqui se guarda relativo al suelo del origen (h0), que es el 0 del
    *  simulador. En el mar el suelo es la superficie del agua. */
   ponerMundo(mundo) {
-    this.mundo = mundo || null;
+    this.mundo = mundo || null; this._rejArb = null;
     this.zona = null; this.zonas = [];
     if (!mundo) { this.altura = null; this.enMar = null; return; }
     const T = mundo.terreno, bin = atob(T.alturas_b64), H = new Int16Array(bin.length / 2);
@@ -194,6 +198,31 @@ class Entorno {
       return d >= 100 ? hz : hz * d / 100 + this.alturaMundo(N, E) * (1 - d / 100);
     };
     this.enMar = (N, E) => { const r = buscar(N, E); return r ? r[0][1] > 0.7 : this.enMarMundo(N, E); };
+  }
+
+  /** Arboles solidos (los que se dibujan): listas [E, N, radio, y0, y1] (y0 y1: pie y copa, m hacia arriba como -p[2])
+   *  por clave: "campo" (la isla) y en un mundo real "region" y "zona:<id>". Las mismas medidas en los dos simuladores
+   *  (Entorno.arbol: la copa de un arbol de radio de copa rc). Los de la isla solo cuentan en la isla y los demas solo en
+   *  el mundo real. Rejilla de 25 m para buscar los de cerca. */
+  ponerArboles(clave, lista) {
+    this._arboles = this._arboles || {};
+    if (lista && lista.length) this._arboles[clave] = lista; else delete this._arboles[clave];
+    this._rejArb = null;
+  }
+  quitarArboles(prefijo) { for (const k of Object.keys(this._arboles || {})) if (k.startsWith(prefijo)) delete this._arboles[k]; this._rejArb = null; }
+  /** true si el avion (posicion NED, semienvergadura en m) toca un arbol. */
+  chocaArbol(p, semi) {
+    if (!this._rejArb) {
+      const C = 25, R = this._rejArb = new Map();
+      for (const [k, lista] of Object.entries(this._arboles || {})) {
+        if ((k === "campo") !== !this.mundo) continue;
+        for (const t of lista) for (let i = Math.floor((t[0] - t[2]) / C); i <= Math.floor((t[0] + t[2]) / C); i++)
+          for (let j = Math.floor((t[1] - t[2]) / C); j <= Math.floor((t[1] + t[2]) / C); j++) { const q = i * 100003 + j; if (!R.has(q)) R.set(q, []); R.get(q).push(t); }
+      }
+    }
+    const up = -p[2], c = this._rejArb.get(Math.floor(p[1] / 25) * 100003 + Math.floor(p[0] / 25));
+    if (c) for (const t of c) if (up < t[4] && up > t[3] - 0.3 && Math.hypot(p[1] - t[0], p[0] - t[1]) < t[2] + 0.8 * semi) return true;
+    return false;
   }
 
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */

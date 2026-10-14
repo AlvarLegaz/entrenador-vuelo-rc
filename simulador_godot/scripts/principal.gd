@@ -36,7 +36,7 @@ const NOMBRES_MODO := { "C": "Cine", "N": "Normal", "S": "Sport" }
 # ---- sesion y ajustes (se guardan en user://) ----
 var sesion := { "alumno": null, "sin_registrar": false, "avion": "", "escenario": "libre", "viento": { "vel": 2.0, "desde": 0, "rachas": true },
 				"dificultad": "real", "lanz": {}, "lanz_real": true }
-var aj := { "calidad_modo": "auto", "zoom_piloto": 0.10, "cn_auto": false, "cm": {}, "cfg_avion": {} }
+var aj := { "calidad_modo": "auto", "zoom_piloto": 0.03, "zoom_v": 0, "cn_auto": false, "cm": {}, "cfg_avion": {} }
 var sitio_sel := "libre"
 var ids_aviones := []
 
@@ -163,6 +163,7 @@ func _cargar() -> void:
 		if cf.has_section_key("sesion", k): sesion[k] = cf.get_value("sesion", k)
 	for k in aj.keys():
 		if cf.has_section_key("ajustes", k): aj[k] = cf.get_value("ajustes", k)
+	if int(aj.get("zoom_v", 0)) < 2: aj["zoom_piloto"] = 0.03; aj["zoom_v"] = 2      # nuevo por defecto del zoom del piloto: 3 %
 
 func _guardar() -> void:
 	var cf := ConfigFile.new()
@@ -676,6 +677,7 @@ func paso(dt: float) -> void:
 	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT)
 	if av["estado"] != "volando": return
 	if ent.choca_pilon(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un pilón)", vn); return
+	if ent.choca_arbol(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un árbol)", vn); return
 	if ev.fpv != null:                        # pista FPV: objetivos y choques con postes, puertas y torre
 		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
 		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
@@ -954,7 +956,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	if pantalla_actual != "" or modal["raiz"].visible: return
 	if e is InputEventMouseButton and e.pressed and (e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN) and camara == 1:
 		# con la camara del piloto, la rueda del raton cambia el zoom (fuera del GPS, que tiene su propia rueda)
-		var abajo: bool = e.button_index == MOUSE_BUTTON_WHEEL_DOWN; var z0: float = aj.get("zoom_piloto", 0.1)
+		var abajo: bool = e.button_index == MOUSE_BUTTON_WHEEL_DOWN; var z0: float = aj.get("zoom_piloto", 0.03)
 		var z := clampf(z0 * (0.85 if abajo else 1 / 0.85) if z0 > 0 else (0.03 if not abajo else 0.0), 0, 0.3)
 		poner_zoom_piloto(0.0 if (z < 0.025 and abajo) else snappedf(z, 0.001))
 		poner_toast(("Zoom del piloto: el avión ocupa un %d %% de la pantalla" % int(round(aj["zoom_piloto"] * 100))) if aj["zoom_piloto"] > 0 else "Sin zoom: como lo ve el ojo")
@@ -1137,7 +1139,7 @@ func _camara() -> void:
 		# vista del piloto con ZOOM AUTOMATICO, como en el navegador: la envergadura ocupa la fraccion zoom_piloto del alto
 		# de la pantalla (10 % por defecto; 0 = sin zoom, como lo ve el ojo), entre 50 y 1,5 grados. Suavizado
 		var b: Vector3 = vista.base + Vector3(1.5, 1.7, 2)
-		var env: float = float(modelo.b_m); var zp: float = aj.get("zoom_piloto", 0.1)
+		var env: float = float(modelo.b_m); var zp: float = aj.get("zoom_piloto", 0.03)
 		var d: float = b.distance_to(t); var obj: float = clampf(rad_to_deg(env / (zp * maxf(d, 0.5))), 1.5, 50.0) if zp > 0 else 50.0
 		_fov1 = obj if _fov1 < 0 else _fov1 + (obj - _fov1) * 0.08
 		cam.fov = _fov1; cam.global_position = b

@@ -91,7 +91,7 @@ static func _b64_bits(s: String, n: int) -> PackedByteArray:
 ## Activa un mundo real (DatosComunes.mundo(id)) o vuelve a la isla ({}): en la isla el suelo esta a 0 m y no hay
 ## mar (altura y en_mar miran mundo). Como en el navegador, el terreno del ultimo mundo se queda guardado.
 func poner_mundo(m: Dictionary) -> void:
-	mundo = m; zona = {}; zonas = []; _libres = []
+	mundo = m; zona = {}; zonas = []; _libres = []; _rej_arb = null
 	if m.is_empty(): return
 	var T: Dictionary = m["terreno"]
 	terreno = { "H": _b64_int16(T["alturas_b64"]), "paso": float(T["paso"]), "N0": float(T["N0"]), "E0": float(T["E0"]),
@@ -213,6 +213,39 @@ func distancia(p: Array) -> float:
 
 func fuera_de_limites(p: Array) -> bool:
 	return mundo.is_empty() and distancia(p) > limites["distancia_m"]
+
+## Arboles solidos (los que se dibujan): listas [E, N, radio, y0, y1] (pie y copa, m hacia arriba como -p[2]) por clave:
+## "campo" (la isla) y en un mundo real "region" y "zona:<id>". Los de la isla solo cuentan en la isla y los demas solo en
+## el mundo real. Rejilla de 25 m. Lo mismo que ponerArboles / chocaArbol de entorno.js.
+var _arboles := {}
+var _rej_arb = null
+func poner_arboles(clave: String, lista: Array) -> void:
+	if lista.is_empty(): _arboles.erase(clave)
+	else: _arboles[clave] = lista
+	_rej_arb = null
+func quitar_arboles(prefijo: String) -> void:
+	for k in _arboles.keys():
+		if String(k).begins_with(prefijo): _arboles.erase(k)
+	_rej_arb = null
+## Copa solida de un arbol de las zonas de radio de copa rc sobre el suelo y: [radio, y0, y1] (arbolZona de entorno.js).
+static func arbol_zona(rc: float, y: float) -> Array:
+	return [0.9 * rc, y, y + 1.0 + 0.3 * rc + 1.15 * rc] if rc < 2.5 else [0.9 * rc, y, y + 1.5 + 0.4 * rc + 1.7 * rc]
+## true si el avion (posicion NED, semienvergadura en m) toca un arbol.
+func choca_arbol(p: Array, semi: float) -> bool:
+	if _rej_arb == null:
+		_rej_arb = {}
+		for k in _arboles:
+			if (k == "campo") != mundo.is_empty(): continue
+			for t in _arboles[k]:
+				for i in range(int(floor((t[0] - t[2]) / 25.0)), int(floor((t[0] + t[2]) / 25.0)) + 1):
+					for j in range(int(floor((t[1] - t[2]) / 25.0)), int(floor((t[1] + t[2]) / 25.0)) + 1):
+						var q := Vector2i(i, j)
+						if not _rej_arb.has(q): _rej_arb[q] = []
+						_rej_arb[q].append(t)
+	var up: float = -p[2]
+	for t in _rej_arb.get(Vector2i(int(floor(p[1] / 25.0)), int(floor(p[0] / 25.0))), []):
+		if up < t[4] and up > t[3] - 0.3 and _hypot(p[1] - t[0], p[0] - t[1]) < t[2] + 0.8 * semi: return true
+	return false
 
 ## true si el avion (posicion NED, semienvergadura en m) toca un pilon.
 func choca_pilon(p: Array, semi: float) -> bool:

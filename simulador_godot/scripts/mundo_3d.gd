@@ -16,6 +16,7 @@ var tex_region: ImageTexture
 var zonas_bbox := []          # [[N0, N1, E0, E1], ...] de las zonas de detalle puestas
 var zona_id := ""             # ids de las zonas puestas, separados por comas
 var _zonas := []              # por zona: { nodo, datos, arboles }
+var mapa_zonas := []          # teselas de ortofoto de las zonas para el GPS: { tex, N0, E0, lado } (mapaZonas de la web)
 var _terreno: MeshInstance3D
 var _cintas: MeshInstance3D
 var _edif_sint: Node3D
@@ -467,8 +468,13 @@ func _arboles_de_la_region(cN: float, cE: float) -> void:
 			var lum := 0.3 * c.r + 0.59 * c.g + 0.11 * c.b
 			if not (c.g > c.r * 0.97 and c.g > c.b * 1.08 and lum < 0.45 and lum > 0.08): continue
 			if r.randf() > 0.7 or ent.en_mar(nn, ee): continue
-			arboles.append([ee, nn, 2.0 + r.randf() * 2.0, c.darkened(0.05 + 0.2 * r.randf())])
+			var it := [ee, nn, 2.0 + r.randf() * 2.0, c.darkened(0.05 + 0.2 * r.randf())]
+			if Vector2(ee - cE, nn - cN).length() >= 25: arboles.append(it)      # claro de 25 m en el punto de salida
 		n += paso
+	# solidos (Entorno.choca_arbol): la copa, una esfera de radio s a 0,75 s del suelo achatada al 80 %
+	var solidos := []
+	for a in arboles: var y: float = ent.altura(a[1], a[0]); solidos.append([a[0], a[1], 0.9 * a[2], y, y + 1.55 * a[2]])
+	ent.poner_arboles("region", solidos)
 	_instanciar(_arboles_region, _esfera(6, 3), _mat_copas(), arboles, func(it: Array) -> Array:
 		var s: float = it[2]
 		var b := Basis(Vector3.UP, s * 5.0).scaled_local(Vector3(s, s * 0.8, s))
@@ -485,7 +491,8 @@ func poner_zonas(lista: Array) -> void:
 	var ids := ",".join(lista.map(func(z): return String(z["meta"]["id"])))
 	if ids == zona_id and (not _zonas.is_empty() or lista.is_empty()): return
 	for zz in _zonas: zz["nodo"].queue_free()
-	_zonas = []; _zona = null; _zona_arboles = null
+	_zonas = []; _zona = null; _zona_arboles = null; mapa_zonas = []
+	ent.quitar_arboles("zona:")                      # los arboles solidos de las zonas que se quitan
 	zonas_bbox = lista.map(func(z): return [z["meta"]["N0"], z["meta"]["N0"] + z["meta"]["lado_m"], z["meta"]["E0"], z["meta"]["E0"] + z["meta"]["lado_m"]])
 	zona_id = ids
 	_terreno_lejano(); _carreteras(); _edificios_sinteticos()
@@ -540,6 +547,7 @@ func _terreno_zona(z: Dictionary) -> void:
 					idx.append_array([p1, p2, base_i + q, p2, base_i + q + 1, base_i + q])
 			var nombre: String = Z["orto"]["archivo"].replace("{i}", str(ti)).replace("{j}", str(tj))
 			var tx := _tex_de(String(z["base"]).path_join(nombre), 2 if calidad >= 1 else 1); _tex_orto[str(ti) + "_" + str(tj)] = tx
+			mapa_zonas.append({ "tex": tx, "N0": Z["N0"] + ti * Z["orto"]["tesela_m"], "E0": Z["E0"] + tj * Z["orto"]["tesela_m"], "lado": Z["orto"]["tesela_m"] })
 			_zona.add_child(_mi(_malla(pos, nor, idx, uv), _mat_suelo(tx), false))
 
 ## Edificios del Catastro: cada huella extruida a sus plantas (3 m por planta) desde la cota del terreno. Tejados con la
@@ -684,13 +692,26 @@ func _arboles_zona(z: Dictionary) -> void:
 	if not FileAccess.file_exists(ruta): return
 	var A := FileAccess.get_file_as_bytes(ruta).to_float32_array()
 	var arboles := []; var matas := []; var r := RandomNumberGenerator.new(); r.seed = 29
-	var rej := _rejilla_edificios(z)
+	var rej := _rejilla_edificios(z); var solidos := []
+	# sin arboles donde no los hay aunque la ortofoto lo parezca (escenarios.js, "sin_arboles": el aparcamiento del CIFP)
+	var claros := []
+	for id in Escenarios.datos():
+		var Es: Dictionary = Escenarios.datos()[id]
+		if Es.get("mundo", "") != m.get("id", ""): continue
+		for dd in Es.get("destacados", []):
+			if not dd.has("sin_arboles"): continue
+			var pol := PackedVector2Array()
+			for q in dd["sin_arboles"]: pol.append(Vector2(q[1], q[0]))
+			claros.append(pol)
 	for i in range(0, A.size(), 3):
 		var it := [A[i], A[i + 1], A[i + 2], r.randf(), r.randf(), r.randf(), r.randf()]
 		if Vector2(A[i] - claro.x, A[i + 1] - claro.y).length() < 25 + A[i + 2]: continue      # el claro del piloto
 		if _en_edificio(rej, A[i], A[i + 1], A[i + 2]): continue                                 # ni dentro de los edificios ni en sus muros
+		if claros.any(func(pol): return Geometry2D.is_point_in_polygon(Vector2(A[i], A[i + 1]), pol)): continue
+		if A[i + 2] >= 1.3: solidos.append([A[i], A[i + 1]] + Entorno.arbol_zona(A[i + 2], ent.altura(A[i + 1], A[i])))
 		if A[i + 2] < 1.3: matas.append(it)
 		else: arboles.append(it)
+	ent.poner_arboles("zona:" + String(z["meta"]["id"]), solidos)     # solidos (Entorno.choca_arbol)
 	var copa := func(it: Array) -> Array:
 		var rc: float = it[2]; var ht := 0.9 + 0.45 * rc
 		var b := Basis(Vector3.UP, it[3] * TAU).scaled_local(Vector3(rc, rc * (0.7 + 0.25 * it[4]), rc))
