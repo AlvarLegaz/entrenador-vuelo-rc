@@ -5,6 +5,7 @@ extends Control
 ## el piloto y el aula.
 
 const ICONOS := {
+	"perfil": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>',
 	"multi": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg>',
 	"operaciones": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg>',
 	"volar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg>',
@@ -17,7 +18,7 @@ var p: Node
 var previa: VistaPrevia
 var nombre_avion: Label
 var desc_avion: Label
-var chip_piloto: Button
+var perfil: Button; var perfil_nombre: Label; var perfil_modo: Label
 var chip_aula: Label
 
 func _init(p_: Node) -> void:
@@ -39,11 +40,12 @@ func _init(p_: Node) -> void:
 	izq.add_child(Tema.etiqueta("Entrenador de vuelo", 44, Tema.TEXTO, true))
 	var lp := Tema.sub("Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.", 15); lp.custom_minimum_size.x = 372; izq.add_child(lp)
 	izq.add_child(Tema.margen(Control.new(), 0, 0, 0, 16))
-	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.con_piloto(p.ir_volar)))
-	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV", func(): p.con_piloto(p.ir_entrenamientos)))
-	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.con_piloto(p.ir_multi)))
-	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, líneas eléctricas y vídeo", func(): p.con_piloto(p.ir_operaciones)))
+	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.ir_volar()))   # se vuela con el perfil activo (o sin perfil)
+	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV", func(): p.ir_entrenamientos()))
+	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.ir_multi()))
+	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.ir_operaciones()))
 	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))
+	izq.add_child(_boton_menu("perfil", "Perfil", "Elige tu perfil, local u online, y mira tu progreso", func(): p.ir_pilotos(p.ir_inicio)))
 	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.ir_ajustes("")))
 	# derecha: el avion girando y su nombre
 	var der := Control.new(); der.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cuerpo.add_child(der)
@@ -53,14 +55,21 @@ func _init(p_: Node) -> void:
 	nombre_avion = Tema.etiqueta("", 26, Tema.TEXTO, true); nombre_avion.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; na.add_child(nombre_avion)
 	desc_avion = Tema.etiqueta("", 14, Tema.SUAVE); desc_avion.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; na.add_child(desc_avion)
 	der.add_child(na)
+	# encima del dron: el perfil elegido (#inicioPerfil de la web); pulsandolo se cambia
+	perfil = Button.new(); perfil.focus_mode = Control.FOCUS_NONE; perfil.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; perfil.tooltip_text = "Cambiar de perfil"
+	perfil.add_theme_stylebox_override("normal", Tema.caja(Color(0, 0, 0, 0.35), Color(1, 1, 1, 0.12), 14, 1, 22, 8))
+	perfil.add_theme_stylebox_override("hover", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
+	perfil.add_theme_stylebox_override("pressed", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
+	perfil.anchor_left = 0.5; perfil.anchor_right = 0.5; perfil.offset_top = 36; perfil.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	perfil.pressed.connect(func(): p.ir_pilotos(p.ir_inicio))
+	var pv := VBoxContainer.new(); pv.add_theme_constant_override("separation", 0); pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pt := Tema.etiqueta("PERFIL", 11, Tema.ACENTO, true); var fv2 := FontVariation.new(); fv2.base_font = Tema.negrita; fv2.spacing_glyph = 2; pt.add_theme_font_override("font", fv2)
+	perfil_nombre = Tema.etiqueta("", 26, Tema.TEXTO, true); perfil_modo = Tema.etiqueta("", 13, Tema.SUAVE)
+	for l in [pt, perfil_nombre, perfil_modo]: l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; l.mouse_filter = Control.MOUSE_FILTER_IGNORE; pv.add_child(l)
+	perfil.add_child(pv); pv.set_anchors_preset(Control.PRESET_FULL_RECT); pv.offset_left = 22; pv.offset_right = -22; pv.offset_top = 8; pv.offset_bottom = -8
+	der.add_child(perfil)
 	# pie: piloto, aula y version
 	var pie := HBoxContainer.new(); pie.add_theme_constant_override("separation", 10)
-	chip_piloto = Button.new(); chip_piloto.theme_type_variation = "BotonPlano"; chip_piloto.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; chip_piloto.focus_mode = Control.FOCUS_NONE
-	chip_piloto.add_theme_stylebox_override("normal", Tema.caja(Color(1, 1, 1, 0.1), Color(0, 0, 0, 0), 12, 0, 12, 5))
-	chip_piloto.add_theme_stylebox_override("hover", Tema.caja(Color(1, 1, 1, 0.18), Color(0, 0, 0, 0), 12, 0, 12, 5))
-	chip_piloto.add_theme_color_override("font_color", Tema.TEXTO); chip_piloto.add_theme_font_size_override("font_size", 13)
-	chip_piloto.tooltip_text = "Cambiar de piloto"; chip_piloto.pressed.connect(func(): p.ir_pilotos(p.ir_inicio))
-	pie.add_child(chip_piloto)
 	chip_aula = Tema.etiqueta("", 13, Tema.SUAVE); pie.add_child(chip_aula)
 	pie.add_child(Tema.espacio()); pie.add_child(Tema.etiqueta("Entrenador de vuelo RC · v2 Godot", 13, Tema.SUAVE))
 	v.add_child(Tema.margen(pie, 48, 12, 48, 18))
@@ -101,7 +110,12 @@ func refrescar() -> void:
 	var A := DatosComunes.avion(p.sesion["avion"])
 	nombre_avion.text = String(A.get("nombre", ""))
 	desc_avion.text = String(A.get("descripcion", "")).split(". ")[0]
-	var al = p.sesion["alumno"]
-	chip_piloto.text = "Piloto: " + (String(al["nombre"]) if al != null else "sin registrar")
+	var al = p.sesion["alumno"]; var A_: Aula = p.aula
+	perfil_nombre.text = String(al["nombre"]) if al != null else "Sin perfil"
+	perfil_modo.text = "los vuelos no se guardan" if not A_.activo else ("elige tu perfil para guardar los vuelos" if al == null
+		else ("local · este ordenador" if A_.modo == "local" else "online · aula " + A_.nombre_aula))
+	perfil.custom_minimum_size = Vector2.ZERO; perfil.reset_size()
+	var w := maxf(perfil_nombre.get_minimum_size().x, perfil_modo.get_minimum_size().x) + 44
+	perfil.custom_minimum_size = Vector2(w, 84); perfil.offset_left = -w / 2; perfil.offset_right = w / 2
 	chip_aula.text = p.aula.texto_estado()
 	previa.mostrar(A, 1.75)

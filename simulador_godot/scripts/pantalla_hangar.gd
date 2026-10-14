@@ -26,7 +26,7 @@ func _init(p_: Node) -> void:
 	d = Tema.pantalla("Hangar", "Elige el avión y, si quieres, ajústalo como el tuyo."); add_child(d["raiz"])
 	b_progreso = Tema.boton("Mi progreso", "", func(): p.ir_progreso("pHangar")); d["botones"].add_child(b_progreso)
 	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
-	d["botones"].add_child(Tema.boton("Volar con este avión →", "BotonPrim", func(): p.con_piloto(p.ir_volar)))
+	d["botones"].add_child(Tema.boton("Volar con este avión →", "BotonPrim", func(): p.ir_inicio()))   # el vehiculo queda elegido: en el inicio se elige que volar
 	var g := HBoxContainer.new(); g.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(g)
 	# lista de aviones
 	lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 8)

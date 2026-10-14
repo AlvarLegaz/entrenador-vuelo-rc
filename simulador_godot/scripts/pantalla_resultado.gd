@@ -131,20 +131,20 @@ class Resultado extends Control:
 
 ## Progreso del piloto (irProgreso).
 class Progreso extends Control:
-	var p: Node; var d: Dictionary; var cont: VBoxContainer; var desde := "pHangar"
+	var p: Node; var d: Dictionary; var cont: VBoxContainer; var desde := "pHangar"; var alumno = null
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("", "Progreso del entrenamiento"); add_child(d["raiz"])
-		d["botones"].add_child(Tema.boton("← Volver", "", func(): p.mostrar("pResultado") if desde == "pResultado" else p.ir_hangar()))
+		d["botones"].add_child(Tema.boton("← Volver", "", func(): p.mostrar("pResultado") if desde == "pResultado" else p.mostrar("pAlumno") if desde == "pAlumno" else p.ir_hangar()))
 		cont = VBoxContainer.new(); cont.add_theme_constant_override("separation", 12); d["cuerpo"].add_child(Tema.desplazable(cont))
 	func cargar() -> void:
-		d["titulo"].text = String(p.sesion["alumno"]["nombre"])
+		d["titulo"].text = String(alumno["nombre"])
 		for x in cont.get_children(): x.queue_free()
 		cont.add_child(Tema.sub("Cargando…", 14))
-		var r: Dictionary = await p.aula.api("GET", "alumnos/" + String(p.sesion["alumno"]["id"]))
+		var r: Dictionary = await p.aula.api("GET", "alumnos/" + String(alumno["id"]))
 		for x in cont.get_children(): x.queue_free()
 		if not r["ok"]: cont.add_child(Tema.etiqueta("No se pudo leer el progreso: " + String(r["error"]), 14, Color("#ff8a80"))); return
-		var a: Dictionary = r["datos"]; p.sesion["alumno"]["progreso"] = a["progreso"]
+		var a: Dictionary = r["datos"]; alumno["progreso"] = a["progreso"]
 		var g: Dictionary = a["progreso"]; var pct := minf(100, 100 * g["horas"] / g["horas_minimas"]); var faltan := []
 		if g["horas"] < g["horas_minimas"]: faltan.append(PantallaPilotos.fmt_horas(g["horas_minimas"] - g["horas"]) + " de vuelo")
 		var E := Escenarios.datos(); var pend := []

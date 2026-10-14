@@ -47,17 +47,21 @@ func _process(dt: float) -> void:
 # =====================================================================
 func iniciar() -> void:
 	activo = false; modo = "servidor"
-	if url != "":
+	if _modo_guardado() == "local": activar_local()
+	elif url != "":
 		var r := await api("GET", "estado")
 		if r["ok"]: activo = true; nombre_aula = String(r["datos"].get("aula", url))
-	if not activo and _modo_guardado() == "local": activar_local()
+
+## El ultimo perfil elegido en cada modo (recordarPerfil / perfilRecordado).
+func recordar_perfil(id: String) -> void:
+	var cf := ConfigFile.new(); cf.load(F_CFG); cf.set_value("aula", "perfil_" + modo, id); cf.save(F_CFG)
+func perfil_recordado() -> String:
+	var cf := ConfigFile.new()
+	return String(cf.get_value("aula", "perfil_" + modo, "")) if cf.load(F_CFG) == OK else ""
 
 func activar_local() -> void:
 	_cargar_local(); activo = true; modo = "local"; nombre_aula = "este ordenador"
 	_guardar_cfg("local")
-
-func dejar_local() -> void:
-	_guardar_cfg("ninguno"); activo = false; modo = "servidor"
 
 func texto_estado() -> String:
 	if not activo: return "Sin aula: los vuelos no se guardan"

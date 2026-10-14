@@ -229,6 +229,11 @@
   #inicioDer { flex: 1; position: relative; }
   #previaSlotInicio { position: absolute; inset: 0; }
   #vistaPrevia { width: 100%; height: 100%; display: block; }
+  #inicioPerfil { position: absolute; z-index: 2; left: 50%; top: 36px; transform: translateX(-50%); text-align: center; cursor: pointer; padding: 8px 22px;
+                  border-radius: 14px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); }
+  #inicioPerfil:hover { background: rgba(255,200,61,.14); border-color: rgba(255,200,61,.5); }
+  #inicioPerfil small { display: block; font-size: 11px; letter-spacing: .2em; color: var(--acento); font-weight: 700; }
+  #inicioPerfil b { display: block; font-size: 26px; } #inicioPerfil span { display: block; color: var(--suave); font-size: 13px; }
   #inicioAvion { position: absolute; right: 36px; bottom: 90px; text-align: right; }
   #inicioAvion b { display: block; font-size: 26px; } #inicioAvion span { color: var(--suave); font-size: 14px; }
   #inicioPie { display: flex; gap: 10px; align-items: center; padding: 12px 48px 18px; color: var(--suave); font-size: 13px; }
@@ -306,6 +311,8 @@
   .alumno { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .alumno:hover { border-color: var(--acento); }
   .alumno .nom { font-size: 16px; font-weight: 600; } .alumno .det { color: var(--suave); font-size: 12px; margin-top: 2px; } .alumno .crece { flex: 1; min-width: 0; }
+  .alumno.sel { border-color: var(--acento); background: rgba(255,200,61,.1); }
+  .alumno .progreso-btn { font-size: 13px; padding: 5px 10px; }
   .alumno .borrar { background: transparent; border: none; color: #c98; font-size: 18px; padding: 4px 8px; cursor: pointer; } .alumno .borrar:hover { color: var(--mal); }
 
   /* ---------- capas: pausa, carga, modal ---------- */
@@ -424,38 +431,41 @@
       <button class="menu-btn" id="mnVolar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg><div><b>Vuelo libre</b><span>El campo de vuelo del club o el Campo de Cartagena con mapa real</span></div></button>
       <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV</span></div></button>
       <button class="menu-btn" id="mnMulti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg><div><b>Multijugador</b><span>Vuela con tus compañeros en la misma sala del aula: os veis unos a otros</span></div></button>
-      <button class="menu-btn" id="mnOperaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><div><b>Operaciones</b><span>Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, líneas eléctricas y vídeo</span></div></button>
+      <button class="menu-btn" id="mnOperaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><div><b>Operaciones</b><span>Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo</span></div></button>
       <button class="menu-btn" id="mnHangar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg><div><b>Hangar</b><span>Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora</span></div></button>
+      <button class="menu-btn" id="mnPerfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><div><b>Perfil</b><span>Elige tu perfil, local u online, y mira tu progreso</span></div></button>
       <button class="menu-btn" id="mnAjustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><div><b>Ajustes</b><span>Mando, gráficos, sonido, dificultad y registro de vuelos</span></div></button>
     </div>
     <div id="inicioDer">
+      <div id="inicioPerfil" title="Cambiar de perfil"><small>PERFIL</small><b id="inicioPerfilNombre"></b><span id="inicioPerfilModo"></span></div>
       <div id="previaSlotInicio"><canvas id="vistaPrevia"></canvas></div>
       <div id="inicioAvion"><b id="inicioAvionNombre"></b><span id="inicioAvionDesc"></span></div>
     </div>
   </div>
-  <div id="inicioPie"><span class="chip" id="chipPiloto" title="Cambiar de piloto">Piloto</span><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>Entrenador de vuelo RC · v1 navegador</span></div>
+  <div id="inicioPie"><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>Entrenador de vuelo RC · v1 navegador</span></div>
 </div>
 
 <!-- ============ PILOTOS (aula o registro local) ============ -->
 <div class="pantalla" id="pAlumno">
-  <div class="cabecera"><div><h1>¿Quién vuela?</h1><p class="sub" id="aulaInfo">Conectando con el aula…</p></div><div class="esp"></div>
+  <div class="cabecera"><div><h1>Perfil</h1><p class="sub" id="aulaInfo">Conectando con el aula…</p></div><div class="esp"></div>
     <button class="btn" id="btnProfesor">Panel del profesor</button><button class="btn" id="btnAlumnoInicio">← Inicio</button></div>
   <div class="cuerpo">
+  <div class="pestanas" id="perfilModo"><button data-m="local">Local · este ordenador</button><button data-m="servidor">Online · servidor del aula</button></div>
   <div id="sinAula" class="aviso-aula" style="display:none">
-    No hay servidor del aula. Elige cómo guardar los vuelos:
+    No hay servidor del aula: los perfiles online están en el PC del profesor (<code>aula/servidor_aula.py</code>). Abre el simulador desde
+    la dirección que indica el servidor, o usa los perfiles locales de este ordenador.
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn prim" id="btnAulaLocal">Registro local en este ordenador</button>
-      <button class="btn" id="btnSinAlumno">Volar sin registrar</button></div>
-    <p class="sub" style="margin:8px 0 0">El registro local guarda alumnos, vuelos y progreso en este navegador y, si quieres, en un
-    archivo JSON que puedes copiar a otro ordenador. Para un aula con varios ordenadores y panel del profesor, arranca
-    <code>aula/servidor_aula.py</code> y abre la dirección que indica.</p>
+      <button class="btn prim" id="btnAulaLocal">Usar perfiles locales</button>
+      <button class="btn" id="btnSinAlumno">Volar sin perfil</button></div>
+    <p class="sub" style="margin:8px 0 0">Los perfiles locales guardan vuelos y progreso en este navegador y, si quieres, en un
+    archivo JSON que puedes copiar a otro ordenador.</p>
   </div>
   <div id="conAula">
     <div class="fila" style="margin:0 0 10px">
-      <input type="search" id="buscar" placeholder="Buscar alumno…" style="flex:1;min-width:200px" autocomplete="off">
-      <input type="text" id="nuevoNombre" placeholder="Nombre del alumno nuevo" maxlength="60" style="min-width:220px" autocomplete="off">
+      <input type="search" id="buscar" placeholder="Buscar perfil…" style="flex:1;min-width:200px" autocomplete="off">
+      <input type="text" id="nuevoNombre" placeholder="Nombre del perfil nuevo" maxlength="60" style="min-width:220px" autocomplete="off">
       <button class="btn" id="btnAnadir">Añadir</button>
-      <button class="btn" id="btnSinAlumno2">Volar sin registrar</button>
+      <button class="btn" id="btnSinAlumno2" title="Los vuelos no se guardan">Volar sin perfil</button>
     </div>
     <div class="err" id="errAlumno"></div>
     <div class="lista" id="listaAlumnos"></div>
@@ -652,9 +662,9 @@
       <div class="capa panelPestana" data-a="datos">
         <h2>Caja negra</h2>
         <div class="fila"><label for="cnAuto">Descarga automática</label><input type="checkbox" id="cnAuto"><span class="sub" style="font-size:13px">un CSV a 20 Hz de cada vuelo (también se puede bajar desde el resultado)</span></div>
-        <h2 style="margin-top:18px">Pilotos y registro de vuelos</h2>
+        <h2 style="margin-top:18px">Perfiles y registro de vuelos</h2>
         <p class="sub" id="datosAula" style="font-size:13px"></p>
-        <div class="fila"><button class="btn" id="btnDatosPilotos">Pilotos y registro…</button><button class="btn" id="btnDatosProfesor">Panel del profesor</button></div>
+        <div class="fila"><button class="btn" id="btnDatosPilotos">Perfiles…</button><button class="btn" id="btnDatosProfesor">Panel del profesor</button></div>
       </div>
     </div>
   </div></div>
@@ -793,7 +803,7 @@ const esDefinitivo = e => e.status >= 400 && e.status < 500;      // error del v
 function cola() { try { return JSON.parse(localStorage.getItem("sim_cola_vuelos") || "[]"); } catch (e) { return []; } }
 function guardarCola(c) { try { localStorage.setItem("sim_cola_vuelos", JSON.stringify(c)); } catch (e) {} }
 async function vaciarCola() {
-  if (!sesion.aula) return;
+  if (!sesion.aula || sesion.modo !== "servidor") return;        // la cola es solo del servidor: nunca al registro local
   const quedan = [];
   for (const v of cola()) { try { await api("POST", "vuelos", v); } catch (e) { if (!esDefinitivo(e)) quedan.push(v); } }
   guardarCola(quedan);
@@ -925,11 +935,10 @@ function pintarBarraLocal() {
   else if (A.archivoPendiente) arch = `<button id="btnReabrir">Reabrir ${esc(A.archivoPendiente.name)}</button>`;
   else arch = A.hayArchivos ? "Solo en este navegador" : "Solo en este navegador (este navegador no puede escribir archivos: usa Exportar / Importar)";
   el.style.display = "";
-  el.innerHTML = `Registro local · ${n} alumno(s) · ${A.datos.vuelos.length} vuelo(s) · ${arch}
+  el.innerHTML = `Perfiles locales · ${n} perfil(es) · ${A.datos.vuelos.length} vuelo(s) · ${arch}
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
       ${A.hayArchivos ? '<button id="btnArchivoNuevo">Guardar en un archivo…</button><button id="btnArchivoAbrir">Abrir un archivo…</button>' : ""}
-      <button id="btnExportar">Exportar copia</button><button id="btnImportar">Importar copia</button>
-      <button id="btnSalirLocal" title="Vuelve a preguntar cómo guardar los vuelos">Dejar el registro local</button></div>`;
+      <button id="btnExportar">Exportar copia</button><button id="btnImportar">Importar copia</button></div>`;
   const err = m => { document.getElementById("errAlumno").textContent = m; };
   const b = id => document.getElementById(id);
   if (b("btnArchivoNuevo")) b("btnArchivoNuevo").onclick = () => A.elegirArchivo().then(cargarAlumnos).catch(e => { if (e.name !== "AbortError") err(e.message); });
@@ -940,60 +949,74 @@ function pintarBarraLocal() {
     const i = document.createElement("input"); i.type = "file"; i.accept = ".json,application/json";
     i.onchange = () => A.importar(i.files[0]).then(cargarAlumnos).catch(e => err(e.message)); i.click();
   };
-  b("btnSalirLocal").onclick = () => { try { localStorage.removeItem("evrc_modo"); } catch (e) {} sesion.aula = false; sesion.modo = "servidor"; pintarPantallaAula(); };
 }
 
 // =====================================================================
 //  1. ALUMNOS
 // =====================================================================
 let alumnos = [];
+// perfiles: "local" (este ordenador) u "online" (servidor del aula); se recuerda el modo y el ultimo perfil de cada uno
+const modoGuardado = () => { try { return localStorage.getItem("evrc_modo"); } catch (e) { return null; } };
 async function iniciarAula() {
+  const antes = sesion.aula && sesion.modo;
   sesion.aula = false; sesion.modo = "servidor";
-  if (location.protocol.startsWith("http")) {
+  if (modoGuardado() === "local") await activarAulaLocal();
+  else if (location.protocol.startsWith("http")) {
     try { const e = await api("GET", "estado"); sesion.aula = true; sesion.nombreAula = e.aula; } catch (e) {}
   }
-  if (!sesion.aula) { let modo = null; try { modo = localStorage.getItem("evrc_modo"); } catch (e) {} if (modo === "local") await activarAulaLocal(); }
+  if ((sesion.aula && sesion.modo) !== antes) { sesion.alumno = null; sesion.sinRegistrar = false; }   // otro registro: otros perfiles
   await pintarPantallaAula();
 }
+async function cambiarModoPerfil(m) {
+  try { localStorage.setItem("evrc_modo", m); } catch (e) {}
+  await iniciarAula();
+}
+document.querySelectorAll("#perfilModo button").forEach(b => b.onclick = () => cambiarModoPerfil(b.dataset.m));
+function recordarPerfil(a) { try { if (a) localStorage.setItem("evrc_perfil_" + sesion.modo, a.id); else localStorage.removeItem("evrc_perfil_" + sesion.modo); } catch (e) {} }
+function perfilRecordado() { try { return localStorage.getItem("evrc_perfil_" + sesion.modo); } catch (e) { return null; } }
 async function activarAulaLocal() {
   await AulaLocal.iniciar(); sesion.aula = true; sesion.modo = "local";
   try { localStorage.setItem("evrc_modo", "local"); } catch (e) {}
 }
 async function pintarPantallaAula() {
   const local = sesion.modo === "local";
+  document.querySelectorAll("#perfilModo button").forEach(b => b.classList.toggle("sel", b.dataset.m === (local ? "local" : "servidor")));
   document.getElementById("sinAula").style.display = sesion.aula ? "none" : "";
   document.getElementById("conAula").style.display = sesion.aula ? "" : "none";
   document.getElementById("btnProfesor").style.display = sesion.aula && !local ? "" : "none";
-  document.getElementById("aulaInfo").textContent = !sesion.aula ? "Modo sin aula" : local
-    ? "Registro local de este ordenador · elige tu nombre para entrar" : `Aula: ${sesion.nombreAula} · elige tu nombre para entrar`;
+  document.getElementById("aulaInfo").textContent = !sesion.aula ? "Sin servidor del aula" : local
+    ? "Perfiles locales de este ordenador · elige el tuyo" : `Perfiles online del aula ${sesion.nombreAula} · elige el tuyo`;
   pintarBarraLocal();
   if (sesion.aula) { await cargarAlumnos(); vaciarCola(); }
 }
-document.getElementById("btnAulaLocal").onclick = async () => { await activarAulaLocal(); await pintarPantallaAula(); };
+document.getElementById("btnAulaLocal").onclick = () => cambiarModoPerfil("local");
 async function cargarAlumnos() {
   try { alumnos = await api("GET", "alumnos"); document.getElementById("errAlumno").textContent = ""; }
   catch (e) { document.getElementById("errAlumno").textContent = "No se pudo leer la lista: " + e.message; }
+  if (!sesion.alumno && !sesion.sinRegistrar) sesion.alumno = alumnos.find(a => a.id === perfilRecordado()) || null;   // el ultimo perfil usado
   pintarAlumnos();
 }
 function norm(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 function pintarAlumnos() {
   const f = norm(document.getElementById("buscar").value), el = document.getElementById("listaAlumnos");
   const vis = alumnos.filter(a => norm(a.nombre).includes(f));
-  el.innerHTML = vis.length ? "" : `<p class="sub">${alumnos.length ? "Nadie coincide con la búsqueda." : "Todavía no hay alumnos: añade el primero arriba."}</p>`;
+  el.innerHTML = vis.length ? "" : `<p class="sub">${alumnos.length ? "Nadie coincide con la búsqueda." : "Todavía no hay perfiles: añade el primero arriba."}</p>`;
   for (const a of vis) {
     const g = a.progreso, d = document.createElement("div");
-    d.className = "alumno";
+    d.className = "alumno" + (sesion.alumno && sesion.alumno.id === a.id ? " sel" : "");
     d.innerHTML = `<div class="crece"><div class="nom">${esc(a.nombre)}</div>
       <div class="det">${fmtHoras(g.horas)} · ${g.vuelos} vuelos · ${g.escenarios_superados}/4 escenarios
       ${a.habilitado ? '<span class="chip ok">avión real</span>' : ""}</div></div>
-      <button class="borrar" title="Quitar de la lista">🗑</button>`;
+      <button class="btn progreso-btn">Progreso</button><button class="borrar" title="Quitar de la lista">🗑</button>`;
     d.onclick = () => elegirPiloto(a);
+    d.querySelector(".progreso-btn").onclick = e => { e.stopPropagation(); irProgreso("pAlumno", a); };
     d.querySelector(".borrar").onclick = async e => {
       e.stopPropagation();
       const ok = await confirmar("¿Quitar a " + a.nombre + "?",
         `<p>Desaparecerá de esta lista. Sus <b>${g.vuelos} vuelos</b> y sus horas se conservan, y el profesor puede devolverlo a la lista.</p>`, "Quitar");
       if (!ok) return;
-      try { await api("DELETE", "alumnos/" + a.id); } catch (err) { document.getElementById("errAlumno").textContent = err.message; }
+      try { await api("DELETE", "alumnos/" + a.id); if (sesion.alumno && sesion.alumno.id === a.id) { sesion.alumno = null; recordarPerfil(null); } }
+      catch (err) { document.getElementById("errAlumno").textContent = err.message; }
       cargarAlumnos();
     };
     el.appendChild(d);
@@ -1847,13 +1870,13 @@ document.getElementById("btnRepeticion").onclick = () => verRepeticion(ultimoVue
 //  5. PROGRESO
 // =====================================================================
 let volverDesde = "pAvion";
-async function irProgreso(desde) {
+async function irProgreso(desde, al = sesion.alumno) {
   volverDesde = desde;
   const el = document.getElementById("progContenido");
-  document.getElementById("progNombre").textContent = sesion.alumno.nombre;
+  document.getElementById("progNombre").textContent = al.nombre;
   el.innerHTML = '<p class="sub">Cargando…</p>'; mostrar("pProgreso");
   let a;
-  try { a = await api("GET", "alumnos/" + sesion.alumno.id); sesion.alumno.progreso = a.progreso; }
+  try { a = await api("GET", "alumnos/" + al.id); al.progreso = a.progreso; }
   catch (e) { el.innerHTML = `<p class="err">No se pudo leer el progreso: ${esc(e.message)}</p>`; return; }
   const g = a.progreso, pct = Math.min(100, 100 * g.horas / g.horas_minimas), faltan = [];
   if (g.horas < g.horas_minimas) faltan.push(`${fmtHoras(g.horas_minimas - g.horas)} de vuelo`);
@@ -1880,7 +1903,7 @@ async function irProgreso(desde) {
         <td>${esc(v.final || "")}</td><td class="${v.resultado === "APTO" ? "ob-ok" : v.resultado === "NO APTO" ? "ob-mal" : ""}">${v.resultado}</td></tr>`).join("")
         : '<tr><td colspan="7">Todavía no hay vuelos.</td></tr>'}</table></div>`;
 }
-document.getElementById("btnProgVolver").onclick = () => volverDesde === "pResultado" ? mostrar("pResultado") : irHangar();
+document.getElementById("btnProgVolver").onclick = () => volverDesde === "pResultado" ? mostrar("pResultado") : volverDesde === "pAlumno" ? mostrar("pAlumno") : irHangar();
 
 // =====================================================================
 //  CAJA NEGRA (CSV de cada vuelo, a 20 Hz)
@@ -1918,12 +1941,10 @@ document.getElementById("cnAuto").addEventListener("change", e => e.target.blur(
 let trasPiloto = null;                        // a donde ir despues de elegir piloto
 function irPilotos(luego) { trasPiloto = luego || null; mostrar("pAlumno"); iniciarAula(); }
 function elegirPiloto(a) {
-  sesion.alumno = a; sesion.sinRegistrar = !a;
+  sesion.alumno = a; sesion.sinRegistrar = !a; recordarPerfil(a);
   const f = trasPiloto; trasPiloto = null;
   if (f) f(); else irInicio();
 }
-/** Con aula (servidor o registro local) y sin piloto elegido, pasa primero por la pantalla de pilotos. */
-function conPiloto(luego) { if (sesion.aula && !sesion.alumno && !sesion.sinRegistrar) irPilotos(luego); else luego(); }
 document.getElementById("btnSinAlumno").onclick = () => elegirPiloto(null);
 document.getElementById("btnSinAlumno2").onclick = () => elegirPiloto(null);
 document.getElementById("btnAlumnoInicio").onclick = irInicio;
@@ -1933,17 +1954,20 @@ function irInicio() {
   const A = Modelos.datos(sesion.avion);
   document.getElementById("inicioAvionNombre").textContent = A.nombre;
   document.getElementById("inicioAvionDesc").textContent = (A.descripcion || "").split(". ")[0];
-  document.getElementById("chipPiloto").textContent = "Piloto: " + (sesion.alumno ? sesion.alumno.nombre : "sin registrar");
+  document.getElementById("inicioPerfilNombre").textContent = sesion.alumno ? sesion.alumno.nombre : "Sin perfil";
+  document.getElementById("inicioPerfilModo").textContent = !sesion.aula ? "los vuelos no se guardan" : !sesion.alumno ? "elige tu perfil para guardar los vuelos"
+    : sesion.modo === "local" ? "local · este ordenador" : "online · aula " + sesion.nombreAula;
   document.getElementById("chipAula").textContent = sesion.aula ? (sesion.modo === "local" ? "Registro local de este ordenador" : "Aula: " + sesion.nombreAula) : "Sin aula: los vuelos no se guardan";
   previa.mostrar(A, 1.75); mostrar("pInicio");
 }
-document.getElementById("mnVolar").onclick = () => conPiloto(irVolar);
-document.getElementById("mnEntrenar").onclick = () => conPiloto(irEntrenamientos);
-document.getElementById("mnOperaciones").onclick = () => conPiloto(irOperaciones);
-document.getElementById("mnMulti").onclick = () => conPiloto(irMulti);
+document.getElementById("mnVolar").onclick = irVolar;               // se vuela con el perfil activo (o sin perfil)
+document.getElementById("mnEntrenar").onclick = irEntrenamientos;
+document.getElementById("mnOperaciones").onclick = irOperaciones;
+document.getElementById("mnMulti").onclick = irMulti;
+document.getElementById("mnPerfil").onclick = () => irPilotos(irInicio);
 document.getElementById("mnHangar").onclick = irHangar;
 document.getElementById("mnAjustes").onclick = () => irAjustes();
-document.getElementById("chipPiloto").onclick = () => irPilotos(irInicio);
+document.getElementById("inicioPerfil").onclick = () => irPilotos(irInicio);
 
 // ---- hangar ----
 function elegirAvion(id) { sesion.avion = id; try { localStorage.setItem("sim_avion", id); } catch (e) {} }
@@ -1978,7 +2002,7 @@ document.querySelectorAll("#hangarFicha .pestanas button").forEach(b => b.onclic
   document.querySelectorAll("#hangarFicha .panelPestana").forEach(p => p.classList.toggle("sel", p.dataset.p === b.dataset.p));
 });
 document.getElementById("btnHangarVolver").onclick = irInicio;
-document.getElementById("btnHangarVolar").onclick = () => conPiloto(irVolar);
+document.getElementById("btnHangarVolar").onclick = irInicio;      // el vehiculo queda elegido: en el inicio se elige que volar
 
 // ---- condiciones (viento): un solo panel que se mueve a la pantalla que lo use ----
 function montarCondiciones(slotId, E) {
@@ -2246,7 +2270,7 @@ function irAjustes(seccion) {
   pintarMandoCfg(); pintarDificultad(); pintarCalidad(); pintarZoomPiloto(); pintarSonidoCfg();
   document.getElementById("datosAula").textContent = sesion.aula
     ? (sesion.modo === "local" ? "Registro local: los alumnos y los vuelos se guardan en este navegador (y en un archivo, si lo eliges)." : `Aula «${sesion.nombreAula}»: los vuelos se guardan en el servidor.`)
-    : "Sin aula ni registro: los vuelos no se guardan. Desde «Pilotos y registro» puedes activar el registro local.";
+    : "Sin aula ni registro: los vuelos no se guardan. Desde «Perfil» puedes usar los perfiles locales.";
   if (seccion) seleccionarAjuste(seccion);
   mostrar("pAjustes");
 }

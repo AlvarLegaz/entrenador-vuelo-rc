@@ -136,7 +136,7 @@ func _ready() -> void:
 							   "rumbo": float(_args["rumbo"]) if _args.has("rumbo") else rumbo_despejado(ne[0], ne[1]) }
 		call_deferred("empezar")
 		return
-	await aula.iniciar()
+	await aula.iniciar(); await perfil_al_arrancar()
 	ir_inicio()
 	if _args.has("pantalla"):
 		var id: String = _args["pantalla"]
@@ -465,15 +465,25 @@ func mostrar_carga(titulo: String, texto: String, frac: float) -> void:
 # ---- navegacion ----
 var _tras_piloto = null
 func ir_pilotos(luego = null) -> void:
-	_tras_piloto = luego; mostrar("pAlumno"); await aula.iniciar(); pantallas["pAlumno"].refrescar()
+	_tras_piloto = luego; mostrar("pAlumno"); await reiniciar_aula(); pantallas["pAlumno"].refrescar()
+## Arranca el aula en el modo guardado; si cambia de registro (local / online / ninguno), el perfil de antes no vale.
+func reiniciar_aula() -> void:
+	var antes: String = aula.modo if aula.activo else ""
+	await aula.iniciar()
+	if (aula.modo if aula.activo else "") != antes: sesion["alumno"] = null; sesion["sin_registrar"] = false
+## Al arrancar, el ultimo perfil usado en el modo guardado.
+func perfil_al_arrancar() -> void:
+	if not aula.activo or sesion["alumno"] != null or sesion["sin_registrar"]: return
+	var id := aula.perfil_recordado()
+	if id == "": return
+	var r: Dictionary = await aula.api("GET", "alumnos")
+	if r["ok"]:
+		for a in r["datos"]: if String(a["id"]) == id: sesion["alumno"] = a
 func elegir_piloto(a) -> void:
-	sesion["alumno"] = a; sesion["sin_registrar"] = a == null
+	sesion["alumno"] = a; sesion["sin_registrar"] = a == null; aula.recordar_perfil(String(a["id"]) if a != null else "")
 	var f = _tras_piloto; _tras_piloto = null
 	if f != null: f.call()
 	else: ir_inicio()
-func con_piloto(luego: Callable) -> void:
-	if aula.activo and sesion["alumno"] == null and not sesion["sin_registrar"]: ir_pilotos(luego)
-	else: luego.call()
 func ir_inicio() -> void:
 	salir_sala()                                 # al volver al inicio se sale de la sala multijugador
 	pantallas["pInicio"].refrescar(); mostrar("pInicio")
@@ -602,8 +612,9 @@ func ir_ajustes(seccion := "") -> void:
 func ir_lanzamiento() -> void:
 	ent.poner_mundo(mundo_datos); _lanz_por_defecto()
 	mostrar("pLanzamiento"); pantallas["pLanzamiento"].preparar()
-func ir_progreso(desde: String) -> void:
-	pantallas["pProgreso"].desde = desde; mostrar("pProgreso"); pantallas["pProgreso"].cargar()
+func ir_progreso(desde: String, alumno = null) -> void:
+	pantallas["pProgreso"].desde = desde; pantallas["pProgreso"].alumno = alumno if alumno != null else sesion["alumno"]
+	mostrar("pProgreso"); pantallas["pProgreso"].cargar()
 
 # =====================================================================
 #  EMPEZAR, REINICIAR, LANZAR

@@ -169,15 +169,15 @@ func _datos(c: VBoxContainer) -> void:
 	c_cn = Tema.casilla("un CSV a 20 Hz de cada vuelo (también se puede guardar desde el resultado)", false)
 	c_cn.toggled.connect(func(x): p.aj["cn_auto"] = x; p.guardar_ajustes())
 	c.add_child(Tema.fila("Descarga automática", c_cn))
-	c.add_child(Tema.margen(Tema.h2("Pilotos y registro de vuelos"), 0, 18, 0, 0))
+	c.add_child(Tema.margen(Tema.h2("Perfiles y registro de vuelos"), 0, 18, 0, 0))
 	t_aula = Tema.sub("", 13); c.add_child(t_aula)
 	e_url = LineEdit.new(); e_url.placeholder_text = "http://192.168.1.20:8000 (vacío: sin servidor)"; e_url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var fu := HBoxContainer.new(); fu.add_theme_constant_override("separation", 10); fu.add_child(e_url)
-	fu.add_child(Tema.boton("Conectar", "", func(): p.aula.url = e_url.text.strip_edges(); p.aula._guardar_cfg(); await p.aula.iniciar(); refrescar()))
+	fu.add_child(Tema.boton("Conectar", "", func(): p.aula.url = e_url.text.strip_edges(); p.aula._guardar_cfg("servidor"); await p.reiniciar_aula(); refrescar()))
 	c.add_child(Tema.fila("Servidor del aula", fu))
 	t_url = Tema.sub("La dirección que muestra aula/servidor_aula.py al arrancarlo. En la versión del navegador no hace falta: es la de la propia página.", 13); c.add_child(t_url)
 	var fb := HBoxContainer.new(); fb.add_theme_constant_override("separation", 12)
-	fb.add_child(Tema.boton("Pilotos y registro…", "", func(): p.ir_pilotos(func(): p.ir_ajustes("datos"))))
+	fb.add_child(Tema.boton("Perfiles…", "", func(): p.ir_pilotos(func(): p.ir_ajustes("datos"))))
 	b_profesor = Tema.boton("Panel del profesor", "", func(): if p.aula.url != "": OS.shell_open(p.aula.url.trim_suffix("/") + "/profesor.html"))
 	fb.add_child(b_profesor); c.add_child(fb)
 
@@ -206,7 +206,7 @@ func refrescar() -> void:
 	c_cn.button_pressed = p.aj.get("cn_auto", false)
 	var A: Aula = p.aula
 	t_aula.text = (("Registro local: los alumnos y los vuelos se guardan en este ordenador (y en un archivo, si lo eliges)." if A.modo == "local" else "Aula «%s»: los vuelos se guardan en el servidor." % A.nombre_aula)
-				   if A.activo else "Sin aula ni registro: los vuelos no se guardan. Desde «Pilotos y registro» puedes activar el registro local.")
+				   if A.activo else "Sin aula ni registro: los vuelos no se guardan. Desde «Perfil» puedes usar los perfiles locales.")
 	if not e_url.has_focus(): e_url.text = A.url
 	b_profesor.disabled = A.url == "" or A.modo == "local"
 	_pintando = false

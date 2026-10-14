@@ -14,7 +14,7 @@ if not exist "herramientas\godot\Godot_v4.7.2-stable_win64.exe" (
 rem Las zonas de detalle (La Manga, Mar Menor, CIFP Politecnico, Los Halcones) no van en git: si faltan, se descargan
 rem de la release del repositorio (unos 300 MB, solo la primera vez; simulador\descargar_zonas.ps1). Sin ellas el
 rem simulador funciona igual, con menos detalle en esos sitios.
-if not exist "simulador\zonas\halcones_rambla\zona.json" (
+if not exist "simulador\zonas\mingrano\zona.json" (
   echo Faltan las zonas de detalle: las descargo ahora ^(solo la primera vez^).
   powershell -NoProfile -ExecutionPolicy Bypass -File "simulador\descargar_zonas.ps1"
 )
