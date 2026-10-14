@@ -71,7 +71,7 @@ func _init(p_: Node) -> void:
 	# pie: piloto, aula y version
 	var pie := HBoxContainer.new(); pie.add_theme_constant_override("separation", 10)
 	chip_aula = Tema.etiqueta("", 13, Tema.SUAVE); pie.add_child(chip_aula)
-	pie.add_child(Tema.espacio()); pie.add_child(Tema.etiqueta("Entrenador de vuelo RC · v2 Godot", 13, Tema.SUAVE))
+	pie.add_child(Tema.espacio()); pie.add_child(Tema.etiqueta("Entrenador de vuelo RC · v2 Godot · © 2026 Álvar Legaz Aparicio · todos los derechos reservados", 13, Tema.SUAVE))
 	v.add_child(Tema.margen(pie, 48, 12, 48, 18))
 
 ## Degradados del fondo: de izquierda a derecha (94 % -> 78 % -> 35 %) y de abajo arriba (90 % -> 0 en el 40 %).

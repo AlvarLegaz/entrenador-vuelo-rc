@@ -1,0 +1,56 @@
+LICENCIA DE USO RESTRINGIDO — TODOS LOS DERECHOS RESERVADOS
+
+Entrenador de Vuelo RC (simulador web, simulador Godot, servidor del aula, panel del profesor, diseños de los
+entrenadores E1, E2, E3 y T1, modelos 3D, escenarios, misiones, operaciones, scripts de análisis y documentación)
+
+Copyright (c) 2026 Álvar Legaz Aparicio. Todos los derechos reservados.
+
+1. Titularidad. Este repositorio y todo su contenido propio (código fuente, modelos, diseños y planos de piezas,
+   ficheros STL, escenarios, textos, imágenes y documentación) son obra de Álvar Legaz Aparicio y están protegidos
+   por la legislación de propiedad intelectual (Real Decreto Legislativo 1/1996, Ley de Propiedad Intelectual, y los
+   tratados internacionales aplicables).
+
+2. Sin licencia sin autorización. Que el repositorio sea visible públicamente NO concede ningún derecho de uso. Queda
+   prohibido, salvo autorización previa y por escrito del titular:
+     a) usar, ejecutar o instalar el software, en todo o en parte, en centros educativos, empresas, clubes o con
+        cualquier otro fin, sea o no comercial;
+     b) copiar, reproducir, descargar para su redistribución o alojar el software o sus partes en otros servidores;
+     c) modificar, traducir, adaptar o crear obras derivadas, incluidas las que reutilicen fragmentos del código, de
+        los modelos o de los diseños;
+     d) distribuir, publicar, vender, alquilar, sublicenciar o comunicar públicamente el software o sus partes;
+     e) fabricar, vender o distribuir los aviones o piezas diseñados en este repositorio;
+     f) eliminar o alterar los avisos de autoría y de esta licencia.
+
+3. Autorizaciones. Las autorizaciones se conceden caso por caso, por escrito, y solo valen para lo que digan
+   expresamente (quién, para qué uso, durante cuánto tiempo y en qué condiciones). Para solicitarlas, contacta con el
+   titular a través de su perfil de GitHub (https://github.com/AlvarLegaz).
+
+4. GitHub. Por los Términos de Servicio de GitHub, los usuarios de GitHub pueden ver este repositorio y crear un
+   "fork" dentro de GitHub. Eso no concede ningún otro derecho: el contenido de un fork sigue sujeto a esta licencia
+   y no puede usarse, modificarse ni distribuirse sin autorización.
+
+5. Componentes y datos de terceros. Esta licencia no se aplica a lo que no es obra del titular, que conserva su
+   propia licencia y sus avisos:
+     - Three.js (simulador/lib): licencia MIT, (c) three.js authors.
+     - Godot Engine (se descarga aparte en herramientas/godot): licencia MIT, (c) Juan Linietsky, Ariel Manzur y
+       colaboradores de Godot Engine.
+     - Ortofotos PNOA y modelos digitales del terreno: (c) Instituto Geográfico Nacional, licencia CC BY 4.0.
+     - Edificios: (c) Dirección General del Catastro.
+     - Carreteras, costa, zonas urbanas y lugares: (c) colaboradores de OpenStreetMap, licencia ODbL.
+     - Relieve SRTM: viewfinderpanoramas.org (Jonathan de Ferranti), a partir de datos de la NASA.
+   El uso de estos datos dentro del simulador cita su fuente; quien quiera usarlos por separado debe acudir a la
+   fuente original y cumplir su licencia.
+
+6. Sin garantía. El software se proporciona "tal cual", sin garantía de ningún tipo. Es una herramienta de
+   formación: no sustituye a la formación oficial ni a los certificados de piloto de UAS de AESA, ni a las prácticas
+   con un instructor, y no garantiza la seguridad de ningún vuelo real. El titular no responde de los daños que
+   pudieran derivarse de su uso, ni del de los aviones o piezas fabricados a partir de sus diseños.
+
+7. Ley aplicable. Esta licencia se rige por la legislación española.
+
+-------------------------------------------------------------------------------------------------------------------
+English summary: Copyright (c) 2026 Álvar Legaz Aparicio. All rights reserved. This repository is publicly visible,
+but no license is granted. You may not use, run, copy, modify, distribute, host, sell or create derivative works of
+this software, its models or its designs without the prior written permission of the copyright holder. Third-party
+components and data (Three.js, Godot Engine, IGN/PNOA, Catastro, OpenStreetMap, SRTM) keep their own licenses. The
+software is provided "as is", without warranty of any kind.

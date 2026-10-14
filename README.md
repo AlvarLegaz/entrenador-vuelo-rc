@@ -1,5 +1,7 @@
 # Entrenador Vuelo RC
 
+> **© 2026 Álvar Legaz Aparicio. Todos los derechos reservados.** El repositorio es visible, pero **no se concede ninguna licencia**: no se puede usar, ejecutar, copiar, modificar, distribuir ni fabricar nada de él sin **autorización previa y por escrito** del autor (ver [`LICENSE`](LICENSE)). Los componentes y datos de terceros (Three.js y Godot, MIT; ortofotos y MDT del IGN, CC BY 4.0; Catastro; OpenStreetMap, ODbL; SRTM) conservan su propia licencia. Para pedir autorización: [github.com/AlvarLegaz](https://github.com/AlvarLegaz).
+
 Simulador de vuelo RC para el aula (**Entrenador Vuelo RC**, `simulador/simulador.html`) y los dos aviones de aprendizaje impresos en 3D con los que se entrena, el **Entrenador E1** y el **Entrenador E2**. Repositorio: <https://github.com/AlvarLegaz/entrenador-vuelo-rc>.
 
 Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él en clase. El **Entrenador E1** es un ala alta con poliedro (centro plano y 12° de diedro en las puntas) y solo dos servos, timón y profundidad: el diedro hace que nivele las alas solo cuando se sueltan los mandos. El **Entrenador E2** (más abajo) es la variante con alerones y profundidad, para que los alumnos practiquen también con alerones, y el **Entrenador E3**, el E2 con el ala plana.
