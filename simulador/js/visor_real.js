@@ -79,6 +79,11 @@ Object.assign(Visor.prototype, {
       Cc.setHex(tipo === 1 ? [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8][Math.floor(z * 4)] : [0xd0d4d8, 0xc3c7cc, 0xb9bec4][Math.floor(z * 3)]);
     }, 1200);
     esc.userData.edifSint = esc.children.filter(o => !antes.has(o));
+    ent.ponerEdificios("sinteticos", edificios.map(([e, n, s, tipo, z]) => {          // solidos: la planta girada y su altura
+      const h = tipo === 1 ? 4 + z * 7 : 6 + z * 6, d = s * (0.7 + z * 0.5), c = Math.cos(z * 3.14), sn = Math.sin(z * 3.14), y = alt(n, e), P = [];
+      for (const [cx, cz] of [[-s / 2, -d / 2], [s / 2, -d / 2], [s / 2, d / 2], [-s / 2, d / 2]]) P.push(e + cx * c + cz * sn, n - (-cx * sn + cz * c));
+      return [P, y, y + h];
+    }));
     for (const o of esc.userData.edifSint) { o.castShadow = true; o.receiveShadow = true; }
   },
 
@@ -97,7 +102,7 @@ Object.assign(Visor.prototype, {
       esc.remove(g);
     }
     esc.userData.zonaGrupos = [];
-    this.entorno.quitarArboles("zona:");             // los arboles solidos de las zonas que se quitan
+    this.entorno.quitarArboles("zona:"); this.entorno.quitarEdificios("zona:");      // los arboles y edificios solidos de las zonas que se quitan
     this.mapaZonas = [];                              // teselas de ortofoto de las zonas para el GPS: { tex, N0, E0, lado }
     const terr = esc.userData.terreno, pos = terr && terr.geometry.attributes.position, Y0 = esc.userData.yOriginal;
     if (pos) pos.array.set(Y0);
@@ -298,6 +303,7 @@ Object.assign(Visor.prototype, {
    *  ("f", p. ej. el ladrillo del CIFP Politecnico), con ese color y textura de ladrillo. Igual que _edificios_zona de Godot. */
   _edificiosZona(g, z) {
     this._edificiosDe(z).then(lista => {
+      this.entorno.ponerEdificios("zona:" + z.meta.id, lista.filter(ed => ed.p.length >= 6).map(ed => [ed.p, ed.b - this.mundo.terreno.h0 - 0.4, ed.b - this.mundo.terreno.h0 + ed.pl * 3.0 + 0.5]));
       const Z = z.meta, h0 = this.mundo.terreno.h0, nt = Z.orto.teselas, tm = Z.orto.tesela_m, C = new THREE.Color(), Cw = new THREE.Color(), crema = new THREE.Color(0xeee6d8), r = semilla(5);
       const fach = { claro: { pos: [], col: [], uv: [] }, ladrillo: { pos: [], col: [], uv: [] } }, tejados = {};
       for (const ed of lista) {

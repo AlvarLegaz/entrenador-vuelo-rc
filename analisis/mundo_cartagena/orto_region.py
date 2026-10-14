@@ -10,7 +10,7 @@ Fuente: ortofoto (c) Instituto Geografico Nacional (CC BY 4.0).
 import io, json, math, os, sys, time, urllib.request
 from PIL import Image
 
-UA = {"User-Agent": "entrenador-vuelo-rc/1.0 (alvarlegaz@gmail.com)"}
+UA = {"User-Agent": "entrenador-vuelo-rc/1.0 (+https://github.com/AlvarLegaz/entrenador-vuelo-rc)"}
 Image.MAX_IMAGE_PIXELS = None
 
 

@@ -740,14 +740,14 @@
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=21"></script>
-<script src="js/entorno.js?v=23"></script>
+<script src="js/entorno.js?v=24"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=1"></script>
 <script src="js/visor.js?v=33"></script>
-<script src="js/visor_real.js?v=28"></script>
+<script src="js/visor_real.js?v=29"></script>
 <script src="js/bipode.js?v=2"></script>
 <script src="mundos/cartagena.js?v=20"></script>
-<script src="escenarios.js?v=3"></script>
+<script src="escenarios.js?v=4"></script>
 <script src="singulares.js?v=2"></script>
 <script>
 "use strict";
@@ -1634,6 +1634,7 @@ function paso(dt) {
   if (av.estado !== "volando") return;
   if (entorno.chocaPilon(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un pilón)", vn); return; }
   if (entorno.chocaArbol(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un árbol)", vn); return; }
+  if (entorno.chocaEdificio && entorno.chocaEdificio(av.p, modelo.b_m / 2)) { terminarVuelo("roto (choque con un edificio)", vn); return; }
   if (ev && ev.fpv) {                         // pista FPV: objetivos y choques con postes, puertas y torre
     for (const t of ev.fpv.paso(pAnt, av, dt, { modo: modelo.modo, critica: modelo.celda(av) < modelo.fc.critico_celda_V })) toast(textoFpv(t));
     if (ev.fpv.choque) { terminarVuelo("roto (" + ev.fpv.choque + ")", vn); return; }
@@ -1661,7 +1662,7 @@ function pasoTerrestre(dt, viento, pAnt) {
   av.pendiente = [(H(p[0] + d, p[1]) - H(p[0] - d, p[1])) / (2 * d), (H(p[0], p[1] + d) - H(p[0], p[1] - d)) / (2 * d)];
   const vn = modelo.paso(av, viento, dt);
   if (vuelo) vuelo.tVuelo += dt;
-  if (entorno.chocaArbol(av.p, 1.1) || entorno.chocaPilon(av.p, 1.1)) { av.p = pAnt.slice(); av.vel = 0; if (!pasoTerrestre.aviso) { pasoTerrestre.aviso = true; toast("¡Choque! Da la vuelta"); setTimeout(() => pasoTerrestre.aviso = false, 1500); } }
+  if (entorno.chocaArbol(av.p, 1.1) || entorno.chocaPilon(av.p, 1.1) || entorno.chocaEdificio(av.p, 1.6)) { av.p = pAnt.slice(); av.vel = 0; if (!pasoTerrestre.aviso) { pasoTerrestre.aviso = true; toast("¡Choque! Da la vuelta"); setTimeout(() => pasoTerrestre.aviso = false, 1500); } }
   av.p[2] = -H(av.p[0], av.p[1]);
   if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
   if (entorno.enMar && entorno.enMar(av.p[0], av.p[1])) { terminarVuelo("roto (se ha hundido en el mar)", vn); return; }

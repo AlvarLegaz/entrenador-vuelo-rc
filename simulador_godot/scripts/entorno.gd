@@ -247,6 +247,47 @@ func choca_arbol(p: Array, semi: float) -> bool:
 		if up < t[4] and up > t[3] - 0.3 and _hypot(p[1] - t[0], p[0] - t[1]) < t[2] + 0.8 * semi: return true
 	return false
 
+## Edificios solidos (ponerEdificios de entorno.js): [planta [E0, N0, E1, N1, ...], y0, y1] por clave ("sinteticos",
+## "zona:<id>"). Rejilla de 25 m.
+var _edificios := {}
+var _rej_edif = null
+func poner_edificios(clave: String, lista: Array) -> void:
+	if lista.is_empty(): _edificios.erase(clave)
+	else: _edificios[clave] = lista
+	_rej_edif = null
+func quitar_edificios(prefijo: String) -> void:
+	for k in _edificios.keys():
+		if String(k).begins_with(prefijo): _edificios.erase(k)
+	_rej_edif = null
+## true si el avion toca un edificio: dentro de su planta o a menos de 0,6 de la semienvergadura de una fachada, entre el
+## pie y el tejado (chocaEdificio de entorno.js).
+func choca_edificio(p: Array, semi: float) -> bool:
+	if mundo.is_empty() or _edificios.is_empty(): return false
+	if _rej_edif == null:
+		_rej_edif = {}
+		for k in _edificios:
+			for ed in _edificios[k]:
+				var P: Array = ed[0]; var e0 := 1e9; var e1 := -1e9; var n0 := 1e9; var n1 := -1e9
+				for i in range(0, P.size(), 2):
+					e0 = minf(e0, P[i]); e1 = maxf(e1, P[i]); n0 = minf(n0, P[i + 1]); n1 = maxf(n1, P[i + 1])
+				for i in range(int(floor((e0 - 3) / 25.0)), int(floor((e1 + 3) / 25.0)) + 1):
+					for j in range(int(floor((n0 - 3) / 25.0)), int(floor((n1 + 3) / 25.0)) + 1):
+						var q := Vector2i(i, j)
+						if not _rej_edif.has(q): _rej_edif[q] = []
+						_rej_edif[q].append(ed)
+	var up: float = -p[2]; var x: float = p[1]; var y: float = p[0]; var m := 0.6 * semi
+	for ed in _rej_edif.get(Vector2i(int(floor(x / 25.0)), int(floor(y / 25.0))), []):
+		if up > ed[2] + m or up < ed[1]: continue
+		var P: Array = ed[0]; var n := P.size() / 2; var dentro := false; var d2 := 1e18; var j := n - 1
+		for i in n:
+			var xi: float = P[2 * i]; var yi: float = P[2 * i + 1]; var xj: float = P[2 * j]; var yj: float = P[2 * j + 1]
+			if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi: dentro = not dentro
+			var dx := xj - xi; var dy := yj - yi; var L2 := dx * dx + dy * dy; var t := clampf(((x - xi) * dx + (y - yi) * dy) / L2, 0, 1) if L2 > 0 else 0.0
+			var ex := xi + t * dx - x; var ey := yi + t * dy - y; d2 = minf(d2, ex * ex + ey * ey)
+			j = i
+		if dentro or d2 < m * m: return true
+	return false
+
 ## true si el avion (posicion NED, semienvergadura en m) toca un pilon.
 func choca_pilon(p: Array, semi: float) -> bool:
 	if not mundo.is_empty(): return false

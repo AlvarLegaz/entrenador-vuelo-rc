@@ -1510,6 +1510,14 @@ window.ESCENARIOS = {
     "lon": -1.012243,
     "rumbo": 250,
     "contorno": [[37.761587, -1.013745], [37.762469, -1.011307], [37.761791, -1.010939], [37.760977, -1.013462]]
+   },
+   {
+    "nombre": "SABIC (La Aljorra)",
+    "nota": "Solar despejado junto a la fábrica de SABIC de La Aljorra, entre las plantas fotovoltaicas (las filas de paneles de la ortofoto son reales): despegue hacia el sudeste, sobre la fábrica. Zona de detalle a 0,25 m (fotovoltaica).",
+    "lat": 37.711444,
+    "lon": -1.105328,
+    "rumbo": 125,
+    "contorno": [[37.711758, -1.106264], [37.712185, -1.105356], [37.711219, -1.10425], [37.710635, -1.104988]]
    }
   ]
  },

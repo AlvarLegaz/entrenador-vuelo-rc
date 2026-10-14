@@ -225,6 +225,43 @@ class Entorno {
     return false;
   }
 
+  /** Edificios solidos: listas [planta [E0, N0, E1, N1, ...], y0, y1] (pie y tejado, m hacia arriba como -p[2]) por
+   *  clave: "sinteticos" (los genericos de los pueblos) y "zona:<id>" (los del Catastro). Rejilla de 25 m. */
+  ponerEdificios(clave, lista) {
+    this._edificios = this._edificios || {};
+    if (lista && lista.length) this._edificios[clave] = lista; else delete this._edificios[clave];
+    this._rejEdif = null;
+  }
+  quitarEdificios(prefijo) { for (const k of Object.keys(this._edificios || {})) if (k.startsWith(prefijo)) delete this._edificios[k]; this._rejEdif = null; }
+  /** true si el avion (posicion NED, semienvergadura en m) toca un edificio: dentro de su planta o a menos de 0,6 de
+   *  la semienvergadura de una fachada, entre el pie y el tejado. */
+  chocaEdificio(p, semi) {
+    if (!this.mundo || !this._edificios) return false;
+    if (!this._rejEdif) {
+      const C = 25, R = this._rejEdif = new Map();
+      for (const lista of Object.values(this._edificios)) for (const ed of lista) {
+        const P = ed[0]; let e0 = 1e9, e1 = -1e9, n0 = 1e9, n1 = -1e9;
+        for (let i = 0; i < P.length; i += 2) { e0 = Math.min(e0, P[i]); e1 = Math.max(e1, P[i]); n0 = Math.min(n0, P[i + 1]); n1 = Math.max(n1, P[i + 1]); }
+        for (let i = Math.floor((e0 - 3) / C); i <= Math.floor((e1 + 3) / C); i++) for (let j = Math.floor((n0 - 3) / C); j <= Math.floor((n1 + 3) / C); j++) {
+          const q = i * 100003 + j; if (!R.has(q)) R.set(q, []); R.get(q).push(ed);
+        }
+      }
+    }
+    const up = -p[2], x = p[1], y = p[0], c = this._rejEdif.get(Math.floor(x / 25) * 100003 + Math.floor(y / 25)), m = 0.6 * semi;
+    if (c) for (const [P, y0, y1] of c) {
+      if (up > y1 + m || up < y0) continue;
+      let dentro = false, d2 = 1e18;
+      for (let i = 0, n = P.length / 2, j = n - 1; i < n; j = i++) {
+        const xi = P[2 * i], yi = P[2 * i + 1], xj = P[2 * j], yj = P[2 * j + 1];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) dentro = !dentro;
+        const dx = xj - xi, dy = yj - yi, L2 = dx * dx + dy * dy, t = L2 > 0 ? Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / L2)) : 0;
+        const ex = xi + t * dx - x, ey = yi + t * dy - y; d2 = Math.min(d2, ex * ex + ey * ey);
+      }
+      if (dentro || d2 < m * m) return true;
+    }
+    return false;
+  }
+
   /** true si el avion (posicion NED, semienvergadura en m) toca un pilon. */
   chocaPilon(p, semi) {
     if (this.mundo) return false;

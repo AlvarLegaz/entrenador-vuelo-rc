@@ -390,6 +390,14 @@ func _edificios_sinteticos() -> void:
 				n += paso
 			e += paso
 	var colores1 := [0xf2ede4, 0xe8dcc8, 0xd9c4a8, 0xf5f0e8]; var colores2 := [0xd0d4d8, 0xc3c7cc, 0xb9bec4]
+	var solidos := []                       # para Entorno.choca_edificio: la misma caja girada que se dibuja
+	for it in edificios:
+		var s: float = it[2]; var z: float = it[4]; var h: float = (4 + z * 7) if it[3] == 1 else (6 + z * 6); var d := s * (0.7 + z * 0.5)
+		var c := cos(z * 3.14); var sn := sin(z * 3.14); var y := ent.altura(it[1], it[0]); var P := []
+		for k in [[-s / 2, -d / 2], [s / 2, -d / 2], [s / 2, d / 2], [-s / 2, d / 2]]:
+			P.append(it[0] + k[0] * c + k[1] * sn); P.append(it[1] - (-k[0] * sn + k[1] * c))
+		solidos.append([P, y, y + h])
+	ent.poner_edificios("sinteticos", solidos)
 	_instanciar(_edif_sint, BoxMesh.new(), _mat_instancias(), edificios, func(it: Array) -> Array:
 		var s: float = it[2]; var z: float = it[4]; var h: float = (4 + z * 7) if it[3] == 1 else (6 + z * 6)
 		var b := Basis(Vector3.UP, z * 3.14).scaled_local(Vector3(s, h, s * (0.7 + z * 0.5)))
@@ -492,7 +500,7 @@ func poner_zonas(lista: Array) -> void:
 	if ids == zona_id and (not _zonas.is_empty() or lista.is_empty()): return
 	for zz in _zonas: zz["nodo"].queue_free()
 	_zonas = []; _zona = null; _zona_arboles = null; mapa_zonas = []
-	ent.quitar_arboles("zona:")                      # los arboles solidos de las zonas que se quitan
+	ent.quitar_arboles("zona:"); ent.quitar_edificios("zona:")      # los arboles y edificios solidos de las zonas que se quitan
 	zonas_bbox = lista.map(func(z): return [z["meta"]["N0"], z["meta"]["N0"] + z["meta"]["lado_m"], z["meta"]["E0"], z["meta"]["E0"] + z["meta"]["lado_m"]])
 	zona_id = ids
 	_terreno_lejano(); _carreteras(); _edificios_sinteticos()
@@ -563,6 +571,10 @@ func _edificios_zona(z: Dictionary) -> void:
 	var fach := { "claro": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()],
 				  "ladrillo": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()] }
 	var tejados := {}
+	var solidos := []                       # para Entorno.choca_edificio: la planta, el pie y el tejado
+	for ed in lista:
+		if (ed["p"] as Array).size() >= 6: solidos.append([ed["p"], ed["b"] - h0 - 0.4, ed["b"] - h0 + ed["pl"] * 3.0 + 0.5])
+	ent.poner_edificios("zona:" + String(Z["id"]), solidos)
 	var crema := lin(Color.hex(0xeee6d8ff)); var r := RandomNumberGenerator.new(); r.seed = 5
 	for ed in lista:
 		var p: Array = ed["p"]

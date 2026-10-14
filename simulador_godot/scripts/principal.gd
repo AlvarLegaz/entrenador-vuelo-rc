@@ -998,6 +998,7 @@ func paso(dt: float) -> void:
 	if av["estado"] != "volando": return
 	if ent.choca_pilon(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un pilón)", vn); return
 	if ent.choca_arbol(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un árbol)", vn); return
+	if ent.choca_edificio(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un edificio)", vn); return
 	if ev.fpv != null:                        # pista FPV: objetivos y choques con postes, puertas y torre
 		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
 		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
@@ -1025,7 +1026,7 @@ func _paso_terrestre(dt: float, viento, p_ant: Array) -> void:
 	av["pendiente"] = [(ent.altura(p[0] + d, p[1]) - ent.altura(p[0] - d, p[1])) / (2 * d), (ent.altura(p[0], p[1] + d) - ent.altura(p[0], p[1] - d)) / (2 * d)]
 	var vn: Array = modelo.paso(av, viento, dt)
 	if vuelo != null: vuelo["tVuelo"] += dt
-	if ent.choca_arbol(av["p"], 1.1) or ent.choca_pilon(av["p"], 1.1):
+	if ent.choca_arbol(av["p"], 1.1) or ent.choca_pilon(av["p"], 1.1) or ent.choca_edificio(av["p"], 1.6):
 		av["p"] = p_ant.duplicate(); av["vel"] = 0.0
 		if not _aviso_choque:
 			_aviso_choque = true; poner_toast("¡Choque! Da la vuelta"); get_tree().create_timer(1.5).timeout.connect(func(): _aviso_choque = false)
