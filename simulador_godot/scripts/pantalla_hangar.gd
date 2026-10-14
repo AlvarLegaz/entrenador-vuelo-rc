@@ -113,6 +113,16 @@ func _construir_ajustes() -> void:
 	c_lanz.toggled.connect(func(_x): _leer_cfg())
 	e_empuje.text_changed.connect(func(_x): _leer_cfg())
 
+# ---- vehiculo secreto: ↑ ↑ ↓ ↓ ← → ← → B A en el hangar lo muestra (y la misma combinacion lo vuelve a ocultar) ----
+const SECRETO := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_B, KEY_A]
+var _secreto := 0
+func _input(e: InputEvent) -> void:
+	if not is_visible_in_tree() or not (e is InputEventKey and e.pressed and not e.echo): return
+	var k: int = e.physical_keycode
+	_secreto = _secreto + 1 if k == SECRETO[_secreto] else (1 if k == SECRETO[0] else 0)
+	if _secreto < SECRETO.size(): return
+	_secreto = 0; p.alternar_secreto(); refrescar()
+
 # =====================================================================
 func refrescar() -> void:
 	var al = p.sesion["alumno"]
@@ -120,7 +130,7 @@ func refrescar() -> void:
 	d["subtitulo"].visible = true
 	b_progreso.visible = al != null
 	for x in lista.get_children(): x.queue_free()
-	for id in p.ids_aviones:
+	for id in p.ids_hangar():
 		var A := DatosComunes.avion(id)
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 2)
 		v.add_child(Tema.etiqueta(String(A.get("nombre", id)), 16, Tema.TEXTO, true))
@@ -128,7 +138,7 @@ func refrescar() -> void:
 		for r in A.get("caracteristicas", []):
 			if String(r[0]).to_lower().begins_with("masa"): masa = String(r[1]).split(" (")[0]
 			if String(r[0]) == "Mandos": mandos_txt = String(r[1])
-		var sub := "cuadricóptero, mandos de dron comercial" if A.get("tipo", "") == "cuadricoptero" else "dron FPV, modos de Betaflight" if A.get("tipo", "") == "fpv" else (mandos_txt if mandos_txt != "" else String(A.get("mandos", {}).get("izq_der", "timón")) + " y profundidad")
+		var sub := "cuadricóptero, mandos de dron comercial" if A.get("tipo", "") == "cuadricoptero" else "dron FPV, modos de Betaflight" if A.get("tipo", "") == "fpv" else "vehículo terrestre de dos patas" if A.get("tipo", "") == "bipode" else (mandos_txt if mandos_txt != "" else String(A.get("mandos", {}).get("izq_der", "timón")) + " y profundidad")
 		v.add_child(Tema.etiqueta(sub + ((" · " + masa) if masa != "" else ""), 12, Tema.SUAVE, false, true))
 		var t := Tarjeta.new(v); t.elegida = id == p.sesion["avion"]
 		t.pulsada.connect(func(): p.elegir_avion(id); refrescar())

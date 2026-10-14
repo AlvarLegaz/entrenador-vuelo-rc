@@ -36,7 +36,9 @@ static func aviones() -> Array:
 	return ids
 
 ## Datos de un avion. Los de un cuadricoptero (tipo "cuadricoptero", clase ModeloCuadricoptero) traen ademas su malla.
+static var _grandes := {}           # los datos muy grandes (el bipode, con sus mallas) se leen una vez
 static func avion(id: String) -> Dictionary:
+	if _grandes.has(id): return _grandes[id]
 	var ruta := carpeta().path_join("aviones/%s.js" % id)
 	var texto := FileAccess.get_file_as_string(ruta)
 	var re := RegEx.create_from_string(MARCA_DATOS)
@@ -44,6 +46,7 @@ static func avion(id: String) -> Dictionary:
 	if r == null: return _json_tras_marca(texto, "Modelos.registrar(", ruta)
 	var d := _objeto_json(texto, r.get_end() - 1, ruta)
 	if d.get("tipo", "") == "cuadricoptero": _malla_cuadricoptero(d)
+	if d.get("tipo", "") == "bipode": _grandes[id] = d
 	return d
 
 ## Linea (no comentario) que empieza los datos de un fichero de aviones que no los lleva dentro de Modelos.registrar.

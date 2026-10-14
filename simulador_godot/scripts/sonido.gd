@@ -52,6 +52,7 @@ var _p_viento: AudioStreamPlayer
 var _p_pitido: AudioStreamPlayer
 var _p_toque: AudioStreamPlayer
 var _p_roto: AudioStreamPlayer
+var _p_pisada: AudioStreamPlayer; var _p_disparo: AudioStreamPlayer; var _p_explosion: AudioStreamPlayer
 var _lp_motor: AudioEffectLowPassFilter
 var _bp_viento: AudioEffectBandPassFilter
 
@@ -84,6 +85,7 @@ func iniciar() -> void:
 	_p_pitido = _reproductor(_ondas["pitido"], "Master")
 	_p_toque = _reproductor(_ondas["toque"], "Master", false)
 	_p_roto = _reproductor(_ondas["roto"], "Master", false)
+	_p_pisada = _reproductor(_ondas["pisada"], "Master", false); _p_disparo = _reproductor(_ondas["disparo"], "Master", false); _p_explosion = _reproductor(_ondas["explosion"], "Master", false)
 	iniciado = true; _parado = false
 	_aplicar()
 
@@ -108,7 +110,7 @@ func actualizar(av: Dictionary, lejos: float, camara_piloto: bool) -> void:
 ## "toque" (aterrizaje) o "roto" (accidente): rafaga de ruido filtrada que decae (vuelve a empezar si ya sonaba).
 func evento(tipo: String) -> void:
 	if not iniciado or _parado: return     # en silencio no suena (y no debe sonar tarde al quitar la pausa)
-	var r := _p_roto if tipo == "roto" else _p_toque
+	var r := { "roto": _p_roto, "pisada": _p_pisada, "disparo": _p_disparo, "explosion": _p_explosion }.get(tipo, _p_toque) as AudioStreamPlayer
 	r.stop(); r.play()
 
 func _process(dt: float) -> void:
@@ -134,10 +136,11 @@ func _aplicar() -> void:
 	_p_pitido.volume_db = _db(_gp * _gen)
 	var dg := _db(_gen)
 	_p_toque.volume_db = dg; _p_roto.volume_db = dg
+	for x in [_p_pisada, _p_disparo, _p_explosion]: x.volume_db = dg
 
 func _pausar(s: bool) -> void:
 	_parado = s
-	for r in [_p_motor, _p_viento, _p_pitido, _p_toque, _p_roto]: r.stream_paused = s
+	for r in [_p_motor, _p_viento, _p_pitido, _p_toque, _p_roto, _p_pisada, _p_disparo, _p_explosion]: r.stream_paused = s
 
 static func _db(g: float) -> float:
 	return linear_to_db(g) if g > 1e-6 else -120.0
@@ -150,7 +153,7 @@ func _exit_tree() -> void:
 	for n in [BUS_VIENTO, BUS_MOTOR]:
 		var i := AudioServer.get_bus_index(n)
 		if i >= 0: AudioServer.remove_bus(i)
-	for r in [_p_motor, _p_viento, _p_pitido, _p_toque, _p_roto]:
+	for r in [_p_motor, _p_viento, _p_pitido, _p_toque, _p_roto, _p_pisada, _p_disparo, _p_explosion]:
 		r.stop(); r.queue_free()
 	iniciado = false
 
@@ -201,6 +204,14 @@ func _generar_ondas() -> void:
 	_ondas["pitido"] = _wav(pi_, true)
 	_ondas["toque"] = _wav(_rafaga(r, 900.0, 0.3, 0.18), false)
 	_ondas["roto"] = _wav(_rafaga(r, 350.0, 0.9, 0.7), false)
+	# bipode: pisada (ruido grave + un seno que cae de 70 a 32 Hz), disparo (rafaga corta) y explosion
+	var pis := _rafaga(r, 140.0, 0.9, 0.35); var fase := 0.0
+	for i in int(0.32 * FS):
+		var tt := float(i) / FS; var f := 70.0 * pow(32.0 / 70.0, minf(1.0, tt / 0.25)); fase += TAU * f / FS
+		pis[i] += 0.7 * pow(0.001 / 0.7, tt / 0.3) * sin(fase)
+	_ondas["pisada"] = _wav(pis, false)
+	_ondas["disparo"] = _wav(_rafaga(r, 1400.0, 0.22, 0.07), false)
+	_ondas["explosion"] = _wav(_rafaga(r, 260.0, 0.8, 1.2), false)
 
 ## Rafaga de 0,8 s: ruido por un paso bajo (biquad de Web Audio, Q 1 dB) con exponentialRampToValueAtTime(0,001, T).
 static func _rafaga(ruido: PackedFloat32Array, fc: float, g0: float, T: float) -> PackedFloat32Array:

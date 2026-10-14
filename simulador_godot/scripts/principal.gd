@@ -115,7 +115,7 @@ func _ready() -> void:
 	if _args.has("avion"): sesion["avion"] = _args["avion"]
 	if _args.has("calidad"): aj["calidad_modo"] = str(int(_args["calidad"]))
 	if _args.has("dificultad"): sesion["dificultad"] = _args["dificultad"]
-	if not ids_aviones.has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
+	if not ids_hangar().has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
 	mundo_datos = DatosComunes.mundo(MUNDO)
 	ent.poner_mundo(mundo_datos); ent.poner_mundo({})      # el terreno del mundo queda guardado (mapa, rumbo despejado)
 	indice_zonas = DatosComunes.indice_zonas().filter(func(z): return z["mundo"] == MUNDO)
@@ -221,9 +221,34 @@ func sonido_volumen(x: float) -> void:
 func crear_modelo(id: String):
 	var A := DatosComunes.avion(id)
 	if A.get("tipo", "") == "fpv": return ModeloFPV.new(A)
+	if A.get("tipo", "") == "bipode": return ModeloBipode.new(A)
 	return ModeloCuadricoptero.new(A) if A.get("tipo", "") == "cuadricoptero" else ModeloAvion.new(A)
 func es_dron() -> bool: return modelo is ModeloCuadricoptero or modelo is ModeloFPV
 func es_fpv() -> bool: return modelo is ModeloFPV
+func es_bipode() -> bool: return modelo is ModeloBipode
+
+# ---- vehiculo secreto (idsHangar y la combinacion del hangar de la web) ----
+func secreto_visible() -> bool:
+	var cf := ConfigFile.new()
+	return cf.load("user://secreto.cfg") == OK and bool(cf.get_value("secreto", "visible", false))
+## Los vehiculos del hangar: los ocultos (datos.oculto) solo con el secreto desvelado.
+func ids_hangar() -> Array:
+	var v := secreto_visible()
+	return ids_aviones.filter(func(id): return v or not DatosComunes.avion(id).get("oculto", false))
+func alternar_secreto() -> void:
+	var ver := not secreto_visible()
+	var cf := ConfigFile.new(); cf.set_value("secreto", "visible", ver); cf.save("user://secreto.cfg")
+	var oculto := ""
+	for id in ids_aviones:
+		if DatosComunes.avion(id).get("oculto", false): oculto = id
+	if ver and oculto != "": elegir_avion(oculto)
+	elif not ver and DatosComunes.avion(sesion["avion"]).get("oculto", false): elegir_avion("DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_hangar()[0])
+	poner_toast_menu("Vehículo secreto desbloqueado" if ver else "Vehículo secreto oculto")
+func poner_toast_menu(txt: String) -> void:
+	var l := Tema.etiqueta(txt, 22, Tema.ACENTO, true); l.set_anchors_preset(Control.PRESET_CENTER_TOP); l.position.y = 90
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85)); l.add_theme_constant_override("shadow_outline_size", 6)
+	ui.get_child(0).add_child(l); l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	get_tree().create_timer(1.6).timeout.connect(func(): l.queue_free())
 
 func aplicar_cm(m) -> void:
 	var A := DatosComunes.avion(sesion["avion"])
@@ -254,6 +279,7 @@ func aplicar_recorridos(mod = null, forzar_mando := false) -> void:
 	mod.mandos = m
 
 func _vel_perdida() -> float:
+	if modelo is ModeloBipode: return 0.0
 	var A := DatosComunes.avion(sesion["avion"])
 	for fila in A.get("caracteristicas", []):
 		if String(fila[0]).to_lower().begins_with("velocidad de p"):
@@ -385,8 +411,11 @@ func elegir_destacado(d: Dictionary) -> void:
 func elegir_punto(N: float, E: float) -> void:
 	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(N), "E": round(E), "rumbo": rumbo_despejado(N, E) }; _guardar()
 func colocar_en_base(a: Dictionary, m = null) -> void:
-	if not en_mundo(): return
 	if m == null: m = modelo
+	if m is ModeloBipode:                 # el bipode, de pie en el suelo, delante del piloto (en el campo, 10 m al norte)
+		if not en_mundo(): a["p"] = [10.0, 0.0, 0.0]; return
+		var c0 := _casa(); a["p"] = [c0["N"], c0["E"], -ent.altura(c0["N"], c0["E"])]; return
+	if not en_mundo(): return
 	var c := _casa()
 	a["p"] = [c["N"], c["E"], -(ent.altura(c["N"], c["E"]) + (0.02 if (m is ModeloCuadricoptero or m is ModeloFPV) else 1.6))]   # en la mano (avion) o en el suelo (dron)
 
@@ -533,7 +562,8 @@ func entrar_sala(s: Dictionary) -> void:
 	if not Escenarios.datos().has(s["escenario"]): poner_toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return
 	var E: Dictionary = Escenarios.datos()[s["escenario"]]
 	sala = s; multi_otros = {}; reiniciar_ordenes()
-	var veh: Array = E.get("vehiculos", ["avion", "dron", "fpv"])
+	var veh: Array = (E.get("vehiculos", ["avion", "dron", "fpv"]) as Array).duplicate()
+	if (E["objetivos"] as Array).is_empty() and not E.has("operacion"): veh.append("bipode")     # vuelo libre: tambien el bipode
 	if not Escenarios.vehiculo_de(sesion["avion"]) in veh:
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
@@ -545,7 +575,7 @@ func entrar_sala(s: Dictionary) -> void:
 	poner_toast("Sala %s: %s" % [s["codigo"], s["nombre"]]); empezar()
 func salir_sala() -> void:
 	if sala.is_empty(): return
-	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false
+	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false; _golpes_vistos = {}; _vida_multi = BIP_VIDAS
 	reiniciar_ordenes(); _pintar_ordenes(); _poner_exclusiones()
 	aula.api("POST", "salas/%s/salir" % s["codigo"], { "id": multi_id() })
 func reiniciar_ordenes() -> void:
@@ -666,13 +696,16 @@ func _enviar_sala() -> void:
 	var e := { "id": multi_id(), "nombre": nombre_piloto(), "alumno": sesion["alumno"]["id"] if sesion["alumno"] != null else null, "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
 			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot, mal] if ev != null else null, "ahora": ahora,
 			   "tvuelo": vuelo["tVuelo"] if vuelo != null else 0.0, "final": vuelo["final"] if vuelo != null else null, "gimbal": av.get("gimbal", 0.0) }
+	if es_bipode():
+		e["bip"] = [av["cintura"], av["brazos"], av["fase"], av["amp"], av["angCanones"], av["disparos"], av["puno"]]
+		if juego_bip != null: e["golpes"] = juego_bip.golpes
 	var cod: String = sala["codigo"]
 	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
 	_multi_enviando = false
 	if sala.is_empty() or sala["codigo"] != cod: return
 	if r["ok"]:
 		var t := Time.get_ticks_msec() / 1000.0; var vivos := {}
-		for o in r["datos"]["otros"]: o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true
+		for o in r["datos"]["otros"]: o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true; _impactos_de(o)
 		for k in multi_otros.keys():
 			if not vivos.has(k): multi_otros.erase(k)
 		aplicar_ordenes(r["datos"].get("ordenes", []))
@@ -698,9 +731,13 @@ func _poner_fantasmas() -> void:
 		var lejos := Vector3(obj[0] - g["p"][0], obj[1] - g["p"][1], obj[2] - g["p"][2]).length() > 30
 		for i in 3: g["p"][i] = obj[i] if lejos else g["p"][i] + (obj[i] - g["p"][i]) * 0.35
 		var gas: float = f.get("gas", 0.0)
-		g["nodo"].actualizar({ "p": g["p"], "q": f["q"], "de": 0.0, "dr": 0.0, "da": 0.0, "gases": gas, "estado": f.get("estado", "volando"),
-							   "gimbal": f.get("gimbal", 0.0) if f.get("gimbal") != null else 0.0, "motores": [gas, gas, gas, gas] })
-		g["et"].position = Avion3D.ned(g["p"]) + Vector3(0, 1.2, 0)
+		var est := { "p": g["p"], "q": f["q"], "de": 0.0, "dr": 0.0, "da": 0.0, "gases": gas, "estado": f.get("estado", "volando"),
+					 "gimbal": f.get("gimbal", 0.0) if f.get("gimbal") != null else 0.0, "motores": [gas, gas, gas, gas] }
+		var bp = f.get("bip")
+		if bp is Array and bp.size() >= 7:            # bipode de otro jugador: paso, cintura, brazos, cañones y puño
+			est.merge({ "cintura": float(bp[0]), "brazos": float(bp[1]), "fase": float(bp[2]), "amp": float(bp[3]), "angCanones": float(bp[4]), "disparos": int(bp[5]), "puno": float(bp[6]) })
+		g["nodo"].actualizar(est)
+		g["et"].position = Avion3D.ned(g["p"]) + Vector3(0, 4.2 if g["nodo"].bipode else 1.2, 0)
 	for id in _fantasmas.keys():
 		if not vivos.has(id): _fantasmas[id]["nodo"].queue_free(); _fantasmas[id]["et"].queue_free(); _fantasmas.erase(id)
 ## Panel de la sala en vuelo: quien esta y como va.
@@ -804,6 +841,7 @@ func empezar() -> void:
 	# el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
 	if es_dron() != era_dron: camara = 3 if es_dron() else 1
 	era_dron = es_dron()
+	if es_bipode(): camara = 2                    # el bipode se maneja desde detras
 	if es_dron() and not es_fpv():
 		if hud.gps.get_parent() != hud_dji.mapa: hud.gps.get_parent().remove_child(hud.gps); hud_dji.mapa.add_child(hud.gps)
 		hud.gps.custom_minimum_size = Vector2(130, 130)
@@ -831,6 +869,13 @@ func ver_briefing(ver = null) -> void:
 
 func _texto_ayuda(A: Dictionary) -> void:
 	var t := "[font_size=18][b]Controles[/b][/font_size]\n"
+	if es_bipode():
+		t += "[b]W[/b] / [b]S[/b] adelante / atrás · [b]A[/b] / [b]D[/b] girar · [b]← →[/b] girar la cintura (360°) · [b]↑ ↓[/b] bajar / subir los brazos\n"
+		t += "[b]Espacio[/b] disparar (mantener) · [b]F[/b] cerrar el puño · [b]L[/b] arrancar / aparcar · [b]R[/b] empezar de nuevo\n"
+		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / puesto de tiro (con la mira) · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
+		t += "[b]Mando[/b]: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa\n"
+		t += "[color=#8be08f]Derriba los drones diana que vuelan alrededor (caen al primer impacto); en multijugador, también los de tus compañeros.[/color]"
+		hud.ayuda_rt.text = t; return
 	if es_fpv():
 		t += "[b]↑ ↓[/b] cabeceo (↑ adelante) · [b]← →[/b] alabeo · [b]W[/b] / [b]S[/b] gas (no vuelve al centro) · [b]Espacio[/b] gas a cero · [b]A[/b] / [b]D[/b] guiñada\n"
 		t += "[b]L[/b] armar / desarmar (con el gas abajo) · [b]M[/b] modo ANGLE / HORIZON / ACRO · [b]R[/b] empezar de nuevo\n"
@@ -853,7 +898,7 @@ func _texto_ayuda(A: Dictionary) -> void:
 	hud.ayuda_rt.text = t
 
 func reiniciar() -> void:
-	_gas_fpv_mando = false
+	_gas_fpv_mando = false; _caida = {}
 	av = modelo.estado_inicial(); colocar_en_base(av)
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
 	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
@@ -867,6 +912,8 @@ func reiniciar() -> void:
 	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
+	_iniciar_juego_bip()
+	if es_bipode(): hud.aviso.text = "Pulsa L (o el botón A) para arrancar el bípode"; return
 	if E.has("enVuelo"): _empezar_en_vuelo(); return
 	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" if es_dron() else "Pulsa L para lanzar")
 
@@ -895,13 +942,17 @@ func _orientar_lanzamiento() -> void:
 	av["q"] = Cuat.desde_euler(e[0], e[1], rumbo)
 
 func lanzar() -> void:
+	if es_bipode() and av.get("estado", "") == "volando":     # bipode en marcha: L lo aparca (si esta parado) y acaba
+		if absf(av["vel"]) > 0.2: poner_toast("Para antes de aparcar"); return
+		terminar_vuelo("aparcado", [0.0, 0.0, 0.0]); return
 	if av.get("estado", "") != "en mano": return
 	modelo.lanzar(av); _orientar_lanzamiento()
+	if es_bipode(): av["rumbo"] = fposmod(Cuat.euler(av["q"])[2], TAU)
 	hud.aviso.text = "Sube el gas (W o palanca izquierda arriba) para despegar" if es_dron() else ""
 	if es_fpv(): poner_toast("ARMADO")
 	if es_dron():
 		get_tree().create_timer(3.0).timeout.connect(func(): if av.get("estado") == "volando" and av.get("posado", false): hud.aviso.text = "")
-	if sesion["lanz_real"] and not modelo.facil and not es_dron():     # un lanzamiento a mano nunca es perfecto
+	if sesion["lanz_real"] and not modelo.facil and not es_dron() and not es_bipode():     # un lanzamiento a mano nunca es perfecto
 		var gauss := func() -> float: return (randf() + randf() + randf() - 1.5) / 0.5
 		var e := Cuat.euler(av["q"])
 		av["v"][0] *= 1 + 0.08 * gauss.call()
@@ -932,7 +983,9 @@ func paso(dt: float) -> void:
 	viento = ent.viento_a(viento, av["agl"])
 	av["pg"] = ent.rafaga_alabeo(modelo.b_m, av["agl"])
 	if av["estado"] != "volando": return
+	if not _caida.is_empty(): _caida_derribado(dt); return     # multijugador: derribado por un bipode
 	var p_ant: Array = av["p"].duplicate()
+	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
 	var vn: Array = modelo.paso(av, viento, dt)
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
 	if vuelo != null:
@@ -964,6 +1017,121 @@ func paso(dt: float) -> void:
 	var suelo := ent.contacto_suelo(av, vn)
 	if suelo != "": terminar_vuelo(suelo, vn)
 
+## Un paso del bipode (pasoTerrestre de la web): la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso
+## del modelo, la altura del terreno donde queda y los choques: arboles y pilones lo paran (no lo rompen); en el mar se hunde.
+var _aviso_choque := false
+func _paso_terrestre(dt: float, viento, p_ant: Array) -> void:
+	var p: Array = av["p"]; var d := 1.5
+	av["pendiente"] = [(ent.altura(p[0] + d, p[1]) - ent.altura(p[0] - d, p[1])) / (2 * d), (ent.altura(p[0], p[1] + d) - ent.altura(p[0], p[1] - d)) / (2 * d)]
+	var vn: Array = modelo.paso(av, viento, dt)
+	if vuelo != null: vuelo["tVuelo"] += dt
+	if ent.choca_arbol(av["p"], 1.1) or ent.choca_pilon(av["p"], 1.1):
+		av["p"] = p_ant.duplicate(); av["vel"] = 0.0
+		if not _aviso_choque:
+			_aviso_choque = true; poner_toast("¡Choque! Da la vuelta"); get_tree().create_timer(1.5).timeout.connect(func(): _aviso_choque = false)
+	av["p"][2] = -ent.altura(av["p"][0], av["p"][1])
+	cn_contador += 1
+	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT)
+	if ent.en_mar(av["p"][0], av["p"][1]): terminar_vuelo("roto (se ha hundido en el mar)", vn); return
+	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
+
+# ---- juego del bipode: drones diana y disparos (JuegoBipode y EfectosBipode), sonido y marcador ----
+var juego_bip: JuegoBipode = null
+var efectos_bip: EfectosBipode = null
+var _bip_oido := { "pisadas": 0, "disparos": 0, "derribados": 0 }
+func _altura_c() -> Callable: return func(N: float, E: float) -> float: return ent.altura(N, E)
+func _iniciar_juego_bip() -> void:
+	if efectos_bip != null: efectos_bip.queue_free(); efectos_bip = null
+	juego_bip = null
+	if not es_bipode(): return
+	juego_bip = JuegoBipode.new(DatosComunes.avion(sesion["avion"]), (Time.get_ticks_msec() % 100000) + 1)
+	juego_bip.iniciar([av["p"][0], av["p"][1]], _altura_c())
+	efectos_bip = EfectosBipode.new(); add_child(efectos_bip)
+	_bip_oido = { "pisadas": av["pisadas"], "disparos": av["disparos"], "derribados": 0 }
+func _paso_juego_bip(dt: float) -> void:
+	_paso_balas_otros(dt)
+	var J := juego_bip
+	hud.bip.visible = J != null and pantalla_actual == ""
+	hud.mira.visible = J != null and camara == 3 and pantalla_actual == ""
+	if J == null: return
+	J.blancos = _blancos_sala()
+	if av["estado"] == "volando": J.paso(dt, av, modelo, _altura_c())
+	if av["pisadas"] != _bip_oido["pisadas"]: _bip_oido["pisadas"] = av["pisadas"]; sonido.evento("pisada")
+	if av["disparos"] != _bip_oido["disparos"]: _bip_oido["disparos"] = av["disparos"]; sonido.evento("disparo")
+	for e in J.eventos:
+		if e["tipo"] == "explosion": sonido.evento("explosion")
+	if J.derribados != _bip_oido["derribados"]: _bip_oido["derribados"] = J.derribados; poner_toast("¡Dron derribado! (%d)" % J.derribados)
+	efectos_bip.pintar(J, dt, cam)
+	hud.bip_drones.text = "DRONES DERRIBADOS %d" % J.derribados
+	var w: float = av["wCanones"] / (modelo.bp["cadencia_rpm"] / 60.0 / 6.0 * TAU)
+	hud.bip_canon.text = ("FUEGO" if w > 0.8 else "CAÑÓN ACELERANDO %d %%" % int(round(w * 100))) if av["cmd"]["fuego"] > 0 else "CAÑÓN LISTO"
+
+# ---- bipode en multijugador (como en la web): sus disparos derriban los aviones y drones de los compañeros. Cada
+# bipode manda en su estado los impactos que lleva dados a cada piloto (golpes: id -> cuantos); quien los recibe cae al
+# primer impacto. Los bipodes de los demas se ven andando y disparando (sus trazadoras, solo de adorno).
+const BIP_VIDAS := 1
+var _golpes_vistos := {}
+var _vida_multi := BIP_VIDAS
+func _impactos_de(o: Dictionary) -> void:
+	var g = o.get("golpes")
+	if not (g is Dictionary) or av.is_empty() or modelo == null or es_bipode(): return
+	var n := int(g.get(multi_id(), 0))
+	if not _golpes_vistos.has(o["id"]): _golpes_vistos[o["id"]] = n; return      # los de antes de entrar no cuentan
+	if n <= int(_golpes_vistos[o["id"]]): return
+	var nuevos: int = n - int(_golpes_vistos[o["id"]]); _golpes_vistos[o["id"]] = n
+	if av["estado"] != "volando" or av.get("posado", false) or not _caida.is_empty(): return
+	_vida_multi -= nuevos; sonido.evento("roto")
+	if _vida_multi > 0: poner_toast("¡Impacto de %s! Te quedan %d" % [o["nombre"], _vida_multi]); return
+	_vida_multi = BIP_VIDAS; poner_toast("¡Derribado por %s!" % o["nombre"])
+	_caida = { "v": Cuat.rot(av["q"], av["v"]), "w": 3 + 3 * randf(), "nombre": o["nombre"] }     # cae dando vueltas hasta el suelo
+var _caida := {}
+## Derribado: los motores se paran y cae con su velocidad, dando vueltas, hasta el suelo; ahi acaba el vuelo (caidaDerribado).
+func _caida_derribado(dt: float) -> void:
+	var c := _caida; var v: Array = c["v"]
+	v[2] += 9.81 * dt; v[0] *= 1 - 0.3 * dt; v[1] *= 1 - 0.3 * dt
+	av["p"] = [av["p"][0] + v[0] * dt, av["p"][1] + v[1] * dt, av["p"][2] + v[2] * dt]
+	var e := Cuat.euler(av["q"]); var w: float = c["w"]
+	av["q"] = Cuat.desde_euler(e[0] + w * dt, e[1] + 0.4 * w * dt, e[2] + 0.7 * w * dt)
+	av["v"] = Cuat.rot(Cuat.inv(av["q"]), v); av["gases"] = 0.0; av["rpm"] = 0.0; av["motorRoto"] = true
+	var suelo := ent.altura(av["p"][0], av["p"][1])
+	if -av["p"][2] <= suelo:
+		av["p"][2] = -suelo; _caida = {}; terminar_vuelo("roto (derribado por %s)" % c["nombre"], v)
+## Los blancos del bipode (multijugador): los aviones y drones de los demas que estan en el aire.
+func _blancos_sala() -> Array:
+	var lista := []
+	if sala.is_empty(): return lista
+	for id in multi_otros:
+		var o: Dictionary = multi_otros[id]; var D := DatosComunes.avion(String(o["avion"]))
+		if D.is_empty() or D.get("tipo", "") == "bipode" or o.get("estado", "") != "volando" or float(o.get("agl", 0.0)) < 0.3: continue
+		var g = _fantasmas.get(id)
+		lista.append({ "id": id, "p": (g["p"] as Array).duplicate() if g != null else (o["p"] as Array).duplicate(), "r": maxf(0.8, float(D.get("b_m", 1.0)) / 2 + 0.25) })
+	return lista
+## Trazadoras de los bipodes de los demas: por cada disparo nuevo que anuncian, una bala de adorno desde su cañon.
+var _balas_otros := {}
+func _paso_balas_otros(dt: float) -> void:
+	if sala.is_empty():
+		if not _balas_otros.is_empty(): _balas_otros["ef"].queue_free(); _balas_otros = {}
+		return
+	for id in multi_otros:
+		var o: Dictionary = multi_otros[id]; var bp = o.get("bip")
+		if not (bp is Array) or bp.size() < 7: continue
+		var D := DatosComunes.avion(String(o["avion"]))
+		if D.is_empty() or not D.has("bipode"): continue
+		if _balas_otros.is_empty():
+			_balas_otros = { "J": JuegoBipode.new(D, 7), "ef": EfectosBipode.new(), "vistos": {} }; add_child(_balas_otros["ef"])
+		var n := int(bp[5]); var v = _balas_otros["vistos"].get(id); _balas_otros["vistos"][id] = n
+		if v == null or n <= int(v): continue
+		var piv := {}
+		for pz in D["modelo3d"]["piezas"]: piv[pz["nombre"]] = pz["pivote"]
+		var g = _fantasmas.get(id)
+		var est := { "p": g["p"] if g != null else o["p"], "q": o["q"], "cintura": float(bp[0]), "brazos": float(bp[1]) }
+		for k in mini(4, n - int(v)): _balas_otros["J"].disparo(ModeloBipode.apuntado_con(piv, D["bipode"], est))
+	if _balas_otros.is_empty(): return
+	var J: JuegoBipode = _balas_otros["J"]
+	J.paso(dt, { "p": [0.0, 0.0, 0.0], "disparos": J.disparos }, null, _altura_c())
+	J.eventos = J.eventos.filter(func(e): return e["tipo"] == "suelo")
+	_balas_otros["ef"].pintar(J, dt, cam)
+
 ## Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso.
 func _zona2(p_ant: Array) -> void:
 	var pu: Dictionary = ent.cruza_puerta(p_ant, av["p"])
@@ -983,7 +1151,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	if av["estado"] != "volando": return
 	if vn == null: vn = [0.0, 0.0, 0.0]
 	# lanzamiento fallido: en el suelo antes de 6 s sin pasar de 5 m. No cuenta como aterrizaje; si se ha roto, como accidente
-	if vuelo != null and not es_dron() and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
+	if vuelo != null and not es_dron() and not es_bipode() and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
 		vuelo["lanzamiento"] = causa_lanzamiento_fallido(vuelo["gasLanz"])
 		var roto := final.begins_with("roto")
 		final = ("roto (" if roto else "") + "lanzamiento fallido: " + String(vuelo["lanzamiento"]["corto"]) + (")" if roto else "")
@@ -994,7 +1162,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	vuelo["final"] = final; grabar_muestra()
 	ev.evaluar_final(sesion["escenario"], final, av, vn)
 	hud.aviso.text = ("LANZAMIENTO FALLIDO: " + String(vuelo["lanzamiento"]["corto"])) if vuelo.has("lanzamiento") else \
-		(("¡ROTO!  (" + final.substr(6, final.length() - 7) + ")") if final.begins_with("roto") else ("Aterrizado" if final == "aterrizado" else
+		(("¡ROTO!  (" + final.substr(6, final.length() - 7) + ")") if final.begins_with("roto") else ("Aterrizado" if final == "aterrizado" else ("Aparcado" if final == "aparcado" else "") if final == "aparcado" else
 		("FUERA DE LÍMITES: el avión se ha perdido de vista" if final == "fuera de límites" else "")))
 	hud.lejos_l.text = ""
 	ultimo_vuelo = vuelo
@@ -1127,7 +1295,7 @@ func _salir_repeticion() -> void:
 # =====================================================================
 #  PAUSA
 # =====================================================================
-func _nombre_camara(n: int) -> String: return ["", "piloto", "persecución", "FPV (gafas)" if (modelo != null and es_fpv()) else ("del dron" if (modelo != null and es_dron()) else "a bordo")][n]
+func _nombre_camara(n: int) -> String: return ["", "piloto", "persecución", "FPV (gafas)" if (modelo != null and es_fpv()) else ("del dron" if (modelo != null and es_dron()) else ("puesto de tiro" if (modelo != null and es_bipode()) else "a bordo"))][n]
 func _texto_instr() -> String: return ("OSD: " if es_fpv() else ("Pantalla de la app: " if es_dron() else "Instrumentos: ")) + ("no" if sin_instrumentos else "sí")
 func poner_pausa(si: bool) -> void:
 	if si == pausado: return
@@ -1247,6 +1415,15 @@ func _unhandled_input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled(); return
 	if pausado: return
 	var libre := Escenarios.libre(sesion["escenario"]); var vto: Dictionary = ent.viento; var dron := es_dron()
+	if es_bipode():         # bipode: L arranca / aparca; espacio dispara y F cierra el puño (mientras se tienen pulsados)
+		match k:
+			KEY_L: lanzar()
+			KEY_R: reiniciar()
+			KEY_1: camara = 1
+			KEY_2: camara = 2
+			KEY_3: camara = 3
+			KEY_T: hud.ayuda.visible = not hud.ayuda.visible
+		get_viewport().set_input_as_handled(); return
 	if es_fpv():            # dron FPV: L arma y desarma, M cambia de modo
 		match k:
 			KEY_M: fpv_modo()
@@ -1290,7 +1467,9 @@ func _leer_mando(dt: float) -> bool:
 	if dev < 0: return false
 	var rx := _zona_muerta(M.eje(dev, "rx"), M.zona); var ry := _zona_muerta(M.eje(dev, "ry"), M.zona)
 	var ly := _zona_muerta(M.eje(dev, "ly"), M.zona); var lx := _zona_muerta(M.eje(dev, "lx"), M.zona)
-	var cuad := modelo != null and es_dron() and not es_fpv(); var fpv := modelo != null and es_fpv()   # el FPV lleva el gas como un avion
+	var cuad := modelo != null and ((es_dron() and not es_fpv()) or es_bipode()); var fpv := modelo != null and es_fpv()   # el FPV lleva el gas como un avion; el bipode, la izquierda como el dron
+	var bip := modelo != null and es_bipode()
+	_mando_disparo = false; _mando_puno = false
 	var pulsado := func(b: int) -> bool:
 		var ahora := Input.is_joy_button_pressed(dev, b); var antes: bool = _botones_antes.get(b, false); _botones_antes[b] = ahora
 		return ahora and not antes
@@ -1300,7 +1479,12 @@ func _leer_mando(dt: float) -> bool:
 		bs[b] = pulsado.call(b)
 	if pantalla_actual == "" and b_start: poner_pausa(not pausado)
 	M.gimbal = 0.0
-	if pantalla_actual == "" and not pausado and fpv:     # dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
+	if pantalla_actual == "" and not pausado and bip:     # bipode: A arrancar / aparcar, RB camara, Back reiniciar; gatillos: disparar (RT) y puño (LT)
+		if bs[JOY_BUTTON_A]: lanzar()
+		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
+		if bs[JOY_BUTTON_BACK]: reiniciar()
+		_mando_disparo = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) > 0.4; _mando_puno = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT) > 0.4
+	elif pantalla_actual == "" and not pausado and fpv:     # dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
 		if bs[JOY_BUTTON_A]: fpv_armar()
 		if bs[JOY_BUTTON_LEFT_SHOULDER]: fpv_modo()
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
@@ -1344,12 +1528,14 @@ func _leer_mando(dt: float) -> bool:
 		elif ly != 0: av["gases"] = clampf(av["gases"] - ly * 0.7 * dt, 0, 1)
 	return moviendo or _mando_usado
 
+var _mando_disparo := false; var _mando_puno := false
 func _leer_teclado(dt: float) -> void:
-	var cuad := es_dron() and not es_fpv(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas
+	var cuad := (es_dron() and not es_fpv()) or es_bipode(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas; el bipode anda con W/S y A/D
+	if es_bipode(): mando["disparo"] = T.call(KEY_SPACE) or _mando_disparo; mando["puno"] = T.call(KEY_F) or _mando_puno
 	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or ((cuad or es_fpv()) and (T.call(KEY_W) or T.call(KEY_S)))   # en el FPV, W/S tambien devuelven el gas al teclado
 	if tecla_palanca: _mando_usado = false            # si se tocan las flechas, vuelve a mandar el teclado
 	if es_fpv() and (T.call(KEY_W) or T.call(KEY_S)): _gas_fpv_mando = false      # W/S: el gas vuelve al teclado
-	var gimbal_teclas := ((1.0 if T.call(KEY_E) else 0.0) - (1.0 if T.call(KEY_Q) else 0.0)) if cuad else 0.0
+	var gimbal_teclas := ((1.0 if T.call(KEY_E) else 0.0) - (1.0 if T.call(KEY_Q) else 0.0)) if cuad and not es_bipode() else 0.0
 	if _leer_mando(dt) and not tecla_palanca:
 		mando["gimbal"] = gimbal_teclas if gimbal_teclas != 0 else mando_cfg.gimbal; _leer_gas_teclado(dt); return
 	mando["gimbal"] = gimbal_teclas if gimbal_teclas != 0 else mando_cfg.gimbal
@@ -1363,7 +1549,7 @@ func _leer_teclado(dt: float) -> void:
 	_leer_gas_teclado(dt)
 
 func _leer_gas_teclado(dt: float) -> void:
-	if av["motorRoto"] or (es_dron() and not es_fpv()): return          # en el dron comercial W/S son velocidad vertical
+	if av["motorRoto"] or (es_dron() and not es_fpv()) or es_bipode(): return          # en el dron comercial W/S son velocidad vertical; en el bipode, andar
 	var k := 0.4 if es_fpv() else 0.8                # FPV: mas despacio (se sostiene con un 30 % de gas)
 	if Input.is_physical_key_pressed(KEY_W): av["gases"] = minf(1, av["gases"] + k * dt)
 	if Input.is_physical_key_pressed(KEY_S): av["gases"] = maxf(0, av["gases"] - k * dt)
@@ -1389,6 +1575,7 @@ func _process(dt_real: float) -> void:
 		else: _leer_teclado(dt)
 		_acum += dt
 		while _acum >= DT: paso(DT); _acum -= DT
+		_paso_juego_bip(dt)
 		var b: Vector3 = vista.base + Vector3(1.5, 1.7, 2)
 		sonido.actualizar(av, Sonido.lejos_de(b.distance_to(Avion3D.ned(av["p"]))), camara == 1)
 		_t_obj += dt
@@ -1421,6 +1608,7 @@ func _camara() -> void:
 		_fov1 = obj if _fov1 < 0 else _fov1 + (obj - _fov1) * 0.08
 		cam.fov = _fov1; cam.global_position = b
 		if d > 0.1: cam.look_at(t, Vector3.UP)
+	elif avion3d.bipode and avion3d.bipode.camara(cam, av, camara): pass      # bipode: sus camaras 2 y 3
 	elif camara == 2:
 		var yaw: float = Cuat.euler(av["q"])[2]
 		cam.fov = 60; cam.global_position = t + Avion3D.ned([-cos(yaw) * 5, -sin(yaw) * 5, -1.5]); cam.look_at(t, Vector3.UP)
@@ -1477,6 +1665,7 @@ func _hud() -> void:
 	if pausado: partes.append(["PAUSA", false])
 	hud.pintar_estado(partes)
 	if dron and av["estado"] == "volando" and not av.get("posado", false) and hud.aviso.text.begins_with("Sube el gas"): hud.aviso.text = ""
+	if es_bipode(): _hud_bip(dist, yaw); return
 	var bat: float = modelo.bateria_pct(av)
 	var v_clase := "rojo" if (vel_perdida > 0 and av["V"] < 1.1 * vel_perdida) else ("ambar" if (vel_perdida > 0 and av["V"] < 1.3 * vel_perdida) else "")
 	var lect := []
@@ -1505,6 +1694,21 @@ func _hud() -> void:
 	if dron and not es_fpv(): hud_dji.pintar(h, vn, vs, dist)
 	hud_fpv.visible = es_fpv() and not sin_instrumentos
 	if es_fpv(): hud_fpv.pintar(h, vn)
+
+## Lecturas del bipode (hudBip de la web): velocidad, rumbo, cintura, brazos, pendiente y distancia; sin instrumentos de avion.
+func _hud_bip(dist: float, yaw: float) -> void:
+	var pend: Array = av.get("pendiente", [0.0, 0.0]); var pd: float = (pend[0] * cos(float(av["rumbo"])) + pend[1] * sin(float(av["rumbo"]))) * 100
+	var cint := fposmod(av["cintura"] * R2D + 180, 360) - 180
+	hud.pintar_estado([["%s · %d s" % ["REPETICIÓN" if rep_activa else ("PARADO" if av["estado"] == "en mano" else "EN MARCHA"), int(av["t"])], false]] + ([["PAUSA", false]] if pausado else []))
+	var lect := []
+	if not ((av["estado"] == "en mano" and vuelo == null) or sin_instrumentos):
+		lect = [["%.1f" % (av["vel"] * 3.6), "km/h", ""], ["%03d°" % int(round(fposmod(yaw + 360, 360))), "rumbo", ""], ["%s%d°" % ["+" if cint >= 0 else "", int(round(cint))], "cintura", ""],
+				["%d°" % int(round(av["brazos"] * R2D)), "brazos", ""], ["%s%d %%" % ["+" if pd >= 0 else "", int(round(pd))], "pendiente", "ambar" if absf(pd) > 45 else ""], ["%d" % int(round(dist)), "dist. m", ""]]
+	hud.pintar_lecturas(lect)
+	hud.hud_texto.visible = false; hud.lejos.visible = false
+	hud.disponer(camara == 1, sin_instrumentos, false, true, false)
+	hud.horiz.visible = false; hud.vario.visible = false; hud.anemo.visible = false; hud.barra.visible = false
+	hud_dji.visible = false; hud_fpv.visible = false
 
 ## Piloto automatico de las pruebas: alas niveladas, subida suave hasta 60 m sobre el terreno y luego crucero.
 func _piloto_auto() -> void:

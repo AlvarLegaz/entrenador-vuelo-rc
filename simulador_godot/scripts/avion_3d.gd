@@ -11,6 +11,7 @@ var prof: Node3D; var timon: Node3D; var alerones := []; var helice: Node3D; var
 var fpv: ModeloFPV3D = null      # dron FPV: su modelo 3D (modelo_fpv_3d.gd, con los datos de aviones/FPV.js)
 var camara_fpv := false          # con la camara FPV el dron no se dibuja (la camara va dentro del bastidor)
 var dji: ModeloDJI3D            # cuadricoptero: el modelo detallado (null en los aviones)
+var bipode: ModeloBipode3D = null   # bipode secreto: su modelo (modelo_bipode_3d.gd, con las mallas de aviones/BIPODE.js)
 static var _tex_luz: ImageTexture
 
 ## NED (n, e, d) -> Godot (x = este, y = arriba, z = sur). Los mismos ejes que Three en el navegador.
@@ -49,6 +50,9 @@ func _init(datos: Dictionary) -> void:
 	if datos.get("tipo", "") == "fpv":
 		prof = Node3D.new(); timon = Node3D.new(); helice = Node3D.new(); add_child(prof); add_child(timon); add_child(helice)
 		fpv = ModeloFPV3D.new(self, datos); return
+	if datos.get("tipo", "") == "bipode":
+		prof = Node3D.new(); timon = Node3D.new(); helice = Node3D.new(); add_child(prof); add_child(timon); add_child(helice)
+		bipode = ModeloBipode3D.new(datos); add_child(bipode); return
 	var K: Dictionary = datos["malla"]
 	var col := { "fuselaje": 0xf4f4f4, "ala": 0xffc107, "estab": 0xdddddd, "moviles": 0xd32f2f }
 	if datos.has("colores"):
@@ -124,6 +128,7 @@ func actualizar(av: Dictionary) -> void:
 	var q: Array = av["q"]
 	transform = Transform3D(Basis(ned(Cuat.rot(q, [1.0, 0.0, 0.0])), ned(Cuat.rot(q, [0.0, 1.0, 0.0])), ned(Cuat.rot(q, [0.0, 0.0, 1.0]))), ned(av["p"]))
 	if fpv: fpv.actualizar(av, get_process_delta_time(), camara_fpv); return
+	if bipode: bipode.actualizar(av, get_process_delta_time()); return
 	prof.rotation = Vector3(0, av["de"], 0)          # + = borde de fuga abajo
 	timon.rotation = Vector3(0, 0, -av["dr"])        # + = borde de fuga a la derecha
 	for p in alerones:

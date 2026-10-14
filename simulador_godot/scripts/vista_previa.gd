@@ -40,7 +40,7 @@ void sky() { COLOR = EYEDIR.y >= 0.0 ? arriba : abajo; }"
 func mostrar(datos: Dictionary, factor := 1.0) -> void:
 	if av3d: av3d.queue_free()
 	av3d = Avion3D.new(datos); base.add_child(av3d)
-	av3d.transform = Transform3D(Basis(Avion3D.ned([1.0, 0.0, 0.0]), Avion3D.ned([0.0, 1.0, 0.0]), Avion3D.ned([0.0, 0.0, 1.0])), Vector3.ZERO)
+	av3d.transform = Transform3D(Basis(Avion3D.ned([1.0, 0.0, 0.0]), Avion3D.ned([0.0, 1.0, 0.0]), Avion3D.ned([0.0, 0.0, 1.0])), Vector3(0, -1.7, 0) if av3d.bipode else Vector3.ZERO)   # el bipode tiene el origen en el suelo
 	var r: float = float(datos.get("b_m", 1.0)) * 0.9 * factor
 	cam.position = Vector3(r * 0.9, r * 0.45, r * 1.1); cam.look_at(Vector3.ZERO, Vector3.UP)
 

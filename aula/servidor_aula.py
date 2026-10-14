@@ -403,11 +403,13 @@ class Manejador(BaseHTTPRequestHandler):
                 if len(p) == 2 and m == "DELETE":
                     self.profesor(); del SALAS[p[1]]; return dict(ok=True)
                 if len(p) == 3 and p[2] == "estado" and m == "POST":
-                    e = self.cuerpo(); jid = str(e.get("id") or "")
+                    e = self.cuerpo(); jid = str(e.get("id") or ""); g = e.get("golpes")
                     if not jid: raise Error(400, "falta el id")
                     if self._expulsado(sala, jid, e): sala["jugadores"].pop(jid, None); raise Error(403, "El profesor te ha expulsado de esta sala")
                     if sala.get("clave") and jid not in sala["admitidos"]: raise Error(403, "Esta sala tiene clave: entra desde la lista de salas")
-                    e = {k: e[k] for k in ("id", "nombre", "alumno", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal") if k in e}
+                    e = {k: e[k] for k in ("id", "nombre", "alumno", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal", "bip") if k in e}
+                    if isinstance(g, dict):                      # bipode: impactos que lleva dados a cada piloto (id -> cuantos)
+                        e["golpes"] = {str(k)[:40]: int(v) for k, v in list(g.items())[:30] if isinstance(v, (int, float))}
                     e["nombre"] = str(e.get("nombre") or "Piloto")[:40]; e["_t"] = t; e["_ip"] = self.client_address[0]
                     sala["jugadores"][jid] = e; sala["ultimo"] = t
                     self._apuntar_ruta(sala, jid, e, t)

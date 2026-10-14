@@ -20,6 +20,8 @@ var gps: Instrumento; var barra: Instrumento; var vario: Instrumento; var anemo:
 var lecturas: HBoxContainer
 var esp1: Control; var esp2: Control
 var dji: Control                 # pantalla de la app dron comercial (la pone principal con el dron)
+var bip: HBoxContainer; var bip_drones: Label; var bip_canon: Label    # bipode: marcador (arriba en el centro)
+var mira: Control                                                     # bipode: mira del puesto de tiro (camara 3)
 
 static func _sombra_texto(l: Label, tam := 2) -> void:
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85)); l.add_theme_constant_override("shadow_outline_size", 6)
@@ -51,6 +53,23 @@ func _init(p_: Node) -> void:
 	toast = Tema.etiqueta("", 26, Tema.ACENTO, true); toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra_texto(toast, 2); add_child(toast)
 	lejos = PanelContainer.new(); lejos.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.45), Color(0, 0, 0, 0), 10, 0, 14, 6)); lejos.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lejos_l = Tema.etiqueta("", 17, Tema.NARANJA, true, true); lejos_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; lejos.add_child(lejos_l); add_child(lejos)
+	# ---- bipode: marcador de drones derribados y estado del cañon (#hudBip) y mira (#miraBip) ----
+	bip = HBoxContainer.new(); bip.add_theme_constant_override("separation", 10); bip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bip.anchor_left = 0.5; bip.anchor_right = 0.5; bip.offset_top = 16; bip.grow_horizontal = Control.GROW_DIRECTION_BOTH; bip.visible = false
+	for i in 2:
+		var pc := PanelContainer.new(); pc.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.45), Color(1, 0.78, 0.24, 0.4), 999, 1, 12, 5))
+		var l := Tema.etiqueta("", 14, Color("#ffe9a8"), true); _sombra_texto(l, 1); pc.add_child(l); bip.add_child(pc)
+		if i == 0: bip_drones = l
+		else: bip_canon = l
+	add_child(bip)
+	mira = Control.new(); mira.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira.anchor_left = 0.5; mira.anchor_right = 0.5; mira.anchor_top = 0.5; mira.anchor_bottom = 0.5
+	mira.offset_left = -28; mira.offset_right = 28; mira.offset_top = -28; mira.offset_bottom = 28; mira.visible = false
+	mira.draw.connect(func():
+		var c := Color("#ffd36a"); var m := Vector2(28, 28)
+		mira.draw_arc(m, 14, 0, TAU, 40, Color(c, 0.85), 2.0, true)
+		for v in [[Vector2(28, 4), Vector2(28, 16)], [Vector2(28, 40), Vector2(28, 52)], [Vector2(4, 28), Vector2(16, 28)], [Vector2(40, 28), Vector2(52, 28)]]: mira.draw_line(v[0], v[1], c, 2.0, true)
+		mira.draw_circle(m, 1.5, c))
+	add_child(mira)
 	# ---- panel de abajo: GPS, gas y palanca, lecturas, relojes y horizonte ----
 	panel = HBoxContainer.new(); panel.add_theme_constant_override("separation", 12); panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.anchor_left = 0; panel.anchor_right = 1; panel.anchor_top = 1; panel.anchor_bottom = 1

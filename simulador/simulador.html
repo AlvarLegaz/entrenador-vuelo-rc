@@ -320,6 +320,15 @@
   #accesoCaja .err { min-height: 18px; margin-top: 6px; }
   .pieAcceso { display: flex; padding: 12px 48px 18px; color: var(--suave); font-size: 13px; }
 
+  /* ---------- bipode: sin instrumentos de avion; marcador de drones y mira ---------- */
+  body.bipode #horizonte, body.bipode #anemometro, body.bipode #variometro, body.bipode #barra { display: none !important; }
+  #hudBip { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; align-items: center; z-index: 5; pointer-events: none;
+    font: 700 14px/1.2 system-ui, sans-serif; color: #ffe9a8; text-shadow: 0 1px 3px #000; letter-spacing: .06em; }
+  body.bipode.enVuelo #hudBip { display: flex; }
+  #hudBip .pill { background: rgba(0,0,0,.45); border: 1px solid rgba(255,200,61,.4); border-radius: 999px; padding: 5px 12px; }
+  #miraBip { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; display: none; z-index: 4; pointer-events: none; }
+  body.bipode.enVuelo.miraBip #miraBip { display: block; }
+
   /* ---------- capas: pausa, carga, modal ---------- */
   .velo { position: absolute; inset: 0; display: none; z-index: 30; align-items: center; justify-content: center; background: rgba(5,10,16,.55); backdrop-filter: blur(3px); }
   .velo.activa { display: flex; }
@@ -348,6 +357,8 @@
 <div id="objetivos" class="hudCapa"></div>
 <div id="salaInfo" class="hudCapa"></div>
 <div id="ordenesHud" class="hudCapa"></div>
+<div id="hudBip" class="hudCapa"><span class="pill" id="bipDrones">DRONES DERRIBADOS 0</span><span class="pill" id="bipCanon">CAÑÓN LISTO</span></div>
+<svg id="miraBip" class="hudCapa" viewBox="0 0 56 56" fill="none" stroke="#ffd36a" stroke-width="2"><circle cx="28" cy="28" r="14" stroke-opacity=".85"/><path d="M28 4v12M28 40v12M4 28h12M40 28h12" /><circle cx="28" cy="28" r="1.5" fill="#ffd36a"/></svg>
 <div id="briefing" class="hudCapa" title="Pulsa B, Esc o haz clic para cerrarlo"><img alt=""><div>Briefing de la orden de trabajo · <b>B</b> o clic para cerrar</div></div>
 <div id="repBarra" class="hudCapa"><div><b>REPETICIÓN</b> · <span id="repTiempo">0 s</span> · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir</div><div class="pista"><i id="repProgreso"></i></div></div>
 <div id="ayuda">
@@ -357,6 +368,13 @@
   <b>M</b> modo Cine / Normal / Sport · <b>Q</b> / <b>E</b> gimbal · <b>F</b> foto · <b>V</b> vídeo · <b>H</b> volver a casa · <b>L</b> armar · <b>R</b> empezar de nuevo · <b>B</b> briefing (trabajos)<br>
   <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / del dron · <b>I</b> pantalla de la app · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
   <b>Mando</b> (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · combinación de palancas (CSC: las dos abajo y hacia dentro o hacia fuera, medio segundo): arrancar motores · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa<br>
+  </div>
+  <div id="ayudaTeclasBip" style="display:none">
+  <b>W</b> / <b>S</b> adelante / atrás · <b>A</b> / <b>D</b> girar · <b>← →</b> girar la cintura (360°) · <b>↑ ↓</b> bajar / subir los brazos<br>
+  <b>Espacio</b> disparar (mantener) · <b>F</b> cerrar el puño · <b>L</b> arrancar / aparcar · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / puesto de tiro (con la mira) · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b>: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa<br>
+  <span style="color:#8be08f">Derriba los drones diana que vuelan alrededor (caen al primer impacto); en multijugador, también los de tus compañeros.</span><br>
   </div>
   <div id="ayudaTeclasFPV" style="display:none">
   <b>↑ ↓</b> cabeceo (↑ adelante) · <b>← →</b> alabeo · <b>W</b> / <b>S</b> gas (no vuelve al centro) · <b>Espacio</b> gas a cero · <b>A</b> / <b>D</b> guiñada<br>
@@ -725,8 +743,9 @@
 <script src="js/entorno.js?v=23"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=1"></script>
-<script src="js/visor.js?v=31"></script>
+<script src="js/visor.js?v=32"></script>
 <script src="js/visor_real.js?v=27"></script>
+<script src="js/bipode.js?v=1"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script src="escenarios.js?v=3"></script>
 <script src="singulares.js?v=2"></script>
@@ -1244,6 +1263,10 @@ document.getElementById("btnLanzVolver").onclick = () => irVolar();
 document.getElementById("btnLanzAqui").onclick = () => empezar();
 /** Coloca un estado recien creado en el punto de lanzamiento del mundo real (en la isla, en el origen). */
 function colocarEnBase(a, m = modelo) {
+  if (m && m.esTerrestre) {            // el bipode, de pie en el suelo, delante del piloto (en el campo, 10 m al norte)
+    if (!entorno.mundo) { a.p = [10, 0, 0]; return; }
+    const c = casa(); a.p = [c.N, c.E, -entorno.altura(c.N, c.E)]; return;
+  }
   if (!entorno.mundo) return;
   const c = casa(); a.p = [c.N, c.E, -(entorno.altura(c.N, c.E) + (m && m.esCuadricoptero ? 0.02 : 1.6))];   // en la mano (avion) o en el suelo (dron)
 }
@@ -1527,8 +1550,11 @@ async function empezar() {
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
   document.getElementById("ayudaTeclasDron").style.display = modelo.esCuadricoptero && !modelo.esFPV ? "" : "none";
   document.getElementById("ayudaTeclasFPV").style.display = modelo.esFPV ? "" : "none";
-  document.getElementById("ayudaPar").style.display = modelo.esFPV ? "none" : "";
-  document.getElementById("ayudaTeclasAvion").style.display = modelo.esCuadricoptero ? "none" : "";
+  document.getElementById("ayudaTeclasBip").style.display = modelo.esBipode ? "" : "none";
+  document.getElementById("ayudaPar").style.display = modelo.esFPV || modelo.esBipode ? "none" : "";
+  document.getElementById("ayudaTeclasAvion").style.display = modelo.esCuadricoptero || modelo.esBipode ? "none" : "";
+  document.body.classList.toggle("bipode", !!modelo.esBipode);
+  if (modelo.esBipode) visor.camara = 2;                   // el bipode se maneja desde detras
   // el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
   if (!!modelo.esCuadricoptero !== !!visor.eraDron) visor.camara = modelo.esCuadricoptero ? 3 : 1;
   visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero && !modelo.esFPV);
@@ -1548,7 +1574,7 @@ async function empezar() {
   reiniciar(); mostrar(null);
 }
 function reiniciar() {
-  MANDO.gasFpv = false;
+  MANDO.gasFpv = false; MULTI.caida = null;
   av = modelo.estadoInicial(); colocarEnBase(av);
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
@@ -1559,7 +1585,9 @@ function reiniciar() {
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
-  if (ESCENARIOS[sesion.escenario].enVuelo) { empezarEnVuelo(); return; }
+  iniciarJuegoBip();
+  if (ESCENARIOS[sesion.escenario].enVuelo && !modelo.esTerrestre) { empezarEnVuelo(); return; }
+  if (modelo.esBipode) { aviso("Pulsa L (o el botón A) para arrancar el bípode"); return; }
   aviso(modelo.esFPV ? "Gas abajo del todo y L (o botón A) para armar" : modelo.esCuadricoptero ? "Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" : "Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
@@ -1570,11 +1598,16 @@ function orientarLanzamiento() {
   av.q = Cuat.desdeEuler(roll, pitch, mundo ? (sesion.lanz ? sesion.lanz.rumbo : mundo.rumbo_despegue || 0) * D2R : Math.PI);
 }
 function lanzar() {
+  if (modelo.esTerrestre && av.estado === "volando") {        // bipode en marcha: L lo aparca (si esta parado) y acaba
+    if (Math.abs(av.vel) > 0.2) { toast("Para antes de aparcar"); return; }
+    terminarVuelo("aparcado", [0, 0, 0]); return;
+  }
   if (av.estado !== "en mano") return;
-  modelo.lanzar(av); orientarLanzamiento(); aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : "");
+  modelo.lanzar(av); orientarLanzamiento(); if (modelo.esTerrestre) av.rumbo = ((Cuat.euler(av.q)[2] % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : modelo.esBipode ? "" : "");
   if (modelo.esFPV) toast("ARMADO");
   if (modelo.esCuadricoptero) setTimeout(() => { if (av.estado === "volando" && av.posado) aviso(""); }, 3000);
-  if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+  if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero && !modelo.esTerrestre) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
     const [r, p, y] = Cuat.euler(av.q);
     av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
@@ -1590,7 +1623,9 @@ function paso(dt) {
   viento = entorno.vientoA(viento, av.agl);
   av.pg = entorno.rafagaAlabeo(modelo.b_m, av.agl);
   if (av.estado !== "volando") return;
+  if (MULTI.caida) { caidaDerribado(dt); return; }          // multijugador: derribado por un bipode
   const pAnt = av.p.slice();
+  if (modelo.esTerrestre) { pasoTerrestre(dt, viento, pAnt); return; }
   const vn = modelo.paso(av, viento, dt);
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
   // un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app (camara 3)
@@ -1619,6 +1654,46 @@ function paso(dt) {
   const suelo = entorno.contactoSuelo(av, vn);
   if (suelo) terminarVuelo(suelo, vn);
 }
+/** Un paso del bipode: la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso del modelo, la altura del
+ *  terreno donde queda y los choques: arboles, pilones y edificios lo paran (no lo rompen); en el mar se hunde. */
+function pasoTerrestre(dt, viento, pAnt) {
+  const H = entorno.altura ? (N, E) => entorno.altura(N, E) : () => 0, p = av.p, d = 1.5;
+  av.pendiente = [(H(p[0] + d, p[1]) - H(p[0] - d, p[1])) / (2 * d), (H(p[0], p[1] + d) - H(p[0], p[1] - d)) / (2 * d)];
+  const vn = modelo.paso(av, viento, dt);
+  if (vuelo) vuelo.tVuelo += dt;
+  if (entorno.chocaArbol(av.p, 1.1) || entorno.chocaPilon(av.p, 1.1)) { av.p = pAnt.slice(); av.vel = 0; if (!pasoTerrestre.aviso) { pasoTerrestre.aviso = true; toast("¡Choque! Da la vuelta"); setTimeout(() => pasoTerrestre.aviso = false, 1500); } }
+  av.p[2] = -H(av.p[0], av.p[1]);
+  if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
+  if (entorno.enMar && entorno.enMar(av.p[0], av.p[1])) { terminarVuelo("roto (se ha hundido en el mar)", vn); return; }
+  if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
+}
+/** El juego del bipode: drones diana y disparos (js/bipode.js, JuegoBipode), con sus efectos en el visor. */
+let juegoBip = null;
+function iniciarJuegoBip() {
+  if (visor.efectosBip) { visor.efectosBip.quitar(); visor.efectosBip = null; }
+  juegoBip = null;
+  if (!modelo.esBipode) return;
+  juegoBip = new JuegoBipode(Modelos.datos(sesion.avion), (Date.now() % 100000) + 1);
+  juegoBip.iniciar([av.p[0], av.p[1]], entorno.altura ? (N, E) => entorno.altura(N, E) : null);
+  visor.efectosBip = ModeloBipode.efectos3D(visor.escena);
+  juegoBip.pisadas = av.pisadas; juegoBip.disparosOido = av.disparos; juegoBip.derribadosOido = 0;
+}
+function pasoJuegoBip(dt) {
+  pasoBalasOtros(dt);
+  const J = juegoBip; if (!J) return;
+  J.blancos = blancosSala();
+  if (av.estado === "volando") J.paso(dt, av, modelo, entorno.altura ? (N, E) => entorno.altura(N, E) : null);
+  // sonido: pisadas, disparos, explosiones
+  if (av.pisadas !== J.pisadas) { J.pisadas = av.pisadas; Sonido.evento("pisada"); }
+  if (av.disparos !== J.disparosOido) { J.disparosOido = av.disparos; Sonido.evento("disparo"); }
+  for (const e of J.eventos) if (e.tipo === "explosion") Sonido.evento("explosion");
+  if (J.derribados !== J.derribadosOido) { J.derribadosOido = J.derribados; toast(`¡Dron derribado! (${J.derribados})`); }
+  if (visor.efectosBip) visor.efectosBip.pintar(J, dt, visor.cam); else J.eventos.length = 0;
+  document.getElementById("bipDrones").textContent = "DRONES DERRIBADOS " + J.derribados;
+  const B = modelo.bp, w = av.wCanones / (B.cadencia_rpm / 60 / 6 * 2 * Math.PI);
+  document.getElementById("bipCanon").textContent = av.cmd.fuego ? (w > 0.8 ? "FUEGO" : "CAÑÓN ACELERANDO " + Math.round(w * 100) + " %") : "CAÑÓN LISTO";
+  document.body.classList.toggle("miraBip", visor.camara === 3);
+}
 /** Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso. */
 function zona2(pAnt) {
   const pu = entorno.cruzaPuerta(pAnt, av.p);
@@ -1640,7 +1715,7 @@ function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;
   // lanzamiento fallido: acaba en el suelo antes de LANZ.fallo_s sin haber subido de LANZ.fallo_h. No cuenta como
   // aterrizaje; si se ha roto, si como accidente
-  if (vuelo && !modelo.esCuadricoptero && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
+  if (vuelo && !modelo.esCuadricoptero && !modelo.esTerrestre && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
     vuelo.lanzamiento = causaLanzamientoFallido(vuelo.gasLanz);
     final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
   }
@@ -1698,6 +1773,7 @@ async function mostrarResultado(v) {
   const ver = document.getElementById("resVeredicto");
   ver.textContent = libre ? "Vuelo libre" : resultado; ver.className = "grande " + (libre ? "libre" : apto ? "apto" : "noapto");
   const fin = v.lanzamiento ? `Lanzamiento fallido${v.final.startsWith("roto") ? " (se ha roto)" : ""}: ${v.lanzamiento.texto}`
+    : v.final === "aparcado" ? `Bípode aparcado · ${juegoBip ? juegoBip.derribados : 0} drones derribados`
     : v.final === "aterrizado" ? "Aterrizaje correcto" : v.final.startsWith("roto") ? "Accidente: " + v.final.slice(6, -1)
     : v.final === "fuera de límites" ? `Fuera de límites: a más de ${entorno.limites.distancia_m} m el avión ya no se ve` : "Vuelo terminado sin aterrizar";
   document.getElementById("resFinal").textContent = `${fin} · tiempo de vuelo ${(v.tVuelo / 60).toFixed(1)} min` + (E.mundo ? "" : " · " + textoVueltas().replace(/<[^>]+>/g, ""));
@@ -1821,15 +1897,33 @@ document.getElementById("inicioPerfil").onclick = irPerfil;
 
 // ---- hangar ----
 function elegirAvion(id) { sesion.avion = id; try { localStorage.setItem("sim_avion", id); } catch (e) {} }
+// ---- vehiculo secreto: en el hangar, ↑ ↑ ↓ ↓ ← → ← → B A lo muestra (y la misma combinacion lo vuelve a ocultar) ----
+const SECRETO = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "KeyB", "KeyA"];
+let secretoPos = 0;
+function secretoVisible() { try { return localStorage.getItem("evrc_secreto") === "1"; } catch (e) { return false; } }
+/** Los vehiculos del hangar: los ocultos (datos.oculto) solo con el secreto desvelado. */
+function idsHangar() { return Modelos.ids().filter(id => !Modelos.datos(id).oculto || secretoVisible()); }
+window.addEventListener("keydown", e => {
+  if (pantallaActual !== "pHangar") { secretoPos = 0; return; }
+  secretoPos = e.code === SECRETO[secretoPos] ? secretoPos + 1 : e.code === SECRETO[0] ? 1 : 0;
+  if (secretoPos < SECRETO.length) return;
+  secretoPos = 0;
+  const ver = !secretoVisible();
+  try { localStorage.setItem("evrc_secreto", ver ? "1" : "0"); } catch (er) {}
+  const oculto = Modelos.ids().find(id => Modelos.datos(id).oculto);
+  if (ver && oculto) elegirAvion(oculto);
+  else if (!ver && Modelos.datos(sesion.avion).oculto) elegirAvion(Modelos.ids().includes("DJI_MINI") ? "DJI_MINI" : idsHangar()[0]);
+  irHangar(); toast(ver ? "Vehículo secreto desbloqueado" : "Vehículo secreto oculto");
+});
 function irHangar() {
   document.getElementById("saludo").textContent = sesion.alumno ? `Piloto: ${sesion.alumno.nombre}` : "Elige el avión y, si quieres, ajústalo como el tuyo.";
   document.getElementById("btnVerProgreso").style.display = sesion.alumno ? "" : "none";
   const sel = document.getElementById("selAviones"); sel.innerHTML = "";
-  for (const id of Modelos.ids()) {
+  for (const id of idsHangar()) {
     const A = Modelos.datos(id), b = document.createElement("button"); b.className = "avCarta" + (id === sesion.avion ? " sel" : "");
     const masa = (A.caracteristicas || []).find(r => r[0].toLowerCase().startsWith("masa"));
     const mandosTxt = ((A.caracteristicas || []).find(c => c[0] === "Mandos") || [])[1];   // la linea "Mandos" de la ficha, si la trae
-    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos de dron comercial" : A.tipo === "fpv" ? "dron FPV, modos de Betaflight" : esc(mandosTxt || ((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad")}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
+    b.innerHTML = `<b>${esc(A.nombre)}</b><span>${A.tipo === "cuadricoptero" ? "cuadricóptero, mandos de dron comercial" : A.tipo === "fpv" ? "dron FPV, modos de Betaflight" : A.tipo === "bipode" ? "vehículo terrestre de dos patas" : esc(mandosTxt || ((A.mandos && A.mandos.izq_der) || "timón") + " y profundidad")}${masa ? " · " + esc(String(masa[1]).split(" (")[0]) : ""}</span>`;
     b.onclick = () => { elegirAvion(id); irHangar(); };
     sel.appendChild(b);
   }
@@ -1871,7 +1965,7 @@ function montarCondiciones(slotId, E) {
 let misionSel = null;
 
 /** Tipo de vehiculo de un avion de la carpeta aviones/: "avion", "dron" (el dron comercial) o "fpv" (escenarios.js: "vehiculos"). */
-function vehiculoDe(id) { const t = (Modelos.datos(id) || {}).tipo; return t === "fpv" ? "fpv" : t === "cuadricoptero" ? "dron" : "avion"; }
+function vehiculoDe(id) { const t = (Modelos.datos(id) || {}).tipo; return t === "fpv" ? "fpv" : t === "cuadricoptero" ? "dron" : t === "bipode" ? "bipode" : "avion"; }
 /** Los entrenamientos (con objetivos) de un vehiculo, en el orden de escenarios.js. */
 function misionesDe(veh) { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].objetivos.length && !ESCENARIOS[id].operacion && (ESCENARIOS[id].vehiculos || ["avion"]).includes(veh)); }
 function irEntrenamientos() {
@@ -1879,6 +1973,12 @@ function irEntrenamientos() {
   document.getElementById("escSub").textContent = Modelos.datos(sesion.avion).nombre + " · " + lista.length + " entrenamientos" +
     (g ? ` · ${g.escenarios_superados}/${g.escenarios_total ?? Object.keys(g.escenarios).length} pruebas del certificado superadas` : " · sin registro");
   const el = document.getElementById("listaEscenarios"); el.innerHTML = "";
+  if (!lista.length) {               // el bipode no tiene entrenamientos: es para el vuelo libre
+    el.innerHTML = '<p class="sub">Este vehículo no tiene entrenamientos: llévalo al vuelo libre.</p>';
+    document.getElementById("fichaMision").innerHTML = ""; document.getElementById("btnMisionVolar").disabled = true;
+    mostrar("pEntrenamientos"); return;
+  }
+  document.getElementById("btnMisionVolar").disabled = false;
   if (!lista.includes(misionSel)) misionSel = lista[0];
   for (const id of lista) {
     const E = ESCENARIOS[id];
@@ -1945,7 +2045,7 @@ async function pedirSala(s) {
 function entrarSala(s) {
   const E = ESCENARIOS[s.escenario]; if (!E) { toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return; }
   MULTI.sala = s; MULTI.otros.clear(); ORDENES.reiniciar();
-  const veh = E.vehiculos || ["avion", "dron", "fpv"];
+  const veh = (E.vehiculos || ["avion", "dron", "fpv"]).concat(E.objetivos.length || E.operacion ? [] : ["bipode"]);   // vuelo libre: tambien el bipode
   if (!veh.includes(vehiculoDe(sesion.avion))) elegirAvion(Modelos.ids().find(a => veh.includes(vehiculoDe(a))) || sesion.avion);
   sesion.escenario = s.escenario; if (s.lanz) sesion.lanz = s.lanz; if (s.viento && !E.viento) sesion.viento = s.viento;
   if (!s.lanz && E.operacion) sesion.lanz = { mundo: E.mundo, N: E.operacion.salida.n, E: E.operacion.salida.e, rumbo: E.operacion.salida.rumbo };   // trabajos: su despegue
@@ -1954,7 +2054,7 @@ function entrarSala(s) {
 }
 function salirSala() {
   if (!MULTI.sala) return;
-  const s = MULTI.sala; MULTI.sala = null; clearInterval(MULTI.timer); MULTI.otros.clear();
+  const s = MULTI.sala; MULTI.sala = null; clearInterval(MULTI.timer); MULTI.otros.clear(); MULTI.golpesVistos = {}; MULTI.vida = undefined;
   if (visor && visor.ponerFantasmas) visor.ponerFantasmas([]);
   document.getElementById("salaInfo").style.display = "none";
   ORDENES.reiniciar(); pintarOrdenes(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones([]);
@@ -1970,15 +2070,74 @@ async function enviarSala() {
   const e = { id: multiId(), nombre: nombrePiloto(), alumno: sesion.alumno ? sesion.alumno.id : null, avion: sesion.avion, p: av.p.map(r6), q: av.q.map(x => Math.round(x * 1e5) / 1e5), vn: Cuat.rot(av.q, av.v).map(r6),
               estado: av.estado, gas: r6(av.gases || 0), agl: r6(av.agl || 0), objs: ev && ev.obj ? [est.filter(x => x === "ok").length, est.length, est.filter(x => x === "mal").length] : null, ahora,
               tvuelo: vuelo ? r6(vuelo.tVuelo) : 0, final: vuelo ? vuelo.final : null, gimbal: av.gimbal };
+  if (modelo.esBipode) { e.bip = [av.cintura, av.brazos, av.fase, av.amp, av.angCanones, av.disparos, av.puno].map(r6); if (juegoBip) e.golpes = juegoBip.golpes; }
   try {
     const r = await api("POST", `salas/${MULTI.sala.codigo}/estado`, e), t = performance.now(), vivos = new Set();
-    for (const o of r.otros) { vivos.add(o.id); MULTI.otros.set(o.id, Object.assign(o, { recibido: t })); }
+    for (const o of r.otros) { vivos.add(o.id); MULTI.otros.set(o.id, Object.assign(o, { recibido: t })); impactosDe(o); }
     for (const k of [...MULTI.otros.keys()]) if (!vivos.has(k)) MULTI.otros.delete(k);
     aplicarOrdenes(r.ordenes);
   } catch (err) {
     if (/no existe/.test(err.message)) { toast("La sala se ha cerrado"); salirSala(); }
     else if (err.status === 403) { salirSala(); irInicio(); confirmar("Fuera de la sala", `<p>${esc(err.message)}</p>`, "Vale"); }   // expulsado por el profesor
   } finally { MULTI.enCurso = false; }
+}
+// ---- bipode en multijugador: sus disparos derriban los aviones y drones de los compañeros. Cada bipode manda en su
+// estado los impactos que lleva dados a cada piloto (golpes: id -> cuantos); quien los recibe resta vidas (una: cae al
+// primer impacto) y, sin vidas, cae derribado. Los bipodes de los demas se ven andando y disparando (sus trazadoras, solo de adorno).
+const BIP_VIDAS = 1;                  // cae al primer impacto
+function impactosDe(o) {
+  if (!o.golpes || !av || !modelo || modelo.esTerrestre) return;
+  const n = +o.golpes[multiId()] || 0, vistos = MULTI.golpesVistos = MULTI.golpesVistos || {};
+  if (vistos[o.id] === undefined) { vistos[o.id] = n; return; }                 // los de antes de entrar no cuentan
+  if (n <= vistos[o.id]) return;
+  const nuevos = n - vistos[o.id]; vistos[o.id] = n;
+  if (av.estado !== "volando" || av.posado || MULTI.caida) return;
+  MULTI.vida = (MULTI.vida === undefined ? BIP_VIDAS : MULTI.vida) - nuevos;
+  Sonido.evento("roto");
+  if (MULTI.vida > 0) { toast(`¡Impacto de ${o.nombre}! Te quedan ${MULTI.vida}`); return; }
+  MULTI.vida = BIP_VIDAS; toast(`¡Derribado por ${o.nombre}!`);
+  MULTI.caida = { v: Cuat.rot(av.q, av.v), w: 3 + 3 * Math.random(), nombre: o.nombre };     // cae dando vueltas hasta el suelo
+}
+/** Derribado: los motores se paran y cae con su velocidad, dando vueltas, hasta el suelo; ahi acaba el vuelo. */
+function caidaDerribado(dt) {
+  const c = MULTI.caida;
+  c.v[2] += 9.81 * dt; c.v[0] *= 1 - 0.3 * dt; c.v[1] *= 1 - 0.3 * dt;
+  av.p = [av.p[0] + c.v[0] * dt, av.p[1] + c.v[1] * dt, av.p[2] + c.v[2] * dt];
+  const e = Cuat.euler(av.q); av.q = Cuat.desdeEuler(e[0] + c.w * dt, e[1] + 0.4 * c.w * dt, e[2] + 0.7 * c.w * dt);
+  av.v = Cuat.rot(Cuat.inv(av.q), c.v); av.gases = 0; av.rpm = 0; av.motorRoto = true;
+  const suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
+  if (-av.p[2] <= suelo) { av.p[2] = -suelo; MULTI.caida = null; terminarVuelo(`roto (derribado por ${c.nombre})`, c.v); }
+}
+/** Los blancos del bipode (multijugador): los aviones y drones de los demas que estan en el aire. */
+function blancosSala() {
+  const lista = [];
+  if (!MULTI.sala) return lista;
+  for (const o of MULTI.otros.values()) {
+    const D = Modelos.datos(o.avion); if (!D || D.tipo === "bipode" || o.estado !== "volando" || (o.agl || 0) < 0.3) continue;
+    const g = visor.fantasmas && visor.fantasmas.get(o.id);
+    lista.push({ id: o.id, p: g ? g.p.slice() : o.p.slice(), r: Math.max(0.8, (D.b_m || 1) / 2 + 0.25) });
+  }
+  return lista;
+}
+/** Trazadoras de los bipodes de los demas: por cada disparo nuevo que anuncian, una bala de adorno desde su cañon. */
+let balasOtros = null;
+function pasoBalasOtros(dt) {
+  if (!MULTI.sala) { if (balasOtros) { balasOtros.ef.quitar(); balasOtros = null; } return; }
+  for (const o of MULTI.otros.values()) {
+    if (!o.bip || !Modelos.datos(o.avion)) continue;
+    const D = Modelos.datos(o.avion);
+    if (!balasOtros) balasOtros = { J: new JuegoBipode(D, 7), ef: ModeloBipode.efectos3D(visor.escena), vistos: {} };
+    const n = o.bip[5], v = balasOtros.vistos[o.id];
+    balasOtros.vistos[o.id] = n;
+    if (v === undefined || n <= v) continue;
+    const piv = {}; for (const pz of D.modelo3d.piezas) piv[pz.nombre] = pz.pivote;
+    const g = visor.fantasmas && visor.fantasmas.get(o.id), est = { p: g ? g.p : o.p, q: o.q, cintura: o.bip[0], brazos: o.bip[1] };
+    for (let k = 0; k < Math.min(4, n - v); k++) balasOtros.J.disparo(ModeloBipode.prototype.apuntado.call({ piv, bp: D.bipode }, est));
+  }
+  if (!balasOtros) return;
+  balasOtros.J.paso(dt, { p: [0, 0, 0], disparos: balasOtros.J.disparos }, null, entorno.altura ? (N, E) => entorno.altura(N, E) : null);
+  balasOtros.J.eventos = balasOtros.J.eventos.filter(e => e.tipo === "suelo");
+  balasOtros.ef.pintar(balasOtros.J, dt, visor.cam);
 }
 /** Panel de la sala en vuelo: quien esta y como va. */
 function pintarSalaInfo() {
@@ -2054,6 +2213,11 @@ function pintarOrdenes() {
 }
 /** Los demas en el GPS: triangulos azules con su rumbo (y las zonas de exclusion del profesor). */
 function pintarOtrosGPS(g, X, Y, W) {
+  if (juegoBip) for (const dr of juegoBip.drones) {            // bipode: los drones diana (rojos; gris, los derribados)
+    const x = X(dr.p[1]), y = Y(dr.p[0]); if (x < 0 || y < 0 || x > W || y > W) continue;
+    g.fillStyle = dr.estado === "vuela" ? "#ff5252" : "#777"; g.strokeStyle = "#000"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, y - 5); g.lineTo(x + 5, y); g.lineTo(x, y + 5); g.lineTo(x - 5, y); g.closePath(); g.fill(); g.stroke();
+  }
   if (!MULTI.sala) return;
   for (const z of ORDENES.zonas) {
     const k = Math.abs(X(z.E + 100) - X(z.E)) / 100;
@@ -2263,9 +2427,21 @@ const Sonido = {
     const perdida = av.estado === "volando" && av.perdida > 0.5 && -av.p[2] > 2;
     n.gP.gain.setTargetAtTime(perdida && Math.floor(t * 4) % 2 === 0 ? 0.1 : 0, t, 0.015);
   },
-  /** "toque" (aterrizaje) o "roto" (accidente). */
+  /** "toque" (aterrizaje), "roto" (accidente) y, del bipode, "pisada", "disparo" y "explosion". */
   evento(tipo) {
     if (!this._n) return;
+    if (tipo === "pisada" || tipo === "disparo" || tipo === "explosion") {
+      const C = this.ctx, n = this._n, t = C.currentTime, s = C.createBufferSource(); s.buffer = n.buf;
+      const [fq, ga, dur, tipoF] = { pisada: [140, 0.9, 0.35, "lowpass"], disparo: [1400, 0.22, 0.07, "bandpass"], explosion: [260, 0.8, 1.2, "lowpass"] }[tipo];
+      const f = C.createBiquadFilter(); f.type = tipoF; f.frequency.value = fq; f.Q.value = tipoF === "bandpass" ? 0.8 : 0.7;
+      const g = C.createGain(); g.gain.setValueAtTime(ga, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      s.connect(f); f.connect(g); g.connect(n.master); s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
+      if (tipo === "pisada") {                        // golpe sordo del pie: un seno grave que cae
+        const o = C.createOscillator(), go = C.createGain(); o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.25);
+        go.gain.setValueAtTime(0.7, t); go.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(go); go.connect(n.master); o.start(t); o.stop(t + 0.32);
+      }
+      return;
+    }
     const C = this.ctx, n = this._n, t = C.currentTime, s = C.createBufferSource(); s.buffer = n.buf;
     const f = C.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = tipo === "roto" ? 350 : 900;
     const g = C.createGain(); g.gain.setValueAtTime(tipo === "roto" ? 0.9 : 0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + (tipo === "roto" ? 0.7 : 0.18));
@@ -2295,7 +2471,7 @@ function ponerPausa(p) {
     Sonido.silenciar(true);
   } else { Sonido.silenciar(false); tAnterior = performance.now(); for (const k in teclas) teclas[k] = false; document.getElementById("ayuda").style.display = "none"; }
 }
-const nombreCamara = n => ["", "piloto", "persecución", modelo && modelo.esFPV ? "FPV (gafas)" : modelo && modelo.esCuadricoptero ? "del dron" : "a bordo"][n];
+const nombreCamara = n => ["", "piloto", "persecución", modelo && modelo.esFPV ? "FPV (gafas)" : modelo && modelo.esCuadricoptero ? "del dron" : modelo && modelo.esBipode ? "puesto de tiro" : "a bordo"][n];
 const textoInstr = () => (modelo.esFPV ? "OSD: " : modelo.esCuadricoptero ? "Pantalla de la app: " : "Instrumentos: ") + (sinInstrumentos ? "no" : "sí");
 document.getElementById("btnPausaSeguir").onclick = () => ponerPausa(false);
 document.getElementById("btnPausaReiniciar").onclick = () => { ponerPausa(false); reiniciar(); };
@@ -2411,6 +2587,14 @@ window.addEventListener("keydown", e => {
   if (pausado) return;
   teclas[e.code] = true;
   const libre = !ESCENARIOS[sesion.escenario].objetivos.length, vto = entorno.viento, dron = !!modelo.esCuadricoptero;
+  if (modelo.esBipode) {            // bipode: L arranca / aparca; espacio dispara y F cierra el puño (mientras se tienen pulsados)
+    if (e.code === "KeyL") lanzar();
+    if (e.code === "KeyR") reiniciar();
+    if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
+    if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
+    if (e.code.startsWith("Arrow") || e.code === "Space") e.preventDefault();
+    return;
+  }
   if (modelo.esFPV) {               // dron FPV: L arma y desarma, M cambia de modo
     if (e.code === "KeyM") fpvModo();
     if (e.code === "KeyL") fpvArmar();
@@ -2573,12 +2757,20 @@ function leerMando(dt) {
   MANDO.id = p.id;
   const ax = p.axes, E = k => ejeMando(ax, k);                     // ejes segun el orden configurado (consola o emisora)
   const rx = zonaMuerta(E("rx"), MANDO.zona), ry = zonaMuerta(E("ry"), MANDO.zona), ly = zonaMuerta(E("ly"), MANDO.zona), lx = zonaMuerta(E("lx"), MANDO.zona);
-  const cuad = modelo && modelo.esCuadricoptero && !modelo.esFPV, fpv = modelo && modelo.esFPV;   // el FPV lleva el gas como un avion
+  const cuad = modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre), fpv = modelo && modelo.esFPV;   // el FPV lleva el gas como un avion; el bipode, la izquierda como el dron
+  const bip = modelo && modelo.esBipode;
+  MANDO.disparo = false; MANDO.puno = false;
   // botones: flanco de subida
   const b = i => !!(p.buttons[i] && p.buttons[i].pressed), antes = MANDO.botones;
   const pulsado = i => b(i) && !antes[i];
   if (pantallaActual === null && pulsado(9)) ponerPausa(!pausado);
-  if (pantallaActual === null && !pausado && fpv) {      // dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
+  if (pantallaActual === null && !pausado && bip) {      // bipode: A arrancar / aparcar, RB camara, Back reiniciar; gatillos: disparar (RT) y puño (LT)
+    if (pulsado(0)) lanzar();
+    if (pulsado(5)) visor.camara = visor.camara % 3 + 1;
+    if (pulsado(8)) reiniciar();
+    const tr = i => p.buttons[i] ? (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0)) : 0;
+    MANDO.disparo = tr(7) > 0.4; MANDO.puno = tr(6) > 0.4;
+  } else if (pantallaActual === null && !pausado && fpv) {      // dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
     if (pulsado(0)) fpvArmar();
     if (pulsado(4)) fpvModo();
     if (pulsado(5)) visor.camara = visor.camara % 3 + 1;
@@ -2628,11 +2820,12 @@ function leerMando(dt) {
 }
 
 function leerTeclado(dt) {
-  const cuad = modelo && modelo.esCuadricoptero && !modelo.esFPV;     // en el FPV W/S son el gas, como en los aviones
+  const cuad = modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre);     // en el FPV W/S son el gas, como en los aviones; el bipode anda con W/S y A/D
+  if (modelo && modelo.esBipode) { mando.disparo = !!teclas["Space"] || !!MANDO.disparo; mando.puno = !!teclas["KeyF"] || !!MANDO.puno; }
   const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || ((cuad || (modelo && modelo.esFPV)) && (teclas["KeyW"] || teclas["KeyS"]));   // en el FPV, W/S tambien devuelven el gas al teclado
   if (teclaPalanca) MANDO.usado = false;                       // si se tocan las flechas, vuelve a mandar el teclado
   if (modelo && modelo.esFPV && (teclas["KeyW"] || teclas["KeyS"])) MANDO.gasFpv = false;   // W/S: el gas vuelve al teclado
-  const gimbalTeclas = cuad ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
+  const gimbalTeclas = cuad && !modelo.esTerrestre ? (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) : 0;      // Q/E: rueda del gimbal
   if (leerMando(dt) && !teclaPalanca) { mando.gimbal = gimbalTeclas || MANDO.gimbal; leerGasTeclado(dt); return; }
   mando.gimbal = gimbalTeclas || MANDO.gimbal;
   mando.pitchObj = (teclas["ArrowDown"] ? 1 : 0) - (teclas["ArrowUp"] ? 1 : 0);    // +1 = tirar
@@ -2646,7 +2839,7 @@ function leerTeclado(dt) {
   leerGasTeclado(dt);
 }
 function leerGasTeclado(dt) {
-  if (av.motorRoto || (modelo && modelo.esCuadricoptero && !modelo.esFPV)) return;      // en el dron comercial W/S son velocidad vertical (leerTeclado)
+  if (av.motorRoto || (modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre))) return;      // en el dron comercial W/S son velocidad vertical (leerTeclado); en el bipode, andar
   const k = modelo && modelo.esFPV ? 0.4 : 0.8;                      // FPV: mas despacio (se sostiene con un 30 % de gas)
   if (teclas["KeyW"]) av.gases = Math.min(1, av.gases + k * dt);
   if (teclas["KeyS"]) av.gases = Math.max(0, av.gases - k * dt);
@@ -3004,6 +3197,7 @@ function hud() {
     (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
     (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : "");
   if (modelo.esCuadricoptero && av.estado === "volando" && !av.posado && document.getElementById("aviso").textContent.startsWith("Sube el gas")) aviso("");
+  if (modelo.esBipode) { hudBip(dist, yaw); pintarGPS(yaw); return; }
   const bat = modelo.bateriaPct(av), vClase = AN.vs > 0 && av.V < 1.1 * AN.vs ? "rojo" : AN.vs > 0 && av.V < 1.3 * AN.vs ? "ambar" : "";
   document.getElementById("lecturas").innerHTML = ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
     `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
@@ -3034,6 +3228,17 @@ function hud() {
   document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
   document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
 }
+/** Lecturas del bipode (abajo): velocidad, rumbo, cintura, brazos, pendiente y distancia. */
+function hudBip(dist, yaw) {
+  const pend = av.pendiente ? (av.pendiente[0] * Math.cos(av.rumbo) + av.pendiente[1] * Math.sin(av.rumbo)) * 100 : 0;
+  const cint = ((av.cintura * R2D + 180) % 360 + 360) % 360 - 180;
+  document.getElementById("lecturas").innerHTML = (av.estado === "en mano" && !vuelo) || sinInstrumentos ? "" :
+    `<div class="lect"><b>${(av.vel * 3.6).toFixed(1)}</b><span>km/h</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
+    `<div class="lect"><b>${cint >= 0 ? "+" : ""}${cint.toFixed(0)}°</b><span>cintura</span></div><div class="lect"><b>${(av.brazos * R2D).toFixed(0)}°</b><span>brazos</span></div>` +
+    `<div class="lect ${Math.abs(pend) > 45 ? "ambar" : ""}"><b>${pend >= 0 ? "+" : ""}${pend.toFixed(0)} %</b><span>pendiente</span></div><div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div>`;
+  document.getElementById("estado").innerHTML = `<span class="pill">${Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" ? "PARADO" : "EN MARCHA"} · ${av.t.toFixed(0)} s</span>` + (pausado ? '<span class="pill">PAUSA</span>' : "");
+  document.getElementById("lejos").textContent = av.estado === "en mano" ? "" : document.getElementById("lejos").textContent;
+}
 let tAnterior = performance.now(), acumulado = 0, tObj = 0;
 function bucle(ahora) {
   const dtReal = Math.min(0.1, (ahora - tAnterior) / 1000); tAnterior = ahora;
@@ -3044,6 +3249,7 @@ function bucle(ahora) {
       leerTeclado(dtReal);
       acumulado += dtReal;
       while (acumulado >= DT) { paso(DT); acumulado -= DT; }
+      pasoJuegoBip(dtReal);
       visor.dibujar(av); hud(); Sonido.actualizar(av);
       if (MULTI.sala) visor.ponerFantasmas([...MULTI.otros.values()]);
       if ((tObj += dtReal) > 0.2) { tObj = 0; pintarObjetivos(); pintarSalaInfo(); }
@@ -3059,7 +3265,8 @@ function bucle(ahora) {
   const ids = await Modelos.cargar();
   if (!ids.length) { irAcceso("No hay ningún avión en la carpeta aviones/."); return; }
   let guardado = null; try { guardado = localStorage.getItem("sim_avion"); } catch (e) {}
-  sesion.avion = ids.includes(guardado) ? guardado : ids.includes("DJI_MINI") ? "DJI_MINI" : ids[0];      // por defecto, el dron comercial
+  const visibles = idsHangar();
+  sesion.avion = visibles.includes(guardado) ? guardado : ids.includes("DJI_MINI") ? "DJI_MINI" : visibles[0];      // por defecto, el dron comercial
   visor = new Visor(document.getElementById("vista"), entorno);
   previa = new VistaPrevia(document.getElementById("vistaPrevia"), { transparente: true });
   let modoCal = "auto"; try { modoCal = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}

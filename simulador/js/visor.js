@@ -13,6 +13,7 @@ function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
 function construirAvion(datos) {
   if (datos.tipo === "fpv" && window.ModeloFPV && ModeloFPV.construir3D) return ModeloFPV.construir3D(datos);     // dron FPV: su modelo, en aviones/FPV.js
+  if (datos.tipo === "bipode" && window.ModeloBipode && ModeloBipode.construir3D) return ModeloBipode.construir3D(datos);   // bipode secreto: aviones/BIPODE.js
   if (datos.tipo === "cuadricoptero" && window.ModeloDJI && ModeloDJI.construir3D) return ModeloDJI.construir3D(datos);   // dron comercial: el modelo detallado, en aviones/DJI_MINI.js (el de Godot)
   const grupo = new THREE.Group(), K = datos.malla;
   const geom = m => {
@@ -776,7 +777,9 @@ class Visor {
       const q = f.q, ex = ned2three(Cuat.rot(q, [1, 0, 0])), ey = ned2three(Cuat.rot(q, [0, 1, 0])), ez = ned2three(Cuat.rot(q, [0, 0, 1])), t = ned2three(g.p);
       g.obj.grupo.matrix.set(ex[0], ey[0], ez[0], t[0], ex[1], ey[1], ez[1], t[1], ex[2], ey[2], ez[2], t[2], 0, 0, 0, 1);
       if (g.obj.helice) g.obj.helice.visible = (f.gas || 0) > 0.05;
-      g.et.position.set(t[0], t[1] + 1.2, t[2]);
+      if (g.obj.bipode && f.bip && g.obj.animar)          // bipode de otro jugador: paso, cintura, brazos, cañones y puño
+        g.obj.animar({ cintura: f.bip[0], brazos: f.bip[1], fase: f.bip[2], amp: f.bip[3], angCanones: f.bip[4], disparos: f.bip[5], puno: f.bip[6] }, 0.016, this);
+      g.et.position.set(t[0], t[1] + (g.obj.bipode ? 4.2 : 1.2), t[2]);
     }
     for (const [id, g] of [...this.fantasmas]) if (!vivos.has(id)) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); this.fantasmas.delete(id); }
   }
@@ -1091,6 +1094,7 @@ class Visor {
 
   _camara(av) {
     const cam = this.cam, t = ned2three(av.p);
+    if (this.avion && this.avion.camara && this.avion.camara(this, av, cam, t)) { cam.updateProjectionMatrix(); return; }   // bipode: sus camaras 2 y 3
     if (this.camara === 1) {
       // vista del piloto con ZOOM AUTOMATICO, como en los simuladores RC: el campo de vision se cierra con la distancia
       // para que la envergadura ocupe siempre la fraccion zoomPiloto del alto de la pantalla (3 % por defecto; 0 = sin
@@ -1153,6 +1157,7 @@ class VistaPrevia {
     av.grupo.matrixAutoUpdate = false;
     av.grupo.matrix.set(0, 1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0, 1);     // cuerpo NED -> Three (morro hacia -z)
     base.add(av.grupo); this.escena.add(base); this.actual = { base, av };
+    if (av.bipode) { av.grupo.matrix.elements[13] = -1.7; av.animar && av.animar({ amp: 0, fase: 0, cintura: 0, brazos: 0, angCanones: 0, puno: 0, disparos: 0 }, 0, null); }   // origen en el suelo: centrado
     const r = datos.b_m * 0.9 * factor; this.cam.position.set(r * 0.9, r * 0.45, r * 1.1); this.cam.lookAt(0, 0, 0);
   }
 

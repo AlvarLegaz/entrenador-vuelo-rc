@@ -129,6 +129,7 @@ class Entrenamientos extends Control:
 	var p: Node; var d: Dictionary
 	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var hueco: VBoxContainer
 	var sel := "primer_vuelo"
+	var b_volar: Button
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Entrenamientos", " "); add_child(d["raiz"])
@@ -142,14 +143,17 @@ class Entrenamientos extends Control:
 		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
 		hueco = VBoxContainer.new(); der.add_child(hueco)
 		var bv := Tema.boton("Volar →", "BotonPrimGrande", func(): p.sesion["escenario"] = sel; p.guardar_sesion(); p.empezar())
-		bv.size_flags_horizontal = Control.SIZE_FILL; der.add_child(bv)
+		bv.size_flags_horizontal = Control.SIZE_FILL; der.add_child(bv); b_volar = bv
 	func refrescar() -> void:
 		var E := Escenarios.datos(); var al = p.sesion["alumno"]
 		var g = al["progreso"] if al != null and al.has("progreso") else null
 		var veh := Escenarios.vehiculo_de(p.sesion["avion"]); var ids := Escenarios.misiones_de(veh)
 		d["subtitulo"].text = String(DatosComunes.avion(p.sesion["avion"]).get("nombre", "")) + " · %d entrenamientos" % ids.size() + 			((" · %d/%d pruebas del certificado superadas" % [int(g["escenarios_superados"]), int(g.get("escenarios_total", (g["escenarios"] as Dictionary).size()))]) if g != null else " · sin registro")
-		if not sel in ids: sel = ids[0]
 		for x in lista.get_children(): x.queue_free()
+		b_volar.disabled = ids.is_empty()
+		if ids.is_empty():                 # el bipode no tiene entrenamientos: es para el vuelo libre
+			lista.add_child(Tema.sub("Este vehículo no tiene entrenamientos: llévalo al vuelo libre.", 14)); ficha_rt.text = ""; return
+		if not sel in ids: sel = ids[0]
 		var rejilla: GridAdaptable = null
 		for id in ids:
 			var M: Dictionary = E[id]
