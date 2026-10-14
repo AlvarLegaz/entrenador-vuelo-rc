@@ -24,7 +24,7 @@ static func datos() -> Dictionary:
 	_datos = d if d is Dictionary else {}
 	return _datos
 
-## Tipo de vehiculo de un avion: "avion", "dron" (el DJI) o "fpv" (escenarios.js: "vehiculos"; vehiculoDe de la web).
+## Tipo de vehiculo de un avion: "avion", "dron" (el dron comercial) o "fpv" (escenarios.js: "vehiculos"; vehiculoDe de la web).
 static func vehiculo_de(id: String) -> String:
 	var t := String(DatosComunes.avion(id).get("tipo", ""))
 	return "fpv" if t == "fpv" else ("dron" if t == "cuadricoptero" else "avion")

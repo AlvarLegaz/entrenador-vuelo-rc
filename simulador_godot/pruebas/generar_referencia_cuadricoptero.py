@@ -1,4 +1,4 @@
-"""Genera pruebas/referencia_cuadricoptero_js.json: trazas del cuadricoptero DJI Mini del simulador del navegador
+"""Genera pruebas/referencia_cuadricoptero_js.json: trazas del cuadricoptero Mini Dron HQ del simulador del navegador
 (clase ModeloCuadricoptero de simulador/aviones/DJI_MINI.js y Entorno.vientoA de simulador/js/entorno.js) en un vuelo
 con mandos guionizados. pruebas/prueba_cuadricoptero.gd repite el MISMO guion con ModeloCuadricoptero de Godot y
 compara. Si se cambia el guion aqui, hay que cambiarlo igual alli.

@@ -1,6 +1,6 @@
 // Dron FPV de 5 pulgadas como los de las escuelas de FPV (unos 650 g con una 4S de 1500 mAh, motores 2306 de 2450 KV,
 // helices de 5" de 3 palas, bastidor X de 220 mm): se vuela con gafas, mirando la camara de a bordo.
-// A diferencia del DJI, NO hay GPS ni retencion de posicion ni de altura: manda un controlador de vuelo tipo Betaflight.
+// A diferencia del dron comercial, NO hay GPS ni retencion de posicion ni de altura: manda un controlador de vuelo tipo Betaflight.
 //  - Modos de Betaflight: ANGLE (la palanca derecha pide una INCLINACION, hasta 55 grados, y al soltarla se nivela solo),
 //    HORIZON (cerca del centro como ANGLE y a fondo como ACRO: puede dar vueltas) y ACRO (la palanca pide VELOCIDAD DE
 //    GIRO con las tasas de Betaflight: RC rate, super rate y expo; si se suelta, se queda con la inclinacion que tenga).
@@ -630,7 +630,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
       const md = materialDisco(K), dsc = new THREE.Mesh(G.disco, md); dsc.visible = false; dsc.renderOrder = 1; r.add(dsc);
       return { r, palas, mp, dsc, md, s, rpm: 0, fase: Math.random() * TAU };
     });
-    // luces (tiras de LED bajo los brazos): punto de tamano fijo en pantalla, como las del DJI (construirAvion)
+    // luces (tiras de LED bajo los brazos): punto de tamano fijo en pantalla, como las del dron comercial (construirAvion)
     if (!construirAvion.texLuz) {
       const cv = document.createElement("canvas"); cv.width = cv.height = 32; const g = cv.getContext("2d");
       const gr = g.createRadialGradient(16, 16, 2, 16, 16, 16); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.45, "rgba(255,255,255,0.95)"); gr.addColorStop(1, "rgba(255,255,255,0)");

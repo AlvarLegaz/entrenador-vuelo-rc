@@ -1,5 +1,5 @@
 extends SceneTree
-## Capturas del modelo detallado del DJI Mini 4K (ModeloDJI3D dentro de Avion3D) desde varios lados, para compararlo a
+## Capturas del modelo detallado del Mini Dron HQ (ModeloDJI3D dentro de Avion3D) desde varios lados, para compararlo a
 ## ojo con fotos del dron real: 3/4 delantero, frente, lado, arriba y detras (parado, palas quietas), en vuelo (helices
 ## con disco de desenfoque, inclinado hacia delante y camara estabilizada a -30 grados), la camara mirando abajo (-90),
 ## y el tiempo de construccion. Necesita ventana (no --headless).

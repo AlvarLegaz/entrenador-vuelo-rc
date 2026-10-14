@@ -128,7 +128,7 @@ func refrescar() -> void:
 		for r in A.get("caracteristicas", []):
 			if String(r[0]).to_lower().begins_with("masa"): masa = String(r[1]).split(" (")[0]
 			if String(r[0]) == "Mandos": mandos_txt = String(r[1])
-		var sub := "cuadricóptero, mandos DJI" if A.get("tipo", "") == "cuadricoptero" else "dron FPV, modos de Betaflight" if A.get("tipo", "") == "fpv" else (mandos_txt if mandos_txt != "" else String(A.get("mandos", {}).get("izq_der", "timón")) + " y profundidad")
+		var sub := "cuadricóptero, mandos de dron comercial" if A.get("tipo", "") == "cuadricoptero" else "dron FPV, modos de Betaflight" if A.get("tipo", "") == "fpv" else (mandos_txt if mandos_txt != "" else String(A.get("mandos", {}).get("izq_der", "timón")) + " y profundidad")
 		v.add_child(Tema.etiqueta(sub + ((" · " + masa) if masa != "" else ""), 12, Tema.SUAVE, false, true))
 		var t := Tarjeta.new(v); t.elegida = id == p.sesion["avion"]
 		t.pulsada.connect(func(): p.elegir_avion(id); refrescar())

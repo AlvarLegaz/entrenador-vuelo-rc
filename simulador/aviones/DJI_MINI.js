@@ -1,15 +1,15 @@
-// Cuadricoptero tipo DJI Mini 4K (249 g) para practicar los mandos del DJI antes de volar el de verdad.
-// A diferencia de los aviones, aqui manda un CONTROLADOR DE VUELO como el del DJI (modo estabilizado con retencion
+// Mini Dron HQ (cuadricoptero de 249 g) (249 g) para practicar los mandos del dron comercial antes de volar el de verdad.
+// A diferencia de los aviones, aqui manda un CONTROLADOR DE VUELO como el del dron comercial (modo estabilizado con retencion
 // de posicion y altura, como con GPS): la palanca derecha pide VELOCIDAD horizontal (adelante/atras, laterales), la
 // izquierda velocidad vertical (arriba/abajo) y giro sobre si mismo (guinada). Con las palancas en el centro frena y se
 // queda quieto en el sitio, tambien con viento (se inclina contra el). El controlador manda inclinaciones y pares a los
 // motores con sus limites reales (inclinacion maxima, empuje maximo, par maximo) y el dron responde con su inercia,
 // su resistencia aerodinamica y el viento: no es un "teleport", se nota el retardo al frenar y las rachas.
-// Mandos del DJI (modo 2): palanca izquierda gas (velocidad vertical, con muelle) y guinada; derecha inclinacion.
+// Mandos del dron comercial (modo 2): palanca izquierda gas (velocidad vertical, con muelle) y guinada; derecha inclinacion.
 // Modos de vuelo C / N / S (Cine, Normal, Sport) como el conmutador del mando: cambian velocidades, inclinacion y giro.
 // Gimbal de 3 ejes: la camara va nivelada y su inclinacion (0 horizontal, -90 vertical) la mueve la rueda del mando.
 // Despegue automatico (sube a 1,2 m y se queda), volver a casa (RTH: sube a 30 m, vuelve al punto de despegue y
-// aterriza) y aterrizaje con la palanca abajo, como en la app DJI Fly. Teclado: flechas inclinan (arriba = adelante),
+// aterriza) y aterrizaje con la palanca abajo, como en la app del dron. Teclado: flechas inclinan (arriba = adelante),
 // W/S suben y bajan, A/D giran, Q/E gimbal, M modo, H volver a casa, L arma los motores.
 // Ejes y estado como en ModeloAvion (cuerpo x adelante, y derecha, z abajo; mundo NED), para que el simulador, el
 // HUD, la caja negra y la repeticion funcionen igual. No tiene perdida (av.perdida = 0) ni angulo de ataque.
@@ -47,7 +47,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   servos(av, mando, dt) {
     const e = this.mandos.expo || 0, ex = s => (1 - e) * s + e * s * s * s, cl = x => Math.max(-1, Math.min(1, x || 0));
     const obj = { adelante: ex(cl(-mando.pitch)), derecha: ex(cl(mando.yaw)), guinada: ex(cl(mando.guinada)), vz: cl(mando.vz) };
-    // cualquier palanca cancela el RTH y el despegue automatico (como en el DJI)
+    // cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial)
     if (Math.max(...Object.values(obj).map(Math.abs)) > 0.3) { av.rth = null; av.despegueAuto = false; }
     if (av.rth) this._rth(av, obj);
     else if (av.despegueAuto) { obj.adelante = obj.derecha = obj.guinada = 0; obj.vz = av.agl < 1.2 ? 0.5 : 0; if (av.agl >= 1.2) av.despegueAuto = false; }
@@ -103,7 +103,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     const an = Math.hypot(af, ar); if (an > amax) { af *= amax / an; ar *= amax / an; }
     const pitchObj = -Math.atan(af / G0), rollObj = Math.atan(ar / G0);
     // velocidad vertical objetivo (palanca izquierda): sube a vzmax_sube, baja a vzmax_baja; al centro mantiene la altura
-    // proteccion de aterrizaje como la del DJI: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
+    // proteccion de aterrizaje como la del dron comercial: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
     const agl = av.agl === undefined ? 100 : av.agl, bajaMax = Math.min(M.vzmax_baja, agl < 3 ? 0.6 : agl < 8 ? 1.5 : M.vzmax_baja);
     const vzObj = c.vz > 0 ? c.vz * M.vzmax_sube : c.vz * bajaMax;
     let T = av.motorRoto ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(roll) * Math.cos(pitch));
@@ -162,16 +162,16 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
 // ---- datos del dron, en JSON estricto (claves entre comillas, colores en decimal, sin comentarios dentro): el
 // simulador de Godot los lee tal cual de este fichero (simulador_godot/scripts/datos_comunes.gd busca la linea de la constante DATOS
 // y saca el objeto que empieza ahi). Todo menos la malla calculada (cuerpo, brazos, patas y rotores), que se anade abajo.
-// fc es el controlador de vuelo: modos C/N/S del DJI Mini 4K (velocidad horizontal, ascenso, descenso, inclinacion
+// fc es el controlador de vuelo: modos C/N/S del Mini Dron HQ (velocidad horizontal, ascenso, descenso, inclinacion
 // maxima, giro y ganancia de velocidad -> aceleracion), altura de RTH, ganancias (altura, angulo -> giro, giro -> par),
 // pares maximos de los motores (N m) y resistencia aerodinamica (CdA, m2) horizontal y vertical.
 // colores: fuselaje 0xdcdcdc, ala 0x3a3a3a, estab 0x2f2f2f, moviles 0xd32f2f.
-// malla.luces, como las del DJI Mini: en los brazos traseros verde (0x00e676) a la derecha y roja (0xff1744) a la
+// malla.luces, como las del Mini Dron HQ: en los brazos traseros verde (0x00e676) a la derecha y roja (0xff1744) a la
 // izquierda (parpadeo lento) y un estrobo blanco (0xffffff) en la cola, para verlo desde el puesto del piloto.
 (function () {
   const DATOS = {
-    "id": "DJI_MINI", "nombre": "Cuadricóptero DJI Mini 4K", "tipo": "cuadricoptero",
-    "descripcion": "Dron de 249 g con controlador de vuelo estabilizado y retención de posición, como el DJI Mini 4K: suelta las palancas y se queda quieto. Para practicar los mandos del DJI (modo 2) antes de volar el de verdad.",
+    "id": "DJI_MINI", "nombre": "Mini Dron HQ", "tipo": "cuadricoptero",
+    "descripcion": "Dron de 249 g con controlador de vuelo estabilizado y retención de posición, como los drones comerciales de menos de 250 g: suelta las palancas y se queda quieto. Para practicar los mandos del dron comercial (modo 2) antes de volar el de verdad.",
     "ayuda": "Palanca izquierda: arriba y abajo sube y baja; izquierda y derecha gira sobre sí mismo. Palanca derecha: adelante, atrás y laterales. Con las palancas en el centro frena y se queda quieto. Conmutador C/N/S (tecla M) cambia el modo de vuelo; rueda del gimbal (Q/E) inclina la cámara. Botones de la app: despegar, volver a casa (H), foto y vídeo. Para aterrizar, pósalo despacio y mantén la palanca abajo (S) hasta que se paren los motores.",
     "caracteristicas": [["Masa en vuelo", "249 g"], ["Tamaño", "249 × 290 × 60 mm desplegado, hélices de 3 pulgadas"], ["Empuje máximo", "≈ 2 veces el peso (4,9 N)"],
                         ["Modos de vuelo", "C (Cine) 6 m/s · N (Normal) 10 m/s · S (Sport) 16 m/s"], ["Ascenso / descenso", "C 2 / 1,5 · N 3 / 3 · S 5 / 3,5 m/s"],
@@ -218,7 +218,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
 })();
 
 // =====================================================================
-//  MODELO 3D DETALLADO del DJI Mini 4K para la web: traduccion LITERAL de simulador_godot/scripts/modelo_dji_3d.gd
+//  MODELO 3D DETALLADO del Mini Dron HQ para la web: traduccion LITERAL de simulador_godot/scripts/modelo_dji_3d.gd
 //  (ModeloDJI3D): la misma geometria parametrica (carcasa, cuerpo, brazos y patas por secciones superelipticas con
 //  tapas redondeadas; motores, objetivo, sensores y botones por revolucion; palas con perfil NACA, cuerda, torsion y
 //  flecha), los mismos materiales PBR (plastico satinado con barniz, metal de las campanas, cristal del objetivo, goma

@@ -222,7 +222,7 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 					orb = null
 	return T
 
-## Una foto (boton de foto del DJI): lo que vale para el trabajo y el aviso.
+## Una foto (boton de foto del dron comercial): lo que vale para el trabajo y el aviso.
 func foto(av: Dictionary, gimbal: float) -> Array:
 	var T := []; var N: float = av["p"][0]; var E: float = av["p"][1]; var up: float = -av["p"][2]; var agl: float = up - suelo.call(N, E); var m := marcar
 	fotos += 1

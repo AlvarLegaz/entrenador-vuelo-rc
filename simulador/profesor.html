@@ -387,8 +387,8 @@ function mundo(id) {                            // el rectangulo de su ortofoto 
 function opcionesSala() {
   const E = window.ESCENARIOS || {}, ids = Object.keys(E);
   const mis = v => ids.filter(id => E[id].objetivos.length && !E[id].operacion && (E[id].vehiculos || ["avion"]).includes(v));
-  const G = [["Vuelo libre", ids.filter(id => !E[id].objetivos.length)], ["Entrenamientos del avión", mis("avion")], ["Entrenamientos del DJI", mis("dron")],
-             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (DJI)", ids.filter(id => E[id].operacion)]];
+  const G = [["Vuelo libre", ids.filter(id => !E[id].objetivos.length)], ["Entrenamientos del avión", mis("avion")], ["Entrenamientos del dron comercial", mis("dron")],
+             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (dron comercial)", ids.filter(id => E[id].operacion)]];
   return G.map(([t, l]) => `<optgroup label="${esc(t)}">${l.map(id => `<option value="${id}">${esc(E[id].nombre)}</option>`).join("")}</optgroup>`).join("");
 }
 /** Lo que se puede ajustar de cada trabajo al crear la sala: [clave, texto, minimo, maximo, valor de partida]. */
@@ -437,11 +437,11 @@ function pintarCert() {
   $("kNombre").value = CERT.nombre; $("kHoras").value = CERT.horas;
   const E = window.ESCENARIOS || {}, ids = Object.keys(E), sel = new Set(CERT.pruebas);
   const mis = v => ids.filter(id => E[id].objetivos.length && !E[id].operacion && (E[id].vehiculos || ["avion"]).includes(v));
-  const G = [["Entrenamientos del avión", mis("avion")], ["Entrenamientos del DJI", mis("dron").filter(id => !mis("avion").includes(id))],
-             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (DJI)", ids.filter(id => E[id].operacion)]];
+  const G = [["Entrenamientos del avión", mis("avion")], ["Entrenamientos del dron comercial", mis("dron").filter(id => !mis("avion").includes(id))],
+             ["Entrenamientos del dron FPV", mis("fpv")], ["Operaciones (dron comercial)", ids.filter(id => E[id].operacion)]];
   $("kPruebas").innerHTML = G.map(([t, l]) => `<div style="margin-bottom:10px"><div class="sub" style="font-weight:600;margin-bottom:4px">${esc(t)}</div>` +
     l.map(id => `<label style="display:inline-block;min-width:260px;margin:2px 10px 2px 0"><input type="checkbox" value="${id}" ${sel.has(id) ? "checked" : ""}> ${esc(E[id].nombre)}</label>`).join("") + "</div>").join("") +
-    '<p class="sub" style="margin:0">Los entrenamientos que comparten el avión y el DJI cuentan con cualquiera de los dos.</p>';
+    '<p class="sub" style="margin:0">Los entrenamientos que comparten el avión y el dron comercial cuentan con cualquiera de los dos.</p>';
 }
 $("kGuardar").onclick = async () => {
   const pruebas = [...$("kPruebas").querySelectorAll("input:checked")].map(i => i.value);

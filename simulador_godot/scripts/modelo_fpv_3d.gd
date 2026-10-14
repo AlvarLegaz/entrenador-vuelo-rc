@@ -59,7 +59,7 @@ func _init(r: Node3D, datos: Dictionary) -> void:
 		var fase := randf() * TAU
 		palas.basis = Basis(Vector3(0, 0, 1), fase)
 		rotores.append({ "nodo": n, "palas": palas, "disco": disco, "s": s, "rpm": 0.0, "fase": fase })
-	# luces (tiras de LED bajo los brazos): punto de tamano fijo en pantalla y una bolita, como las del DJI (Avion3D)
+	# luces (tiras de LED bajo los brazos): punto de tamano fijo en pantalla y una bolita, como las del dron comercial (Avion3D)
 	for l in K["luces"]:
 		var g := Node3D.new(); g.position = Vector3(l["p"][0], l["p"][1], l["p"][2])
 		var color := Color.hex((int(l["color"]) << 8) | 0xff)

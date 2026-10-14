@@ -201,7 +201,7 @@ class Operaciones extends Control:
 	var marcas := {}
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
-		d = Tema.pantalla("Operaciones", "Trabajos de operador de dron con el DJI Mini 4K en el mapa real de Cartagena"); add_child(d["raiz"])
+		d = Tema.pantalla("Operaciones", "Trabajos de operador de dron con el Mini Dron HQ en el mapa real de Cartagena"); add_child(d["raiz"])
 		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
@@ -227,7 +227,7 @@ class Operaciones extends Control:
 		var bb := "[font_size=15][color=#ffc83d][b]ORDEN DE TRABAJO[/b][/color][/font_size]\n[font_size=18][b]%s[/b][/font_size]\n[font_size=13][table=2]" % M["nombre"]
 		bb += fila.call("Cliente", O["cliente"]) + fila.call("Lugar", O["lugar"]) + fila.call("Trabajo", O["trabajo"]) + fila.call("Entrega", O["entrega"])
 		bb += fila.call("Viento previsto", "%s m/s del %s%s" % [PasadaBaja._num(v["vel"]), RUMBOS_VIENTO[int(round(v["desde"] / 45.0)) % 8], ", con rachas" if v["rachas"] else ""])
-		bb += fila.call("Dron", "DJI Mini 4K (249 g, categoría abierta A1)") + "[/table][/font_size]\n\n[font_size=12][color=#9fb3c8][b]SE EVALÚA[/b][/color][/font_size]\n"
+		bb += fila.call("Dron", "Mini Dron HQ (249 g, categoría abierta A1)") + "[/table][/font_size]\n\n[font_size=12][color=#9fb3c8][b]SE EVALÚA[/b][/color][/font_size]\n"
 		for o in M["objetivos"]: bb += "  •  %s\n" % o[1]
 		ficha_rt.text = bb
 		var img := Image.load_from_file(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) if FileAccess.file_exists(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) else null

@@ -1,6 +1,6 @@
 class_name HudDji
 extends Control
-## Pantalla de la app DJI Fly (#dji de simulador/simulador.html): barra de arriba (modo, estado, grabacion, GPS, senal y
+## Pantalla de la app del dron (#dji de simulador/simulador.html): barra de arriba (modo, estado, grabacion, GPS, senal y
 ## bateria), botones de despegar/aterrizar y volver a casa a la izquierda, gimbal y disparador a la derecha, y abajo el
 ## mapa (el GPS del HUD, que se mueve aqui) y la telemetria D/H/HS/VS. p es la escena principal.
 

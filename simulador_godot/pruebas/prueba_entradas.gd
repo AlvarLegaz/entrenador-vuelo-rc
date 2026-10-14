@@ -1,7 +1,7 @@
 extends SceneTree
 ## Teclado y mando de verdad (sin el piloto automatico de --auto): inyecta teclas, botones y palancas en un vuelo con el
 ## E1 (con mando de consola y con una emisora AETR, y el asistente), otro con el Poli-1 (timon de 4 canales), otro con
-## el DJI y otro con el dron FPV (armar, gas, modo, camara) y comprueba que el simulador responde. Necesita ventana
+## el dron comercial y otro con el dron FPV (armar, gas, modo, camara) y comprueba que el simulador responde. Necesita ventana
 ## (no --headless). El mando se simula en el
 ## dispositivo 0 aunque no haya ninguno conectado (Input acepta los eventos igual).
 ## Uso: herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://pruebas/prueba_entradas.gd
@@ -129,7 +129,7 @@ func _initialize() -> void:
 		"(palanca %.2f, timon %.3f rad)" % [p.mando["guinada"], p.av["dr"]]); _eje(JOY_AXIS_LEFT_X, 0.0)
 	_tecla(KEY_UP, true); await create_timer(0.1).timeout; _tecla(KEY_UP, false)
 	await _pulsa(KEY_R)
-	print("DJI, teclado y mando:")
+	print("dron comercial, teclado y mando:")
 	p.salir_al_menu(); await create_timer(0.5).timeout
 	await _volar("DJI_MINI")
 	print("  (pantalla '%s', modelo %s, estado %s, pausado %s, modal %s)" % [p.pantalla_actual, p.modelo.get_script().get_global_name(), p.av["estado"], p.pausado, p.modal["raiz"].visible])
@@ -155,7 +155,7 @@ func _initialize() -> void:
 	print("Dron FPV, teclado y mando:")
 	p.salir_al_menu(); await create_timer(0.5).timeout
 	await _volar("FPV")
-	_ok("camara FPV (3) y OSD de Betaflight (no la app del DJI)", p.camara == 3 and p.hud_fpv.visible and not p.hud_dji.visible and p.modelo.modo == "ANGLE")
+	_ok("camara FPV (3) y OSD de Betaflight (no la app del dron comercial)", p.camara == 3 and p.hud_fpv.visible and not p.hud_dji.visible and p.modelo.modo == "ANGLE")
 	_tecla(KEY_W, true); await create_timer(0.3).timeout; _tecla(KEY_W, false)
 	await _pulsa(KEY_L); await create_timer(0.2).timeout
 	_ok("con el gas arriba L no arma", p.av["estado"] == "en mano", "(gas %.2f)" % p.av["gases"])

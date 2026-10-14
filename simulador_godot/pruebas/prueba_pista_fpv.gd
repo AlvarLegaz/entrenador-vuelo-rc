@@ -61,7 +61,7 @@ func _initialize() -> void:
 	print("Entrenamientos de cada vehiculo:")
 	var de := func(veh: String) -> Array: return Escenarios.misiones_de(veh)
 	_ok("avion: los 9 de siempre", de.call("avion").size() == 9, str(de.call("avion")))
-	_ok("DJI: 6 (sin viento cruzado, emergencia ni aterrizaje guiado)", de.call("dron").size() == 6 and not "emergencia" in de.call("dron"), str(de.call("dron")))
+	_ok("dron comercial: 6 (sin viento cruzado, emergencia ni aterrizaje guiado)", de.call("dron").size() == 6 and not "emergencia" in de.call("dron"), str(de.call("dron")))
 	_ok("FPV: solo los 6 suyos", de.call("fpv") == ["fpv_estacionario", "fpv_caja", "fpv_slalom", "fpv_circuito", "fpv_acro", "fpv_tecnica"], str(de.call("fpv")))
 	print("RESULTADO: " + ("todo igual" if fallos == 0 else "%d fallos" % fallos))
 	quit(1 if fallos else 0)

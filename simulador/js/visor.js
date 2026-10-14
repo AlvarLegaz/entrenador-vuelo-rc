@@ -13,7 +13,7 @@ function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
 function construirAvion(datos) {
   if (datos.tipo === "fpv" && window.ModeloFPV && ModeloFPV.construir3D) return ModeloFPV.construir3D(datos);     // dron FPV: su modelo, en aviones/FPV.js
-  if (datos.tipo === "cuadricoptero" && window.ModeloDJI && ModeloDJI.construir3D) return ModeloDJI.construir3D(datos);   // DJI: el modelo detallado, en aviones/DJI_MINI.js (el de Godot)
+  if (datos.tipo === "cuadricoptero" && window.ModeloDJI && ModeloDJI.construir3D) return ModeloDJI.construir3D(datos);   // dron comercial: el modelo detallado, en aviones/DJI_MINI.js (el de Godot)
   const grupo = new THREE.Group(), K = datos.malla;
   const geom = m => {
     const g = new THREE.BufferGeometry();
@@ -1023,7 +1023,7 @@ class Visor {
       cam.up.set(up[0], up[1], up[2]); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else if (this.avion && this.avion.dron) {
       // camara del dron en su gimbal de 3 ejes: nivelada (sin alabeo ni cabeceo del dron), con el rumbo del dron y la
-      // inclinacion de la rueda (av.gimbal: 0 horizontal, -90 vertical). Campo de vision como el del DJI Mini (83 grados en diagonal)
+      // inclinacion de la rueda (av.gimbal: 0 horizontal, -90 vertical). Campo de vision como el del Mini Dron HQ (83 grados en diagonal)
       const yaw = Cuat.euler(av.q)[2], g = (av.gimbal === undefined ? -10 : av.gimbal) * Math.PI / 180;
       const pos = ned2three(Cuat.rot(av.q, [0.1, 0, -0.1])), fw = ned2three([Math.cos(yaw) * Math.cos(g), Math.sin(yaw) * Math.cos(g), -Math.sin(g)]);   // 10 cm sobre el dron: en el suelo el plano cercano (0,1 m) no corta el terreno
       cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 58;

@@ -1,6 +1,6 @@
 """Prueba del dron FPV en el simulador del navegador: carga sin errores, se elige el FPV, sale el OSD y la ayuda del
 FPV, no arma con el gas arriba, arma con el gas abajo, W sube el gas y despega, M cambia de modo, 1/2/3 cambian la
-camara, L desarma; y el E1 y el DJI siguen arrancando. Con una ruta, guarda ademas capturas del vuelo con la camara
+camara, L desarma; y el E1 y el dron comercial siguen arrancando. Con una ruta, guarda ademas capturas del vuelo con la camara
 FPV (3) y la de persecucion (2).
 
 Uso (desde la carpeta del repositorio; necesita Python con playwright y Google Chrome instalado):
@@ -39,7 +39,7 @@ def main():
         time.sleep(1.5)
         ok("modelo FPV en ANGLE", pg.evaluate("modelo.esFPV && modelo.modo === 'ANGLE'"))
         ok("camara FPV (3) por defecto", pg.evaluate("visor.camara") == 3)
-        ok("OSD a la vista (y no la app del DJI)", pg.evaluate("getComputedStyle(document.getElementById('fpv')).display !== 'none' && getComputedStyle(document.getElementById('dji')).display === 'none'"))
+        ok("OSD a la vista (y no la app del dron comercial)", pg.evaluate("getComputedStyle(document.getElementById('fpv')).display !== 'none' && getComputedStyle(document.getElementById('dji')).display === 'none'"))
         ok("OSD: DISARMED y tension de la bateria", pg.evaluate("document.getElementById('fpvArm').textContent === 'DISARMED' && document.getElementById('fpvBat').textContent.startsWith('16.8V')"),
            pg.evaluate("document.getElementById('fpvArm').textContent + ' · ' + document.getElementById('fpvBat').textContent"))
         ok("ayuda del FPV", pg.evaluate("document.getElementById('ayudaTeclasFPV').style.display === '' && document.getElementById('ayudaTeclasDron').style.display === 'none'"))

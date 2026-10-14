@@ -34,14 +34,15 @@ func _init(p_: Node) -> void:
 	var cuerpo := HBoxContainer.new(); cuerpo.size_flags_vertical = Control.SIZE_EXPAND_FILL; cuerpo.add_theme_constant_override("separation", 0); v.add_child(cuerpo)
 	# columna izquierda: titulo y menu
 	var izq := VBoxContainer.new(); izq.add_theme_constant_override("separation", 10); izq.custom_minimum_size.x = 460
-	cuerpo.add_child(Tema.margen(izq, 48, 48, 40, 24))
+	var sc := Tema.desplazable(izq); sc.custom_minimum_size.x = 460; sc.size_flags_horizontal = Control.SIZE_FILL   # ventanas bajas: el menu se desplaza
+	cuerpo.add_child(Tema.margen(sc, 48, 48, 40, 24))
 	var pre := Tema.etiqueta("SIMULADOR DE VUELO RC", 12, Tema.ACENTO, true)
 	var fv := FontVariation.new(); fv.base_font = Tema.negrita; fv.spacing_glyph = 4; pre.add_theme_font_override("font", fv); izq.add_child(pre)
 	izq.add_child(Tema.etiqueta("Entrenador de vuelo", 44, Tema.TEXTO, true))
 	var lp := Tema.sub("Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.", 15); lp.custom_minimum_size.x = 372; izq.add_child(lp)
 	izq.add_child(Tema.margen(Control.new(), 0, 0, 0, 16))
 	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.ir_volar()))   # se vuela con el perfil activo (o sin perfil)
-	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el DJI y el dron FPV", func(): p.ir_entrenamientos()))
+	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV", func(): p.ir_entrenamientos()))
 	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.ir_multi()))
 	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.ir_operaciones()))
 	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))

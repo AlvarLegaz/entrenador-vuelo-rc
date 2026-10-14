@@ -2,7 +2,7 @@ extends Node3D
 ## Simulador de vuelo RC, version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador/simulador.html): las
 ## mismas pantallas (inicio, pilotos, hangar, entrenamientos, vuelo libre, punto de lanzamiento, ajustes, resultado y
 ## progreso), el mismo HUD, las mismas misiones (simulador/escenarios.js), el aula (servidor o registro local), la caja
-## negra, la repeticion, el sonido y el DJI con su app. Los aviones, el mundo y la fisica son comunes (modelo_avion.gd,
+## negra, la repeticion, el sonido y el dron comercial con su app. Los aviones, el mundo y la fisica son comunes (modelo_avion.gd,
 ## modelo_cuadricoptero.gd y entorno.gd traducen modelos.js, DJI_MINI.js y entorno.js; ver pruebas/). Este fichero es
 ## la parte <script> de simulador.html: sesion, navegacion entre pantallas, vuelo (500 pasos por segundo), teclado,
 ## mando, camaras y HUD. Lo que se dibuja esta en las pantallas (pantalla_*.gd), hud_vuelo.gd, hud_dji.gd y capas.gd.
@@ -115,7 +115,7 @@ func _ready() -> void:
 	if _args.has("avion"): sesion["avion"] = _args["avion"]
 	if _args.has("calidad"): aj["calidad_modo"] = str(int(_args["calidad"]))
 	if _args.has("dificultad"): sesion["dificultad"] = _args["dificultad"]
-	if not ids_aviones.has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el DJI
+	if not ids_aviones.has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
 	mundo_datos = DatosComunes.mundo(MUNDO)
 	ent.poner_mundo(mundo_datos); ent.poner_mundo({})      # el terreno del mundo queda guardado (mapa, rumbo despejado)
 	indice_zonas = DatosComunes.indice_zonas().filter(func(z): return z["mundo"] == MUNDO)
@@ -517,7 +517,7 @@ var sala := {}                  # la sala en la que se esta ({} = ninguna)
 var multi_otros := {}           # id -> el ultimo estado recibido de cada uno, con "recibido" (s)
 var _multi_id := ""
 var _multi_enviando := false
-var _t_csc := 0.0               # DJI: tiempo con las palancas en la combinacion de arranque (CSC)
+var _t_csc := 0.0               # dron comercial: tiempo con las palancas en la combinacion de arranque (CSC)
 var _multi_t := 0.0
 var _fantasmas := {}            # id -> { nodo: Avion3D, et: Label3D, p: Array (NED), avion, nombre }
 var sala_info: PanelContainer
@@ -727,7 +727,7 @@ func _pintar_sala_info() -> void:
 
 func ir_operaciones() -> void:
 	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
-## Empieza el trabajo elegido: con el DJI (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
+## Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
 func volar_operacion(id: String) -> void:
 	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
 	if Escenarios.vehiculo_de(sesion["avion"]) != "dron":
@@ -1165,7 +1165,7 @@ func salir_al_menu() -> void:
 	else: ir_inicio()
 
 # =====================================================================
-#  APP DJI FLY (cuadricoptero)
+#  APP dron comercial FLY (cuadricoptero)
 # =====================================================================
 func dji_modo(m := "") -> void:
 	if modelo == null or not es_dron() or es_fpv(): return
@@ -1291,7 +1291,7 @@ static func _zona_muerta(x: float, z: float) -> float: return 0.0 if absf(x) < z
 static func _expo(x: float, e: float) -> float: return (1 - e) * x + e * x * x * x
 
 # =====================================================================
-#  MANDO: palanca derecha = avion, izquierda = gas (o el mando del DJI). Ejes segun Ajustes › Controles (MandoCfg).
+#  MANDO: palanca derecha = avion, izquierda = gas (o el mando del dron comercial). Ejes segun Ajustes › Controles (MandoCfg).
 # =====================================================================
 func _leer_mando(dt: float) -> bool:
 	var M := mando_cfg; var dev := MandoCfg.conectado()
@@ -1313,7 +1313,7 @@ func _leer_mando(dt: float) -> bool:
 		if bs[JOY_BUTTON_LEFT_SHOULDER]: fpv_modo()
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
 		if bs[JOY_BUTTON_BACK]: reiniciar()
-	elif pantalla_actual == "" and not pausado and cuad:    # mando del DJI: A despegar/aterrizar, B casa, X video, Y foto, LB modo, RB camara, Back reiniciar
+	elif pantalla_actual == "" and not pausado and cuad:    # mando del dron comercial: A despegar/aterrizar, B casa, X video, Y foto, LB modo, RB camara, Back reiniciar
 		if bs[JOY_BUTTON_A]: dji_despegar()
 		if bs[JOY_BUTTON_B]: dji_rth()
 		if bs[JOY_BUTTON_X]: dji_video()
@@ -1322,7 +1322,7 @@ func _leer_mando(dt: float) -> bool:
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
 		if bs[JOY_BUTTON_BACK]: reiniciar()
 		if M.perfil == "consola": M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)   # gatillos: rueda del gimbal
-		# CSC (combinacion de palancas de DJI): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
+		# CSC (combinacion de palancas de los drones comerciales): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
 		var csc := ly > 0.8 and ry > 0.8 and ((lx > 0.6 and rx < -0.6) or (lx < -0.6 and rx > 0.6))
 		_t_csc = _t_csc + dt if csc else 0.0
 		if _t_csc > 0.5 and av.get("estado", "") == "en mano": _t_csc = -1e9; lanzar(); poner_toast("Motores en marcha (CSC): sube la palanca izquierda para despegar")
@@ -1371,7 +1371,7 @@ func _leer_teclado(dt: float) -> void:
 	_leer_gas_teclado(dt)
 
 func _leer_gas_teclado(dt: float) -> void:
-	if av["motorRoto"] or (es_dron() and not es_fpv()): return          # en el DJI W/S son velocidad vertical
+	if av["motorRoto"] or (es_dron() and not es_fpv()): return          # en el dron comercial W/S son velocidad vertical
 	var k := 0.4 if es_fpv() else 0.8                # FPV: mas despacio (se sostiene con un 30 % de gas)
 	if Input.is_physical_key_pressed(KEY_W): av["gases"] = minf(1, av["gases"] + k * dt)
 	if Input.is_physical_key_pressed(KEY_S): av["gases"] = maxf(0, av["gases"] - k * dt)

@@ -1,5 +1,5 @@
 extends SceneTree
-## Coste de dibujo del modelo detallado del DJI (ModeloDJI3D) frente a la malla de cajas de los datos (la de antes):
+## Coste de dibujo del modelo detallado del dron comercial (ModeloDJI3D) frente a la malla de cajas de los datos (la de antes):
 ## mismo dron, misma escena (cielo, sol con sombras), a 0,7 m (ocupa media pantalla) y a 5 m (camara 2), con los rotores
 ## girando. Alterna bloques A/B para que la carga variable de la GPU (otros procesos) afecte a los dos por igual.
 ## Mide el tiempo de GPU y de CPU de dibujo del viewport. Necesita ventana (no --headless).

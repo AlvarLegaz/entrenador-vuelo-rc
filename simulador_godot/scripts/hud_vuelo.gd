@@ -19,7 +19,7 @@ var panel: HBoxContainer
 var gps: Instrumento; var barra: Instrumento; var vario: Instrumento; var anemo: Instrumento; var horiz: Instrumento
 var lecturas: HBoxContainer
 var esp1: Control; var esp2: Control
-var dji: Control                 # pantalla de la app DJI (la pone principal con el dron)
+var dji: Control                 # pantalla de la app dron comercial (la pone principal con el dron)
 
 static func _sombra_texto(l: Label, tam := 2) -> void:
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85)); l.add_theme_constant_override("shadow_outline_size", 6)

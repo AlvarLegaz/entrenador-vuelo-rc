@@ -1,5 +1,5 @@
 extends SceneTree
-## Captura del dron DJI Mini dibujado por Avion3D (modelo detallado de modelo_dji_3d.gd, 4 rotores y luces), para
+## Captura del dron Mini Dron HQ dibujado por Avion3D (modelo detallado de modelo_dji_3d.gd, 4 rotores y luces), para
 ## mirarlo a ojo: de cerca (helices girando: disco de desenfoque, y luces), de lejos con el zoom del piloto (las luces se
 ## ven de ~16 px aunque el dron ocupe un par de pixeles) y en el suelo con los motores parados (palas quietas, sin
 ## luces). Para mas vistas del modelo, pruebas/captura_dji.gd. Necesita ventana (no --headless).

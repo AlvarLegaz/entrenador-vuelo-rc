@@ -1,5 +1,5 @@
 extends SceneTree
-## Prueba de que el cuadricoptero DJI Mini (ModeloCuadricoptero, con su controlador de vuelo) es el mismo en los dos
+## Prueba de que el cuadricoptero Mini Dron HQ (ModeloCuadricoptero, con su controlador de vuelo) es el mismo en los dos
 ## simuladores. pruebas/referencia_cuadricoptero_js.json son trazas del navegador (clase ModeloCuadricoptero de
 ## simulador/aviones/DJI_MINI.js) con un guion de mandos: armar, subir con vz, quieto con 4 m/s de viento, a tope
 ## adelante en los modos N, S y C, frenar, guinada y gimbal, bajar con la palanca abajo hasta aterrizar, despegue

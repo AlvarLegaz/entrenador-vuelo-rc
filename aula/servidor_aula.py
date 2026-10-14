@@ -39,7 +39,7 @@ NOMBRES_ESC = {"primer_vuelo": "Primer vuelo", "orientacion": "Orientación", "v
                # dron FPV (pista FPV detras del piloto): practica, no cuentan para la autorizacion del avion
                "fpv_estacionario": "FPV: despegue y estacionario", "fpv_caja": "FPV: la caja", "fpv_slalom": "FPV: slalom y ocho",
                "fpv_circuito": "FPV: circuito de puertas", "fpv_acro": "FPV: paso a ACRO", "fpv_tecnica": "FPV: técnica",
-               # operaciones (trabajos de operador de dron con el DJI en el mapa real)
+               # operaciones (trabajos de operador de dron con el dron comercial en el mapa real)
                "op_inspeccion": "Operación: inspección de edificios", "op_fotogrametria": "Operación: fotogrametría",
                "op_busqueda": "Operación: búsqueda y rescate", "op_agricultura": "Operación: agricultura",
                "op_paneles": "Operación: paneles fotovoltaicos", "op_video": "Operación: grabación de vídeo", "libre_cartagena": "Vuelo libre (Cartagena)"}

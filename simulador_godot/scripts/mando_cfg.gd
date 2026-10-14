@@ -31,7 +31,7 @@ var zona := 0.06
 var perfil := "consola"
 var ejes := {}
 var asist := { "activo": false }
-var gimbal := 0.0                 # rueda del gimbal del DJI con los gatillos (MANDO.gimbal): la escribe principal en cada cuadro
+var gimbal := 0.0                 # rueda del gimbal del dron comercial con los gatillos (MANDO.gimbal): la escribe principal en cada cuadro
 
 func _init() -> void:
 	ejes = ejes_de("consola")

@@ -1,6 +1,6 @@
 "use strict";
 // =====================================================================
-//  OPERACIONES: los trabajos de operador de dron (escenarios.js, "operacion") en el mapa real de Cartagena, con el DJI:
+//  OPERACIONES: los trabajos de operador de dron (escenarios.js, "operacion") en el mapa real de Cartagena, con el dron comercial:
 //  inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, inspeccion de paneles fotovoltaicos y
 //  grabacion de video. Evalua lo que pide cada orden de trabajo (las fotos, la cobertura, la posicion enviada, la orbita...) y las
 //  normas del operador en todas (120 m, a la vista, fuera de la zona del aeropuerto, aterrizar en el punto de despegue y
@@ -16,7 +16,7 @@ const OPS = {
   TECHO: 120,                                     // m sobre el suelo
   VLOS: 500,                                      // m del piloto (en horizontal)
   ARP: { nombre: "aeropuerto de San Javier", n: 17936.4, e: 20962.4, r: 8000 },   // zona de aerodromo (8 km)
-  CAM_V: 29,                                      // semiangulo vertical de la camara del DJI (grados)
+  CAM_V: 29,                                      // semiangulo vertical de la camara del dron comercial (grados)
   CAM_H: Math.atan(Math.tan(29 * Math.PI / 180) * 4 / 3) * 180 / Math.PI,         // horizontal (foto 4:3)
   CASA: 10, RESERVA: 20,                          // aterrizar a menos de 10 m del despegue, con mas del 20 % de bateria
 };
@@ -196,7 +196,7 @@ class Operacion {
     return T;
   }
 
-  /** Una foto (boton de foto del DJI): lo que vale para el trabajo y el aviso. */
+  /** Una foto (boton de foto del dron comercial): lo que vale para el trabajo y el aviso. */
   foto(av, gimbal) {
     const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), m = this.marcar;
     this.fotos++;

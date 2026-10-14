@@ -236,7 +236,7 @@ func _otros_gps(X: Callable, Y: Callable, W: float) -> void:
 		var pts := PackedVector2Array([c + u * 7, c - u * 5 + n * 5, c - u * 3, c - u * 5 - n * 5])
 		draw_colored_polygon(pts, Color("#4fc3f7")); pts.append(pts[0]); draw_polyline(pts, Color.BLACK, 1, true)
 
-## DJI: como en DJI Fly, el punto de despegue con su H amarilla y una linea del dron hasta el, recortada al mapa (casaDJI).
+## dron comercial: como en las apps de los drones comerciales, el punto de despegue con su H amarilla y una linea del dron hasta el, recortada al mapa (casaDJI).
 func _es_dji() -> bool: return p.modelo != null and p.es_dron() and not p.es_fpv()
 func _casa_dji(a: Vector2, h: Vector2, W: float) -> void:
 	var d := h - a; var dentro := maxf(absf(h.x - W / 2), absf(h.y - W / 2)) <= W / 2 - 8

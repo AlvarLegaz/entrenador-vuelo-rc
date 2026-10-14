@@ -1,11 +1,11 @@
 class_name ModeloDJI3D
 extends Node3D
-## Modelo 3D detallado del DJI Mini 4K, que Avion3D pone en lugar de la malla de cajas cuando los datos son de un
+## Modelo 3D detallado del Mini Dron HQ, que Avion3D pone en lugar de la malla de cajas cuando los datos son de un
 ## cuadricoptero (tipo "cuadricoptero"). Todo procedural (sin ficheros de malla): superficies parametricas con normales
 ## suaves (carcasa, cuerpo, brazos y patas: secciones superelipticas a lo largo de una linea con tapas redondeadas;
 ## motores, objetivo, sensores y botones: piezas de revolucion; palas: perfil NACA con su cuerda, torsion y flecha) y
 ## materiales PBR (plastico satinado con barniz, metal de las campanas, cristal del objetivo, goma de los pies).
-## Medidas y forma del DJI Mini 4K (fotos de producto como referencia): 245 x 289 x 56 mm desplegado con helices
+## Medidas y forma del Mini Dron HQ (fotos de producto como referencia): 245 x 289 x 56 mm desplegado con helices
 ## (helices de 4,7" = 119 mm; motores delanteros a 180 mm entre si, traseros a 170 mm y 128 mm de delante a atras;
 ## diagonal ~215 mm), cuerpo de 138 mm de largo con una carcasa superior gris muy claro de 62 mm de ancho que vuela sobre
 ## un cuerpo inferior gris algo mas oscuro, morro ancho y redondeado con dos tomas de aire y la camara en un gimbal de

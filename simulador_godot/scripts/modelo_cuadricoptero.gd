@@ -1,9 +1,9 @@
 class_name ModeloCuadricoptero
 extends RefCounted
-## Cuadricoptero tipo DJI Mini 4K con su controlador de vuelo: traduccion LITERAL de la clase ModeloCuadricoptero de
+## Mini Dron HQ (cuadricoptero de 249 g) con su controlador de vuelo: traduccion LITERAL de la clase ModeloCuadricoptero de
 ## simulador/aviones/DJI_MINI.js (mismos datos, mismas formulas, mismo orden). pruebas/prueba_cuadricoptero.gd la compara
 ## con trazas de la del navegador. Si se cambia algo aqui, hay que cambiarlo igual alli (y al reves).
-## El controlador es como el del DJI (modo estabilizado con retencion de posicion y altura, como con GPS): la palanca
+## El controlador es como el del dron comercial (modo estabilizado con retencion de posicion y altura, como con GPS): la palanca
 ## derecha pide velocidad horizontal (pitch: + = palanca hacia ti = atras; yaw: + = derecha), la izquierda velocidad
 ## vertical (vz) y giro sobre si mismo (guinada). Consigna de velocidad -> inclinacion -> velocidad angular -> par, con
 ## los limites de los motores, y dinamica de 6 grados de libertad con resistencia y viento. Modos C / N / S (modo),
@@ -73,7 +73,7 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 	var ex := func(s: float) -> float: return (1 - e) * s + e * s * s * s
 	var obj := { "adelante": ex.call(_cl(-float(mando.get("pitch", 0.0)))), "derecha": ex.call(_cl(mando.get("yaw"))),
 				 "guinada": ex.call(_cl(mando.get("guinada"))), "vz": _cl(mando.get("vz")) }
-	# cualquier palanca cancela el RTH y el despegue automatico (como en el DJI)
+	# cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial)
 	var mx := 0.0
 	for k in obj: mx = maxf(mx, absf(obj[k]))
 	if mx > 0.3:
@@ -153,7 +153,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 		af *= amax / an; ar *= amax / an
 	var pitchObj := -atan(af / G0); var rollObj := atan(ar / G0)
 	# velocidad vertical objetivo (palanca izquierda): sube a vzmax_sube, baja a vzmax_baja; al centro mantiene la altura
-	# proteccion de aterrizaje como la del DJI: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
+	# proteccion de aterrizaje como la del dron comercial: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
 	var agl: float = 100.0 if not tiene_agl else av["agl"]
 	var bajaMax: float = minf(M["vzmax_baja"], 0.6 if agl < 3 else (1.5 if agl < 8 else M["vzmax_baja"]))
 	var vzObj: float = c["vz"] * M["vzmax_sube"] if c["vz"] > 0 else c["vz"] * bajaMax

@@ -6,7 +6,7 @@
 // dificultad (estrellas, 1-3), titulo_grupo (cabecera de su grupo en la pantalla de entrenamientos) y destacados
 // (vuelo libre en un mundo real: puntos de despegue resaltados en el mapa de salida, con contorno lat/lon y rumbo, y
 // sin_arboles: poligono [N, E] del plano del mundo donde no se ponen los arboles detectados en la ortofoto),
-// vehiculos (en que vehiculos sale en la pantalla de entrenamientos: "avion", "dron" (el DJI) y "fpv") y pista_fpv (los
+// vehiculos (en que vehiculos sale en la pantalla de entrenamientos: "avion", "dron" (el dron comercial) y "fpv") y pista_fpv (los
 // entrenamientos del dron FPV: plataforma de salida, modo de Betaflight, camara, y los conos, postes, puertas y torre de
 // cada uno, en (N, E) metros desde el piloto; los evaluan js/pista_fpv.js y simulador_godot/scripts/pista_fpv.gd) y
 // operacion (los trabajos de operador de dron del modo Operaciones: orden de trabajo, punto de despegue y lo que hay que
