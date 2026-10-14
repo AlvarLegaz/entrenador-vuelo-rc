@@ -60,6 +60,10 @@
   #toast { left: 0; right: 0; top: 20%; text-align: center; color: var(--acento); font-size: 26px; font-weight: 700; text-shadow: 0 2px 8px #000; }
   #salaInfo { z-index: 5; right: 16px; bottom: 236px; background: rgba(0,0,0,.5); padding: 8px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; display: none; max-width: 300px; }
   #salaInfo b { color: #4fc3f7; }
+  #ordenesHud { z-index: 6; left: 50%; top: 64px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; max-width: 70%; }
+  #ordenesHud .notam { background: rgba(255,183,77,.92); color: #1a1000; padding: 5px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  #ordenesHud .aterriza { background: rgba(211,47,47,.95); color: #fff; padding: 10px 22px; border-radius: 10px; font-size: 26px; font-weight: 800; letter-spacing: .03em; animation: parpadeo 1s infinite; }
+  @keyframes parpadeo { 50% { opacity: .55; } }
   #briefing { z-index: 30; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(900px, 70vw); pointer-events: auto; cursor: pointer; display: none;
               background: rgba(0,0,0,.6); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,.25); }
   #briefing img { width: 100%; display: block; border-radius: 8px; } #briefing div { text-align: center; font-size: 12px; color: var(--suave); margin-top: 6px; }
@@ -342,6 +346,7 @@
 <div id="toast" class="hudCapa"></div>
 <div id="objetivos" class="hudCapa"></div>
 <div id="salaInfo" class="hudCapa"></div>
+<div id="ordenesHud" class="hudCapa"></div>
 <div id="briefing" class="hudCapa" title="Pulsa B, Esc o haz clic para cerrarlo"><img alt=""><div>Briefing de la orden de trabajo · <b>B</b> o clic para cerrar</div></div>
 <div id="repBarra" class="hudCapa"><div><b>REPETICIÓN</b> · <span id="repTiempo">0 s</span> · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir</div><div class="pista"><i id="repProgreso"></i></div></div>
 <div id="ayuda">
@@ -1408,6 +1413,7 @@ function marcar(id, estado) { if (ev.obj[id] && ev.obj[id].estado !== "mal") ev.
 const desenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
 function evaluar(dt) {
   if (!ev || av.estado !== "volando") return;
+  vigilarExclusiones();
   const h = -av.p[2], N = av.p[0], E = av.p[1], dist = Math.hypot(N, E), t = av.t;
   if (h >= 20) { marcar("subir", "ok"); ev.subido = true; }
   if (h >= 40) { marcar("subir40", "ok"); if (ev.t40 === null) { ev.t40 = t; ev.tFallo = t + 8 + 12 * Math.random(); } }
@@ -1694,7 +1700,7 @@ function reiniciar() {
   orientarLanzamiento();
   mando.pitch = mando.yaw = 0; mando.trim = modelo.compensador_grados || 0;
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
-  nuevoEvaluador(); vuelo = null; ponerPausa(false);
+  nuevoEvaluador(); vuelo = null; ponerPausa(false); ordenesAlEvaluador();
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
@@ -2109,10 +2115,11 @@ document.getElementById("btnMultiCrear").onclick = async () => {
 /** Entra en una sala: su escenario, su punto de salida y su viento, con un vehiculo que valga para el; y a volar. */
 function entrarSala(s) {
   const E = ESCENARIOS[s.escenario]; if (!E) { toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return; }
-  MULTI.sala = s; MULTI.otros.clear();
+  MULTI.sala = s; MULTI.otros.clear(); ORDENES.reiniciar();
   const veh = E.vehiculos || ["avion", "dron", "fpv"];
   if (!veh.includes(vehiculoDe(sesion.avion))) elegirAvion(Modelos.ids().find(a => veh.includes(vehiculoDe(a))) || sesion.avion);
   sesion.escenario = s.escenario; if (s.lanz) sesion.lanz = s.lanz; if (s.viento && !E.viento) sesion.viento = s.viento;
+  if (!s.lanz && E.operacion) sesion.lanz = { mundo: E.mundo, N: E.operacion.salida.n, E: E.operacion.salida.e, rumbo: E.operacion.salida.rumbo };   // trabajos: su despegue
   clearInterval(MULTI.timer); MULTI.timer = setInterval(enviarSala, 100);
   toast(`Sala ${s.codigo}: ${s.nombre}`); empezar();
 }
@@ -2121,6 +2128,7 @@ function salirSala() {
   const s = MULTI.sala; MULTI.sala = null; clearInterval(MULTI.timer); MULTI.otros.clear();
   if (visor && visor.ponerFantasmas) visor.ponerFantasmas([]);
   document.getElementById("salaInfo").style.display = "none";
+  ORDENES.reiniciar(); pintarOrdenes(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones([]);
   api("POST", `salas/${s.codigo}/salir`, { id: multiId() }).catch(() => {});
 }
 /** Manda el estado propio y recoge el de los demas (10 veces por segundo, sin solaparse). */
@@ -2137,6 +2145,7 @@ async function enviarSala() {
     const r = await api("POST", `salas/${MULTI.sala.codigo}/estado`, e), t = performance.now(), vivos = new Set();
     for (const o of r.otros) { vivos.add(o.id); MULTI.otros.set(o.id, Object.assign(o, { recibido: t })); }
     for (const k of [...MULTI.otros.keys()]) if (!vivos.has(k)) MULTI.otros.delete(k);
+    aplicarOrdenes(r.ordenes);
   } catch (err) {
     if (/no existe/.test(err.message)) { toast("La sala se ha cerrado"); salirSala(); }
   } finally { MULTI.enCurso = false; }
@@ -2150,9 +2159,74 @@ function pintarSalaInfo() {
     (o.objs && o.objs[1] ? ` · ${o.objs[0]}✔${o.objs[2] ? " " + o.objs[2] + "✘" : ""} de ${o.objs[1]}` : "") + `</div>`;
   el.innerHTML = `<b>Sala ${MULTI.sala.codigo}</b> · ${esc(MULTI.sala.nombre)}` + ([...MULTI.otros.values()].map(fila).join("") || "<div>Todavía no hay nadie más</div>");
 }
-/** Los demas en el GPS: triangulos azules con su rumbo. */
+// ---- ordenes del profesor a la sala (panel del profesor, POST /api/salas/<cod>/orden): viento, NOTAM, aterrizaje
+// inmediato, zonas de exclusion y el desaparecido de la busqueda. Las mismas en simulador_godot (principal.gd).
+const ORDENES = {
+  reiniciar() { this.n = 0; this.viento = null; this.notam = []; this.aterrizar = false; this.zonas = []; this.persona = null; this.tAviso = 0; },
+};
+ORDENES.reiniciar();
+const EXCLUSION_TXT = "Respetar las zonas de exclusión que marca el profesor";
+function aplicarOrdenes(lista) {
+  let cambio = false;
+  for (const o of lista || []) {
+    if (o.n <= ORDENES.n) continue;
+    ORDENES.n = o.n; cambio = true;
+    if (o.para && o.para !== "*" && o.para !== multiId()) continue;
+    const nueva = (o.edad || 0) < 30;              // las de antes de entrar en la sala se aplican sin anunciarlas
+    if (o.tipo === "viento") {
+      ORDENES.viento = { vel: o.vel, desde: o.desde, rachas: !!o.rachas }; entorno.configurarViento(ORDENES.viento);
+      if (nueva) toast(`Viento: ${o.vel} m/s del ${RUMBOS_VIENTO[Math.round(o.desde / 45) % 8]}${o.rachas ? ", con rachas" : ""}`);
+    }
+    if (o.tipo === "notam") { ORDENES.notam.push(o.texto || ""); if (nueva) toast("Nuevo NOTAM"); }
+    if (o.tipo === "quitar_notam") ORDENES.notam = [];
+    if (o.tipo === "aterrizar" && nueva) { ORDENES.aterrizar = performance.now(); ORDENES.enAire = false; }
+    if (o.tipo === "exclusion") { ORDENES.zonas.push({ id: o.n, N: o.N, E: o.E, r: o.r }); if (nueva) toast("Nueva zona de exclusión: mírala en el mapa"); }
+    if (o.tipo === "quitar_exclusion") ORDENES.zonas = ORDENES.zonas.filter(z => z.id !== o.id);
+    if (o.tipo === "senderista") { ORDENES.persona = [o.N, o.E]; if (moverDesaparecido() && nueva) toast("Nueva posición del desaparecido: búscalo"); }
+  }
+  if (cambio) { ordenesAlEvaluador(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones(ORDENES.zonas); }
+  pintarOrdenes();
+}
+/** El desaparecido donde lo ha puesto el profesor (en la busqueda): hay que volver a encontrarlo. */
+function moverDesaparecido() {
+  if (!ORDENES.persona || !ev || !ev.op || !ev.op.d.zona) return false;
+  const op = ev.op; op.d.persona = ORDENES.persona.slice(); op.encontrado = false; op.error = null;
+  for (const k of ["localizar", "posicion"]) if (ev.obj[k] && ev.obj[k].estado !== "mal") ev.obj[k].estado = "pend";
+  if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(op.d, [c.N, c.E]); }
+  return true;
+}
+/** Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion. */
+function ordenesAlEvaluador() {
+  if (!MULTI.sala || !ev) return;
+  if (ORDENES.viento && !ev.vientoProfesor) { entorno.configurarViento(ORDENES.viento); ev.vientoProfesor = true; }
+  if (ORDENES.persona && ev.op && ev.op.d.zona && (ev.op.d.persona[0] !== ORDENES.persona[0] || ev.op.d.persona[1] !== ORDENES.persona[1])) moverDesaparecido();
+  if (ORDENES.zonas.length && !ev.obj.exclusion) ev.obj.exclusion = { texto: EXCLUSION_TXT, estado: "curso" };
+}
+/** En cada paso en vuelo: dentro de una zona de exclusion, aviso y objetivo suspendido. */
+function vigilarExclusiones() {
+  if (!MULTI.sala || !ORDENES.zonas.length || !ev || av.estado !== "volando" || av.posado) return;
+  const z = ORDENES.zonas.find(z => Math.hypot(av.p[0] - z.N, av.p[1] - z.E) < z.r);
+  if (!z) return;
+  marcar("exclusion", "mal");
+  if (performance.now() - ORDENES.tAviso > 4000) { ORDENES.tAviso = performance.now(); toast("¡Dentro de una zona de exclusión! Sal de ella"); }
+}
+function pintarOrdenes() {
+  const el = document.getElementById("ordenesHud");
+  if (ORDENES.aterrizar && av) {                  // hasta que aterrice (si ya estaba en el suelo, 8 s)
+    const enSuelo = av.estado !== "volando" || av.posado;
+    if (!enSuelo) ORDENES.enAire = true;
+    else if (ORDENES.enAire || performance.now() - ORDENES.aterrizar > 8000) ORDENES.aterrizar = false;
+  }
+  el.innerHTML = (ORDENES.aterrizar ? '<div class="aterriza">ATERRIZA YA · orden del profesor</div>' : "") +
+    ORDENES.notam.map(t => `<div class="notam">NOTAM · ${esc(t)}</div>`).join("");
+}
+/** Los demas en el GPS: triangulos azules con su rumbo (y las zonas de exclusion del profesor). */
 function pintarOtrosGPS(g, X, Y, W) {
   if (!MULTI.sala) return;
+  for (const z of ORDENES.zonas) {
+    const k = Math.abs(X(z.E + 100) - X(z.E)) / 100;
+    g.beginPath(); g.arc(X(z.E), Y(z.N), z.r * k, 0, 7); g.fillStyle = "rgba(229,57,53,.28)"; g.fill(); g.strokeStyle = "#e53935"; g.lineWidth = 2; g.stroke();
+  }
   for (const o of MULTI.otros.values()) {
     const x = X(o.p[1]), y = Y(o.p[0]); if (x < 0 || y < 0 || x > W || y > W) continue;
     g.save(); g.translate(x, y); g.rotate(Cuat.euler(o.q)[2]); g.fillStyle = "#4fc3f7"; g.strokeStyle = "#000"; g.lineWidth = 1;

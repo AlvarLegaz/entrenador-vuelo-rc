@@ -688,6 +688,20 @@ class Visor {
     for (const [id, g] of [...this.fantasmas]) if (!vivos.has(id)) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); this.fantasmas.delete(id); }
   }
 
+  /** Multijugador: zonas de exclusion que marca el profesor ([{N, E, r}]): cilindros rojos translucidos del suelo a 120 m. */
+  ponerExclusiones(zonas) {
+    if (this.exclusiones) { this.exclusiones.parent && this.exclusiones.parent.remove(this.exclusiones); this.exclusiones = null; }
+    if (!zonas || !zonas.length) return;
+    const G = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xe53935, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+    const borde = new THREE.MeshBasicMaterial({ color: 0xe53935, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false });
+    for (const z of zonas) {
+      const y = this.mundo ? this.entorno.altura(z.N, z.E) : 0, c = new THREE.Mesh(new THREE.CylinderGeometry(z.r, z.r, 120, 48, 1, true), mat);
+      c.position.set(z.E, y + 60, -z.N); c.renderOrder = 5; G.add(c);
+      for (const h of [0.5, 120]) { const a = new THREE.Mesh(new THREE.RingGeometry(z.r - 0.6, z.r + 0.6, 64), borde); a.rotation.x = -Math.PI / 2; a.position.set(z.E, y + h, -z.N); G.add(a); }
+    }
+    this.exclusiones = G; this.escena.add(G);
+  }
+
   /** Punto de lanzamiento (N, E) en un mundo real: ahi van el piloto (camara 1), la manga y los arboles cercanos.
    *  En la isla siempre es el origen. */
   ponerBase(NE, forzar) {

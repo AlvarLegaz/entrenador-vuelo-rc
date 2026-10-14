@@ -225,6 +225,10 @@ func _textos_gps(W: float, k0: float, alt: float, escala: float, esc_px: float, 
 ## Multijugador: los demas de la sala en el GPS, triangulos azules con su rumbo (pintarOtrosGPS de la web).
 func _otros_gps(X: Callable, Y: Callable, W: float) -> void:
 	if p.sala.is_empty(): return
+	for z in p.ordenes.get("zonas", []):                # zonas de exclusion del profesor (recortadas al mapa)
+		var k: float = absf(X.call(z["E"] + 100.0) - X.call(z["E"])) / 100.0; var c := Vector2(X.call(z["E"]), Y.call(z["N"])); var pts := PackedVector2Array()
+		for i in 48: pts.append((c + Vector2(cos(i * TAU / 48), sin(i * TAU / 48)) * z["r"] * k).clamp(Vector2.ZERO, Vector2(W, W)))
+		draw_colored_polygon(pts, Color(0.9, 0.22, 0.21, 0.28)); pts.append(pts[0]); draw_polyline(pts, Color("#e53935"), 2, true)
 	for id in p.multi_otros:
 		var o: Dictionary = p.multi_otros[id]; var c := Vector2(X.call(o["p"][1]), Y.call(o["p"][0]))
 		if c.x < 0 or c.y < 0 or c.x > W or c.y > W: continue

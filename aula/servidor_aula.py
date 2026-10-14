@@ -14,7 +14,7 @@ Proteccion: elegir alumno, darlo de alta, archivarlo (con confirmacion; se puede
 guardar vuelos no piden nada. Editar, borrar definitivamente, exportar, copias y autorizar el
 avion real piden el PIN del profesor (sesion de 8 h; 5 fallos seguidos bloquean 2 minutos).
 """
-import argparse, csv, datetime as dt, getpass, hashlib, hmac, io, json, mimetypes, os, re, secrets, socket
+import argparse, csv, datetime as dt, getpass, hashlib, hmac, io, json, math, mimetypes, os, re, secrets, socket
 import sqlite3, sys, threading, time, unicodedata, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -46,6 +46,9 @@ SESIONES = {}            # token -> caduca (epoch)
 # segundo y recibe el de los demas de su sala; el panel del profesor las ve en directo ----
 SALAS = {}               # codigo -> dict(codigo, nombre, escenario, lanz, viento, creada, ultimo, jugadores={id: estado})
 CERROJO_SALAS = threading.Lock()
+# ordenes del profesor a una sala (panel del profesor, con PIN): viento, NOTAM, aterrizaje, zonas de exclusion y el
+# desaparecido de la busqueda. Cada orden lleva su numero (n) y los simuladores aplican las que no han visto.
+ORDENES_SALA = ("viento", "notam", "quitar_notam", "aterrizar", "exclusion", "quitar_exclusion", "senderista")
 JUGADOR_CADUCA = 6       # s sin noticias: el jugador sale de la sala
 SALA_CADUCA = 3 * 3600   # s sin nadie: la sala se cierra sola
 FALLOS = {}              # ip -> (n fallos, bloqueado hasta)
@@ -276,7 +279,23 @@ class Manejador(BaseHTTPRequestHandler):
     def _sala_publica(sala, con_jugadores=True):
         d = {k: sala[k] for k in ("codigo", "nombre", "escenario", "lanz", "viento", "creada")}
         d["jugadores"] = list(sala["jugadores"].values()) if con_jugadores else len(sala["jugadores"])
+        if con_jugadores: d["recorridos"] = {k: r["nombre"] for k, r in sala.get("rutas", {}).items()}   # quien tiene recorrido (aunque ya no este)
+        if con_jugadores: d["ordenes"] = sala.get("ordenes", [])
         return d
+
+    @staticmethod
+    def _apuntar_ruta(sala, jid, e, t):
+        """Recorrido de cada piloto para el panel del profesor: un punto [N, E, altura, t] cada 3 m (o cada 10 s quieto), aunque
+        luego salga de la sala; un salto de mas de 150 m (empezar de nuevo) corta la linea con un null. Hasta 20.000 puntos."""
+        try: n, e_, h = float(e["p"][0]), float(e["p"][1]), max(0.0, float(e.get("agl") or 0))
+        except (KeyError, TypeError, ValueError, IndexError): return
+        r = sala.setdefault("rutas", {}).setdefault(jid, dict(nombre=e["nombre"], avion=e.get("avion"), puntos=[]))
+        r["nombre"] = e["nombre"]; P = r["puntos"]; u = next((x for x in reversed(P) if x), None)
+        if u:
+            d = math.hypot(n - u[0], e_ - u[1])
+            if d < 3 and abs(h - u[2]) < 3 and t - u[3] < 10: return
+            if d > 150: P.append(None)
+        if len(P) < 20000: P.append([round(n, 1), round(e_, 1), round(h, 1), round(t, 1)])
 
     def api_salas(self, m, p):
         t = time.time()
@@ -292,7 +311,7 @@ class Manejador(BaseHTTPRequestHandler):
                 if not b.get("escenario"): raise Error(400, "falta el escenario")
                 cod = next(c for c in (str(secrets.randbelow(9000) + 1000) for _ in range(100)) if c not in SALAS)
                 SALAS[cod] = dict(codigo=cod, nombre=str(b.get("nombre") or "Sala " + cod)[:60], escenario=str(b["escenario"]),
-                                  lanz=b.get("lanz"), viento=b.get("viento"), creada=ahora(), ultimo=t, jugadores={})
+                                  lanz=b.get("lanz"), viento=b.get("viento"), creada=ahora(), ultimo=t, jugadores={}, rutas={}, ordenes=[])
                 return self._sala_publica(SALAS[cod])
             if len(p) >= 2 and p[0] == "salas":
                 sala = SALAS.get(p[1])
@@ -306,7 +325,24 @@ class Manejador(BaseHTTPRequestHandler):
                     e = {k: e[k] for k in ("id", "nombre", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal") if k in e}
                     e["nombre"] = str(e.get("nombre") or "Piloto")[:40]; e["_t"] = t; e["_ip"] = self.client_address[0]
                     sala["jugadores"][jid] = e; sala["ultimo"] = t
-                    return dict(otros=[x for k, x in sala["jugadores"].items() if k != jid], sala=self._sala_publica(sala, False))
+                    self._apuntar_ruta(sala, jid, e, t)
+                    return dict(otros=[x for k, x in sala["jugadores"].items() if k != jid], sala=self._sala_publica(sala, False),
+                                ordenes=[dict(o, edad=round(t - o["t"])) for o in sala.get("ordenes", [])])
+                if len(p) == 3 and p[2] == "orden" and m == "POST":       # el profesor manda una orden a la sala
+                    self.profesor(); b = self.cuerpo(); tipo = str(b.get("tipo") or "")
+                    if tipo not in ORDENES_SALA: raise Error(400, "orden desconocida")
+                    O = sala.setdefault("ordenes", [])
+                    if len(O) >= 300: raise Error(400, "demasiadas órdenes en esta sala")
+                    o = dict(n=len(O) + 1, tipo=tipo, t=t, para=str(b.get("para") or "*")[:40])
+                    try:
+                        for k in ("vel", "desde", "N", "E", "r", "id"):
+                            if b.get(k) is not None: o[k] = round(float(b[k]), 1)
+                    except (TypeError, ValueError): raise Error(400, "datos de la orden no válidos")
+                    if "rachas" in b: o["rachas"] = bool(b["rachas"])
+                    if b.get("texto"): o["texto"] = str(b["texto"])[:200]
+                    O.append(o); return o
+                if len(p) == 3 and p[2] == "rutas" and m == "GET":       # el panel del profesor: lo recorrido por cada uno
+                    return sala.get("rutas", {})
                 if len(p) == 3 and p[2] == "salir" and m == "POST":
                     sala["jugadores"].pop(str(self.cuerpo().get("id") or ""), None); return dict(ok=True)
         raise Error(404, "ruta no encontrada")

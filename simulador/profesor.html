@@ -93,10 +93,32 @@
       <div class="barra"><span class="sub">Salas abiertas por los alumnos desde el simulador (Multijugador). Se ve en directo dónde está cada uno.</span></div>
       <div id="mSalas" class="barra" style="flex-wrap:wrap"></div>
       <div id="mSala" style="display:none">
-        <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div><button id="mCerrar">Cerrar la sala</button></div>
+        <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div>
+          <label class="sub" for="mRutas" title="Lo que ha recorrido cada piloto en esta sala, aunque ya haya aterrizado o salido">Recorridos</label>
+          <select id="mRutas"><option value="">Ninguno</option><option value="*">Todos</option></select>
+          <button id="mCerrar">Cerrar la sala</button></div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
           <canvas id="mMapa" width="560" height="560" class="tarjeta" style="padding:0;max-width:100%"></canvas>
           <div class="tarjeta tabla" style="flex:1;min-width:660px;overflow-x:auto"><table id="tJugadores"></table></div>
+        </div>
+        <div class="tarjeta" id="mOrdenes" style="margin-top:14px">
+          <h3 style="margin:0 0 8px">Órdenes a la sala</h3>
+          <p class="sub" style="margin:0 0 10px">Llegan al momento a los simuladores de los alumnos de esta sala (web y Godot).</p>
+          <div class="fila"><b style="min-width:150px">Viento</b>
+            <input type="number" id="oVel" min="0" max="12" step="1" value="4" style="width:70px"> m/s del
+            <select id="oDir"><option value="0">norte</option><option value="45">nordeste</option><option value="90">este</option><option value="135">sudeste</option><option value="180">sur</option><option value="225">sudoeste</option><option value="270">oeste</option><option value="315">noroeste</option></select>
+            <label class="sub"><input type="checkbox" id="oRachas"> con rachas</label><button id="oViento">Aplicar</button></div>
+          <div class="fila"><b style="min-width:150px">NOTAM</b>
+            <input type="text" id="oNotam" maxlength="200" style="flex:1;min-width:260px" placeholder="p. ej. Helicóptero de emergencias en la zona: no pasar de 60 m">
+            <button id="oNotamB">Publicar</button><button id="oNotamQ">Quitar los NOTAM</button></div>
+          <div class="fila"><b style="min-width:150px">Aterrizaje</b>
+            <select id="oPara"><option value="*">Todos</option></select><button id="oAterrizar" class="peligro">Ordenar aterrizaje inmediato</button></div>
+          <div class="fila"><b style="min-width:150px">Zona de exclusión</b>
+            radio <input type="number" id="oRadio" min="10" max="500" step="10" value="60" style="width:80px"> m
+            <button id="oExcl">Marcarla en el mapa…</button><span id="oZonas" class="sub"></span></div>
+          <div class="fila" id="oFilaSend"><b style="min-width:150px">Desaparecido</b>
+            <button id="oSend">Moverlo: clic en el mapa…</button><span class="sub">en la búsqueda y rescate; los alumnos lo tendrán que buscar en el sitio nuevo</span></div>
+          <p class="sub" id="oMsg" style="margin:8px 0 0"></p>
         </div>
       </div>
     </section>
@@ -301,7 +323,14 @@ async function exportar(tipo) {
 $("exAlumnos").onclick = () => exportar("alumnos").catch(fallo); $("exVuelos").onclick = () => exportar("vuelos").catch(fallo);
 
 // ---------- multijugador: salas en directo ----------
-const MP = { timer: null, sel: null };
+const MP = { timer: null, sel: null, ver: {}, colores: {}, firma: "" };   // ver: recorridos a la vista en cada sala ("", "*" o el id de un piloto)
+const COLORES = ["#4fc3f7", "#ffd34d", "#66d36e", "#ff6e66", "#ce93d8", "#ffab40", "#80cbc4", "#f48fb1"];
+/** Color de cada piloto de una sala: el mismo siempre (en la tabla, el mapa y su recorrido), aunque salga y vuelva. */
+function colorDe(cod, id) {
+  const c = MP.colores[cod] = MP.colores[cod] || {};
+  if (!(id in c)) c[id] = COLORES[Object.keys(c).length % COLORES.length];
+  return c[id];
+}
 // fondo del mapa: la ortofoto de la region (mundos/<id>_orto.jpg, 12 m) y, encima, la de las zonas de detalle (0,25-0,5 m),
 // como el GPS del simulador; las imagenes se cargan una vez y el mapa se repinta solo cuando llegan
 const FOTOS = new Map(), MUNDOS = {}; let ZONAS = null;
@@ -321,6 +350,37 @@ async function mundo(id) {                      // el rectangulo de su ortofoto:
   }
   return MUNDOS[id];
 }
+/** Ordenes del profesor a la sala (aula/servidor_aula.py, POST /api/salas/<cod>/orden). */
+const RUMBOS = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
+async function orden(d, msg) {
+  if (!MP.sel) return;
+  try { await api("POST", `salas/${MP.sel}/orden`, d); $("oMsg").textContent = msg; cargarSalas(); } catch (e) { fallo(e); }
+}
+/** Lo vigente de las ordenes de una sala: zonas de exclusion activas y la ultima posicion del desaparecido. */
+function estadoOrdenes(O) {
+  const zonas = [], quitadas = new Set(O.filter(o => o.tipo === "quitar_exclusion").map(o => o.id)); let persona = null, notam = 0;
+  for (const o of O) {
+    if (o.tipo === "exclusion" && !quitadas.has(o.n)) zonas.push(o);
+    if (o.tipo === "senderista") persona = [o.N, o.E];
+    if (o.tipo === "notam") notam++; if (o.tipo === "quitar_notam") notam = 0;
+  }
+  return { zonas, persona, notam };
+}
+$("oViento").onclick = () => { const vel = Math.max(0, Math.min(12, +$("oVel").value || 0)), desde = +$("oDir").value;
+  orden({ tipo: "viento", vel, desde, rachas: $("oRachas").checked }, `Viento enviado: ${vel} m/s del ${RUMBOS[desde / 45]}${$("oRachas").checked ? ", con rachas" : ""}.`); };
+$("oNotamB").onclick = () => { const t = $("oNotam").value.trim(); if (t) { orden({ tipo: "notam", texto: t }, "NOTAM publicado."); $("oNotam").value = ""; } };
+$("oNotamQ").onclick = () => orden({ tipo: "quitar_notam" }, "NOTAM quitados.");
+$("oAterrizar").onclick = () => orden({ tipo: "aterrizar", para: $("oPara").value }, `Orden de aterrizaje enviada a ${$("oPara").value === "*" ? "todos" : $("oPara").selectedOptions[0].textContent}.`);
+$("oExcl").onclick = () => { MP.clic = MP.clic === "exclusion" ? null : "exclusion"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa en el centro de la zona de exclusión." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
+$("oSend").onclick = () => { MP.clic = MP.clic === "senderista" ? null : "senderista"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa donde quieres poner al desaparecido." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
+$("mMapa").onclick = ev => {
+  if (!MP.clic || !MP.vista) return;
+  const r = $("mMapa").getBoundingClientRect(), V = MP.vista, x = (ev.clientX - r.left) * V.W / r.width, y = (ev.clientY - r.top) * V.W / r.height;
+  const N = V.c0[0] - (y - V.W / 2) / V.k, E = V.c0[1] + (x - V.W / 2) / V.k, tipo = MP.clic;
+  MP.clic = null; $("mMapa").style.cursor = "";
+  if (tipo === "exclusion") orden({ tipo: "exclusion", N, E, r: Math.max(10, Math.min(500, +$("oRadio").value || 60)) }, "Zona de exclusión marcada.");
+  else orden({ tipo: "senderista", N, E }, "Desaparecido movido: los alumnos lo tienen que buscar en el sitio nuevo.");
+};
 /** Distancia del piloto al punto de despegue y hacia donde esta de el: "120 m al nordeste". */
 function alDespegue(p, c) {
   const dn = p[0] - c[0], de = p[1] - c[1], d = Math.hypot(dn, de);
@@ -366,10 +426,28 @@ async function pintarSalas() {
   const s = salas.find(x => x.codigo === MP.sel);
   $("mSala").style.display = s ? "" : "none"; if (!s) return;
   $("mTitulo2").textContent = `${s.nombre} (sala ${s.codigo})`; $("mEsc").textContent = nombreEsc(s.escenario);
-  const J = s.jugadores, colores = ["#4fc3f7", "#ffd34d", "#66d36e", "#ff6e66", "#ce93d8", "#ffab40", "#80cbc4", "#f48fb1"];
+  const J = s.jugadores, color = j => colorDe(s.codigo, j.id);
+  // recorridos: el servidor guarda lo que ha volado cada uno en la sala; solo se piden si se quieren ver
+  const ver = MP.ver[s.codigo] || ""; let rutas = {};
+  if (ver) { try { rutas = await api("GET", `salas/${s.codigo}/rutas`); } catch (e) { rutas = {}; } }
+  const pilotos = Object.entries(Object.assign({}, s.recorridos || {}, ...J.map(j => ({ [j.id]: j.nombre }))));
+  pilotos.forEach(([id]) => colorDe(s.codigo, id));
+  const firma = s.codigo + "|" + ver + "|" + pilotos.map(x => x.join(":")).join(",") + "|" + J.map(j => j.id).join(",");
+  const EO = estadoOrdenes(s.ordenes || []), Es0 = (window.ESCENARIOS || {})[s.escenario] || {};
+  $("oFilaSend").style.display = Es0.operacion && Es0.operacion.zona ? "" : "none";
+  $("oZonas").innerHTML = EO.zonas.map(z => ` <button data-z="${z.n}" title="Quitar esta zona">✕ zona ${z.n} (${z.r} m)</button>`).join("");
+  $("oZonas").querySelectorAll("button").forEach(b => b.onclick = () => orden({ tipo: "quitar_exclusion", id: +b.dataset.z }, "Zona de exclusión quitada."));
+  if (firma !== MP.firma) {                        // los desplegables solo se rehacen si cambian (si no, se cerrarian solos)
+    MP.firma = firma;
+    const para = $("oPara").value;
+    $("oPara").innerHTML = '<option value="*">Todos</option>' + J.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}</option>`).join("");
+    $("oPara").value = J.some(j => j.id === para) ? para : "*";
+    $("mRutas").innerHTML = '<option value="">Ninguno</option><option value="*">Todos</option>' + pilotos.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("");
+    $("mRutas").value = ver;
+  }
   const Es = (window.ESCENARIOS || {})[s.escenario] || {}, casa0 = s.lanz ? [s.lanz.N, s.lanz.E] : Es.operacion ? [Es.operacion.salida.n, Es.operacion.salida.e] : [0, 0];
   $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th style='white-space:nowrap'>Al despegue</th><th>Objetivos</th><th>En vuelo</th></tr>" +
-    J.map((j, i) => `<tr><td style="color:${colores[i % 8]}">●</td><td style="white-space:nowrap"><b>${esc(j.nombre)}</b></td><td>${esc(nombreAvion(j.avion))}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
+    J.map(j => `<tr><td style="color:${color(j)}">●</td><td style="white-space:nowrap"><b>${esc(j.nombre)}</b></td><td>${esc(nombreAvion(j.avion))}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
       <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td style="white-space:nowrap">${alDespegue(j.p, casa0)}</td><td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && j.objs[1] ? `<span style="color:#66d36e">${j.objs[0]} ✔</span>` + (j.objs[2] ? ` <span style="color:#ff6e66">${j.objs[2]} ✘</span>` : "") + ` <span class="sub">de ${j.objs[1]}</span>` : "—"}</td>
       <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td></tr>` +
       (j.ahora ? `<tr><td></td><td colspan="8" class="sub" style="font-size:12px;padding-top:0">${esc(j.ahora)}</td></tr>` : "")).join("") ||
@@ -378,9 +456,11 @@ async function pintarSalas() {
   const E = (window.ESCENARIOS || {})[s.escenario] || {}, O = E.operacion;
   const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : O ? [O.salida.n, O.salida.e] : [0, 0];
   const ZT = O ? zonaTrabajo(O) : { R: [], A: [] };                // que se vean los pilotos y toda la zona de trabajo
-  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
+  const vistas = Object.entries(rutas).filter(([id]) => ver === "*" || ver === id);
+  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(EO.zonas.flatMap(z => [[z.N - z.r, z.E - z.r], [z.N + z.r, z.E + z.r]]), EO.persona ? [EO.persona] : [], vistas.flatMap(([, r]) => r.puntos.filter(Boolean).map(q => [q[0], q[1]])), ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
   const lejos = Math.max(60, ...puntos.map(([n, e]) => Math.max(Math.abs(n - c0[0]), Math.abs(e - c0[1])))) * 1.15, k = W / 2 / lejos;
   const X = e => W / 2 + (e - c0[1]) * k, Y = n => W / 2 - (n - c0[0]) * k;
+  MP.vista = { c0, k, W };
   g.fillStyle = "#0b1726"; g.fillRect(0, 0, W, W);
   const M = E.mundo ? await mundo(E.mundo) : null;
   if (M) {                                        // la ortofoto de la region y la de las zonas de detalle que se vean
@@ -408,17 +488,37 @@ async function pintarSalas() {
   g.strokeStyle = M ? "rgba(255,255,255,.18)" : "#2c4a6b"; g.lineWidth = 1;
   const paso = [10, 20, 50, 100, 200, 500, 1000, 2000].find(v => v * k > 45) || 5000;
   for (let v = -Math.ceil(lejos / paso) * paso; v <= lejos; v += paso) { g.beginPath(); g.moveTo(X(c0[1] + v), 0); g.lineTo(X(c0[1] + v), W); g.moveTo(0, Y(c0[0] + v)); g.lineTo(W, Y(c0[0] + v)); g.stroke(); }
+  for (const z of EO.zonas) {                      // zonas de exclusion del profesor: rojas, rayadas
+    g.save(); g.beginPath(); g.arc(X(z.E), Y(z.N), z.r * k, 0, 7); g.fillStyle = "rgba(229,57,53,.22)"; g.fill(); g.clip();
+    g.strokeStyle = "rgba(229,57,53,.6)"; g.lineWidth = 1.5;
+    for (let d = -2 * z.r * k; d < 2 * z.r * k; d += 8) { g.beginPath(); g.moveTo(X(z.E) + d - z.r * k, Y(z.N) - z.r * k); g.lineTo(X(z.E) + d + z.r * k, Y(z.N) + z.r * k); g.stroke(); }
+    g.restore(); g.strokeStyle = "#e53935"; g.lineWidth = 2.5; g.beginPath(); g.arc(X(z.E), Y(z.N), z.r * k, 0, 7); g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.fillText(`Zona ${z.n}`, X(z.E), Y(z.N) + 4);
+  }
+  if (EO.persona && O && O.zona) {                 // donde ha puesto el profesor al desaparecido
+    const x = X(EO.persona[1]), y = Y(EO.persona[0]);
+    g.fillStyle = "#d32f2f"; g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "left"; g.fillText("Desaparecido", x + 9, y + 4);
+  }
+  for (const [id, r] of vistas) {                  // recorridos: linea del color del piloto con borde oscuro, cortada al empezar de nuevo
+    for (const [ancho, col] of [[4.5, "rgba(0,0,0,.55)"], [2, colorDe(s.codigo, id)]]) {
+      g.strokeStyle = col; g.lineWidth = ancho; g.lineJoin = "round"; g.beginPath(); let dentro = false;
+      for (const q of r.puntos) { if (!q) { dentro = false; continue; } dentro ? g.lineTo(X(q[1]), Y(q[0])) : g.moveTo(X(q[1]), Y(q[0])); dentro = true; }
+      g.stroke();
+    }
+  }
   g.fillStyle = "#ff6d00"; g.beginPath(); g.arc(W / 2, W / 2, 7, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "bold 10px sans-serif"; g.textAlign = "center"; g.fillText("H", W / 2, W / 2 + 3.5);
-  J.forEach((j, i) => {
+  J.forEach(j => {
     const x = X(j.p[1]), y = Y(j.p[0]), q = j.q || [1, 0, 0, 0], yaw = Math.atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] * q[2] + q[3] * q[3]));
-    g.save(); g.translate(x, y); g.rotate(yaw); g.fillStyle = colores[i % 8]; g.strokeStyle = "#000"; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
-    g.fillStyle = colores[i % 8]; g.textAlign = "left"; g.font = "12px sans-serif"; g.fillText(`${j.nombre} · ${Math.max(0, j.agl || 0).toFixed(0)} m`, x + 9, y - 6);
+    g.save(); g.translate(x, y); g.rotate(yaw); g.fillStyle = color(j); g.strokeStyle = "#000"; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
+    g.fillStyle = color(j); g.textAlign = "left"; g.font = "12px sans-serif"; g.fillText(`${j.nombre} · ${Math.max(0, j.agl || 0).toFixed(0)} m`, x + 9, y - 6);
   });
   g.fillStyle = "#fff"; g.textAlign = "left"; g.shadowColor = "#000"; g.shadowBlur = 3;
   g.fillText(`cuadrícula de ${paso} m · N arriba` + (O ? " · zona de trabajo en amarillo" : ""), 8, W - 8);
   if (M) { g.textAlign = "right"; g.font = "10px sans-serif"; g.fillText("Ortofoto: PNOA © IGN (CC BY 4.0)", W - 8, W - 8); }
   g.shadowBlur = 0;
 }
+$("mRutas").onchange = () => { if (MP.sel) { MP.ver[MP.sel] = $("mRutas").value; cargarSalas(); } };
 $("mCerrar").onclick = async () => {
   if (!MP.sel || !(await modal("Cerrar la sala", "Los alumnos que estén dentro seguirán volando solos.", [["Cancelar", false], ["Cerrar la sala", true, "peligro"]]))) return;
   try { await api("DELETE", "salas/" + MP.sel); MP.sel = null; cargarSalas(); } catch (e) { fallo(e); }

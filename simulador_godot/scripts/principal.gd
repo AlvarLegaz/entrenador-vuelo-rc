@@ -414,6 +414,10 @@ func _construir_ui() -> void:
 	sala_info.offset_right = -16; sala_info.offset_bottom = -236; sala_info.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sala_info.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	sala_info.mouse_filter = Control.MOUSE_FILTER_IGNORE; sala_info.visible = false; raiz.add_child(sala_info)
 	sala_info_rt = Tema.rico("", 12); sala_info_rt.fit_content = true; sala_info_rt.autowrap_mode = TextServer.AUTOWRAP_OFF; sala_info.add_child(sala_info_rt)
+	# ordenes del profesor (#ordenesHud de la web): ATERRIZA YA y los NOTAM, arriba en el centro
+	ordenes_hud = VBoxContainer.new(); ordenes_hud.add_theme_constant_override("separation", 6); ordenes_hud.alignment = BoxContainer.ALIGNMENT_BEGIN
+	ordenes_hud.anchor_left = 0.5; ordenes_hud.anchor_right = 0.5; ordenes_hud.offset_top = 64; ordenes_hud.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	ordenes_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE; raiz.add_child(ordenes_hud)
 	# trabajos: el briefing (la imagen de la orden de trabajo) encima del vuelo, con B o el boton del mapa (#briefing de la web)
 	briefing = PanelContainer.new(); briefing.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.6), Color(1, 1, 1, 0.25), 12, 1, 8, 8))
 	briefing.visible = false; briefing.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; briefing.tooltip_text = "Pulsa B, Esc o haz clic para cerrarlo"
@@ -506,6 +510,13 @@ var _t_csc := 0.0               # DJI: tiempo con las palancas en la combinacion
 var _multi_t := 0.0
 var _fantasmas := {}            # id -> { nodo: Avion3D, et: Label3D, p: Array (NED), avion, nombre }
 var sala_info: PanelContainer
+var ordenes_hud: VBoxContainer
+var _ordenes_firma := ""
+var _exclusiones: Node3D
+# ordenes del profesor a la sala (ORDENES de la web): viento, NOTAM, aterrizaje inmediato, zonas de exclusion y el
+# desaparecido de la busqueda
+var ordenes := {}
+const EXCLUSION_TXT := "Respetar las zonas de exclusión que marca el profesor"
 var sala_info_rt: RichTextLabel
 func multi_id() -> String:
 	if _multi_id == "": _multi_id = Aula.uuid4()
@@ -518,19 +529,120 @@ func ir_multi() -> void:
 func entrar_sala(s: Dictionary) -> void:
 	if not Escenarios.datos().has(s["escenario"]): poner_toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return
 	var E: Dictionary = Escenarios.datos()[s["escenario"]]
-	sala = s; multi_otros = {}
+	sala = s; multi_otros = {}; reiniciar_ordenes()
 	var veh: Array = E.get("vehiculos", ["avion", "dron", "fpv"])
 	if not Escenarios.vehiculo_de(sesion["avion"]) in veh:
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
 	sesion["escenario"] = s["escenario"]
 	if s.get("lanz") != null: sesion["lanz"] = s["lanz"]
+	elif E.has("operacion"):                     # trabajos: su despegue
+		var S0: Dictionary = E["operacion"]["salida"]; sesion["lanz"] = { "mundo": E["mundo"], "N": float(S0["n"]), "E": float(S0["e"]), "rumbo": float(S0["rumbo"]) }
 	if s.get("viento") != null and not E.has("viento"): sesion["viento"] = s["viento"]
 	poner_toast("Sala %s: %s" % [s["codigo"], s["nombre"]]); empezar()
 func salir_sala() -> void:
 	if sala.is_empty(): return
 	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false
+	reiniciar_ordenes(); _pintar_ordenes(); _poner_exclusiones()
 	aula.api("POST", "salas/%s/salir" % s["codigo"], { "id": multi_id() })
+func reiniciar_ordenes() -> void:
+	ordenes = { "n": 0, "viento": null, "notam": [], "aterrizar": 0.0, "en_aire": false, "zonas": [], "persona": null, "t_aviso": 0.0 }
+
+func aplicar_ordenes(lista: Array) -> void:
+	if ordenes.is_empty(): reiniciar_ordenes()
+	var cambio := false
+	for o in lista:
+		if int(o["n"]) <= int(ordenes["n"]): continue
+		ordenes["n"] = int(o["n"]); cambio = true
+		var para := String(o.get("para", "*"))
+		if para != "*" and para != multi_id(): continue
+		var nueva: bool = float(o.get("edad", 0)) < 30          # las de antes de entrar en la sala se aplican sin anunciarlas
+		match String(o["tipo"]):
+			"viento":
+				ordenes["viento"] = { "vel": float(o["vel"]), "desde": float(o["desde"]), "rachas": bool(o.get("rachas", false)) }
+				ent.configurar_viento(float(o["vel"]), float(o["desde"]), bool(o.get("rachas", false)))
+				if nueva: poner_toast("Viento: %s m/s del %s%s" % [PasadaBaja._num(float(o["vel"])), PantallaMisiones.RUMBOS_VIENTO[int(round(float(o["desde"]) / 45.0)) % 8], ", con rachas" if o.get("rachas", false) else ""])
+			"notam":
+				ordenes["notam"].append(String(o.get("texto", "")))
+				if nueva: poner_toast("Nuevo NOTAM")
+			"quitar_notam": ordenes["notam"] = []
+			"aterrizar":
+				if nueva: ordenes["aterrizar"] = Time.get_ticks_msec() / 1000.0; ordenes["en_aire"] = false
+			"exclusion":
+				ordenes["zonas"].append({ "id": int(o["n"]), "N": float(o["N"]), "E": float(o["E"]), "r": float(o["r"]) })
+				if nueva: poner_toast("Nueva zona de exclusión: mírala en el mapa")
+			"quitar_exclusion": ordenes["zonas"] = (ordenes["zonas"] as Array).filter(func(z): return z["id"] != int(o.get("id", -1)))
+			"senderista":
+				ordenes["persona"] = [float(o["N"]), float(o["E"])]
+				if mover_desaparecido() and nueva: poner_toast("Nueva posición del desaparecido: búscalo")
+	if cambio: ordenes_al_evaluador(); _poner_exclusiones()
+	_pintar_ordenes()
+
+## El desaparecido donde lo ha puesto el profesor (en la busqueda): hay que volver a encontrarlo.
+func mover_desaparecido() -> bool:
+	if ordenes.get("persona") == null or ev == null or ev.op == null or not ev.op.d.has("zona"): return false
+	var op = ev.op; op.d["persona"] = (ordenes["persona"] as Array).duplicate(); op.encontrado = false; op.error = null
+	for k in ["localizar", "posicion"]:
+		if ev.obj.has(k) and ev.obj[k]["estado"] != "mal": ev.obj[k]["estado"] = "pend"
+	if mundo3d != null: mundo3d.poner_operacion(op.d, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
+	return true
+
+## Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion.
+func ordenes_al_evaluador() -> void:
+	if sala.is_empty() or ev == null or ordenes.is_empty(): return
+	if ordenes["viento"] != null and not ev.get_meta("viento_profesor", false):
+		var V: Dictionary = ordenes["viento"]; ent.configurar_viento(V["vel"], V["desde"], V["rachas"]); ev.set_meta("viento_profesor", true)
+	var P = ordenes["persona"]
+	if P != null and ev.op != null and ev.op.d.has("zona") and (float(ev.op.d["persona"][0]) != P[0] or float(ev.op.d["persona"][1]) != P[1]): mover_desaparecido()
+	if not (ordenes["zonas"] as Array).is_empty() and not ev.obj.has("exclusion"):
+		ev.obj["exclusion"] = { "texto": EXCLUSION_TXT, "estado": "curso" }; ev.orden.append("exclusion")
+
+## En cada paso en vuelo: dentro de una zona de exclusion, aviso y objetivo suspendido.
+func vigilar_exclusiones() -> void:
+	if sala.is_empty() or ordenes.is_empty() or (ordenes["zonas"] as Array).is_empty() or ev == null or av["estado"] != "volando" or av.get("posado", false): return
+	for z in ordenes["zonas"]:
+		if Vector2(av["p"][0] - z["N"], av["p"][1] - z["E"]).length() < z["r"]:
+			ev.marcar("exclusion", "mal")
+			var t := Time.get_ticks_msec() / 1000.0
+			if t - float(ordenes["t_aviso"]) > 4: ordenes["t_aviso"] = t; poner_toast("¡Dentro de una zona de exclusión! Sal de ella")
+			return
+
+func _pintar_ordenes() -> void:
+	if not ordenes.is_empty() and float(ordenes["aterrizar"]) > 0 and not av.is_empty():   # hasta que aterrice (si ya estaba en el suelo, 8 s)
+		var en_suelo: bool = av["estado"] != "volando" or av.get("posado", false)
+		if not en_suelo: ordenes["en_aire"] = true
+		elif ordenes["en_aire"] or Time.get_ticks_msec() / 1000.0 - float(ordenes["aterrizar"]) > 8: ordenes["aterrizar"] = 0.0
+	var aterriza: bool = not ordenes.is_empty() and float(ordenes["aterrizar"]) > 0
+	var notam: Array = ordenes.get("notam", [])
+	var firma := "%s|%s" % [aterriza, "|".join(notam)]
+	if aterriza: ordenes_hud.modulate.a = 0.55 + 0.45 * absf(sin(Time.get_ticks_msec() / 1000.0 * PI))
+	else: ordenes_hud.modulate.a = 1.0
+	if firma == _ordenes_firma: return
+	_ordenes_firma = firma
+	for c in ordenes_hud.get_children(): c.queue_free()
+	var caja := func(txt: String, fondo: Color, color: Color, tam: int) -> PanelContainer:
+		var pc := PanelContainer.new(); pc.add_theme_stylebox_override("panel", Tema.caja(fondo, Color(0, 0, 0, 0), 10 if tam > 20 else 8, 0, 22 if tam > 20 else 14, 10 if tam > 20 else 5))
+		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE; pc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var l := Tema.etiqueta(txt, tam, color, true); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; pc.add_child(l); return pc
+	if aterriza: ordenes_hud.add_child(caja.call("ATERRIZA YA · orden del profesor", Color(0.83, 0.18, 0.18, 0.95), Color.WHITE, 26))
+	for t in notam: ordenes_hud.add_child(caja.call("NOTAM · " + String(t), Color(1, 0.72, 0.3, 0.92), Color("#1a1000"), 14))
+
+## Zonas de exclusion en 3D: cilindros rojos translucidos del suelo a 120 m (ponerExclusiones de la web).
+func _poner_exclusiones() -> void:
+	if _exclusiones != null: _exclusiones.queue_free(); _exclusiones = null
+	if ordenes.is_empty() or (ordenes["zonas"] as Array).is_empty(): return
+	_exclusiones = Node3D.new(); add_child(_exclusiones)
+	var mat := StandardMaterial3D.new(); mat.albedo_color = Color(0.9, 0.22, 0.21, 0.18); mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var borde := mat.duplicate(); borde.albedo_color = Color(0.9, 0.22, 0.21, 0.7)
+	for z in ordenes["zonas"]:
+		var y: float = ent.altura(z["N"], z["E"]) if en_mundo() else 0.0
+		var cm := CylinderMesh.new(); cm.top_radius = z["r"]; cm.bottom_radius = z["r"]; cm.height = 120; cm.cap_top = false; cm.cap_bottom = false; cm.radial_segments = 48
+		var c := MeshInstance3D.new(); c.mesh = cm; c.material_override = mat; c.position = Vector3(z["E"], y + 60, -z["N"]); _exclusiones.add_child(c)
+		for h in [0.5, 120.0]:
+			var tm := TorusMesh.new(); tm.inner_radius = z["r"] - 0.6; tm.outer_radius = z["r"] + 0.6; tm.rings = 64
+			var a := MeshInstance3D.new(); a.mesh = tm; a.material_override = borde; a.position = Vector3(z["E"], y + h, -z["N"]); a.scale = Vector3(1, 0.05, 1); _exclusiones.add_child(a)
+
 ## Manda el estado propio y recoge el de los demas (enviarSala de la web).
 func _enviar_sala() -> void:
 	if sala.is_empty() or _multi_enviando or av.is_empty() or modelo == null: return
@@ -557,6 +669,7 @@ func _enviar_sala() -> void:
 		for o in r["datos"]["otros"]: o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true
 		for k in multi_otros.keys():
 			if not vivos.has(k): multi_otros.erase(k)
+		aplicar_ordenes(r["datos"].get("ordenes", []))
 	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
 ## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
 ## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
@@ -742,7 +855,7 @@ func reiniciar() -> void:
 	mando["pitch"] = 0.0; mando["yaw"] = 0.0; mando["trim"] = modelo.compensador_grados; mando["gimbal"] = 0.0
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]; var vv: Dictionary = E.get("viento", sesion["viento"])
 	ent.configurar_viento(float(vv["vel"]), float(vv["desde"]), bool(vv["rachas"]))
-	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false)
+	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false); ordenes_al_evaluador()
 	if mundo3d != null: mundo3d.poner_operacion(ev.op.d if ev.op != null else {}, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
 	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
@@ -821,7 +934,7 @@ func paso(dt: float) -> void:
 		if not vuelo["otraCamara"] and not camara_valida() and not (E["objetivos"] as Array).is_empty():
 			vuelo["otraCamara"] = true; poner_toast("Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" if con_gafas() else "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
 	cn_contador += 1
-	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT)
+	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT); vigilar_exclusiones()
 	if av["estado"] != "volando": return
 	if ent.choca_pilon(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un pilón)", vn); return
 	if ent.choca_arbol(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un árbol)", vn); return
