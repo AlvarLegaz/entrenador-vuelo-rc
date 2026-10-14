@@ -257,6 +257,10 @@ class Manejador(BaseHTTPRequestHandler):
         try: return json.loads(self.rfile.read(n) or b"{}")
         except ValueError: raise Error(400, "JSON no valido")
 
+    def es_profesor(self):
+        try: self.profesor(); return True
+        except Error: return False
+
     def profesor(self):
         tok = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
         cad = SESIONES.get(tok)
@@ -328,12 +332,20 @@ class Manejador(BaseHTTPRequestHandler):
 
     # ---- multijugador ----
     @staticmethod
-    def _sala_publica(sala, con_jugadores=True):
+    def _sala_publica(sala, con_jugadores=True, profesor=False):
         d = {k: sala.get(k) for k in ("codigo", "nombre", "escenario", "lanz", "viento", "ajustes", "creada")}
+        d["con_clave"] = bool(sala.get("clave"))
+        if profesor: d["clave"] = sala.get("clave"); d["expulsados"] = sorted(sala.get("expulsados_nombres", []))
         d["jugadores"] = list(sala["jugadores"].values()) if con_jugadores else len(sala["jugadores"])
         if con_jugadores: d["recorridos"] = {k: r["nombre"] for k, r in sala.get("rutas", {}).items()}   # quien tiene recorrido (aunque ya no este)
         if con_jugadores: d["ordenes"] = sala.get("ordenes", [])
         return d
+
+    @staticmethod
+    def _expulsado(sala, jid, e):
+        """El piloto esta expulsado de la sala: por su id, su perfil o su nombre (para que no vuelva con otra pestana)."""
+        X = sala.get("expulsados") or set()
+        return jid in X or (e.get("alumno") and "alumno:" + str(e["alumno"]) in X) or (e.get("nombre") and "nombre:" + normalizar(str(e["nombre"])) in X)
 
     @staticmethod
     def _apuntar_ruta(sala, jid, e, t):
@@ -357,7 +369,8 @@ class Manejador(BaseHTTPRequestHandler):
                 for jid in [j for j, e in sala["jugadores"].items() if t - e["_t"] > JUGADOR_CADUCA]: del sala["jugadores"][jid]
                 if not sala["jugadores"] and t - sala["ultimo"] > SALA_CADUCA: del SALAS[cod]
             if p == ["salas"] and m == "GET":
-                return sorted((self._sala_publica(s) for s in SALAS.values()), key=lambda d: d["creada"])
+                prof = self.es_profesor()
+                return sorted((self._sala_publica(s, profesor=prof) for s in SALAS.values()), key=lambda d: d["creada"])
             if p == ["salas"] and m == "POST":                 # solo el profesor crea salas
                 self.profesor(); b = self.cuerpo()
                 if not b.get("escenario"): raise Error(400, "falta el escenario")
@@ -365,18 +378,36 @@ class Manejador(BaseHTTPRequestHandler):
                 SALAS[cod] = dict(codigo=cod, nombre=str(b.get("nombre") or "Sala " + cod)[:60], escenario=str(b["escenario"]),
                                   lanz=b.get("lanz"), viento=b.get("viento"), creada=ahora(), ultimo=t, jugadores={}, rutas={}, ordenes=[],
                                   ajustes={k: float(v) for k, v in (b.get("ajustes") or {}).items()
-                                           if k in ("cubiertas", "fachadas", "defectos", "manchas", "minutos", "cobertura") and isinstance(v, (int, float))} or None)
-                return self._sala_publica(SALAS[cod])
+                                           if k in ("cubiertas", "fachadas", "defectos", "manchas", "minutos", "cobertura") and isinstance(v, (int, float))} or None,
+                                  clave=str(b.get("clave") or "").strip()[:20] or None, admitidos=set(), expulsados=set(), expulsados_nombres=set())
+                return self._sala_publica(SALAS[cod], profesor=True)
             if len(p) >= 2 and p[0] == "salas":
                 sala = SALAS.get(p[1])
                 if not sala: raise Error(404, "La sala ya no existe")
-                if len(p) == 2 and m == "GET": return self._sala_publica(sala)
+                if len(p) == 2 and m == "GET": return self._sala_publica(sala, profesor=self.es_profesor())
+                if len(p) == 3 and p[2] == "entrar" and m == "POST":      # entrar en la sala: con su clave, si la tiene
+                    b = self.cuerpo(); jid = str(b.get("id") or "")
+                    if not jid: raise Error(400, "falta el id")
+                    if self._expulsado(sala, jid, b): raise Error(403, "El profesor te ha expulsado de esta sala")
+                    if sala.get("clave") and not hmac.compare_digest(str(b.get("clave") or ""), sala["clave"]): raise Error(403, "Clave de la sala incorrecta")
+                    sala["admitidos"].add(jid); return self._sala_publica(sala, False)
+                if len(p) == 3 and p[2] == "expulsar" and m == "POST":    # el profesor echa a un piloto (y no puede volver)
+                    self.profesor(); jid = str(self.cuerpo().get("id") or "")
+                    e = sala["jugadores"].pop(jid, None) or {}
+                    sala["expulsados"].add(jid); sala["admitidos"].discard(jid)
+                    if e.get("alumno"): sala["expulsados"].add("alumno:" + str(e["alumno"]))
+                    if e.get("nombre"): sala["expulsados"].add("nombre:" + normalizar(e["nombre"])); sala["expulsados_nombres"].add(e["nombre"])
+                    return dict(ok=True)
+                if len(p) == 3 and p[2] == "readmitir" and m == "POST":   # el profesor deja volver a todos los expulsados
+                    self.profesor(); sala["expulsados"].clear(); sala["expulsados_nombres"].clear(); return dict(ok=True)
                 if len(p) == 2 and m == "DELETE":
                     self.profesor(); del SALAS[p[1]]; return dict(ok=True)
                 if len(p) == 3 and p[2] == "estado" and m == "POST":
                     e = self.cuerpo(); jid = str(e.get("id") or "")
                     if not jid: raise Error(400, "falta el id")
-                    e = {k: e[k] for k in ("id", "nombre", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal") if k in e}
+                    if self._expulsado(sala, jid, e): sala["jugadores"].pop(jid, None); raise Error(403, "El profesor te ha expulsado de esta sala")
+                    if sala.get("clave") and jid not in sala["admitidos"]: raise Error(403, "Esta sala tiene clave: entra desde la lista de salas")
+                    e = {k: e[k] for k in ("id", "nombre", "alumno", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal") if k in e}
                     e["nombre"] = str(e.get("nombre") or "Piloto")[:40]; e["_t"] = t; e["_ip"] = self.client_address[0]
                     sala["jugadores"][jid] = e; sala["ultimo"] = t
                     self._apuntar_ruta(sala, jid, e, t)

@@ -99,13 +99,14 @@
         <div class="fila" id="cFilaViento"><b style="min-width:150px">Viento</b>
           <input type="number" id="cVel" min="0" max="12" step="1" value="2" style="width:70px"> m/s del <select id="cDir"><option value="0">norte</option><option value="45">nordeste</option><option value="90">este</option><option value="135">sudeste</option><option value="180">sur</option><option value="225">sudoeste</option><option value="270">oeste</option><option value="315">noroeste</option></select>
           <label class="sub"><input type="checkbox" id="cRachas" checked> con rachas</label></div>
+        <div class="fila"><b style="min-width:150px">Clave de la sala</b><input type="text" id="cClave" maxlength="20" style="width:180px" placeholder="opcional" autocomplete="off"><span class="sub">con clave solo entra quien la sepa</span></div>
         <div id="cAjustes"></div>
         <div class="fila"><button id="cCrear" class="prim">Crear la sala</button><span class="sub" id="cMsg"></span></div>
         <p class="sub" style="margin:6px 0 0">Los alumnos la ven en el simulador, en Multijugador, y entran con un clic; cada uno vuela con su avión o dron y se guardan sus vuelos como siempre.</p>
       </div>
       <div id="mSalas" class="barra" style="flex-wrap:wrap"></div>
       <div id="mSala" style="display:none">
-        <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div>
+        <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><span id="mClave" class="sub"></span><div class="esp"></div>
           <label class="sub" for="mRutas" title="Lo que ha recorrido cada piloto en esta sala, aunque ya haya aterrizado o salido">Recorridos</label>
           <select id="mRutas"><option value="">Ninguno</option><option value="*">Todos</option></select>
           <button id="mCerrar">Cerrar la sala</button></div>
@@ -421,8 +422,8 @@ $("cCrear").onclick = async () => {
   const viento = { vel: Math.max(0, Math.min(12, +$("cVel").value || 0)), desde: +$("cDir").value, rachas: $("cRachas").checked };
   const ajustes = {}; $("cAjustes").querySelectorAll("input[data-k]").forEach(i => { ajustes[i.dataset.k] = Math.max(+i.min, Math.min(+i.max, Math.round(+i.value || 0))); });
   try {
-    const sa = await api("POST", "salas", { nombre: $("cNombre").value.trim() || "Sala del profesor", escenario: id, lanz, viento, ajustes: Object.keys(ajustes).length ? ajustes : null });
-    MP.sel = sa.codigo; $("cMsg").textContent = `Sala ${sa.codigo} creada: los alumnos ya la ven en Multijugador.`; $("cNombre").value = ""; cargarSalas();
+    const sa = await api("POST", "salas", { nombre: $("cNombre").value.trim() || "Sala del profesor", escenario: id, lanz, viento, ajustes: Object.keys(ajustes).length ? ajustes : null, clave: $("cClave").value.trim() || null });
+    MP.sel = sa.codigo; $("cMsg").textContent = `Sala ${sa.codigo} creada${sa.clave ? ` con la clave «${sa.clave}»` : ""}: los alumnos ya la ven en Multijugador.`; $("cNombre").value = ""; $("cClave").value = ""; cargarSalas();
   } catch (e) { fallo(e); }
 };
 
@@ -526,6 +527,9 @@ async function pintarSalas() {
   const s = salas.find(x => x.codigo === MP.sel);
   $("mSala").style.display = s ? "" : "none"; if (!s) return;
   $("mTitulo2").textContent = `${s.nombre} (sala ${s.codigo})`; $("mEsc").textContent = nombreEsc(s.escenario);
+  $("mClave").innerHTML = (s.clave ? ` · 🔒 clave <b>${esc(s.clave)}</b>` : " · sin clave") + ((s.expulsados || []).length ?
+    ` · expulsados: ${s.expulsados.map(esc).join(", ")} <button id="mReadmitir" title="Dejar que vuelvan a entrar">Readmitir</button>` : "");
+  if ($("mReadmitir")) $("mReadmitir").onclick = async () => { try { await api("POST", `salas/${s.codigo}/readmitir`); cargarSalas(); } catch (e) { fallo(e); } };
   const J = s.jugadores, color = j => colorDe(s.codigo, j.id);
   // recorridos: el servidor guarda lo que ha volado cada uno en la sala; solo se piden si se quieren ver
   const ver = MP.ver[s.codigo] || ""; let rutas = {};
@@ -546,12 +550,18 @@ async function pintarSalas() {
     $("mRutas").value = ver;
   }
   const Es = (window.ESCENARIOS || {})[s.escenario] || {}, casa0 = s.lanz ? [s.lanz.N, s.lanz.E] : Es.operacion ? [Es.operacion.salida.n, Es.operacion.salida.e] : [0, 0];
-  $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th style='white-space:nowrap'>Al despegue</th><th>Objetivos</th><th>En vuelo</th></tr>" +
+  $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th style='white-space:nowrap'>Al despegue</th><th>Objetivos</th><th>En vuelo</th><th></th></tr>" +
     J.map(j => `<tr><td style="color:${color(j)}">●</td><td style="white-space:nowrap"><b>${esc(j.nombre)}</b></td><td>${esc(nombreAvion(j.avion))}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
       <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td style="white-space:nowrap">${alDespegue(j.p, casa0)}</td><td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && j.objs[1] ? `<span style="color:#66d36e">${j.objs[0]} ✔</span>` + (j.objs[2] ? ` <span style="color:#ff6e66">${j.objs[2]} ✘</span>` : "") + ` <span class="sub">de ${j.objs[1]}</span>` : "—"}</td>
-      <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td></tr>` +
-      (j.ahora ? `<tr><td></td><td colspan="8" class="sub" style="font-size:12px;padding-top:0">${esc(j.ahora)}</td></tr>` : "")).join("") ||
-    '<tr><td colspan="9" class="sub">Nadie en la sala ahora mismo</td></tr>';
+      <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td>
+      <td><button class="peligro" data-expulsar="${esc(j.id)}" data-nombre="${esc(j.nombre)}" title="Sacarlo de la sala; no podrá volver a entrar">Expulsar</button></td></tr>` +
+      (j.ahora ? `<tr><td></td><td colspan="9" class="sub" style="font-size:12px;padding-top:0">${esc(j.ahora)}</td></tr>` : "")).join("") ||
+    '<tr><td colspan="10" class="sub">Nadie en la sala ahora mismo</td></tr>';
+  $("tJugadores").querySelectorAll("button[data-expulsar]").forEach(b => b.onclick = async () => {
+    if (!(await modal("Expulsar a " + b.dataset.nombre, `<p>Sale de la sala ${esc(s.nombre)} y no puede volver a entrar (ni con otra pestaña ni con otro ordenador con su perfil o su nombre). Sus vuelos se guardan como siempre.</p>`,
+      [["Cancelar", false], ["Expulsar", true, "peligro"]]))) return;
+    try { await api("POST", `salas/${s.codigo}/expulsar`, { id: b.dataset.expulsar }); cargarSalas(); } catch (e) { fallo(e); }
+  });
   // mapa: el punto de salida y los pilotos, con la escala que haga falta para verlos a todos
   const E = (window.ESCENARIOS || {})[s.escenario] || {}, O = E.operacion;
   const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : O ? [O.salida.n, O.salida.e] : [0, 0];

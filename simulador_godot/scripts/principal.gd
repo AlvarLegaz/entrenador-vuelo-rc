@@ -115,7 +115,7 @@ func _ready() -> void:
 	if _args.has("avion"): sesion["avion"] = _args["avion"]
 	if _args.has("calidad"): aj["calidad_modo"] = str(int(_args["calidad"]))
 	if _args.has("dificultad"): sesion["dificultad"] = _args["dificultad"]
-	if not ids_aviones.has(sesion["avion"]): sesion["avion"] = ids_aviones[0]
+	if not ids_aviones.has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el DJI
 	mundo_datos = DatosComunes.mundo(MUNDO)
 	ent.poner_mundo(mundo_datos); ent.poner_mundo({})      # el terreno del mundo queda guardado (mapa, rumbo despejado)
 	indice_zonas = DatosComunes.indice_zonas().filter(func(z): return z["mundo"] == MUNDO)
@@ -671,7 +671,7 @@ func _enviar_sala() -> void:
 		var guia = ev.op if ev.op != null else ev.fpv
 		if guia != null:
 			var re := RegEx.new(); re.compile("<[^>]+>"); ahora = re.sub(guia.ahora(ev.obj, av), "", true).left(160)
-	var e := { "id": multi_id(), "nombre": nombre_piloto(), "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
+	var e := { "id": multi_id(), "nombre": nombre_piloto(), "alumno": sesion["alumno"]["id"] if sesion["alumno"] != null else null, "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
 			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot, mal] if ev != null else null, "ahora": ahora,
 			   "tvuelo": vuelo["tVuelo"] if vuelo != null else 0.0, "final": vuelo["final"] if vuelo != null else null, "gimbal": av.get("gimbal", 0.0) }
 	var cod: String = sala["codigo"]
@@ -685,6 +685,7 @@ func _enviar_sala() -> void:
 			if not vivos.has(k): multi_otros.erase(k)
 		aplicar_ordenes(r["datos"].get("ordenes", []))
 	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
+	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", String(r["error"]), "Vale")   # expulsado por el profesor
 ## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
 ## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
 func _poner_fantasmas() -> void:

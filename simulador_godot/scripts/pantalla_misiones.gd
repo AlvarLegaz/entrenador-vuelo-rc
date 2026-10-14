@@ -283,6 +283,17 @@ class Multijugador extends Control:
 		var t := Tema.etiqueta("El multijugador va por el servidor del aula (el PC del profesor): pon su dirección en Ajustes › Registro y aula. En el registro local no hay multijugador.", 14, Tema.TEXTO, false, true)
 		c2[1].add_child(t)
 		reloj = Timer.new(); reloj.wait_time = 2.0; add_child(reloj); reloj.timeout.connect(func(): if visible: _salas())
+	## Pedir entrar en una sala (pedirSala de la web): con su clave, si la tiene; el servidor mira tambien las expulsiones.
+	func _pedir_sala(sala: Dictionary) -> void:
+		var clave := ""
+		if sala.get("con_clave", false):
+			var c = await p.pedir_clave("Sala " + String(sala["nombre"]), "Esta sala tiene clave: te la dice el profesor.", false)
+			if c == null: return
+			clave = c[0]
+		var al = p.sesion["alumno"]
+		var r: Dictionary = await p.aula.api("POST", "salas/%s/entrar" % sala["codigo"], { "id": p.multi_id(), "clave": clave, "nombre": p.nombre_piloto(), "alumno": al["id"] if al != null else null })
+		if r["ok"]: p.entrar_sala(sala)
+		else: await p.confirmar("No puedes entrar", String(r["error"]), "Vale")
 	func refrescar() -> void:
 		var ok: bool = p.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
 		_salas(); reloj.start()
@@ -301,14 +312,14 @@ class Multijugador extends Control:
 			var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
 			v.add_child(PantallaMisiones.imagen(String(s["escenario"]), 110))
 			var tx := VBoxContainer.new(); tx.add_theme_constant_override("separation", 4)
-			tx.add_child(Tema.rico("[b]%s[/b] [color=#9fb3c8]· %s[/color]" % [s["nombre"], s["codigo"]], 15))
+			tx.add_child(Tema.rico("[b]%s[/b] [color=#9fb3c8]· %s[/color]%s" % [s["nombre"], s["codigo"], " 🔒" if s.get("con_clave", false) else ""], 15))
 			tx.add_child(Tema.etiqueta(String(E["nombre"]), 12, Tema.SUAVE, false, true))
 			var nombres := []
 			for j in s["jugadores"]: nombres.append(String(j["nombre"]))
 			tx.add_child(Tema.etiqueta(", ".join(nombres) if not nombres.is_empty() else "nadie todavía", 12, Tema.SUAVE, false, true))
 			v.add_child(Tema.margen(tx, 12, 10, 12, 12))
 			var t := Tarjeta.new(v, 14, Vector2(0, 0)); var sala: Dictionary = s
-			t.pulsada.connect(func(): p.entrar_sala(sala))
+			t.pulsada.connect(func(): _pedir_sala(sala))
 			rej.add_child(t)
 
 

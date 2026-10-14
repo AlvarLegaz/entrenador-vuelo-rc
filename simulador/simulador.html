@@ -2146,10 +2146,18 @@ async function refrescarSalas() {
     const E = ESCENARIOS[s.escenario] || { nombre: s.escenario }, d = document.createElement("div"); d.className = "mision";
     d.innerHTML = `<div class="img">${iconoMision(s.escenario)}</div><div class="txt"><h3>${esc(s.nombre)} <span style="color:var(--suave);font-weight:400">· ${s.codigo}</span></h3>
       <p>${esc(E.nombre)}</p><div class="meta"><span>${s.jugadores.length ? s.jugadores.map(j => esc(j.nombre)).join(", ") : "nadie todavía"}</span></div></div>`;
-    d.onclick = () => entrarSala(s); el.appendChild(d);
+    if (s.con_clave) d.querySelector("h3").insertAdjacentHTML("beforeend", ' <span title="Sala con clave">🔒</span>');
+    d.onclick = () => pedirSala(s); el.appendChild(d);
   }
 }
 document.getElementById("btnMultiVolver").onclick = irInicio;
+/** Pide entrar en una sala (con su clave, si la tiene; el servidor tambien mira si el profesor te ha expulsado). */
+async function pedirSala(s) {
+  let clave = "";
+  if (s.con_clave) { const r = await pedirClave("Sala " + s.nombre, "Esta sala tiene clave: te la dice el profesor.", false); if (!r) return; clave = r[0]; }
+  try { await api("POST", `salas/${s.codigo}/entrar`, { id: multiId(), clave, nombre: nombrePiloto(), alumno: sesion.alumno ? sesion.alumno.id : null }); entrarSala(s); }
+  catch (e) { await confirmar("No puedes entrar", `<p>${esc(e.message)}</p>`, "Vale"); }
+}
 /** Entra en una sala: su escenario, su punto de salida y su viento, con un vehiculo que valga para el; y a volar. */
 function entrarSala(s) {
   const E = ESCENARIOS[s.escenario]; if (!E) { toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return; }
@@ -2176,7 +2184,7 @@ async function enviarSala() {
   const r6 = x => Math.round(x * 1e3) / 1e3, est = ev && ev.obj ? Object.values(ev.obj).map(o => o.estado) : [];
   // objetivos: cumplidos, total y fallados (las normas siguen "en curso" hasta aterrizar); y lo que va haciendo en el trabajo
   const ahora = ev && (ev.op || ev.fpv) ? (ev.op || ev.fpv).ahora(ev.obj, av).replace(/<[^>]+>/g, "").slice(0, 160) : "";
-  const e = { id: multiId(), nombre: nombrePiloto(), avion: sesion.avion, p: av.p.map(r6), q: av.q.map(x => Math.round(x * 1e5) / 1e5), vn: Cuat.rot(av.q, av.v).map(r6),
+  const e = { id: multiId(), nombre: nombrePiloto(), alumno: sesion.alumno ? sesion.alumno.id : null, avion: sesion.avion, p: av.p.map(r6), q: av.q.map(x => Math.round(x * 1e5) / 1e5), vn: Cuat.rot(av.q, av.v).map(r6),
               estado: av.estado, gas: r6(av.gases || 0), agl: r6(av.agl || 0), objs: ev && ev.obj ? [est.filter(x => x === "ok").length, est.length, est.filter(x => x === "mal").length] : null, ahora,
               tvuelo: vuelo ? r6(vuelo.tVuelo) : 0, final: vuelo ? vuelo.final : null, gimbal: av.gimbal };
   try {
@@ -2186,6 +2194,7 @@ async function enviarSala() {
     aplicarOrdenes(r.ordenes);
   } catch (err) {
     if (/no existe/.test(err.message)) { toast("La sala se ha cerrado"); salirSala(); }
+    else if (err.status === 403) { salirSala(); irInicio(); confirmar("Fuera de la sala", `<p>${esc(err.message)}</p>`, "Vale"); }   // expulsado por el profesor
   } finally { MULTI.enCurso = false; }
 }
 /** Panel de la sala en vuelo: quien esta y como va. */
@@ -3268,7 +3277,7 @@ function bucle(ahora) {
   const ids = await Modelos.cargar();
   if (!ids.length) { document.getElementById("aulaInfo").textContent = "No hay ningún avión en la carpeta aviones/."; mostrar("pAlumno"); return; }
   let guardado = null; try { guardado = localStorage.getItem("sim_avion"); } catch (e) {}
-  sesion.avion = ids.includes(guardado) ? guardado : ids[0];
+  sesion.avion = ids.includes(guardado) ? guardado : ids.includes("DJI_MINI") ? "DJI_MINI" : ids[0];      // por defecto, el DJI
   visor = new Visor(document.getElementById("vista"), entorno);
   previa = new VistaPrevia(document.getElementById("vistaPrevia"), { transparente: true });
   let modoCal = "auto"; try { modoCal = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
