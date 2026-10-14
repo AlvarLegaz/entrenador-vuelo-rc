@@ -95,8 +95,8 @@
       <div id="mSala" style="display:none">
         <div class="barra"><h2 style="margin:0" id="mTitulo2"></h2><span class="sub" id="mEsc"></span><div class="esp"></div><button id="mCerrar">Cerrar la sala</button></div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
-          <canvas id="mMapa" width="460" height="460" class="tarjeta" style="padding:0;max-width:100%"></canvas>
-          <div class="tarjeta tabla" style="flex:1;min-width:320px"><table id="tJugadores"></table></div>
+          <canvas id="mMapa" width="560" height="560" class="tarjeta" style="padding:0;max-width:100%"></canvas>
+          <div class="tarjeta tabla" style="flex:1;min-width:660px;overflow-x:auto"><table id="tJugadores"></table></div>
         </div>
       </div>
     </section>
@@ -302,8 +302,59 @@ $("exAlumnos").onclick = () => exportar("alumnos").catch(fallo); $("exVuelos").o
 
 // ---------- multijugador: salas en directo ----------
 const MP = { timer: null, sel: null };
+// fondo del mapa: la ortofoto de la region (mundos/<id>_orto.jpg, 12 m) y, encima, la de las zonas de detalle (0,25-0,5 m),
+// como el GPS del simulador; las imagenes se cargan una vez y el mapa se repinta solo cuando llegan
+const FOTOS = new Map(), MUNDOS = {}; let ZONAS = null;
+function foto(url) {
+  if (!FOTOS.has(url)) { const i = new Image(); i.onload = () => cargarSalas(); i.src = url; FOTOS.set(url, i); }
+  const i = FOTOS.get(url); return i.complete && i.naturalWidth ? i : null;
+}
+async function mundo(id) {                      // el rectangulo de su ortofoto: la cabecera de mundos/<id>.js (terreno)
+  if (!(id in MUNDOS)) {
+    MUNDOS[id] = null;
+    try {
+      const t = await (await fetch("mundos/" + id + ".js")).text(), m = t.match(/"terreno":\{"origen":\{[^}]*\},"paso":([\d.]+),"N0":([-\d.]+),"E0":([-\d.]+),"nN":(\d+),"nE":(\d+)/);
+      if (m) MUNDOS[id] = { paso: +m[1], N0: +m[2], E0: +m[3], nN: +m[4], nE: +m[5] };
+    } catch (e) {}
+    try { ZONAS = ZONAS || await (await fetch("zonas/indice.json")).json(); } catch (e) { ZONAS = []; }
+    cargarSalas();
+  }
+  return MUNDOS[id];
+}
+/** Distancia del piloto al punto de despegue y hacia donde esta de el: "120 m al nordeste". */
+function alDespegue(p, c) {
+  const dn = p[0] - c[0], de = p[1] - c[1], d = Math.hypot(dn, de);
+  if (d < 5) return "en el despegue";
+  const r = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"][Math.round((Math.atan2(de, dn) * 180 / Math.PI + 360) % 360 / 45) % 8];
+  return `${d < 1000 ? d.toFixed(0) + " m" : (d / 1000).toFixed(1).replace(".", ",") + " km"} al ${r}`;
+}
+/** Nombre del avion o dron (el de su fichero aviones/<id>.js; mientras llega, el id). */
+const AVIONES = {};
+function nombreAvion(id) {
+  if (!(id in AVIONES)) {
+    AVIONES[id] = id;
+    fetch("aviones/" + encodeURIComponent(id) + ".js").then(r => r.text()).then(t => { const m = t.match(/"nombre":\s*"([^"]+)"/); if (m) AVIONES[id] = m[1]; }).catch(() => {});
+  }
+  return AVIONES[id];
+}
+/** Zona de trabajo de una operacion (la de su briefing, sin las soluciones): rectangulos [n0, e0, n1, e1] y anillos [n, e, r]. */
+function zonaTrabajo(O) {
+  const R = [], A = [];
+  if (O.candidatos || O.puntos) {
+    const q = O.candidatos ? O.candidatos.cubiertas.concat(O.candidatos.fachadas) : O.puntos, ns = q.map(x => x.n), es = q.map(x => x.e);
+    R.push([Math.min(...ns) - 25, Math.min(...es) - 25, Math.max(...ns) + 25, Math.max(...es) + 25]);
+  }
+  for (const P of [O.parcela, O.zona]) if (P) R.push([P.n0, P.e0, P.n1, P.e1]);
+  if (O.planta) { const P = O.planta, f = P.ancho * Math.cos(P.inclinacion * Math.PI / 180); R.push([P.n0 - f, P.e0, P.n0 + (P.filas - 1) * P.separacion + f, P.e0 + P.largo]); }
+  if (O.faro) for (const r of O.orbita) A.push([O.faro.n, O.faro.e, r]);
+  return { R, A };
+}
 const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
 async function cargarSalas() {
+  if (cargarSalas.ocupado) return; cargarSalas.ocupado = true;
+  try { await pintarSalas(); } finally { cargarSalas.ocupado = false; }
+}
+async function pintarSalas() {
   let salas = []; try { salas = await api("GET", "salas"); } catch (e) { fallo(e); return; }
   if (!salas.some(x => x.codigo === MP.sel)) MP.sel = salas.length ? salas.reduce((m, x) => x.jugadores.length > m.jugadores.length ? x : m).codigo : null;   // la que tenga mas pilotos
   $("mSalas").innerHTML = salas.length ? "" : '<span class="sub">No hay ninguna sala abierta.</span>';
@@ -316,16 +367,45 @@ async function cargarSalas() {
   $("mSala").style.display = s ? "" : "none"; if (!s) return;
   $("mTitulo2").textContent = `${s.nombre} (sala ${s.codigo})`; $("mEsc").textContent = nombreEsc(s.escenario);
   const J = s.jugadores, colores = ["#4fc3f7", "#ffd34d", "#66d36e", "#ff6e66", "#ce93d8", "#ffab40", "#80cbc4", "#f48fb1"];
-  $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th>Objetivos</th><th>En vuelo</th></tr>" +
-    J.map((j, i) => `<tr><td style="color:${colores[i % 8]}">●</td><td>${esc(j.nombre)}</td><td>${esc(j.avion)}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
-      <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td>${j.objs && j.objs[1] ? j.objs[0] + "/" + j.objs[1] : "—"}</td>
-      <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td></tr>`).join("") ||
-    '<tr><td colspan="8" class="sub">Nadie en la sala ahora mismo</td></tr>';
+  const Es = (window.ESCENARIOS || {})[s.escenario] || {}, casa0 = s.lanz ? [s.lanz.N, s.lanz.E] : Es.operacion ? [Es.operacion.salida.n, Es.operacion.salida.e] : [0, 0];
+  $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th style='white-space:nowrap'>Al despegue</th><th>Objetivos</th><th>En vuelo</th></tr>" +
+    J.map((j, i) => `<tr><td style="color:${colores[i % 8]}">●</td><td style="white-space:nowrap"><b>${esc(j.nombre)}</b></td><td>${esc(nombreAvion(j.avion))}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
+      <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td style="white-space:nowrap">${alDespegue(j.p, casa0)}</td><td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && j.objs[1] ? `<span style="color:#66d36e">${j.objs[0]} ✔</span>` + (j.objs[2] ? ` <span style="color:#ff6e66">${j.objs[2]} ✘</span>` : "") + ` <span class="sub">de ${j.objs[1]}</span>` : "—"}</td>
+      <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td></tr>` +
+      (j.ahora ? `<tr><td></td><td colspan="8" class="sub" style="font-size:12px;padding-top:0">${esc(j.ahora)}</td></tr>` : "")).join("") ||
+    '<tr><td colspan="9" class="sub">Nadie en la sala ahora mismo</td></tr>';
   // mapa: el punto de salida y los pilotos, con la escala que haga falta para verlos a todos
-  const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : [0, 0];
-  const lejos = Math.max(60, ...J.map(j => Math.max(Math.abs(j.p[0] - c0[0]), Math.abs(j.p[1] - c0[1])))) * 1.25, k = W / 2 / lejos;
+  const E = (window.ESCENARIOS || {})[s.escenario] || {}, O = E.operacion;
+  const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : O ? [O.salida.n, O.salida.e] : [0, 0];
+  const ZT = O ? zonaTrabajo(O) : { R: [], A: [] };                // que se vean los pilotos y toda la zona de trabajo
+  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
+  const lejos = Math.max(60, ...puntos.map(([n, e]) => Math.max(Math.abs(n - c0[0]), Math.abs(e - c0[1])))) * 1.15, k = W / 2 / lejos;
   const X = e => W / 2 + (e - c0[1]) * k, Y = n => W / 2 - (n - c0[0]) * k;
-  g.fillStyle = "#0b1726"; g.fillRect(0, 0, W, W); g.strokeStyle = "#2c4a6b"; g.lineWidth = 1;
+  g.fillStyle = "#0b1726"; g.fillRect(0, 0, W, W);
+  const M = E.mundo ? await mundo(E.mundo) : null;
+  if (M) {                                        // la ortofoto de la region y la de las zonas de detalle que se vean
+    const R = foto("mundos/" + E.mundo + "_orto.jpg"), Nn = M.N0 + (M.nN - 1) * M.paso, Ee = M.E0 + (M.nE - 1) * M.paso;
+    if (R) { const fx = R.naturalWidth / (Ee - M.E0), fy = R.naturalHeight / (Nn - M.N0), e0 = c0[1] - W / 2 / k, n1 = c0[0] + W / 2 / k;
+             g.drawImage(R, (e0 - M.E0) * fx, (Nn - n1) * fy, W / k * fx, W / k * fy, 0, 0, W, W); }
+    for (const z of ZONAS || []) {
+      if (z.mundo !== E.mundo || !z.orto) continue;
+      const t = z.orto.tesela_m;
+      for (let i = 0; i < z.orto.teselas; i++) for (let j = 0; j < z.orto.teselas; j++) {
+        const n0 = z.N0 + i * t, e0 = z.E0 + j * t;
+        if (X(e0 + t) < 0 || X(e0) > W || Y(n0) < 0 || Y(n0 + t) > W) continue;
+        const im = foto(`zonas/${z.id}/${z.orto.archivo.replace("{i}", i).replace("{j}", j)}`);
+        if (im) g.drawImage(im, X(e0), Y(n0 + t), t * k + 0.5, t * k + 0.5);
+      }
+    }
+    g.fillStyle = "rgba(8,14,22,.25)"; g.fillRect(0, 0, W, W);
+  }
+  if (O) {                                        // la zona de trabajo de la operacion, discontinua en amarillo
+    const Z = ZT; g.save(); g.setLineDash([8, 6]); g.lineWidth = 2.5; g.strokeStyle = "#ffc83d"; g.fillStyle = "rgba(255,200,61,.12)";
+    for (const [n0, e0, n1, e1] of Z.R) { g.fillRect(X(e0), Y(n1), (e1 - e0) * k, (n1 - n0) * k); g.strokeRect(X(e0), Y(n1), (e1 - e0) * k, (n1 - n0) * k); }
+    for (const [n, e, r] of Z.A) { g.beginPath(); g.arc(X(e), Y(n), r * k, 0, 7); g.stroke(); }
+    g.restore();
+  }
+  g.strokeStyle = M ? "rgba(255,255,255,.18)" : "#2c4a6b"; g.lineWidth = 1;
   const paso = [10, 20, 50, 100, 200, 500, 1000, 2000].find(v => v * k > 45) || 5000;
   for (let v = -Math.ceil(lejos / paso) * paso; v <= lejos; v += paso) { g.beginPath(); g.moveTo(X(c0[1] + v), 0); g.lineTo(X(c0[1] + v), W); g.moveTo(0, Y(c0[0] + v)); g.lineTo(W, Y(c0[0] + v)); g.stroke(); }
   g.fillStyle = "#ff6d00"; g.beginPath(); g.arc(W / 2, W / 2, 7, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "bold 10px sans-serif"; g.textAlign = "center"; g.fillText("H", W / 2, W / 2 + 3.5);
@@ -334,7 +414,10 @@ async function cargarSalas() {
     g.save(); g.translate(x, y); g.rotate(yaw); g.fillStyle = colores[i % 8]; g.strokeStyle = "#000"; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
     g.fillStyle = colores[i % 8]; g.textAlign = "left"; g.font = "12px sans-serif"; g.fillText(`${j.nombre} · ${Math.max(0, j.agl || 0).toFixed(0)} m`, x + 9, y - 6);
   });
-  g.fillStyle = "#9fb3c8"; g.textAlign = "left"; g.fillText(`cuadrícula de ${paso} m · N arriba`, 8, W - 8);
+  g.fillStyle = "#fff"; g.textAlign = "left"; g.shadowColor = "#000"; g.shadowBlur = 3;
+  g.fillText(`cuadrícula de ${paso} m · N arriba` + (O ? " · zona de trabajo en amarillo" : ""), 8, W - 8);
+  if (M) { g.textAlign = "right"; g.font = "10px sans-serif"; g.fillText("Ortofoto: PNOA © IGN (CC BY 4.0)", W - 8, W - 8); }
+  g.shadowBlur = 0;
 }
 $("mCerrar").onclick = async () => {
   if (!MP.sel || !(await modal("Cerrar la sala", "Los alumnos que estén dentro seguirán volando solos.", [["Cancelar", false], ["Cerrar la sala", true, "peligro"]]))) return;

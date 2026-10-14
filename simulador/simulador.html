@@ -1397,9 +1397,8 @@ function nuevoEvaluador() {
   for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
   const O = ESCENARIOS[sesion.escenario].operacion;
   ev.op = null;
-  if (O && entorno.mundo) {                    // operaciones: el trabajo (en la busqueda, el senderista en un sitio al azar de la zona)
-    const d = Object.assign({}, O), c = casa();
-    if (O.zona) d.persona = [O.zona.n0 + 20 + Math.random() * (O.zona.n1 - O.zona.n0 - 40), O.zona.e0 + 20 + Math.random() * (O.zona.e1 - O.zona.e0 - 40)];
+  if (O && entorno.mundo) {                    // operaciones: el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
+    const d = Operacion.sortear(O), c = casa();
     ev.op = new Operacion(d, (k, e) => marcar(k, e), (k, t) => { if (ev.obj[k]) ev.obj[k].texto += ` (${t})`; }, { casa: [c.N, c.E], suelo: (N, E) => entorno.altura(N, E), h0: entorno.terreno.h0 });
   }
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
@@ -2128,9 +2127,11 @@ function salirSala() {
 async function enviarSala() {
   if (!MULTI.sala || MULTI.enCurso || !av || !modelo) return;
   MULTI.enCurso = true;
-  const r6 = x => Math.round(x * 1e3) / 1e3, ok = ev && ev.obj ? Object.values(ev.obj).filter(o => o.estado === "ok").length : 0;
+  const r6 = x => Math.round(x * 1e3) / 1e3, est = ev && ev.obj ? Object.values(ev.obj).map(o => o.estado) : [];
+  // objetivos: cumplidos, total y fallados (las normas siguen "en curso" hasta aterrizar); y lo que va haciendo en el trabajo
+  const ahora = ev && (ev.op || ev.fpv) ? (ev.op || ev.fpv).ahora(ev.obj, av).replace(/<[^>]+>/g, "").slice(0, 160) : "";
   const e = { id: multiId(), nombre: nombrePiloto(), avion: sesion.avion, p: av.p.map(r6), q: av.q.map(x => Math.round(x * 1e5) / 1e5), vn: Cuat.rot(av.q, av.v).map(r6),
-              estado: av.estado, gas: r6(av.gases || 0), agl: r6(av.agl || 0), objs: ev && ev.obj ? [ok, Object.keys(ev.obj).length] : null,
+              estado: av.estado, gas: r6(av.gases || 0), agl: r6(av.agl || 0), objs: ev && ev.obj ? [est.filter(x => x === "ok").length, est.length, est.filter(x => x === "mal").length] : null, ahora,
               tvuelo: vuelo ? r6(vuelo.tVuelo) : 0, final: vuelo ? vuelo.final : null, gimbal: av.gimbal };
   try {
     const r = await api("POST", `salas/${MULTI.sala.codigo}/estado`, e), t = performance.now(), vivos = new Set();
@@ -2146,7 +2147,7 @@ function pintarSalaInfo() {
   if (!MULTI.sala) { el.style.display = "none"; return; }
   el.style.display = "block";
   const fila = o => `<div>● ${esc(o.nombre)} · ${esc((Modelos.datos(o.avion) || {}).nombre || o.avion)} · ${o.estado === "volando" ? Math.max(0, o.agl).toFixed(0) + " m" : o.estado}` +
-    (o.objs && o.objs[1] ? ` · ${o.objs[0]}/${o.objs[1]}` : "") + `</div>`;
+    (o.objs && o.objs[1] ? ` · ${o.objs[0]}✔${o.objs[2] ? " " + o.objs[2] + "✘" : ""} de ${o.objs[1]}` : "") + `</div>`;
   el.innerHTML = `<b>Sala ${MULTI.sala.codigo}</b> · ${esc(MULTI.sala.nombre)}` + ([...MULTI.otros.values()].map(fila).join("") || "<div>Todavía no hay nadie más</div>");
 }
 /** Los demas en el GPS: triangulos azules con su rumbo. */

@@ -303,7 +303,7 @@ class Manejador(BaseHTTPRequestHandler):
                 if len(p) == 3 and p[2] == "estado" and m == "POST":
                     e = self.cuerpo(); jid = str(e.get("id") or "")
                     if not jid: raise Error(400, "falta el id")
-                    e = {k: e[k] for k in ("id", "nombre", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "tvuelo", "final", "gimbal") if k in e}
+                    e = {k: e[k] for k in ("id", "nombre", "avion", "p", "q", "vn", "estado", "gas", "agl", "objs", "ahora", "tvuelo", "final", "gimbal") if k in e}
                     e["nombre"] = str(e.get("nombre") or "Piloto")[:40]; e["_t"] = t; e["_ip"] = self.client_address[0]
                     sala["jugadores"][jid] = e; sala["ultimo"] = t
                     return dict(otros=[x for k, x in sala["jugadores"].items() if k != jid], sala=self._sala_publica(sala, False))
@@ -554,7 +554,8 @@ def main():
     print("\nServidor del aula en marcha. Abrid en el navegador de cada ordenador:")
     print("   en este ordenador:  http://localhost:%d" % a.puerto)
     for ip in ips_locales(): print("   en el resto:        http://%s:%d" % (ip, a.puerto))
-    print("Panel del profesor: botón 'Profesor' en la pantalla de alumnos.  Ctrl+C para parar.\n")
+    print("En el simulador Godot (v2), en Perfil > Online, escribid la dirección con la IP (no localhost).")
+    print("Panel del profesor: botón 'Panel del profesor' en Perfil > Online, o /profesor.html.  Ctrl+C para parar.\n")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

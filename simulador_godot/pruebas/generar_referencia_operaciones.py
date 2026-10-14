@@ -1,7 +1,9 @@
 # Genera pruebas/referencia_operaciones_js.json para pruebas/prueba_operaciones.gd: vuelos de prueba de los 6 trabajos del
 # modo Operaciones (escenarios.js, "operacion"), con aciertos, fallos, choques y normas incumplidas (posiciones, gimbal,
 # video y fotos dados, sin fisica, sobre un suelo ondulado de prueba) y lo que dice de cada uno la clase Operacion de
-# simulador/js/operaciones.js en el navegador: objetivos (estado y texto), avisos, choque y la linea "Ahora".
+# simulador/js/operaciones.js en el navegador: objetivos (estado y texto), avisos, choque y la linea "Ahora". Ademas,
+# pruebas/referencia_sorteos_js.json: lo que sortea Operacion.sortear (los objetivos al azar de cada trabajo) con unas
+# semillas dadas, para comparar con el sortear de operaciones.gd.
 # Necesita Python con playwright y Chrome. Uso (desde la carpeta del repositorio):
 #     python simulador_godot/pruebas/generar_referencia_operaciones.py
 import json, math, pathlib, re
@@ -163,8 +165,24 @@ with sync_playwright() as p:
     b = p.chromium.launch(channel="chrome", args=["--use-angle=swiftshader", "--allow-file-access-from-files"]); pg = b.new_page()
     err = []; pg.on("pageerror", lambda e: err.append(str(e)))
     pg.goto(url); pg.wait_for_timeout(2500)
-    r = pg.evaluate(JS, V); b.close()
+    r = pg.evaluate(JS, V)
+    SEMILLAS = [1, 7, 42, 2026]
+    S = pg.evaluate("""S => S.flatMap(s => Object.keys(ESCENARIOS).filter(k => ESCENARIOS[k].operacion).map(k => {
+      let x = s; const rnd = () => (x = (x * 48271) % 2147483647) / 2147483647;          // Park-Miller: igual en GDScript
+      const d = Operacion.sortear(ESCENARIOS[k].operacion, rnd);
+      return { semilla: s, mision: k, puntos: d.puntos || null, defectos: d.defectos || null, manchas: d.manchas || null, persona: d.persona || null };
+    }))""", SEMILLAS); b.close()
 assert not err, err
+# lo sorteado tiene que estar dentro de su zona y sin repetirse
+for x in S:
+    O = ESC[x["mision"]]["operacion"]
+    if x["mision"] == "op_inspeccion": assert len(x["puntos"]) == 6 and len({(q["n"], q["e"]) for q in x["puntos"]}) == 6, x
+    if x["defectos"]: assert len({tuple(f) for f in x["defectos"]}) == 8 and all(0 <= f < O["planta"]["filas"] and 3 <= e <= O["planta"]["largo"] - 4 for f, e in x["defectos"]), x
+    if x["manchas"]:
+        P = O["parcela"]; assert all(P["n0"] + r <= n <= P["n1"] - r and P["e0"] + r <= e <= P["e1"] - r for n, e, r in x["manchas"]), x
+    if x["persona"]: Z = O["zona"]; assert Z["n0"] < x["persona"][0] < Z["n1"] and Z["e0"] < x["persona"][1] < Z["e1"], x
+json.dump(S, open(RAIZ / "simulador_godot" / "pruebas" / "referencia_sorteos_js.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+print(len(S), "sorteos; inspeccion con la semilla 1:", [q["nombre"] for q in S[0]["puntos"]] if S[0]["puntos"] else S[0])
 for v, x in zip(V, r): v["web"] = x
 json.dump(V, open(RAIZ / "simulador_godot" / "pruebas" / "referencia_operaciones_js.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 for x, v in zip(r, V):

@@ -1,0 +1,598 @@
+[
+ {
+  "semilla": 1,
+  "mision": "op_inspeccion",
+  "puntos": [
+   {
+    "n": 114.7,
+    "e": 6709.2,
+    "cota": 14.05,
+    "nombre": "Equipo de aire acondicionado"
+   },
+   {
+    "n": 192.2,
+    "e": 6692.7,
+    "cota": 12.65,
+    "normal": 268,
+    "nombre": "Grieta en la fachada oeste"
+   },
+   {
+    "n": 138.6,
+    "e": 6617.3,
+    "cota": 15.65,
+    "nombre": "Claraboya rota"
+   },
+   {
+    "n": 226.3,
+    "e": 6619.6,
+    "cota": 14.15,
+    "nombre": "Placas solares de la cubierta"
+   },
+   {
+    "n": 109.1,
+    "e": 6583.2,
+    "cota": 12.2,
+    "normal": 268,
+    "nombre": "Bajante roto en la fachada oeste"
+   },
+   {
+    "n": 105.6,
+    "e": 6647.3,
+    "cota": 15.55,
+    "nombre": "Lucernario de la cubierta"
+   }
+  ],
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_fotogrametria",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": [
+   3040.0060690427226,
+   -13090.885073393996
+  ]
+ },
+ {
+  "semilla": 1,
+  "mision": "op_agricultura",
+  "puntos": null,
+  "defectos": null,
+  "manchas": [
+   [
+    16242.003056999298,
+    3245.265062066384,
+    4
+   ],
+   [
+    16323.581249112534,
+    3370.308136669597,
+    5
+   ],
+   [
+    16374.109931169827,
+    3261.281294176719,
+    3.5
+   ],
+   [
+    16312.036712086776,
+    3294.089308557142,
+    4
+   ],
+   [
+    16277.99233233579,
+    3347.7444299870376,
+    4.5
+   ]
+  ],
+  "persona": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_paneles",
+  "puntos": null,
+  "defectos": [
+   [
+    0,
+    15
+   ],
+   [
+    12,
+    131
+   ],
+   [
+    19,
+    30
+   ],
+   [
+    10,
+    60
+   ],
+   [
+    5,
+    110
+   ],
+   [
+    1,
+    83
+   ],
+   [
+    11,
+    119
+   ],
+   [
+    11,
+    76
+   ]
+  ],
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_video",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_inspeccion",
+  "puntos": [
+   {
+    "n": 128.7,
+    "e": 6699.1,
+    "cota": 17.55,
+    "nombre": "Lucernario de la cubierta"
+   },
+   {
+    "n": 192.2,
+    "e": 6692.7,
+    "cota": 12.65,
+    "normal": 268,
+    "nombre": "Bajante roto en la fachada oeste"
+   },
+   {
+    "n": 114.7,
+    "e": 6709.2,
+    "cota": 14.05,
+    "nombre": "Claraboya rota"
+   },
+   {
+    "n": 103.5,
+    "e": 6624.8,
+    "cota": 15.45,
+    "nombre": "Antena del tejado"
+   },
+   {
+    "n": 135.9,
+    "e": 6727.9,
+    "cota": 14.25,
+    "nombre": "Extractor de la cubierta"
+   },
+   {
+    "n": 150.9,
+    "e": 6747.7,
+    "cota": 12.35,
+    "normal": 88,
+    "nombre": "Grieta en la fachada este"
+   }
+  ],
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_fotogrametria",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": [
+   3040.0424832990593,
+   -12856.195513757968
+  ]
+ },
+ {
+  "semilla": 7,
+  "mision": "op_agricultura",
+  "puntos": null,
+  "defectos": null,
+  "manchas": [
+   [
+    16242.02139899508,
+    3324.855434464689,
+    4
+   ],
+   [
+    16271.068743787739,
+    3270.156956687177,
+    5
+   ],
+   [
+    16347.769518188792,
+    3282.9690592370316,
+    3.5
+   ],
+   [
+    16324.256984607437,
+    3354.625159899995,
+    4
+   ],
+   [
+    16260.91903741165,
+    3382.1667344726934,
+    4.5
+   ]
+  ],
+  "persona": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_paneles",
+  "puntos": null,
+  "defectos": [
+   [
+    0,
+    88
+   ],
+   [
+    4,
+    37
+   ],
+   [
+    15,
+    50
+   ],
+   [
+    12,
+    116
+   ],
+   [
+    16,
+    32
+   ],
+   [
+    12,
+    135
+   ],
+   [
+    1,
+    99
+   ],
+   [
+    2,
+    86
+   ]
+  ],
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_video",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_inspeccion",
+  "puntos": [
+   {
+    "n": 109.5,
+    "e": 6609.8,
+    "cota": 15.45,
+    "nombre": "Extractor de la cubierta"
+   },
+   {
+    "n": 128.7,
+    "e": 6699.1,
+    "cota": 17.55,
+    "nombre": "Lucernario de la cubierta"
+   },
+   {
+    "n": 112,
+    "e": 6664.4,
+    "cota": 12.3,
+    "normal": 88,
+    "nombre": "Bajante roto en la fachada este"
+   },
+   {
+    "n": 144.6,
+    "e": 6629.3,
+    "cota": 15.65,
+    "nombre": "Claraboya rota"
+   },
+   {
+    "n": 129.8,
+    "e": 6695.1,
+    "cota": 14.3,
+    "normal": 268,
+    "nombre": "Desconchado en la fachada oeste"
+   },
+   {
+    "n": 152.7,
+    "e": 6699.1,
+    "cota": 17.55,
+    "nombre": "Impermeabilización levantada"
+   }
+  ],
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_fotogrametria",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": [
+   3040.2548997943545,
+   -12867.173082547808
+  ]
+ },
+ {
+  "semilla": 42,
+  "mision": "op_agricultura",
+  "puntos": null,
+  "defectos": null,
+  "manchas": [
+   [
+    16242.12839397049,
+    3321.1326067881346,
+    4
+   ],
+   [
+    16277.412462726428,
+    3301.941740123062,
+    5
+   ],
+   [
+    16331.117109132752,
+    3383.3143554221906,
+    3.5
+   ],
+   [
+    16327.541907644618,
+    3343.7509593999716,
+    4
+   ],
+   [
+    16248.177958103213,
+    3267.7660594555855,
+    4.5
+   ]
+  ],
+  "persona": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_paneles",
+  "puntos": null,
+  "defectos": [
+   [
+    0,
+    85
+   ],
+   [
+    5,
+    67
+   ],
+   [
+    13,
+    142
+   ],
+   [
+    12,
+    106
+   ],
+   [
+    0,
+    35
+   ],
+   [
+    15,
+    80
+   ],
+   [
+    9,
+    3
+   ],
+   [
+    17,
+    73
+   ]
+  ],
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_video",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_inspeccion",
+  "puntos": [
+   {
+    "n": 214.3,
+    "e": 6628.6,
+    "cota": 14.15,
+    "nombre": "Claraboya rota"
+   },
+   {
+    "n": 226.3,
+    "e": 6619.6,
+    "cota": 14.15,
+    "nombre": "Lucernario de la cubierta"
+   },
+   {
+    "n": 226.3,
+    "e": 6637.6,
+    "cota": 14.15,
+    "nombre": "Extractor de la cubierta"
+   },
+   {
+    "n": 214.3,
+    "e": 6614.1,
+    "cota": 12.25,
+    "normal": 268,
+    "nombre": "Canalón de la fachada oeste"
+   },
+   {
+    "n": 179.7,
+    "e": 6699.1,
+    "cota": 17.55,
+    "nombre": "Impermeabilización levantada"
+   },
+   {
+    "n": 123.2,
+    "e": 6652.6,
+    "cota": 12.3,
+    "normal": 358,
+    "nombre": "Grieta en la fachada norte"
+   }
+  ],
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_fotogrametria",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": [
+   3052.2958805562444,
+   -13003.158696234766
+  ]
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_agricultura",
+  "puntos": null,
+  "defectos": null,
+  "manchas": [
+   [
+    16248.19348057648,
+    3275.0157464942968,
+    4
+   ],
+   [
+    16288.610701993857,
+    3295.2848926029565,
+    5
+   ],
+   [
+    16330.261094716732,
+    3287.4276073351166,
+    3.5
+   ],
+   [
+    16323.241009247136,
+    3260.398157978616,
+    4
+   ],
+   [
+    16273.207122295027,
+    3345.5929407771177,
+    4.5
+   ]
+  ],
+  "persona": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_paneles",
+  "puntos": null,
+  "defectos": [
+   [
+    0,
+    42
+   ],
+   [
+    6,
+    61
+   ],
+   [
+    1,
+    47
+   ],
+   [
+    12,
+    54
+   ],
+   [
+    8,
+    53
+   ],
+   [
+    11,
+    29
+   ],
+   [
+    4,
+    108
+   ],
+   [
+    1,
+    8
+   ]
+  ],
+  "manchas": null,
+  "persona": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_video",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null
+ }
+]

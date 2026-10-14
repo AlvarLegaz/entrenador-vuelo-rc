@@ -535,13 +535,18 @@ func salir_sala() -> void:
 func _enviar_sala() -> void:
 	if sala.is_empty() or _multi_enviando or av.is_empty() or modelo == null: return
 	_multi_enviando = true
-	var ok := 0; var tot := 0
+	# objetivos: cumplidos, total y fallados (las normas siguen "en curso" hasta aterrizar); y lo que va haciendo en el trabajo
+	var ok := 0; var tot := 0; var mal := 0; var ahora := ""
 	if ev != null:
 		for k in ev.obj:
 			tot += 1
 			if ev.obj[k]["estado"] == "ok": ok += 1
+			elif ev.obj[k]["estado"] == "mal": mal += 1
+		var guia = ev.op if ev.op != null else ev.fpv
+		if guia != null:
+			var re := RegEx.new(); re.compile("<[^>]+>"); ahora = re.sub(guia.ahora(ev.obj, av), "", true).left(160)
 	var e := { "id": multi_id(), "nombre": nombre_piloto(), "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
-			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot] if ev != null else null,
+			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot, mal] if ev != null else null, "ahora": ahora,
 			   "tvuelo": vuelo["tVuelo"] if vuelo != null else 0.0, "final": vuelo["final"] if vuelo != null else null, "gimbal": av.get("gimbal", 0.0) }
 	var cod: String = sala["codigo"]
 	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
@@ -589,7 +594,7 @@ func _pintar_sala_info() -> void:
 		var o: Dictionary = multi_otros[id]; var objs = o.get("objs")
 		t += "\n● %s · %s · %s%s" % [o["nombre"], String(DatosComunes.avion(String(o["avion"])).get("nombre", o["avion"])),
 			("%d m" % int(round(maxf(0, o.get("agl", 0.0))))) if o.get("estado", "") == "volando" else String(o.get("estado", "")),
-			(" · %d/%d" % [objs[0], objs[1]]) if objs != null and objs[1] > 0 else ""]
+			(" · %d✔%s de %d" % [objs[0], (" %d✘" % objs[2]) if objs.size() > 2 and objs[2] > 0 else "", objs[1]]) if objs != null and objs[1] > 0 else ""]
 	sala_info_rt.text = t
 
 func ir_operaciones() -> void:

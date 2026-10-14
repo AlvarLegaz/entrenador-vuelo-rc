@@ -7,7 +7,7 @@
 //  con reserva de bateria), y detecta los choques con los paneles y el faro. Lo dibuja js/visor_real.js
 //  (ponerOperacion). simulador_godot/scripts/operaciones.gd es su traduccion literal: mismos datos, reglas y textos.
 //
-//  Uso: op = new Operacion(datos, marcar, anotar, {casa: [N, E], suelo(N, E), h0}); en cada paso de la fisica
+//  Uso: op = new Operacion(Operacion.sortear(datos), marcar, anotar, {casa: [N, E], suelo(N, E), h0}); en cada paso de la fisica
 //  op.paso(pAnt, av, dt, {gimbal, grabando}) devuelve los avisos (toasts) y deja op.choque si ha chocado; con cada foto
 //  op.foto(av, gimbal) devuelve el aviso de esa foto; al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la
 //  linea "Ahora: ..." del panel.
@@ -22,8 +22,57 @@ const OPS = {
 };
 const opDesenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
 const opMMSS = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+// nombres de los desperfectos de la inspeccion: los sitios salen al azar de "candidatos" y cada uno lleva uno de estos
+const OP_NOMBRES_CUBIERTA = ["Lucernario de la cubierta", "Placas solares de la cubierta", "Extractor de la cubierta", "Antena del tejado",
+  "Impermeabilización levantada", "Claraboya rota", "Chimenea de ventilación", "Equipo de aire acondicionado"];
+const OP_NOMBRES_FACHADA = ["Grieta en la fachada", "Canalón de la fachada", "Desconchado en la fachada", "Bajante roto en la fachada"];
+const opOrientacion = g => ["norte", "este", "sur", "oeste"][Math.round(((g % 360) + 360) % 360 / 90) % 4];
 
 class Operacion {
+  /** Los datos de un trabajo con los objetivos en sitios al azar dentro de su zona, para que no sean siempre los mismos:
+   *  la inspeccion elige cubiertas y fachadas de "candidatos" (con su nombre), los paneles los modulos danados, la
+   *  agricultura las manchas (sin pisarse) y la busqueda al senderista. rnd: numeros al azar en [0, 1) (Math.random; las
+   *  pruebas pasan uno con semilla para comparar con operaciones.gd). */
+  static sortear(O, rnd = Math.random) {
+    const d = Object.assign({}, O), azar = n => Math.floor(rnd() * n);
+    const tomar = (lista, k, lejos = 0) => {          // k elementos distintos, a ser posible a mas de "lejos" m entre si
+      const L = lista.slice(), r = [];
+      while (r.length < k && L.length) {
+        const vale = L.filter(q => r.every(x => Math.hypot(q.n - x.n, q.e - x.e) >= lejos));
+        const q = (vale.length ? vale : L)[azar((vale.length ? vale : L).length)]; r.push(q); L.splice(L.indexOf(q), 1);
+      }
+      return r;
+    };
+    if (O.candidatos) {                               // inspeccion: unas cubiertas y unas fachadas, en orden al azar
+      const C = O.candidatos, nc = tomar(OP_NOMBRES_CUBIERTA.map(n => ({ n: 0, e: 0, nombre: n })), C.elegir[0]), nf = tomar(OP_NOMBRES_FACHADA.map(n => ({ n: 0, e: 0, nombre: n })), C.elegir[1]);
+      const cub = tomar(C.cubiertas, C.elegir[0], 15).map((q, i) => Object.assign({}, q, { nombre: nc[i].nombre }));
+      const fac = tomar(C.fachadas, C.elegir[1], 15).map((q, i) => Object.assign({}, q, { nombre: `${nf[i].nombre} ${opOrientacion(q.normal)}` }));
+      d.puntos = tomar(cub.concat(fac), cub.length + fac.length);
+    }
+    if (O.planta && O.defectos) {                     // paneles: modulos danados de filas y posiciones al azar
+      const P = O.planta, r = [];
+      while (r.length < O.defectos.length) {
+        const f = azar(P.filas), x = 3 + azar(P.largo - 6);
+        if (r.every(([g, y]) => g !== f || Math.abs(y - x) >= 10)) r.push([f, x]);
+      }
+      d.defectos = r;
+    }
+    if (O.parcela && O.manchas) {                     // agricultura: las manchas en la parcela, sin pisarse
+      const P = O.parcela, r = [];
+      for (const [, , rad] of O.manchas) {
+        let m = null;
+        for (let k = 0; k < 200 && !m; k++) {
+          const n = P.n0 + rad + 8 + rnd() * (P.n1 - P.n0 - 2 * rad - 16), e = P.e0 + rad + 8 + rnd() * (P.e1 - P.e0 - 2 * rad - 16);
+          if (r.every(([n2, e2, r2]) => Math.hypot(n - n2, e - e2) >= rad + r2 + 20)) m = [n, e, rad];
+        }
+        r.push(m || O.manchas[r.length]);
+      }
+      d.manchas = r;
+    }
+    if (O.zona) d.persona = [O.zona.n0 + 20 + rnd() * (O.zona.n1 - O.zona.n0 - 40), O.zona.e0 + 20 + rnd() * (O.zona.e1 - O.zona.e0 - 40)];   // busqueda
+    return d;
+  }
+
   constructor(d, marcar, anotar, mundo) {
     this.d = d; this.marcar = marcar; this.anotar = anotar; this.casa = mundo.casa; this.suelo = mundo.suelo; this.h0 = mundo.h0;
     this.choque = null; this.avisos = {}; this.t0 = null; this.fotos = 0;

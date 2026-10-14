@@ -4,8 +4,9 @@ extends SceneTree
 ## choques y normas incumplidas; posiciones, gimbal, video y fotos dados, sin fisica, sobre un suelo ondulado de prueba) y
 ## lo que dice de cada uno la clase Operacion de simulador/js/operaciones.js en el navegador (la genera
 ## pruebas/generar_referencia_operaciones.py). Aqui se repiten con operaciones.gd y se comparan los objetivos (estado y
-## texto), los avisos, el choque y la linea "Ahora" del panel. Comprueba tambien que las operaciones no salen en los
-## entrenamientos.
+## texto), los avisos, el choque y la linea "Ahora" del panel. Comprueba tambien que los objetivos al azar
+## (Operacion.sortear, pruebas/referencia_sorteos_js.json) salen iguales con las mismas semillas y que las operaciones no
+## salen en los entrenamientos.
 ## Uso (desde la carpeta del repositorio):
 ##   herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path simulador_godot --script res://pruebas/prueba_operaciones.gd
 
@@ -51,6 +52,19 @@ func _vuelo(v: Dictionary) -> Dictionary:
 	for k in orden: r[k] = obj[k]["estado"] + " | " + obj[k]["texto"]
 	return { "choque": choque, "objetivos": r, "avisos": avisos, "ahora": ahora }
 
+## Igualdad de lo que devuelve sortear en los dos lados (numeros con tolerancia: JSON los deja en float).
+func _igual(a, b) -> bool:
+	if a is Dictionary and b is Dictionary:
+		if a.size() != b.size(): return false
+		for k in a: if not b.has(k) or not _igual(a[k], b[k]): return false
+		return true
+	if a is Array and b is Array:
+		if a.size() != b.size(): return false
+		for i in a.size(): if not _igual(a[i], b[i]): return false
+		return true
+	if (a is float or a is int) and (b is float or b is int): return absf(float(a) - float(b)) < 1e-6
+	return a == b
+
 func _initialize() -> void:
 	var V = JSON.parse_string(FileAccess.get_file_as_string("res://pruebas/referencia_operaciones_js.json"))
 	print("Operaciones: los mismos vuelos que en el navegador")
@@ -66,6 +80,15 @@ func _initialize() -> void:
 			var a: String = g["ahora"][i] if i < g["ahora"].size() else "(nada)"; var b: String = w["ahora"][i] if i < w["ahora"].size() else "(nada)"
 			if a != b: dif.append("ahora %d: '%s' / '%s'" % [i, a, b]); break
 		_ok(v["nombre"], dif.is_empty(), "(%d avisos)" % g["avisos"].size() if dif.is_empty() else "\n      " + "\n      ".join(dif))
+	print("Los objetivos al azar (sortear), con las mismas semillas:")
+	for x in JSON.parse_string(FileAccess.get_file_as_string("res://pruebas/referencia_sorteos_js.json")):
+		var s := [int(x["semilla"])]
+		var rnd := func() -> float: s[0] = (s[0] * 48271) % 2147483647; return s[0] / 2147483647.0
+		var dd := Operacion.sortear(Escenarios.datos()[x["mision"]]["operacion"], rnd); var dif := []
+		for k in ["puntos", "defectos", "manchas", "persona"]:
+			if not _igual(dd.get(k), x[k]):
+				dif.append("%s: %s / %s" % [k, JSON.stringify(dd.get(k)).left(160), JSON.stringify(x[k]).left(160)])
+		_ok("%s, semilla %d" % [x["mision"], x["semilla"]], dif.is_empty(), "" if dif.is_empty() else "\n      " + "\n      ".join(dif))
 	print("Las operaciones no son entrenamientos:")
 	_ok("el DJI tiene sus 6 entrenamientos", Escenarios.misiones_de("dron").size() == 6, str(Escenarios.misiones_de("dron")))
 	_ok("y 6 operaciones", Escenarios.operaciones().size() == 6, str(Escenarios.operaciones()))

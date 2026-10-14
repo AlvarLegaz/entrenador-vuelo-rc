@@ -7,7 +7,7 @@ extends RefCounted
 ## y con reserva de bateria), y detecta los choques con los paneles y el faro. Lo dibuja mundo_3d.gd
 ## (poner_operacion).
 ##
-## Uso: op = Operacion.new(datos, marcar, anotar, {casa: [N, E], suelo: Callable(N, E), h0}); en cada paso de la fisica
+## Uso: op = Operacion.new(Operacion.sortear(datos), marcar, anotar, {casa: [N, E], suelo: Callable(N, E), h0}); en cada paso de la fisica
 ## op.paso(p_ant, av, dt, {gimbal, grabando}) devuelve los avisos y deja op.choque si ha chocado; con cada foto
 ## op.foto(av, gimbal); al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la linea "Ahora: ..." del panel.
 
@@ -42,6 +42,55 @@ var yaw_ant = null
 var giro := 0.0
 
 static func desenrollar(x: float) -> float: return x - TAU * round(x / TAU)
+# nombres de los desperfectos de la inspeccion: los sitios salen al azar de "candidatos" y cada uno lleva uno de estos
+const NOMBRES_CUBIERTA := ["Lucernario de la cubierta", "Placas solares de la cubierta", "Extractor de la cubierta", "Antena del tejado",
+	"Impermeabilización levantada", "Claraboya rota", "Chimenea de ventilación", "Equipo de aire acondicionado"]
+const NOMBRES_FACHADA := ["Grieta en la fachada", "Canalón de la fachada", "Desconchado en la fachada", "Bajante roto en la fachada"]
+static func orientacion(g: float) -> String: return ["norte", "este", "sur", "oeste"][int(round(fposmod(g, 360) / 90)) % 4]
+
+## Los datos de un trabajo con los objetivos en sitios al azar dentro de su zona (sortear de operaciones.js): la inspeccion
+## elige cubiertas y fachadas de "candidatos" (con su nombre), los paneles los modulos danados, la agricultura las manchas
+## (sin pisarse) y la busqueda al senderista. rnd: numeros al azar en [0, 1) (randf; las pruebas pasan uno con semilla).
+static func _tomar(lista: Array, k: int, rnd: Callable, lejos := 0.0) -> Array:
+	var L := lista.duplicate(); var r := []
+	while r.size() < k and not L.is_empty():
+		var vale := L.filter(func(q): return r.all(func(x): return Vector2(q["n"] - x["n"], q["e"] - x["e"]).length() >= lejos))
+		var de: Array = vale if not vale.is_empty() else L
+		var q = de[int(floor(rnd.call() * de.size()))]; r.append(q); L.remove_at(L.find(q))
+	return r
+
+static func sortear(O: Dictionary, azar = null) -> Dictionary:
+	var rnd: Callable = azar if azar != null else func() -> float: return randf()
+	var dd := O.duplicate()
+	if O.has("candidatos"):                           # inspeccion: unas cubiertas y unas fachadas, en orden al azar
+		var C: Dictionary = O["candidatos"]
+		var nc := _tomar(NOMBRES_CUBIERTA.map(func(n): return { "n": 0.0, "e": 0.0, "nombre": n }), int(C["elegir"][0]), rnd)
+		var nf := _tomar(NOMBRES_FACHADA.map(func(n): return { "n": 0.0, "e": 0.0, "nombre": n }), int(C["elegir"][1]), rnd)
+		var cub := []; var fac := []
+		for q in _tomar(C["cubiertas"], int(C["elegir"][0]), rnd, 15): var c: Dictionary = q.duplicate(); c["nombre"] = nc[cub.size()]["nombre"]; cub.append(c)
+		for q in _tomar(C["fachadas"], int(C["elegir"][1]), rnd, 15): var c: Dictionary = q.duplicate(); c["nombre"] = "%s %s" % [nf[fac.size()]["nombre"], orientacion(q["normal"])]; fac.append(c)
+		dd["puntos"] = _tomar(cub + fac, cub.size() + fac.size(), rnd)
+	if O.has("planta") and O.has("defectos"):         # paneles: modulos danados de filas y posiciones al azar
+		var P: Dictionary = O["planta"]; var r := []
+		while r.size() < (O["defectos"] as Array).size():
+			var f := int(floor(rnd.call() * P["filas"])); var x := 3 + int(floor(rnd.call() * (P["largo"] - 6)))
+			if r.all(func(g): return g[0] != f or absi(g[1] - x) >= 10): r.append([f, x])
+		dd["defectos"] = r
+	if O.has("parcela") and O.has("manchas"):         # agricultura: las manchas en la parcela, sin pisarse
+		var P: Dictionary = O["parcela"]; var r := []
+		for mm in O["manchas"]:
+			var rad: float = mm[2]; var m = null; var k := 0
+			while k < 200 and m == null:
+				var n: float = P["n0"] + rad + 8 + rnd.call() * (P["n1"] - P["n0"] - 2 * rad - 16); var e: float = P["e0"] + rad + 8 + rnd.call() * (P["e1"] - P["e0"] - 2 * rad - 16)
+				if r.all(func(o): return Vector2(n - o[0], e - o[1]).length() >= rad + o[2] + 20): m = [n, e, rad]
+				k += 1
+			r.append(m if m != null else O["manchas"][r.size()])
+		dd["manchas"] = r
+	if O.has("zona"):                                 # busqueda
+		var Z: Dictionary = O["zona"]
+		var pn: float = Z["n0"] + 20 + rnd.call() * (Z["n1"] - Z["n0"] - 40); var pe: float = Z["e0"] + 20 + rnd.call() * (Z["e1"] - Z["e0"] - 40)
+		dd["persona"] = [pn, pe]
+	return dd
 static func _n(x) -> String: return PasadaBaja._num(float(x))
 static func mmss(s: float) -> String: return "%d:%02d" % [int(floor(s / 60)), int(floor(fmod(s, 60)))]
 func _cuenta() -> int: return hechos.filter(func(x): return x).size()
