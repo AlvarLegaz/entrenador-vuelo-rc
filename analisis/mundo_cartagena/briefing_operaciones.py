@@ -41,6 +41,8 @@ def briefing(id_):
     if "puntos" in O:
         ns = [q["n"] for q in O["puntos"]]; es = [q["e"] for q in O["puntos"]]
         zona = [(min(ns) - 25, min(es) - 25), (min(ns) - 25, max(es) + 25), (max(ns) + 25, max(es) + 25), (max(ns) + 25, min(es) - 25)]
+    elif "parcela" in O and "poligono" in O["parcela"]:
+        zona = [tuple(q) for q in O["parcela"]["poligono"]]          # el bancal con su forma
     elif "parcela" in O or "zona" in O:
         P = O.get("parcela") or O["zona"]; zona = [(P["n0"], P["e0"]), (P["n0"], P["e1"]), (P["n1"], P["e1"]), (P["n1"], P["e0"])]
     elif "planta" in O:

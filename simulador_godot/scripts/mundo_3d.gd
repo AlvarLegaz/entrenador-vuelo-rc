@@ -802,7 +802,9 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			var r: float = q["normal"] * PI / 180
 			placa.call(q["n"] + 0.06 * cos(r), q["e"] + 0.06 * sin(r), y, str(i + 1), 1.5, Vector3(0, PI - r, 0))
 		else: placa.call(q["n"], q["e"], y + 0.06, str(i + 1), 1.5, Vector3(-PI / 2, 0, 0))
-	if d.has("parcela"): esquinas.call(d["parcela"], Color.html("#e53935" if d.has("solape") else "#2e7d32"))
+	if d.has("parcela") and d["parcela"].has("poligono"):             # el bancal: un jalon en cada esquina
+		for ne in d["parcela"]["poligono"]: jalon.call(ne[0], ne[1], Color.html("#2e7d32"))
+	elif d.has("parcela"): esquinas.call(d["parcela"], Color.html("#e53935" if d.has("solape") else "#2e7d32"))
 	if d.has("solape"):                                                # dianas de apoyo de la fotogrametria
 		var P: Dictionary = d["parcela"]
 		var img := Image.create(64, 64, false, Image.FORMAT_RGB8); img.fill(Color.WHITE); img.fill_rect(Rect2i(0, 0, 32, 32), Color.html("#111111")); img.fill_rect(Rect2i(32, 32, 32, 32), Color.html("#111111"))

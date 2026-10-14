@@ -505,10 +505,11 @@ function zonaTrabajo(O) {
     const q = O.candidatos ? O.candidatos.cubiertas.concat(O.candidatos.fachadas) : O.puntos, ns = q.map(x => x.n), es = q.map(x => x.e);
     R.push([Math.min(...ns) - 25, Math.min(...es) - 25, Math.max(...ns) + 25, Math.max(...es) + 25]);
   }
-  for (const P of [O.parcela, O.zona]) if (P) R.push([P.n0, P.e0, P.n1, P.e1]);
+  const G = [];                                    // poligonos [[n, e], ...] (el bancal de la agricultura)
+  for (const P of [O.parcela, O.zona]) if (P && P.poligono) G.push(P.poligono); else if (P) R.push([P.n0, P.e0, P.n1, P.e1]);
   if (O.planta) { const P = O.planta, f = P.ancho * Math.cos(P.inclinacion * Math.PI / 180); R.push([P.n0 - f, P.e0, P.n0 + (P.filas - 1) * P.separacion + f, P.e0 + P.largo]); }
   if (O.faro) for (const r of O.orbita) A.push([O.faro.n, O.faro.e, r]);
-  return { R, A };
+  return { R, A, G };
 }
 const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
 async function cargarSalas() {
@@ -565,9 +566,9 @@ async function pintarSalas() {
   // mapa: el punto de salida y los pilotos, con la escala que haga falta para verlos a todos
   const E = (window.ESCENARIOS || {})[s.escenario] || {}, O = E.operacion;
   const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : O ? [O.salida.n, O.salida.e] : [0, 0];
-  const ZT = O ? zonaTrabajo(O) : { R: [], A: [] };                // que se vean los pilotos y toda la zona de trabajo
+  const ZT = O ? zonaTrabajo(O) : { R: [], A: [], G: [] };                // que se vean los pilotos y toda la zona de trabajo
   const vistas = Object.entries(rutas).filter(([id]) => ver === "*" || ver === id);
-  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(EO.zonas.flatMap(z => [[z.N - z.r, z.E - z.r], [z.N + z.r, z.E + z.r]]), EO.persona ? [EO.persona] : [], vistas.flatMap(([, r]) => r.puntos.filter(Boolean).map(q => [q[0], q[1]])), ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
+  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(EO.zonas.flatMap(z => [[z.N - z.r, z.E - z.r], [z.N + z.r, z.E + z.r]]), EO.persona ? [EO.persona] : [], vistas.flatMap(([, r]) => r.puntos.filter(Boolean).map(q => [q[0], q[1]])), ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.G.flat(), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
   const lejos = Math.max(60, ...puntos.map(([n, e]) => Math.max(Math.abs(n - c0[0]), Math.abs(e - c0[1])))) * 1.15, k = W / 2 / lejos;
   const X = e => W / 2 + (e - c0[1]) * k, Y = n => W / 2 - (n - c0[0]) * k;
   MP.vista = { c0, k, W };
@@ -593,6 +594,7 @@ async function pintarSalas() {
     const Z = ZT; g.save(); g.setLineDash([8, 6]); g.lineWidth = 2.5; g.strokeStyle = "#ffc83d"; g.fillStyle = "rgba(255,200,61,.12)";
     for (const [n0, e0, n1, e1] of Z.R) { g.fillRect(X(e0), Y(n1), (e1 - e0) * k, (n1 - n0) * k); g.strokeRect(X(e0), Y(n1), (e1 - e0) * k, (n1 - n0) * k); }
     for (const [n, e, r] of Z.A) { g.beginPath(); g.arc(X(e), Y(n), r * k, 0, 7); g.stroke(); }
+    for (const P of Z.G) { g.beginPath(); P.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.closePath(); g.fill(); g.stroke(); }
     g.restore();
   }
   g.strokeStyle = M ? "rgba(255,255,255,.18)" : "#2c4a6b"; g.lineWidth = 1;

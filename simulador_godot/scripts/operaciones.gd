@@ -93,6 +93,23 @@ static func texto_objetivo(id: String, t: String, dd: Dictionary) -> String:
 	if id == "cobertura" and dd.has("cubrir"): return cambia.call("el \\d+ %", "el %d %%" % int(round(float(dd["cubrir"]) * 100)))
 	return t
 
+## (n, e) dentro del poligono [[n, e], ...] (Operacion.dentro de la web).
+static func dentro(P: Array, n: float, e: float) -> bool:
+	var d := false; var j := P.size() - 1
+	for i in P.size():
+		var ni: float = P[i][0]; var ei: float = P[i][1]; var nj: float = P[j][0]; var ej: float = P[j][1]
+		if (ni > n) != (nj > n) and e < (ej - ei) * (n - ni) / (nj - ni) + ei: d = not d
+		j = i
+	return d
+## Distancia de (n, e) al borde del poligono (m) (Operacion.aBorde).
+static func a_borde(P: Array, n: float, e: float) -> float:
+	var m := 1e9; var j := P.size() - 1
+	for i in P.size():
+		var ni: float = P[i][0]; var ei: float = P[i][1]; var dn: float = float(P[j][0]) - ni; var de: float = float(P[j][1]) - ei; var L2 := dn * dn + de * de
+		var t := clampf(((n - ni) * dn + (e - ei) * de) / L2, 0, 1) if L2 > 0 else 0.0
+		m = minf(m, Vector2(ni + t * dn - n, ei + t * de - e).length()); j = i
+	return m
+
 static func sortear(O: Dictionary, azar = null) -> Dictionary:
 	var rnd: Callable = azar if azar != null else func() -> float: return randf()
 	var dd := O.duplicate()
@@ -110,14 +127,15 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 			var f := int(floor(rnd.call() * P["filas"])); var x := 3 + int(floor(rnd.call() * (P["largo"] - 6)))
 			if r.all(func(g): return g[0] != f or absi(g[1] - x) >= 10): r.append([f, x])
 		dd["defectos"] = r
-	if O.has("parcela") and O.has("manchas"):         # agricultura: las manchas en la parcela, sin pisarse
+	if O.has("parcela") and O.has("manchas"):         # agricultura: las manchas en la parcela (o en su poligono), sin pisarse
 		var P: Dictionary = O["parcela"]; var r := []
 		for mm in O["manchas"]:
 			var rad: float = mm[2]; var m = null; var k := 0
 			while k < 200 and m == null:
 				var n: float = P["n0"] + rad + 8 + rnd.call() * (P["n1"] - P["n0"] - 2 * rad - 16); var e: float = P["e0"] + rad + 8 + rnd.call() * (P["e1"] - P["e0"] - 2 * rad - 16)
-				if r.all(func(o): return Vector2(n - o[0], e - o[1]).length() >= rad + o[2] + 20): m = [n, e, rad]
 				k += 1
+				if P.has("poligono") and not (dentro(P["poligono"], n, e) and a_borde(P["poligono"], n, e) >= rad + 8): continue
+				if r.all(func(o): return Vector2(n - o[0], e - o[1]).length() >= rad + o[2] + 20): m = [n, e, rad]
 			r.append(m if m != null else O["manchas"][r.size()])
 		dd["manchas"] = r
 	if O.has("zona"):                                 # busqueda

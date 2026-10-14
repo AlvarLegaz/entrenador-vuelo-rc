@@ -1236,7 +1236,7 @@ window.ESCENARIOS = {
   ],
   "operacion": {
    "cliente": "Explotación agrícola de El Jimenado",
-   "lugar": "Campo de brócoli al sur de la pista de Los Halcones de la Rambla.",
+   "lugar": "El bancal de brócoli entero (unas 5 ha) al sur de la pista de Los Halcones de la Rambla; los jalones verdes marcan sus esquinas.",
    "trabajo": "Localizar los rodales con plaga (manchas amarillas en el cultivo) y fotografiarlos para el técnico: una foto vertical de cada uno.",
    "entrega": "5 fotos verticales, una por mancha.",
    "salida": {
@@ -1245,35 +1245,36 @@ window.ESCENARIOS = {
     "rumbo": 160
    },
    "parcela": {
-    "n0": 16230,
-    "n1": 16390,
-    "e0": 3220,
-    "e1": 3400
+    "n0": 16195,
+    "n1": 16449,
+    "e0": 3182,
+    "e1": 3527,
+    "poligono": [[16349, 3182], [16449, 3454], [16273, 3527], [16195, 3386], [16263, 3352], [16251, 3300], [16300, 3281], [16277, 3204]]
    },
    "manchas": [
     [
-     16360,
-     3250,
+     16400,
+     3330,
      4
     ],
     [
-     16300,
-     3330,
+     16330,
+     3450,
      5
     ],
     [
-     16255,
+     16300,
      3240,
      3.5
     ],
     [
-     16340,
-     3385,
+     16250,
+     3420,
      4
     ],
     [
-     16245,
-     3365,
+     16360,
+     3380,
      4.5
     ]
    ],

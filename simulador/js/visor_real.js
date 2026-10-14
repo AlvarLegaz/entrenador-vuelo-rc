@@ -146,7 +146,8 @@ Object.assign(Visor.prototype, {
       if (q.normal !== undefined) { en(o, q.n + 0.06 * Math.cos(q.normal * D2R), q.e + 0.06 * Math.sin(q.normal * D2R), y); o.rotation.y = Math.PI - q.normal * D2R; }
       else { en(o, q.n, q.e, y + 0.06); o.rotation.x = -Math.PI / 2; }
     });
-    if (d.parcela) esquinas(d.parcela, d.solape ? "#e53935" : "#2e7d32");
+    if (d.parcela && d.parcela.poligono) for (const [N, E] of d.parcela.poligono) jalon(N, E, "#2e7d32");      // el bancal: un jalon en cada esquina
+    else if (d.parcela) esquinas(d.parcela, d.solape ? "#e53935" : "#2e7d32");
     if (d.solape) {                                                     // dianas de apoyo de la fotogrametria
       const P = d.parcela;
       for (const [N, E] of [[P.n0 + 15, P.e0 + 15], [P.n0 + 15, P.e1 - 15], [P.n1 - 15, P.e0 + 15], [P.n1 - 15, P.e1 - 15], [(P.n0 + P.n1) / 2, (P.e0 + P.e1) / 2]]) {

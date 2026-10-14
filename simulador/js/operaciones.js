@@ -33,6 +33,21 @@ class Operacion {
    *  la inspeccion elige cubiertas y fachadas de "candidatos" (con su nombre), los paneles los modulos danados, la
    *  agricultura las manchas (sin pisarse) y la busqueda al senderista. rnd: numeros al azar en [0, 1) (Math.random; las
    *  pruebas pasan uno con semilla para comparar con operaciones.gd). */
+  /** (n, e) dentro del poligono [[n, e], ...]. */
+  static dentro(P, n, e) {
+    let d = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [ni, ei] = P[i], [nj, ej] = P[j]; if ((ni > n) !== (nj > n) && e < (ej - ei) * (n - ni) / (nj - ni) + ei) d = !d; }
+    return d;
+  }
+  /** Distancia de (n, e) al borde del poligono (m). */
+  static aBorde(P, n, e) {
+    let m = 1e9;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [ni, ei] = P[i], [nj, ej] = P[j], dn = nj - ni, de = ej - ei, L2 = dn * dn + de * de, t = L2 > 0 ? Math.max(0, Math.min(1, ((n - ni) * dn + (e - ei) * de) / L2)) : 0;
+      m = Math.min(m, Math.hypot(ni + t * dn - n, ei + t * de - e));
+    }
+    return m;
+  }
   static sortear(O, rnd = Math.random) {
     const d = Object.assign({}, O), azar = n => Math.floor(rnd() * n);
     const tomar = (lista, k, lejos = 0) => {          // k elementos distintos, a ser posible a mas de "lejos" m entre si
@@ -57,12 +72,13 @@ class Operacion {
       }
       d.defectos = r;
     }
-    if (O.parcela && O.manchas) {                     // agricultura: las manchas en la parcela, sin pisarse
+    if (O.parcela && O.manchas) {                     // agricultura: las manchas en la parcela (o en su poligono), sin pisarse
       const P = O.parcela, r = [];
       for (const [, , rad] of O.manchas) {
         let m = null;
         for (let k = 0; k < 200 && !m; k++) {
           const n = P.n0 + rad + 8 + rnd() * (P.n1 - P.n0 - 2 * rad - 16), e = P.e0 + rad + 8 + rnd() * (P.e1 - P.e0 - 2 * rad - 16);
+          if (P.poligono && !(Operacion.dentro(P.poligono, n, e) && Operacion.aBorde(P.poligono, n, e) >= rad + 8)) continue;
           if (r.every(([n2, e2, r2]) => Math.hypot(n - n2, e - e2) >= rad + r2 + 20)) m = [n, e, rad];
         }
         r.push(m || O.manchas[r.length]);
