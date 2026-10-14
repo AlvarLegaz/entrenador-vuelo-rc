@@ -114,6 +114,7 @@ Object.assign(Visor.prototype, {
       this._terrenoZona(g, z); this._edificiosZona(g, z); this._arbolesZona(g, z);
     }
     this._singulares(esc, m);                          // despues de las zonas: se asientan en su suelo
+    if (this._marPlano) this._lagunaTransparente(this._marPlano, this._marT);   // bajo las zonas, el mar es el de la ortofoto
   },
 
   /** Lo que hay que ver en un trabajo del modo Operaciones (escenarios.js, "operacion"; las reglas en js/operaciones.js),

@@ -445,14 +445,21 @@ class Visor {
    *  agua somera y de su fondo (la region a 12 m y las zonas a 0,5 m); el mar abierto sigue opaco. Mascara en alphaMap,
    *  colocada sobre el plano con repeat/offset (la textura cubre el terreno del mundo; fuera, su borde: mar opaco). */
   _lagunaTransparente(plano, T) {
-    const Lg = this.entorno.laguna; if (!Lg || !plano) return;
-    const [c, g] = lienzo(T.nE, T.nN), img = g.createImageData(T.nE, T.nN);
-    for (let r = 0; r < T.nN; r++) for (let j = 0; j < T.nE; j++) {                     // fila 0 de la imagen = norte
-      const k = (T.nN - 1 - r) * T.nE + j, v = Lg[k] ? Visor.ALFA_LAGUNA : 255, q = 4 * (r * T.nE + j);
-      img.data[q] = img.data[q + 1] = img.data[q + 2] = v; img.data[q + 3] = 255;
+    if (!plano) return;
+    this._marPlano = plano; this._marT = T;
+    const Lg = this.entorno.laguna, F = 4, nE = (T.nE - 1) * F + 1, nN = (T.nN - 1) * F + 1, paso = T.paso / F;
+    // mascara a 37,5 m: la laguna con su opacidad y, bajo las zonas de detalle, nada (alli el mar es el de la ortofoto, a
+    // nivel 0: con el plano 0,3 m por debajo, de lejos el bufer de profundidad no los distingue y el mar parpadeaba)
+    const [c, g] = lienzo(nE, nN), img = g.createImageData(nE, nN), Z = this.zonasBBox || [];
+    for (let r = 0; r < nN; r++) for (let j = 0; j < nE; j++) {                          // fila 0 de la imagen = norte
+      const i = nN - 1 - r, N = T.N0 + i * paso, E = T.E0 + j * paso, k = Math.round(i / F) * T.nE + Math.round(j / F);
+      let v = Lg && Lg[k] ? Visor.ALFA_LAGUNA : 255;
+      for (const b of Z) if (N > b[0] && N < b[1] && E > b[2] && E < b[3]) { v = 0; break; }
+      const q = 4 * (r * nE + j); img.data[q] = img.data[q + 1] = img.data[q + 2] = v; img.data[q + 3] = 255;
     }
     g.putImageData(img, 0, 0);
-    const t = new THREE.CanvasTexture(c), lado = plano.geometry.parameters.width, W = (T.nE - 1) * T.paso, H = (T.nN - 1) * T.paso;
+    if (plano.material.alphaMap) plano.material.alphaMap.dispose();
+    const t = new THREE.CanvasTexture(c), lado = plano.geometry.parameters.width, W = (nE - 1) * paso, H = (nN - 1) * paso;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
     t.repeat.set(lado / W, lado / H); t.offset.set((-lado / 2 - T.E0) / W, (-lado / 2 - T.N0) / H);   // uv del plano (0..1 en lado) -> terreno
     plano.material.alphaMap = t; plano.material.transparent = true; plano.material.depthWrite = false; plano.material.needsUpdate = true;
