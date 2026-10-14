@@ -1092,7 +1092,7 @@ window.ESCENARIOS = {
   "operacion": {
    "cliente": "Topografía Campo de Cartagena",
    "lugar": "El Jimenado (Torre-Pacheco). Despegue desde la pista del club Los Halcones de la Rambla.",
-   "trabajo": "Vuelo fotogramétrico: pasadas paralelas a 40–60 m con el gimbal a −90° y una foto cada 20–25 m. La parcela está marcada con jalones rojos y blancos en las esquinas.",
+   "trabajo": "Vuelo fotogramétrico: pasadas paralelas a 40–60 m con el gimbal a −89° (mirando abajo) y una foto cada 20–25 m. La parcela está marcada con jalones rojos y blancos en las esquinas.",
    "entrega": "Fotos con solape para el modelo 3D y la ortofoto de la parcela.",
    "salida": {
     "n": 16476.3,

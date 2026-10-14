@@ -52,7 +52,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     if (av.rth) this._rth(av, obj);
     else if (av.despegueAuto) { obj.adelante = obj.derecha = obj.guinada = 0; obj.vz = av.agl < 1.2 ? 0.5 : 0; if (av.agl >= 1.2) av.despegueAuto = false; }
     for (const k in obj) av.cmd[k] += Math.max(-10 * dt, Math.min(10 * dt, obj[k] - av.cmd[k]));
-    av.gimbal = Math.max(-90, Math.min(10, av.gimbal + 45 * cl(mando.gimbal) * dt));      // rueda del gimbal: 45 grados/s
+    av.gimbal = Math.max(-89, Math.min(10, av.gimbal + 45 * cl(mando.gimbal) * dt));      // rueda del gimbal: 45 grados/s, hasta -89 (a -90 la camara mira justo abajo y su "arriba" queda indefinido)
   }
   /** Volver a casa: sube a la altura de RTH, va al punto de despegue a 8 m/s mirando hacia el, y aterriza. Escribe las consignas en obj. */
   _rth(av, obj) {
@@ -176,7 +176,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     "caracteristicas": [["Masa en vuelo", "249 g"], ["Tamaño", "249 × 290 × 60 mm desplegado, hélices de 3 pulgadas"], ["Empuje máximo", "≈ 2 veces el peso (4,9 N)"],
                         ["Modos de vuelo", "C (Cine) 6 m/s · N (Normal) 10 m/s · S (Sport) 16 m/s"], ["Ascenso / descenso", "C 2 / 1,5 · N 3 / 3 · S 5 / 3,5 m/s"],
                         ["Inclinación máxima", "C 15° · N 25° · S 40°"], ["Giro", "C 60°/s · N 100°/s · S 200°/s"],
-                        ["Cámara", "gimbal de 3 ejes, de −90° a +10°; foto y vídeo desde la app"], ["Volver a casa", "sube a 30 m, vuelve al punto de despegue y aterriza"],
+                        ["Cámara", "gimbal de 3 ejes, de −89° a +10°; foto y vídeo desde la app"], ["Volver a casa", "sube a 30 m, vuelve al punto de despegue y aterriza"],
                         ["Batería", "2S 2250 mAh, 17 Wh: unos 30 min de vuelo"], ["Mandos", "modo 2: izquierda gas y guiñada, derecha inclinación; conmutador C/N/S y rueda del gimbal"],
                         ["Controlador", "estabilizado con retención de posición y altura (como con GPS)"], ["Velocidad de pérdida", "0 m/s (no entra en pérdida)"]],
     "masa_kg": 0.249, "b_m": 0.25, "S_m2": 0.03, "c_m": 0.1, "inercia": { "Ixx": 0.0006, "Iyy": 0.0007, "Izz": 0.0012, "Ixz": 0 }, "cg_mm": [0, 0, 0],

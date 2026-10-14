@@ -84,7 +84,7 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 		if _agl(av) >= 1.2: av["despegueAuto"] = false
 	var cmd: Dictionary = av["cmd"]
 	for k in obj: cmd[k] += maxf(-10 * dt, minf(10 * dt, obj[k] - cmd[k]))
-	av["gimbal"] = maxf(-90, minf(10, av["gimbal"] + 45 * _cl(mando.get("gimbal")) * dt))      # rueda del gimbal: 45 grados/s
+	av["gimbal"] = maxf(-89, minf(10, av["gimbal"] + 45 * _cl(mando.get("gimbal")) * dt))      # rueda del gimbal: 45 grados/s, hasta -89 (como en la web)
 
 ## Volver a casa: sube a la altura de RTH, va al punto de despegue a 8 m/s mirando hacia el, y aterriza. Escribe las consignas en obj.
 func _rth(av: Dictionary, obj: Dictionary) -> void:
