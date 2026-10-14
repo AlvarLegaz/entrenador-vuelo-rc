@@ -370,7 +370,7 @@
   <b>Mando</b> (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · combinación de palancas (CSC: las dos abajo y hacia dentro o hacia fuera, medio segundo): arrancar motores · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa<br>
   </div>
   <div id="ayudaTeclasBip" style="display:none">
-  <b>W</b> / <b>S</b> adelante / atrás · <b>A</b> / <b>D</b> girar · <b>← →</b> girar la cintura (360°) · <b>↑ ↓</b> bajar / subir los brazos<br>
+  <b>W</b> / <b>S</b> adelante / atrás · <b>A</b> / <b>D</b> girar · <b>← →</b> girar la cintura (360°) · <b>↑ ↓</b> subir / bajar los brazos<br>
   <b>Espacio</b> disparar (mantener) · <b>F</b> cerrar el puño · <b>L</b> arrancar / aparcar · <b>R</b> empezar de nuevo<br>
   <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / puesto de tiro (con la mira) · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
   <b>Mando</b>: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa<br>
@@ -1692,7 +1692,12 @@ function pasoJuegoBip(dt) {
   document.getElementById("bipDrones").textContent = "DRONES DERRIBADOS " + J.derribados;
   const B = modelo.bp, w = av.wCanones / (B.cadencia_rpm / 60 / 6 * 2 * Math.PI);
   document.getElementById("bipCanon").textContent = av.cmd.fuego ? (w > 0.8 ? "FUEGO" : "CAÑÓN ACELERANDO " + Math.round(w * 100) + " %") : "CAÑÓN LISTO";
-  document.body.classList.toggle("miraBip", visor.camara === 3);
+  // mira (camaras 2 y 3): donde apunta de verdad el cañon, el punto a 120 m sobre su linea de tiro proyectado en la pantalla
+  const ap = modelo.apuntado(av), P = ned2three([ap.o[0] + ap.d[0] * 120, ap.o[1] + ap.d[1] * 120, ap.o[2] + ap.d[2] * 120]);
+  const v = new THREE.Vector3(P[0], P[1], P[2]).project(visor.cam), mira = document.getElementById("miraBip");
+  const dentro = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+  mira.style.left = ((v.x + 1) / 2 * 100) + "%"; mira.style.top = ((1 - v.y) / 2 * 100) + "%";
+  document.body.classList.toggle("miraBip", (visor.camara === 2 || visor.camara === 3) && dentro);
 }
 /** Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso. */
 function zona2(pAnt) {

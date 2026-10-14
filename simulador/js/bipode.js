@@ -37,10 +37,10 @@ window.ModeloBipode = window.ModeloBipode || class ModeloBipode {
   desarmar() {}
   armarEnVuelo(av) { this.lanzar(av); }
   /** Mandos: palanca izquierda (mando.vz adelante, mando.guinada giro), derecha (mando.yaw cintura, mando.pitch brazos:
-   *  + = hacia ti = subir) y gatillos (mando.disparo, mando.puno). */
+   *  palanca arriba = subir) y gatillos (mando.disparo, mando.puno). */
   servos(av, mando, dt) {
     const c = av.cmd;
-    c.avance = mando.vz || 0; c.giro = mando.guinada || 0; c.cintura = mando.yaw || 0; c.brazos = mando.pitch || 0;
+    c.avance = mando.vz || 0; c.giro = mando.guinada || 0; c.cintura = mando.yaw || 0; c.brazos = -(mando.pitch || 0);   // palanca arriba: sube el brazo
     c.fuego = mando.disparo ? 1 : 0; c.puno = mando.puno ? 1 : 0;
   }
   paso(av, viento, dt) {

@@ -41,7 +41,7 @@ func armar_en_vuelo(av: Dictionary) -> void: lanzar(av)
 
 func servos(av: Dictionary, mando: Dictionary, _dt: float) -> void:
 	var c: Dictionary = av["cmd"]
-	c["avance"] = float(mando.get("vz", 0.0)); c["giro"] = float(mando.get("guinada", 0.0)); c["cintura"] = float(mando.get("yaw", 0.0)); c["brazos"] = float(mando.get("pitch", 0.0))
+	c["avance"] = float(mando.get("vz", 0.0)); c["giro"] = float(mando.get("guinada", 0.0)); c["cintura"] = float(mando.get("yaw", 0.0)); c["brazos"] = -float(mando.get("pitch", 0.0))   # palanca arriba: sube el brazo
 	c["fuego"] = 1.0 if mando.get("disparo", false) else 0.0; c["puno"] = 1.0 if mando.get("puno", false) else 0.0
 
 func paso(av: Dictionary, _viento, dt: float) -> Array:

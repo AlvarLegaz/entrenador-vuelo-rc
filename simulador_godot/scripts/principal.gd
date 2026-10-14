@@ -870,7 +870,7 @@ func ver_briefing(ver = null) -> void:
 func _texto_ayuda(A: Dictionary) -> void:
 	var t := "[font_size=18][b]Controles[/b][/font_size]\n"
 	if es_bipode():
-		t += "[b]W[/b] / [b]S[/b] adelante / atrás · [b]A[/b] / [b]D[/b] girar · [b]← →[/b] girar la cintura (360°) · [b]↑ ↓[/b] bajar / subir los brazos\n"
+		t += "[b]W[/b] / [b]S[/b] adelante / atrás · [b]A[/b] / [b]D[/b] girar · [b]← →[/b] girar la cintura (360°) · [b]↑ ↓[/b] subir / bajar los brazos\n"
 		t += "[b]Espacio[/b] disparar (mantener) · [b]F[/b] cerrar el puño · [b]L[/b] arrancar / aparcar · [b]R[/b] empezar de nuevo\n"
 		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / puesto de tiro (con la mira) · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
 		t += "[b]Mando[/b]: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa\n"
@@ -1052,7 +1052,7 @@ func _paso_juego_bip(dt: float) -> void:
 	_paso_balas_otros(dt)
 	var J := juego_bip
 	hud.bip.visible = J != null and pantalla_actual == ""
-	hud.mira.visible = J != null and camara == 3 and pantalla_actual == ""
+	hud.mira.visible = false
 	if J == null: return
 	J.blancos = _blancos_sala()
 	if av["estado"] == "volando": J.paso(dt, av, modelo, _altura_c())
@@ -1062,6 +1062,12 @@ func _paso_juego_bip(dt: float) -> void:
 		if e["tipo"] == "explosion": sonido.evento("explosion")
 	if J.derribados != _bip_oido["derribados"]: _bip_oido["derribados"] = J.derribados; poner_toast("¡Dron derribado! (%d)" % J.derribados)
 	efectos_bip.pintar(J, dt, cam)
+	# mira (camaras 2 y 3): donde apunta de verdad el cañon, el punto a 120 m sobre su linea de tiro proyectado en la pantalla
+	var ap: Dictionary = modelo.apuntado(av); var P := Avion3D.ned([ap["o"][0] + ap["d"][0] * 120, ap["o"][1] + ap["d"][1] * 120, ap["o"][2] + ap["d"][2] * 120])
+	if (camara == 2 or camara == 3) and pantalla_actual == "" and not cam.is_position_behind(P):
+		var sp := cam.unproject_position(P); var tam := get_viewport().get_visible_rect().size
+		hud.mira.visible = sp.x > -20 and sp.y > -20 and sp.x < tam.x + 20 and sp.y < tam.y + 20
+		hud.mira.position = sp - Vector2(28, 28)
 	hud.bip_drones.text = "DRONES DERRIBADOS %d" % J.derribados
 	var w: float = av["wCanones"] / (modelo.bp["cadencia_rpm"] / 60.0 / 6.0 * TAU)
 	hud.bip_canon.text = ("FUEGO" if w > 0.8 else "CAÑÓN ACELERANDO %d %%" % int(round(w * 100))) if av["cmd"]["fuego"] > 0 else "CAÑÓN LISTO"

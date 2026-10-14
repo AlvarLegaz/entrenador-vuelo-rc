@@ -62,8 +62,7 @@ func _init(p_: Node) -> void:
 		if i == 0: bip_drones = l
 		else: bip_canon = l
 	add_child(bip)
-	mira = Control.new(); mira.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira.anchor_left = 0.5; mira.anchor_right = 0.5; mira.anchor_top = 0.5; mira.anchor_bottom = 0.5
-	mira.offset_left = -28; mira.offset_right = 28; mira.offset_top = -28; mira.offset_bottom = 28; mira.visible = false
+	mira = Control.new(); mira.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira.size = Vector2(56, 56); mira.visible = false   # la coloca principal donde apunta el cañon
 	mira.draw.connect(func():
 		var c := Color("#ffd36a"); var m := Vector2(28, 28)
 		mira.draw_arc(m, 14, 0, TAU, 40, Color(c, 0.85), 2.0, true)
