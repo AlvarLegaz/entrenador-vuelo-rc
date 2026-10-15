@@ -13,7 +13,7 @@ $ProgressPreference = "SilentlyContinue"            # sin la barra de progreso, 
 $TAG     = "zonas-2026-10-15"
 $ZIP     = "zonas_detalle_2026-10-15.zip"
 $SHA256  = "61d4b8ffa2f1d0498e0858c93591cbb3df3a48e423f983417fc98a65e7ea487c"
-$URL     = "https://github.com/AlvarLegaz/entrenador-vuelo-rc/releases/download/$TAG/$ZIP"
+$URL     = "https://github.com/AlvarLegaz/uxs-trainer/releases/download/$TAG/$ZIP"
 $SIM     = $PSScriptRoot                            # carpeta simulador
 $MARCA   = Join-Path $SIM "zonas\version_zonas.txt"          # la version de las zonas descargadas: si no es $TAG, se baja el zip nuevo
 

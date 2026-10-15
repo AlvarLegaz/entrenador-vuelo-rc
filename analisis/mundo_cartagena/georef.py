@@ -14,7 +14,7 @@ ETIQUETAS = {  # nombre en la captura: (x, y) del centro de la etiqueta (imagen 
 pts = []
 for nombre, (x, y) in ETIQUETAS.items():
     q = urllib.parse.urlencode({"q": nombre + ", Región de Murcia", "format": "json", "limit": 1})
-    req = urllib.request.Request("https://nominatim.openstreetmap.org/search?" + q, headers={"User-Agent": "entrenador-vuelo-rc/1.0 (+https://github.com/AlvarLegaz/entrenador-vuelo-rc)"})
+    req = urllib.request.Request("https://nominatim.openstreetmap.org/search?" + q, headers={"User-Agent": "uxs-trainer/1.0 (+https://github.com/AlvarLegaz/uxs-trainer)"})
     try:
         r = json.load(urllib.request.urlopen(req, timeout=20))
         if r:

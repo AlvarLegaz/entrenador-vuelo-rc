@@ -24,7 +24,7 @@ func _init(p_: Node) -> void:
 	var caja := PanelContainer.new(); caja.add_theme_stylebox_override("panel", Tema.caja(Tema.PANEL, Tema.BORDE, 14, 1, 28, 26))
 	caja.custom_minimum_size.x = 440; centro.add_child(Tema.margen(caja, 16, 24, 16, 24))
 	var c := VBoxContainer.new(); c.add_theme_constant_override("separation", 6); caja.add_child(c)
-	var pre := Tema.etiqueta("ENTRENADOR DE VUELO RC", 11, Tema.ACENTO, true)
+	var pre := Tema.etiqueta("UxS TRAINER", 11, Tema.ACENTO, true)
 	var fv := FontVariation.new(); fv.base_font = Tema.negrita; fv.spacing_glyph = 2; pre.add_theme_font_override("font", fv); c.add_child(pre)
 	c.add_child(Tema.etiqueta("Entrar en el aula", 26, Tema.TEXTO, true))
 	var txt := Tema.etiqueta("Con tu usuario se guardan tus vuelos y tu progreso en el servidor del aula (el PC del profesor).", 14, Tema.SUAVE, false, true)
@@ -45,7 +45,7 @@ func _init(p_: Node) -> void:
 	bp.add_theme_font_size_override("font_size", 13); c.add_child(Tema.margen(bp, 0, 10, 0, 0))
 	# pie
 	var pie := HBoxContainer.new(); pie.add_child(Tema.espacio())
-	pie.add_child(Tema.etiqueta("Entrenador de vuelo RC · v2 Godot · © 2026 Álvar Legaz Aparicio · todos los derechos reservados", 13, Tema.SUAVE))
+	pie.add_child(Tema.etiqueta("UxS Trainer · v2 Godot · © 2026 Álvar Legaz Aparicio · todos los derechos reservados", 13, Tema.SUAVE))
 	v.add_child(Tema.margen(pie, 48, 12, 48, 18))
 
 func _campo(c: VBoxContainer, titulo: String, ejemplo: String, secreto: bool) -> LineEdit:

@@ -13,6 +13,6 @@ if not defined PY (
   pause
   exit /b 1
 )
-title Servidor del aula - Entrenador de vuelo RC
+title Servidor del aula - UxS Trainer
 %PY% aula\servidor_aula.py %*
 pause

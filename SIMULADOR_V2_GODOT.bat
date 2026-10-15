@@ -1,5 +1,5 @@
 @echo off
-rem Simulador de vuelo RC v2 (Godot). Doble clic para abrirlo.
+rem UxS Trainer v2 (Godot), entrenador de sistemas no tripulados. Doble clic para abrirlo.
 rem Si falta Godot 4.7.2, lo descarga de la pagina oficial de Godot en GitHub (unos 86 MB, solo la primera vez),
 rem comprueba su huella SHA-512 y lo deja en herramientas\godot (simulador_godot\descargar_godot.ps1).
 cd /d "%~dp0"

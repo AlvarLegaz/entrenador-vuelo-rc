@@ -1,5 +1,5 @@
 extends Node3D
-## Simulador de vuelo RC, version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador/simulador.html): las
+## UxS Trainer (entrenador de sistemas no tripulados), version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador/simulador.html): las
 ## mismas pantallas (inicio, pilotos, hangar, entrenamientos, vuelo libre, punto de lanzamiento, ajustes, resultado y
 ## progreso), el mismo HUD, las mismas misiones (simulador/escenarios.js), el aula (pantalla de acceso: servidor, usuario y contrasena, o sin conexion), la caja
 ## negra, la repeticion, el sonido y el dron comercial con su app. Los aviones, el mundo y la fisica son comunes (modelo_avion.gd,
@@ -109,7 +109,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
-	get_window().title = "Entrenador de vuelo RC"
+	get_window().title = "UxS Trainer"
 	ids_aviones = DatosComunes.aviones()
 	_cargar()
 	if _args.has("avion"): sesion["avion"] = _args["avion"]

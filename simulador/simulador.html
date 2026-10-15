@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Entrenador Vuelo RC</title>
+<title>UxS Trainer</title>
 <!--
-  ENTRENADOR VUELO RC: simulador de entrenamiento RC del aula. Fisica de 6 grados de libertad y visor 3D en el navegador.
+  UxS TRAINER (entrenador de sistemas no tripulados; antes Entrenador Vuelo RC): simulador de entrenamiento del aula. Fisica de 6 grados de libertad y visor 3D en el navegador.
 
   FLUJO: acceso (aula o sin conexion) -> inicio -> vuelo libre / entrenamientos / hangar / ajustes -> volar -> resultado -> progreso.
   Pantallas: pInicio, pAlumno, pHangar, pEntrenamientos, pVolar, pLanzamiento, pAjustes, pResultado, pProgreso; capas:
@@ -451,7 +451,7 @@
 <div class="pantalla conFoto" id="pInicio">
   <div class="cuerpo">
     <div id="inicioIzq">
-      <div class="titulo"><small>Simulador de vuelo RC</small><h1>Entrenador de vuelo</h1><p>Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.</p></div>
+      <div class="titulo"><small>Entrenador de sistemas no tripulados</small><h1>UxS Trainer</h1><p>Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.</p></div>
       <button class="menu-btn" id="mnVolar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg><div><b>Vuelo libre</b><span>El campo de vuelo del club o el Campo de Cartagena con mapa real</span></div></button>
       <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV</span></div></button>
       <button class="menu-btn" id="mnMulti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg><div><b>Multijugador</b><span>Vuela con tus compañeros en la misma sala del aula: os veis unos a otros</span></div></button>
@@ -466,14 +466,14 @@
       <div id="inicioAvion"><b id="inicioAvionNombre"></b><span id="inicioAvionDesc"></span></div>
     </div>
   </div>
-  <div id="inicioPie"><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>Entrenador de vuelo RC · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
+  <div id="inicioPie"><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>UxS Trainer · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
 </div>
 
 <!-- ============ ACCESO: servidor del aula, usuario y contrasena, o sin conexion ============ -->
 <div class="pantalla conFoto" id="pAlumno">
   <div class="cuerpo" id="accesoCuerpo">
     <div class="capa" id="accesoCaja">
-      <small>ENTRENADOR DE VUELO RC</small>
+      <small>UxS TRAINER</small>
       <h1>Entrar en el aula</h1>
       <p class="sub" style="margin:0;font-size:14px">Con tu usuario se guardan tus vuelos y tu progreso en el servidor del aula (el PC del profesor).</p>
       <label for="urlAula">Servidor del aula</label><input type="text" id="urlAula" placeholder="http://192.168.1.20:8080" autocomplete="off">
@@ -487,7 +487,7 @@
       <button class="btn" id="btnProfesor" style="margin-top:10px;font-size:13px">Panel del profesor</button>
     </div>
   </div>
-  <div class="pieAcceso"><span style="flex:1"></span><span>Entrenador de vuelo RC · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
+  <div class="pieAcceso"><span style="flex:1"></span><span>UxS Trainer · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
 </div>
 
 <!-- ============ HANGAR ============ -->

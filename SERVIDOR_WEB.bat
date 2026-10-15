@@ -18,7 +18,7 @@ if not defined PY (
 )
 set "PUERTO=%~1"
 if "%PUERTO%"=="" set "PUERTO=8000"
-title Simulador web - Entrenador de vuelo RC (puerto %PUERTO%)
+title Simulador web - UxS Trainer (puerto %PUERTO%)
 echo Simulador web en http://localhost:%PUERTO% y, desde los demas ordenadores, http://IP-de-este:%PUERTO% con esta IP:
 ipconfig | findstr /i "IPv4"
 %PY% -m http.server %PUERTO% --bind 0.0.0.0 --directory simulador

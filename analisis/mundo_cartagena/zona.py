@@ -25,7 +25,7 @@ from PIL import Image
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-UA = {"User-Agent": "entrenador-vuelo-rc/1.0 (+https://github.com/AlvarLegaz/entrenador-vuelo-rc)"}
+UA = {"User-Agent": "uxs-trainer/1.0 (+https://github.com/AlvarLegaz/uxs-trainer)"}
 TESELA_M, PASO_DEM = 500.0, 5.0
 # pixeles por tesela de 500 m: 1024 (~0,5 m/px) por defecto; con ZONA_PX=2048, ~0,25 m/px, la resolucion real del PNOA en
 # Cartagena (medido 2026-10-13: a 0,125 m no se ve mas). Asi se hizo la zona del CIFP Politecnico (zona_cifp.py)

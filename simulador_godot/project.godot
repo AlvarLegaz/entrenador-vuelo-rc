@@ -1,4 +1,5 @@
-; Simulador de vuelo RC, version 2 (Godot 4). Los datos (aviones, mundos, zonas) son los de ../simulador/, comunes
+; UxS Trainer (entrenador de sistemas no tripulados), version 2 (Godot 4). config/name sigue siendo el antiguo a
+; proposito: de el sale la carpeta de datos del usuario (aula.cfg, simulador.cfg...) y cambiarlo los perderia. Los datos (aviones, mundos, zonas) son los de ../simulador/, comunes
 ; con la version 1 del navegador. Se lanza con:  herramientas/godot/Godot_v4.7.2-stable_win64.exe --path simulador_godot
 config_version=5
 
