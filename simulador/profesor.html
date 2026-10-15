@@ -177,7 +177,10 @@ let alumnos = [];
 const $ = id => document.getElementById(id);
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function fmtHoras(h) { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`; }
-function fmtFecha(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }); }
+function fmtFecha(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? esc(iso) : d.toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }); }
+/** Un jugador de la sala con posicion y orientacion de verdad (numeros finitos): lo demas no se pinta ni se usa. */
+const nums = (a, n) => Array.isArray(a) && a.length === n && a.every(x => typeof x === "number" && isFinite(x));
+const jugadorValido = j => j && typeof j === "object" && nums(j.p, 3) && (j.vn == null || nums(j.vn, 3));
 
 async function api(metodo, ruta, cuerpo, crudo) {
   const h = { Authorization: "Bearer " + token }; if (cuerpo) h["Content-Type"] = "application/json";
@@ -318,11 +321,12 @@ async function accion(a, al) {
 }
 
 function filaVuelo(v, conAlumno) {
-  const ok = v.objetivos.filter(o => o.ok).length;
+  if (!Array.isArray(v.objetivos)) v.objetivos = [];
+  const ok = v.objetivos.filter(o => o && o.ok).length;
   return `<tr>${conAlumno ? `<td>${esc(v.alumno)}</td>` : ""}<td>${fmtFecha(v.inicio)}</td><td>${esc(v.equipo)}</td><td>${esc(v.avion)}</td><td>${esc(v.escenario_nombre)}</td>
     <td>${(v.tiempo_vuelo_s / 60).toFixed(1)} min</td><td>${v.aterrizajes} / ${v.accidentes}</td>
     <td>${v.objetivos.length ? `<details><summary>${ok}/${v.objetivos.length}</summary>${v.objetivos.map(o => `<div class="${o.ok ? "ok" : "mal"}">${o.ok ? "✔" : "✘"} ${esc(o.texto)}</div>`).join("")}</details>` : "—"}</td>
-    <td>${esc(v.final)}</td><td class="${v.resultado === "APTO" ? "ok" : v.resultado === "NO APTO" ? "mal" : ""}"><b>${v.resultado}</b></td></tr>`;
+    <td>${esc(v.final)}</td><td class="${v.resultado === "APTO" ? "ok" : v.resultado === "NO APTO" ? "mal" : ""}"><b>${esc(v.resultado)}</b></td></tr>`;
 }
 const CAB_VUELOS = c => `<tr>${c ? "<th>Alumno</th>" : ""}<th>Fecha</th><th>Equipo</th><th>Avión</th><th>Entrenamiento</th><th>Tiempo</th><th>Aterr. / acc.</th><th>Objetivos</th><th>Final</th><th>Resultado</th></tr>`;
 
@@ -492,9 +496,11 @@ function alDespegue(p, c) {
 /** Nombre del avion o dron (el de su fichero aviones/<id>.js; mientras llega, el id). */
 const AVIONES = {};
 function nombreAvion(id) {
-  if (!(id in AVIONES)) {
+  id = String(id || "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) return id;               // un id raro no se busca ni se guarda
+  if (!Object.hasOwn(AVIONES, id)) {
     AVIONES[id] = id;
-    fetch("aviones/" + encodeURIComponent(id) + ".js").then(r => r.text()).then(t => { const m = t.match(/"nombre":\s*"([^"]+)"/); if (m) AVIONES[id] = m[1]; }).catch(() => {});
+    fetch("aviones/" + encodeURIComponent(id) + ".js").then(r => r.ok ? r.text() : "").then(t => { const m = t.match(/"nombre":\s*"([^"]+)"/); if (m) AVIONES[id] = m[1]; }).catch(() => {});
   }
   return AVIONES[id];
 }
@@ -531,6 +537,7 @@ async function pintarSalas() {
   }
   const s = salas.find(x => x.codigo === MP.sel);
   $("mSala").style.display = s ? "" : "none"; if (!s) return;
+  s.jugadores = (s.jugadores || []).filter(jugadorValido);       // un estado mal formado no deja de pintar la tabla (ni el boton Expulsar)
   $("mTitulo2").textContent = `${s.nombre} (sala ${s.codigo})`; $("mEsc").textContent = nombreEsc(s.escenario);
   $("mClave").innerHTML = (s.clave ? ` · 🔒 clave <b>${esc(s.clave)}</b>` : " · sin clave") + ((s.expulsados || []).length ?
     ` · expulsados: ${s.expulsados.map(esc).join(", ")} <button id="mReadmitir" title="Dejar que vuelvan a entrar">Readmitir</button>` : "");
@@ -557,7 +564,7 @@ async function pintarSalas() {
   const Es = (window.ESCENARIOS || {})[s.escenario] || {}, casa0 = s.lanz ? [s.lanz.N, s.lanz.E] : Es.operacion ? [Es.operacion.salida.n, Es.operacion.salida.e] : [0, 0];
   $("tJugadores").innerHTML = "<tr><th></th><th>Piloto</th><th>Avión</th><th>Estado</th><th>Altura</th><th>Velocidad</th><th style='white-space:nowrap'>Al despegue</th><th>Objetivos</th><th>En vuelo</th><th></th></tr>" +
     J.map(j => `<tr><td style="color:${color(j)}">●</td><td style="white-space:nowrap"><b>${esc(j.nombre)}</b></td><td>${esc(nombreAvion(j.avion))}</td><td>${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}</td>
-      <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td style="white-space:nowrap">${alDespegue(j.p, casa0)}</td><td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && j.objs[1] ? `<span style="color:#66d36e">${j.objs[0]} ✔</span>` + (j.objs[2] ? ` <span style="color:#ff6e66">${j.objs[2]} ✘</span>` : "") + ` <span class="sub">de ${j.objs[1]}</span>` : "—"}</td>
+      <td>${Math.max(0, j.agl || 0).toFixed(0)} m</td><td>${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</td><td style="white-space:nowrap">${alDespegue(j.p, casa0)}</td><td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && +j.objs[1] ? `<span style="color:#66d36e">${+j.objs[0] || 0} ✔</span>` + (+j.objs[2] ? ` <span style="color:#ff6e66">${+j.objs[2] || 0} ✘</span>` : "") + ` <span class="sub">de ${j.objs[1]}</span>` : "—"}</td>
       <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td>
       <td><button class="peligro" data-expulsar="${esc(j.id)}" data-nombre="${esc(j.nombre)}" title="Sacarlo de la sala; no podrá volver a entrar">Expulsar</button></td></tr>` +
       (j.ahora ? `<tr><td></td><td colspan="9" class="sub" style="font-size:12px;padding-top:0">${esc(j.ahora)}</td></tr>` : "")).join("") ||

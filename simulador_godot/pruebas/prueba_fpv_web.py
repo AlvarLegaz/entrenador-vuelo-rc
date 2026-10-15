@@ -33,7 +33,7 @@ def main():
         pg.wait_for_function("typeof visor !== 'undefined' && visor && typeof empezar === 'function' && !!Modelos.datos('FPV')", timeout=120000)
         print("Dron FPV en el navegador:")
         ok("el FPV esta en la lista de aviones", pg.evaluate("Modelos.ids().includes('FPV')"))
-        pg.evaluate("elegirPiloto(null); elegirAvion('FPV'); irHangar()")
+        pg.evaluate("salirDelAula(); irInicio(); elegirAvion('FPV'); irHangar()")
         ok("hangar: tarjeta del FPV", pg.evaluate("[...document.querySelectorAll('#selAviones .avCarta')].some(b => b.textContent.includes('dron FPV'))"))
         pg.evaluate("async () => { sesion.escenario = 'libre'; await empezar(); }")
         time.sleep(1.5)
@@ -81,7 +81,7 @@ def main():
         pg.keyboard.press("KeyL"); time.sleep(0.2)
         ok("L desarma en el aire", pg.evaluate("!av.armado"))
         time.sleep(4)
-        ok("desarmado cae y el vuelo termina", pg.evaluate("av.estado") in ("roto", "aterrizado"), "(" + pg.evaluate("vuelo && vuelo.final") + ")")
+        ok("desarmado cae y el vuelo termina", pg.evaluate("av.estado") in ("roto", "aterrizado"), "(" + str(pg.evaluate("vuelo && vuelo.final")) + ")")
         # los otros siguen funcionando
         for avion in ("E1", "DJI_MINI"):
             pg.evaluate(f"async () => {{ salirAlMenu(); elegirAvion('{avion}'); sesion.escenario = 'libre'; await empezar(); }}")

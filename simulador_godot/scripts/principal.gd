@@ -705,12 +705,26 @@ func _enviar_sala() -> void:
 	if sala.is_empty() or sala["codigo"] != cod: return
 	if r["ok"]:
 		var t := Time.get_ticks_msec() / 1000.0; var vivos := {}
-		for o in r["datos"]["otros"]: o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true; _impactos_de(o)
+		for o in r["datos"]["otros"]:
+			if not _estado_valido(o): continue          # posicion u orientacion que no son numeros, o vehiculo que no existe: se ignora
+			o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true; _impactos_de(o)
 		for k in multi_otros.keys():
 			if not vivos.has(k): multi_otros.erase(k)
 		aplicar_ordenes(r["datos"].get("ordenes", []))
 	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
 	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", String(r["error"]), "Vale")   # expulsado por el profesor
+## Un estado de otro jugador que se puede usar (estadoValido de la web): id, p de 3 y q de 4 numeros finitos, vn de 3 si
+## viene, y un vehiculo que exista en aviones/.
+static func _nums_finitos(a, n: int) -> bool:
+	if not (a is Array) or a.size() != n: return false
+	for x in a:
+		if not (x is float or x is int) or (x is float and not is_finite(x)): return false
+	return true
+func _estado_valido(o) -> bool:
+	if not (o is Dictionary) or not (o.get("id") is String) or not _nums_finitos(o.get("p"), 3) or not _nums_finitos(o.get("q"), 4): return false
+	if o.get("vn") != null and not _nums_finitos(o.get("vn"), 3): return false
+	if o.get("estado") != null and not (o.get("estado") is String): return false
+	return o.get("avion") is String and not DatosComunes.avion(String(o["avion"])).is_empty()
 ## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
 ## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
 func _poner_fantasmas() -> void:

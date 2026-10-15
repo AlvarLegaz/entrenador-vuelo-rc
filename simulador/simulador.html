@@ -1843,7 +1843,7 @@ async function irProgreso(desde, al = sesion.alumno) {
     <h2>Historial</h2>
     <div class="tarjeta" style="overflow-x:auto"><table class="datos"><tr><th>Fecha</th><th>Avión</th><th>Entrenamiento</th><th>Tiempo</th><th>Objetivos</th><th>Final</th><th>Resultado</th></tr>
       ${a.vuelos.length ? a.vuelos.map(v => `<tr><td>${fmtFecha(v.inicio)}</td><td>${esc(v.avion)}</td><td>${esc(v.escenario_nombre)}</td>
-        <td>${(v.tiempo_vuelo_s / 60).toFixed(1)} min</td><td>${v.objetivos.length ? v.objetivos.filter(o => o.ok).length + "/" + v.objetivos.length : "—"}</td>
+        <td>${(+v.tiempo_vuelo_s / 60).toFixed(1)} min</td><td>${Array.isArray(v.objetivos) && v.objetivos.length ? v.objetivos.filter(o => o && o.ok).length + "/" + v.objetivos.length : "—"}</td>
         <td>${esc(v.final || "")}</td><td class="${v.resultado === "APTO" ? "ob-ok" : v.resultado === "NO APTO" ? "ob-mal" : ""}">${v.resultado}</td></tr>`).join("")
         : '<tr><td colspan="7">Todavía no hay vuelos.</td></tr>'}</table></div>`;
 }
@@ -2067,6 +2067,12 @@ function salirSala() {
   ORDENES.reiniciar(); pintarOrdenes(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones([]);
   api("POST", `salas/${s.codigo}/salir`, { id: multiId() }).catch(() => {});
 }
+/** Un estado de otro jugador que se puede usar: posicion y orientacion con numeros finitos y un vehiculo que exista. */
+const numsFinitos = (a, n) => Array.isArray(a) && a.length === n && a.every(x => typeof x === "number" && isFinite(x));
+function estadoValido(o) {
+  return !!o && typeof o === "object" && typeof o.id === "string" && numsFinitos(o.p, 3) && numsFinitos(o.q, 4) && (o.vn == null || numsFinitos(o.vn, 3)) &&
+    typeof o.avion === "string" && Object.prototype.hasOwnProperty.call(Modelos._datos, o.avion) && (o.estado == null || typeof o.estado === "string");
+}
 /** Manda el estado propio y recoge el de los demas (10 veces por segundo, sin solaparse). */
 async function enviarSala() {
   if (!MULTI.sala || MULTI.enCurso || !av || !modelo) return;
@@ -2080,7 +2086,7 @@ async function enviarSala() {
   if (modelo.esBipode) { e.bip = [av.cintura, av.brazos, av.fase, av.amp, av.angCanones, av.disparos, av.puno].map(r6); if (juegoBip) e.golpes = juegoBip.golpes; }
   try {
     const r = await api("POST", `salas/${MULTI.sala.codigo}/estado`, e), t = performance.now(), vivos = new Set();
-    for (const o of r.otros) { vivos.add(o.id); MULTI.otros.set(o.id, Object.assign(o, { recibido: t })); impactosDe(o); }
+    for (const o of r.otros) { if (!estadoValido(o)) continue; vivos.add(o.id); MULTI.otros.set(o.id, Object.assign(o, { recibido: t })); impactosDe(o); }   // lo mal formado se ignora
     for (const k of [...MULTI.otros.keys()]) if (!vivos.has(k)) MULTI.otros.delete(k);
     aplicarOrdenes(r.ordenes);
   } catch (err) {
@@ -2151,8 +2157,8 @@ function pintarSalaInfo() {
   const el = document.getElementById("salaInfo");
   if (!MULTI.sala) { el.style.display = "none"; return; }
   el.style.display = "block";
-  const fila = o => `<div>● ${esc(o.nombre)} · ${esc((Modelos.datos(o.avion) || {}).nombre || o.avion)} · ${o.estado === "volando" ? Math.max(0, o.agl).toFixed(0) + " m" : o.estado}` +
-    (o.objs && o.objs[1] ? ` · ${o.objs[0]}✔${o.objs[2] ? " " + o.objs[2] + "✘" : ""} de ${o.objs[1]}` : "") + `</div>`;
+  const fila = o => `<div>● ${esc(o.nombre)} · ${esc((Modelos.datos(o.avion) || {}).nombre || o.avion)} · ${o.estado === "volando" ? Math.max(0, o.agl || 0).toFixed(0) + " m" : esc(o.estado)}` +
+    (o.objs && +o.objs[1] ? ` · ${+o.objs[0] || 0}✔${+o.objs[2] ? " " + (+o.objs[2] || 0) + "✘" : ""} de ${+o.objs[1] || 0}` : "") + `</div>`;
   el.innerHTML = `<b>Sala ${MULTI.sala.codigo}</b> · ${esc(MULTI.sala.nombre)}` + ([...MULTI.otros.values()].map(fila).join("") || "<div>Todavía no hay nadie más</div>");
 }
 // ---- ordenes del profesor a la sala (panel del profesor, POST /api/salas/<cod>/orden): viento, NOTAM, aterrizaje
@@ -3258,7 +3264,7 @@ function bucle(ahora) {
       while (acumulado >= DT) { paso(DT); acumulado -= DT; }
       pasoJuegoBip(dtReal);
       visor.dibujar(av); hud(); Sonido.actualizar(av);
-      if (MULTI.sala) visor.ponerFantasmas([...MULTI.otros.values()]);
+      if (MULTI.sala) { try { visor.ponerFantasmas([...MULTI.otros.values()]); } catch (e) { console.error("fantasmas:", e); } }   // un fallo con los demas nunca para el vuelo propio
       if ((tObj += dtReal) > 0.2) { tObj = 0; pintarObjetivos(); pintarSalaInfo(); }
     }
   } else {
