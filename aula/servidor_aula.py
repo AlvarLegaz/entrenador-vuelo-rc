@@ -476,9 +476,17 @@ class Manejador(BaseHTTPRequestHandler):
             if p == ["salas"] and m == "POST":                 # solo el profesor crea salas
                 self.profesor()
                 if not b.get("escenario"): raise Error(400, "falta el escenario")
+                lanz, viento = b.get("lanz"), b.get("viento")
+                if lanz is not None:                                 # el punto de salida: mundo, N, E y rumbo (y el nombre del destacado)
+                    if not isinstance(lanz, dict): raise Error(400, "punto de salida no valido")
+                    lanz = dict(mundo=str(lanz.get("mundo") or "")[:40], N=numero(lanz.get("N"), -1e6, 1e6, "N"), E=numero(lanz.get("E"), -1e6, 1e6, "E"),
+                                rumbo=numero(lanz.get("rumbo"), -360, 360, "rumbo"), **({"destacado": str(lanz["destacado"])[:60]} if isinstance(lanz.get("destacado"), str) else {}))
+                if viento is not None:
+                    if not isinstance(viento, dict): raise Error(400, "viento no valido")
+                    viento = dict(vel=numero(viento.get("vel"), 0, 40, "vel"), desde=numero(viento.get("desde"), -360, 360, "desde"), rachas=bool(viento.get("rachas")))
                 cod = next(c for c in (str(secrets.randbelow(9000) + 1000) for _ in range(100)) if c not in SALAS)
-                SALAS[cod] = dict(codigo=cod, nombre=str(b.get("nombre") or "Sala " + cod)[:60], escenario=str(b["escenario"]),
-                                  lanz=b.get("lanz"), viento=b.get("viento"), creada=ahora(), ultimo=t, jugadores={}, rutas={}, ordenes=[],
+                SALAS[cod] = dict(codigo=cod, nombre=str(b.get("nombre") or "Sala " + cod)[:60], escenario=str(b["escenario"])[:40],
+                                  lanz=lanz, viento=viento, creada=ahora(), ultimo=t, jugadores={}, rutas={}, ordenes=[],
                                   ajustes={k: float(v) for k, v in (b.get("ajustes") or {}).items()
                                            if k in ("cubiertas", "fachadas", "defectos", "manchas", "minutos", "cobertura") and isinstance(v, (int, float))} or None,
                                   clave=str(b.get("clave") or "").strip()[:20] or None, admitidos=set(), expulsados=set(), expulsados_nombres=set(), ips={})

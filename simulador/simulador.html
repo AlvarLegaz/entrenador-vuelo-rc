@@ -2061,7 +2061,9 @@ function entrarSala(s) {
   MULTI.sala = s; MULTI.otros.clear(); ORDENES.reiniciar();
   const veh = (E.vehiculos || ["avion", "dron", "fpv"]).concat(E.objetivos.length || E.operacion ? [] : ["bipode"]);   // vuelo libre: tambien el bipode
   if (!veh.includes(vehiculoDe(sesion.avion))) elegirAvion(Modelos.ids().find(a => veh.includes(vehiculoDe(a))) || sesion.avion);
-  sesion.escenario = s.escenario; if (s.lanz) sesion.lanz = s.lanz; if (s.viento && !E.viento) sesion.viento = s.viento;
+  sesion.escenario = s.escenario;
+  if (s.lanz && typeof s.lanz === "object" && numsFinitos([s.lanz.N, s.lanz.E, s.lanz.rumbo], 3)) sesion.lanz = s.lanz;         // solo si viene bien formado
+  if (s.viento && typeof s.viento === "object" && numsFinitos([s.viento.vel, s.viento.desde], 2) && !E.viento) sesion.viento = s.viento;
   if (!s.lanz && E.operacion) sesion.lanz = { mundo: E.mundo, N: E.operacion.salida.n, E: E.operacion.salida.e, rumbo: E.operacion.salida.rumbo };   // trabajos: su despegue
   clearInterval(MULTI.timer); MULTI.timer = setInterval(enviarSala, 100);
   toast(`Sala ${s.codigo}: ${s.nombre}`); empezar();
@@ -2076,9 +2078,15 @@ function salirSala() {
 }
 /** Un estado de otro jugador que se puede usar: posicion y orientacion con numeros finitos y un vehiculo que exista. */
 const numsFinitos = (a, n) => Array.isArray(a) && a.length === n && a.every(x => typeof x === "number" && isFinite(x));
+const numsFinitosMin = (a, n) => Array.isArray(a) && a.length >= n && a.slice(0, n).every(x => typeof x === "number" && isFinite(x));
 function estadoValido(o) {
-  return !!o && typeof o === "object" && typeof o.id === "string" && numsFinitos(o.p, 3) && numsFinitos(o.q, 4) && (o.vn == null || numsFinitos(o.vn, 3)) &&
-    typeof o.avion === "string" && Object.prototype.hasOwnProperty.call(Modelos._datos, o.avion) && (o.estado == null || typeof o.estado === "string");
+  if (!o || typeof o !== "object" || typeof o.id !== "string" || !numsFinitos(o.p, 3) || !numsFinitos(o.q, 4) || (o.vn != null && !numsFinitos(o.vn, 3))) return false;
+  for (const k of ["estado", "nombre", "final", "ahora"]) if (o[k] != null && typeof o[k] !== "string") return false;
+  for (const k of ["gas", "agl", "gimbal", "tvuelo"]) if (o[k] != null && !(typeof o[k] === "number" && isFinite(o[k]))) return false;
+  if (o.objs != null && !numsFinitosMin(o.objs, 2)) return false;
+  if (o.bip != null && !numsFinitosMin(o.bip, 7)) return false;
+  if (o.golpes != null && (typeof o.golpes !== "object" || Array.isArray(o.golpes))) return false;
+  return typeof o.avion === "string" && Object.prototype.hasOwnProperty.call(Modelos._datos, o.avion);
 }
 /** Manda el estado propio y recoge el de los demas (10 veces por segundo, sin solaparse). */
 async function enviarSala() {
@@ -2107,6 +2115,7 @@ async function enviarSala() {
 const BIP_VIDAS = 1;                  // cae al primer impacto
 function impactosDe(o) {
   if (!o.golpes || !av || !modelo || modelo.esTerrestre) return;
+  const D = Modelos.datos(o.avion); if (!D || D.tipo !== "bipode") return;                 // solo dispara el bipode
   const n = +o.golpes[multiId()] || 0, vistos = MULTI.golpesVistos = MULTI.golpesVistos || {};
   if (vistos[o.id] === undefined) { vistos[o.id] = n; return; }                 // los de antes de entrar no cuentan
   if (n <= vistos[o.id]) return;

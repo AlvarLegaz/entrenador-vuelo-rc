@@ -130,19 +130,27 @@ func pintar_lecturas(cajas: Array) -> void:          # [[valor, nombre, clase ("
 			L[2] = q[2]; L[0].add_theme_color_override("font_color", Color("#ff5252") if q[2] == "rojo" else (Color("#ffb300") if q[2] == "ambar" else Tema.TEXTO))
 
 ## Coloca lo que depende del tamano de la pantalla (cada cuadro).
+var _firma_col := []
 func _process(_dt: float) -> void:
 	var W := size.x; var H := size.y
+	var dji_vis: bool = dji != null and dji.visible
 	objetivos.visible = obj_rt.text != ""          # #objetivos:empty de la web
-	objetivos.position = Vector2(W - 16 - objetivos.size.x, 14 + (36 if dji and dji.visible else 0)); objetivos.size.x = 0
-	obj_rt.custom_minimum_size.x = 240
-	guia.position.y = 60 + (36 if dji and dji.visible else 0)
-	guia_rt.custom_minimum_size.x = minf(520, W * 0.55) - 33
-	aviso.position = Vector2(0, H * 0.30 - 20); aviso.size = Vector2(W, 48)
-	toast.position = Vector2(0, H * 0.20 - 16); toast.size = Vector2(W, 36)
-	lejos_l.custom_minimum_size.x = 0; lejos.size = Vector2.ZERO
-	lejos.position = Vector2((W - lejos.size.x) / 2, H * 0.40); lejos_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	if lejos.size.x > W * 0.7: lejos_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lejos_l.custom_minimum_size.x = W * 0.7 - 28; lejos.position.x = W * 0.15
-	ayuda.size = Vector2.ZERO; ayuda.position = (Vector2(W, H) - ayuda.size) / 2
+	# lo que depende del tamano de la pantalla o de los textos solo se recoloca cuando cambia alguno: poner size = 0 cada
+	# cuadro obligaba a rehacer la maquetacion (y el texto) de estas cajas aunque nada hubiera cambiado
+	var firma := [W, H, dji_vis, obj_rt.text, lejos_l.text, ayuda.visible]
+	if firma != _firma_col:
+		_firma_col = firma
+		objetivos.size.x = 0
+		obj_rt.custom_minimum_size.x = 240
+		guia_rt.custom_minimum_size.x = minf(520, W * 0.55) - 33
+		aviso.position = Vector2(0, H * 0.30 - 20); aviso.size = Vector2(W, 48)
+		toast.position = Vector2(0, H * 0.20 - 16); toast.size = Vector2(W, 36)
+		lejos_l.custom_minimum_size.x = 0; lejos.size = Vector2.ZERO
+		lejos.position = Vector2((W - lejos.size.x) / 2, H * 0.40); lejos_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		if lejos.size.x > W * 0.7: lejos_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lejos_l.custom_minimum_size.x = W * 0.7 - 28; lejos.position.x = W * 0.15
+		ayuda.size = Vector2.ZERO; ayuda.position = (Vector2(W, H) - ayuda.size) / 2
+	objetivos.position = Vector2(W - 16 - objetivos.size.x, 14 + (36 if dji_vis else 0))
+	guia.position.y = 60 + (36 if dji_vis else 0)
 	rep.position = Vector2((W - rep.size.x) / 2, H - 120 - rep.size.y)
 	rep_fondo.custom_minimum_size.x = rep_l.size.x
 

@@ -182,11 +182,11 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var pg: float = float(av.get("pg", 0.0)) if av.get("pg") != null else 0.0
 	if pg and not facil: Mx += I["Ixx"] * pg * 4
 	# --- fuerzas en ejes cuerpo: empuje hacia arriba, peso, resistencia con el viento (la mitad en fisica facil) ---
-	var wb := Cuat.rot(Cuat.inv(q), [0.5 * viento[0], 0.5 * viento[1], 0.5 * viento[2]] if facil else viento)
+	var wb := Cuat.rot_inv(q, [0.5 * viento[0], 0.5 * viento[1], 0.5 * viento[2]] if facil else viento)
 	var va := [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]]; var Va := sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2])
 	var kd: float = 0.5 * rho * Va * calib["resistencia"]
 	var Fd := [-kd * F["cda_h"] * va[0], -kd * F["cda_h"] * va[1], -kd * F["cda_v"] * va[2]]
-	var gb := Cuat.rot(Cuat.inv(q), [0.0, 0.0, G0])
+	var gb := Cuat.rot_inv(q, [0.0, 0.0, G0])
 	var Fx: float = Fd[0] + m * gb[0]; var Fy: float = Fd[1] + m * gb[1]; var Fz: float = Fd[2] + m * gb[2] - T
 	# --- ecuaciones de Euler (sin producto de inercia) e integracion ---
 	var dv := [Fx / m - (w[1] * v[2] - w[2] * v[1]), Fy / m - (w[2] * v[0] - w[0] * v[2]), Fz / m - (w[0] * v[1] - w[1] * v[0])]

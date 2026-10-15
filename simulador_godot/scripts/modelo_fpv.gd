@@ -160,7 +160,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	if Tc + dmax > TmaxV: Tc = TmaxV - dmax
 	if Tc + dmin < Tmin: Tc = Tmin - dmin
 	# --- motores: vueltas con su retardo; empuje con la entrada de aire, el efecto suelo y el propwash; pares de los rotores ---
-	var wb := Cuat.rot(Cuat.inv(q), [0.5 * viento[0], 0.5 * viento[1], 0.5 * viento[2]] if FAC else viento)
+	var wb := Cuat.rot_inv(q, [0.5 * viento[0], 0.5 * viento[1], 0.5 * viento[2]] if FAC else viento)
 	var va := [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]]; var Va: float = sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2])
 	var D: float = pr["D_m"]; var A: float = PI * D * D / 4; var Wmax: float = pr["rpm_max"] * 2 * PI / 60; var km: float = minf(1, dt / F["tau_motor_s"])
 	var zs := maxf(agl, 0.06); var kGE: float = 1.0 if FAC else 1 / (1 - pow(D / 2 / (4 * zs), 2))
@@ -202,7 +202,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	# --- fuerzas en ejes cuerpo: empuje, peso, resistencia del cuerpo y de los rotores ---
 	var kd: float = 0.5 * rho * Va * calib["resistencia"]
 	var Fx: float = -kd * F["cda_h"] * va[0] - F["k_rotor"] * Tt * va[0]; var Fy: float = -kd * F["cda_h"] * va[1] - F["k_rotor"] * Tt * va[1]; var Fz0: float = -kd * F["cda_v"] * va[2]
-	var gb := Cuat.rot(Cuat.inv(q), [0.0, 0.0, G0])
+	var gb := Cuat.rot_inv(q, [0.0, 0.0, G0])
 	var Fb := [Fx + m * gb[0], Fy + m * gb[1], Fz0 + m * gb[2] - Tt]
 	# --- ecuaciones de Euler (sin producto de inercia) e integracion ---
 	var dv := [Fb[0] / m - (w[1] * v[2] - w[2] * v[1]), Fb[1] / m - (w[2] * v[0] - w[0] * v[2]), Fb[2] / m - (w[0] * v[1] - w[1] * v[0])]

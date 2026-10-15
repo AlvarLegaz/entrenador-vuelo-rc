@@ -568,11 +568,13 @@ func entrar_sala(s: Dictionary) -> void:
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
 	sesion["escenario"] = s["escenario"]
-	if s.get("lanz") != null: sesion["lanz"] = s["lanz"]
+	var lz = s.get("lanz")
+	if lz is Dictionary and _nums_finitos([lz.get("N", INF), lz.get("E", INF), lz.get("rumbo", INF)], 3): sesion["lanz"] = lz
 	elif E.has("operacion"):                     # trabajos: su despegue
 		var S0: Dictionary = E["operacion"]["salida"]; sesion["lanz"] = { "mundo": E["mundo"], "N": float(S0["n"]), "E": float(S0["e"]), "rumbo": float(S0["rumbo"]) }
-	if s.get("viento") != null and not E.has("viento"): sesion["viento"] = s["viento"]
-	poner_toast("Sala %s: %s" % [s["codigo"], s["nombre"]]); empezar()
+	var vt = s.get("viento")
+	if vt is Dictionary and _nums_finitos([vt.get("vel", INF), vt.get("desde", INF)], 2) and not E.has("viento"): sesion["viento"] = vt
+	poner_toast("Sala %s: %s" % [s["codigo"], String(s.get("nombre", ""))]); empezar()
 func salir_sala() -> void:
 	if sala.is_empty(): return
 	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false; _golpes_vistos = {}; _vida_multi = BIP_VIDAS
@@ -585,16 +587,16 @@ func aplicar_ordenes(lista: Array) -> void:
 	if ordenes.is_empty(): reiniciar_ordenes()
 	var cambio := false
 	for o in lista:
-		if int(o["n"]) <= int(ordenes["n"]): continue
-		ordenes["n"] = int(o["n"]); cambio = true
+		if not (o is Dictionary) or int(o.get("n", 0)) <= int(ordenes["n"]): continue
+		ordenes["n"] = int(o.get("n", 0)); cambio = true
 		var para := String(o.get("para", "*"))
 		if para != "*" and para != multi_id(): continue
 		var nueva: bool = float(o.get("edad", 0)) < 30          # las de antes de entrar en la sala se aplican sin anunciarlas
-		match String(o["tipo"]):
+		match String(o.get("tipo", "")):
 			"viento":
-				ordenes["viento"] = { "vel": float(o["vel"]), "desde": float(o["desde"]), "rachas": bool(o.get("rachas", false)) }
-				ent.configurar_viento(float(o["vel"]), float(o["desde"]), bool(o.get("rachas", false)))
-				if nueva: poner_toast("Viento: %s m/s del %s%s" % [PasadaBaja._num(float(o["vel"])), PantallaMisiones.RUMBOS_VIENTO[int(round(float(o["desde"]) / 45.0)) % 8], ", con rachas" if o.get("rachas", false) else ""])
+				ordenes["viento"] = { "vel": float(o.get("vel", 0)), "desde": float(o.get("desde", 0)), "rachas": bool(o.get("rachas", false)) }
+				ent.configurar_viento(float(o.get("vel", 0)), float(o.get("desde", 0)), bool(o.get("rachas", false)))
+				if nueva: poner_toast("Viento: %s m/s del %s%s" % [PasadaBaja._num(float(o.get("vel", 0))), PantallaMisiones.RUMBOS_VIENTO[int(round(float(o.get("desde", 0)) / 45.0)) % 8], ", con rachas" if o.get("rachas", false) else ""])
 			"notam":
 				ordenes["notam"].append(String(o.get("texto", "")))
 				if nueva: poner_toast("Nuevo NOTAM")
@@ -602,11 +604,11 @@ func aplicar_ordenes(lista: Array) -> void:
 			"aterrizar":
 				if nueva: ordenes["aterrizar"] = Time.get_ticks_msec() / 1000.0; ordenes["en_aire"] = false
 			"exclusion":
-				ordenes["zonas"].append({ "id": int(o["n"]), "N": float(o["N"]), "E": float(o["E"]), "r": float(o["r"]) })
+				ordenes["zonas"].append({ "id": int(o.get("n", 0)), "N": float(o.get("N", 0)), "E": float(o.get("E", 0)), "r": float(o.get("r", 0)) })
 				if nueva: poner_toast("Nueva zona de exclusión: mírala en el mapa")
 			"quitar_exclusion": ordenes["zonas"] = (ordenes["zonas"] as Array).filter(func(z): return z["id"] != int(o.get("id", -1)))
 			"senderista":
-				ordenes["persona"] = [float(o["N"]), float(o["E"])]
+				ordenes["persona"] = [float(o.get("N", 0)), float(o.get("E", 0))]
 				if mover_desaparecido() and nueva: poner_toast("Nueva posición del desaparecido: búscalo")
 	if cambio: ordenes_al_evaluador(); _poner_exclusiones()
 	_pintar_ordenes()
@@ -712,7 +714,7 @@ func _enviar_sala() -> void:
 			if not vivos.has(k): multi_otros.erase(k)
 		aplicar_ordenes(r["datos"].get("ordenes", []))
 	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
-	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", String(r["error"]), "Vale")   # expulsado por el profesor
+	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", Tema.bb(String(r["error"])), "Vale")   # expulsado por el profesor
 ## Un estado de otro jugador que se puede usar (estadoValido de la web): id, p de 3 y q de 4 numeros finitos, vn de 3 si
 ## viene, y un vehiculo que exista en aviones/.
 static func _nums_finitos(a, n: int) -> bool:
@@ -720,11 +722,20 @@ static func _nums_finitos(a, n: int) -> bool:
 	for x in a:
 		if not (x is float or x is int) or (x is float and not is_finite(x)): return false
 	return true
+static func _nums_finitos_min(a, n: int) -> bool:
+	return a is Array and a.size() >= n and _nums_finitos(a.slice(0, n), n)
 func _estado_valido(o) -> bool:
 	if not (o is Dictionary) or not (o.get("id") is String) or not _nums_finitos(o.get("p"), 3) or not _nums_finitos(o.get("q"), 4): return false
 	if o.get("vn") != null and not _nums_finitos(o.get("vn"), 3): return false
-	if o.get("estado") != null and not (o.get("estado") is String): return false
-	return o.get("avion") is String and not DatosComunes.avion(String(o["avion"])).is_empty()
+	for k in ["estado", "nombre", "final", "ahora"]:
+		if o.get(k) != null and not (o.get(k) is String): return false
+	for k in ["gas", "agl", "gimbal", "tvuelo"]:
+		var x = o.get(k)
+		if x != null and not (x is int or (x is float and is_finite(x))): return false
+	if o.get("objs") != null and not _nums_finitos_min(o.get("objs"), 2): return false
+	if o.get("bip") != null and not _nums_finitos_min(o.get("bip"), 7): return false
+	if o.get("golpes") != null and not (o.get("golpes") is Dictionary): return false
+	return o.get("avion") is String and ids_aviones.has(o["avion"])
 ## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
 ## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
 func _poner_fantasmas() -> void:
@@ -759,11 +770,11 @@ func _pintar_sala_info() -> void:
 	sala_info.visible = not sala.is_empty() and pantalla_actual == ""
 	if briefing.visible and pantalla_actual != "": briefing.visible = false
 	if not sala_info.visible: return
-	var t := "[color=#4fc3f7][b]Sala %s[/b][/color] · %s" % [sala["codigo"], sala["nombre"]]
+	var t := "[color=#4fc3f7][b]Sala %s[/b][/color] · %s" % [Tema.bb(String(sala["codigo"])), Tema.bb(String(sala.get("nombre", "")))]
 	if multi_otros.is_empty(): t += "\nTodavía no hay nadie más"
 	for id in multi_otros:
 		var o: Dictionary = multi_otros[id]; var objs = o.get("objs")
-		t += "\n● %s · %s · %s%s" % [o["nombre"], String(DatosComunes.avion(String(o["avion"])).get("nombre", o["avion"])),
+		t += "\n● %s · %s · %s%s" % [Tema.bb(String(o.get("nombre", ""))), Tema.bb(String(DatosComunes.avion(String(o["avion"])).get("nombre", o["avion"]))),
 			("%d m" % int(round(maxf(0, o.get("agl", 0.0))))) if o.get("estado", "") == "volando" else String(o.get("estado", "")),
 			(" · %d✔%s de %d" % [objs[0], (" %d✘" % objs[2]) if objs.size() > 2 and objs[2] > 0 else "", objs[1]]) if objs != null and objs[1] > 0 else ""]
 	sala_info_rt.text = t
@@ -1002,8 +1013,9 @@ func paso(dt: float) -> void:
 	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
 	var vn: Array = modelo.paso(av, viento, dt)
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
+	var suelo_h := ent.altura(av["p"][0], av["p"][1])      # una vez: la usan hmax y el contacto con el suelo (misma posicion)
 	if vuelo != null:
-		vuelo["tVuelo"] += dt; vuelo["hmax"] = maxf(vuelo["hmax"], -av["p"][2] - ent.altura(av["p"][0], av["p"][1]))
+		vuelo["tVuelo"] += dt; vuelo["hmax"] = maxf(vuelo["hmax"], -av["p"][2] - suelo_h)
 		# un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app
 		if not vuelo["otraCamara"] and not camara_valida() and not (E["objetivos"] as Array).is_empty():
 			vuelo["otraCamara"] = true; poner_toast("Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" if con_gafas() else "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
@@ -1029,7 +1041,7 @@ func paso(dt: float) -> void:
 			"dentro": poner_toast("¡Por dentro del pilón %s! Vuelta anulada" % nom)
 			"sentido": poner_toast("¡Sentido contrario en el %s! El orden es %s" % [nom, ent.orden_pilones(sen)])
 			_: poner_toast(("Pilón %s: salida" % nom) if int(su["n"]) == 1 else ("Pilón %s %d/4" % [nom, int(su["n"]) - 1]))
-	var suelo := ent.contacto_suelo(av, vn)
+	var suelo := ent.contacto_suelo(av, vn, suelo_h)
 	if suelo != "": terminar_vuelo(suelo, vn)
 
 ## Un paso del bipode (pasoTerrestre de la web): la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso
@@ -1096,7 +1108,10 @@ var _vida_multi := BIP_VIDAS
 func _impactos_de(o: Dictionary) -> void:
 	var g = o.get("golpes")
 	if not (g is Dictionary) or av.is_empty() or modelo == null or es_bipode(): return
-	var n := int(g.get(multi_id(), 0))
+	if DatosComunes.avion(String(o.get("avion", ""))).get("tipo", "") != "bipode": return     # solo dispara el bipode
+	var gv = g.get(multi_id(), 0)
+	if not (gv is int or (gv is float and is_finite(gv))): return
+	var n := int(gv)
 	if not _golpes_vistos.has(o["id"]): _golpes_vistos[o["id"]] = n; return      # los de antes de entrar no cuentan
 	if n <= int(_golpes_vistos[o["id"]]): return
 	var nuevos: int = n - int(_golpes_vistos[o["id"]]); _golpes_vistos[o["id"]] = n
@@ -1670,9 +1685,10 @@ func _pintar_objetivos() -> void:
 "
 		t += ev.lineas_objetivos()
 		if sesion["alumno"] != null: t += "[font_size=12][color=#aaaaaa]%s[/color][/font_size]" % sesion["alumno"]["nombre"]
-	hud.obj_rt.text = t.strip_edges()
+	var ts := t.strip_edges()
+	if hud.obj_rt.text != ts: hud.obj_rt.text = ts          # el BBCode solo se vuelve a interpretar si cambia
 	hud.guia.visible = ev.guia_bb != "" and not ev.guia.is_empty() and av["estado"] == "volando"
-	hud.guia_rt.text = ev.guia_bb
+	if hud.guia_rt.text != ev.guia_bb: hud.guia_rt.text = ev.guia_bb
 
 func _hud() -> void:
 	var e := Cuat.euler(av["q"]); var roll: float = e[0] * R2D; var pitch: float = e[1] * R2D; var yaw: float = e[2] * R2D

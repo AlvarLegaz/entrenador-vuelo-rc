@@ -295,9 +295,9 @@ class Multijugador extends Control:
 			if c == null: return
 			clave = c[0]
 		var al = p.sesion["alumno"]
-		var r: Dictionary = await p.aula.api("POST", "salas/%s/entrar" % sala["codigo"], { "id": p.multi_id(), "clave": clave, "nombre": p.nombre_piloto(), "alumno": al["id"] if al != null else null })
+		var r: Dictionary = await p.aula.api("POST", "salas/%s/entrar" % String(sala["codigo"]).uri_encode(), { "id": p.multi_id(), "clave": clave, "nombre": p.nombre_piloto(), "alumno": al["id"] if al != null else null })
 		if r["ok"]: p.entrar_sala(sala)
-		else: await p.confirmar("No puedes entrar", String(r["error"]), "Vale")
+		else: await p.confirmar("No puedes entrar", Tema.bb(String(r["error"])), "Vale")
 	func refrescar() -> void:
 		var ok: bool = p.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
 		_salas(); reloj.start()
@@ -309,17 +309,20 @@ class Multijugador extends Control:
 		for x in lista.get_children(): x.queue_free()
 		lista.add_child(Tema.etiqueta("SALAS ABIERTAS", 13, Tema.SUAVE, true))
 		if not r["ok"]: lista.add_child(Tema.sub("No se puede hablar con el servidor del aula.", 14)); return
-		if (r["datos"] as Array).is_empty(): lista.add_child(Tema.sub("No hay ninguna sala abierta: espera a que el profesor cree la de tu clase.", 14)); return
+		if not (r["datos"] is Array): lista.add_child(Tema.sub("No se puede hablar con el servidor del aula.", 14)); return
+		var salas: Array = (r["datos"] as Array).filter(func(s): return s is Dictionary and s.get("codigo") != null and s.get("escenario") is String)
+		if salas.is_empty(): lista.add_child(Tema.sub("No hay ninguna sala abierta: espera a que el profesor cree la de tu clase.", 14)); return
 		var rej := Tema.rejilla(230, 12); lista.add_child(rej)
-		for s in r["datos"]:
+		for s in salas:
 			var E: Dictionary = Escenarios.datos().get(s["escenario"], { "nombre": s["escenario"] })
 			var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
 			v.add_child(PantallaMisiones.imagen(String(s["escenario"]), 110))
 			var tx := VBoxContainer.new(); tx.add_theme_constant_override("separation", 4)
-			tx.add_child(Tema.rico("[b]%s[/b] [color=#9fb3c8]· %s[/color]%s" % [s["nombre"], s["codigo"], " 🔒" if s.get("con_clave", false) else ""], 15))
+			tx.add_child(Tema.rico("[b]%s[/b] [color=#9fb3c8]· %s[/color]%s" % [Tema.bb(String(s.get("nombre", ""))), Tema.bb(String(s["codigo"])), " 🔒" if s.get("con_clave", false) else ""], 15))
 			tx.add_child(Tema.etiqueta(String(E["nombre"]), 12, Tema.SUAVE, false, true))
 			var nombres := []
-			for j in s["jugadores"]: nombres.append(String(j["nombre"]))
+			for j in (s.get("jugadores", []) if s.get("jugadores") is Array else []):
+				if j is Dictionary and j.get("nombre") is String: nombres.append(String(j["nombre"]))
 			tx.add_child(Tema.etiqueta(", ".join(nombres) if not nombres.is_empty() else "nadie todavía", 12, Tema.SUAVE, false, true))
 			v.add_child(Tema.margen(tx, 12, 10, 12, 12))
 			var t := Tarjeta.new(v, 14, Vector2(0, 0)); var sala: Dictionary = s

@@ -144,11 +144,21 @@ static func _muestra(z: Dictionary, N: float, E: float) -> Array:
 	if i < 0 or j < 0 or i > n - 1 or j > n - 1: return []
 	i = minf(n - 1.001, i); j = minf(n - 1.001, j)
 	var i0 := int(floor(i)); var j0 := int(floor(j)); var fi := i - i0; var fj := j - j0; var k := i0 * n + j0
-	var h := 0.0; var a := 0.0
-	for par in [[k, (1 - fi) * (1 - fj)], [k + n, fi * (1 - fj)], [k + 1, (1 - fi) * fj], [k + n + 1, fi * fj]]:
-		var vv: int = D[par[0]]
-		if vv == -32768: a += par[1]
-		else: h += par[1] * vv / 10.0
+	# las cuatro esquinas en este orden y con estas mismas operaciones (sin arrays por llamada): resultados identicos
+	var w0 := (1 - fi) * (1 - fj); var w1 := fi * (1 - fj); var w2 := (1 - fi) * fj; var w3 := fi * fj
+	var h := 0.0; var a := 0.0; var vv: int
+	vv = D[k]
+	if vv == -32768: a += w0
+	else: h += w0 * vv / 10.0
+	vv = D[k + n]
+	if vv == -32768: a += w1
+	else: h += w1 * vv / 10.0
+	vv = D[k + 1]
+	if vv == -32768: a += w2
+	else: h += w2 * vv / 10.0
+	vv = D[k + n + 1]
+	if vv == -32768: a += w3
+	else: h += w3 * vv / 10.0
 	return [h / (1 - a) if a < 1 else 0.0, a]
 
 ## [altura, fraccion de agua, indice de la zona] en la primera zona que contiene (N, E), o [].
@@ -181,9 +191,9 @@ func en_mar(N: float, E: float) -> bool:
 	return m[1] > 0.7 if not m.is_empty() else en_mar_mundo(N, E)
 
 ## Contacto con el suelo: "" si sigue en el aire; si no, "aterrizado" o "roto (motivo)".
-func contacto_suelo(av: Dictionary, vn: Array) -> String:
+func contacto_suelo(av: Dictionary, vn: Array, suelo_dado: float = NAN) -> String:
 	var p: Array = av["p"]
-	var suelo := altura(p[0], p[1])
+	var suelo := altura(p[0], p[1]) if is_nan(suelo_dado) else suelo_dado      # quien ya la ha calculado en esa posicion, la pasa
 	if -p[2] > suelo: return ""
 	p[2] = -suelo
 	if en_mar(p[0], p[1]): return "roto (ha caído al mar)"
@@ -242,8 +252,9 @@ func choca_arbol(p: Array, semi: float) -> bool:
 						var q := Vector2i(i, j)
 						if not _rej_arb.has(q): _rej_arb[q] = []
 						_rej_arb[q].append(t)
-	var up: float = -p[2]
-	for t in _rej_arb.get(Vector2i(int(floor(p[1] / 25.0)), int(floor(p[0] / 25.0))), []):
+	var up: float = -p[2]; var celda := Vector2i(int(floor(p[1] / 25.0)), int(floor(p[0] / 25.0)))
+	if not _rej_arb.has(celda): return false
+	for t in _rej_arb[celda]:
 		if up < t[4] and up > t[3] - 0.3 and _hypot(p[1] - t[0], p[0] - t[1]) < t[2] + 0.8 * semi: return true
 	return false
 
@@ -275,8 +286,9 @@ func choca_edificio(p: Array, semi: float) -> bool:
 						var q := Vector2i(i, j)
 						if not _rej_edif.has(q): _rej_edif[q] = []
 						_rej_edif[q].append(ed)
-	var up: float = -p[2]; var x: float = p[1]; var y: float = p[0]; var m := 0.6 * semi
-	for ed in _rej_edif.get(Vector2i(int(floor(x / 25.0)), int(floor(y / 25.0))), []):
+	var up: float = -p[2]; var x: float = p[1]; var y: float = p[0]; var m := 0.6 * semi; var celda := Vector2i(int(floor(x / 25.0)), int(floor(y / 25.0)))
+	if not _rej_edif.has(celda): return false
+	for ed in _rej_edif[celda]:
 		if up > ed[2] + m or up < ed[1]: continue
 		var P: Array = ed[0]; var n := P.size() / 2; var dentro := false; var d2 := 1e18; var j := n - 1
 		for i in n:
@@ -294,9 +306,12 @@ func choca_pilon(p: Array, semi: float) -> bool:
 	var h: float = -p[2]; var P := pilon
 	if h > P["alto"] + 0.3: return false
 	var r: float = P["r0"] + (P["r1"] - P["r0"]) * maxf(0, h) / P["alto"]
-	for s in pilones() + pilones_puerta():
+	if _pilones_de != circuito: _pilones_de = circuito; _pilones_todos = pilones() + pilones_puerta()   # la misma lista en cada paso
+	for s in _pilones_todos:
 		if _hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8: return true
 	return false
+var _pilones_todos := []
+var _pilones_de = null
 
 ## Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(p_ant, p, t) en cada paso. sentido: +1 (verde,
 ## amarillo, rojo, azul), -1 (al reves) o 0 (cualquiera).

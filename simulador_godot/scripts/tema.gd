@@ -186,6 +186,9 @@ static func sub(texto: String, tam := 14) -> Label:
 	return etiqueta(texto, tam, SUAVE, false, true)
 
 ## Texto con formato (BBCode): para los parrafos con negritas y colores del HTML.
+## Un texto que viene de fuera (nombres de salas y de pilotos, mensajes del servidor) dentro de un RichTextLabel: sin BBCode.
+static func bb(s: String) -> String: return s.replace("[", "[lb]")
+
 static func rico(bb := "", tam := 15) -> RichTextLabel:
 	var r := RichTextLabel.new(); r.bbcode_enabled = true; r.fit_content = true; r.scroll_active = false
 	r.add_theme_font_size_override("normal_font_size", tam); r.add_theme_font_size_override("bold_font_size", tam)

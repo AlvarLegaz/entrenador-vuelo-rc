@@ -10,6 +10,7 @@ extends RefCounted
 const D2R := PI / 180.0
 const R2D := 180.0 / PI
 const G0 := 9.81
+const GVEC := [0.0, 0.0, G0]          # la gravedad en NED (solo se lee)
 const RHO := 1.225
 
 var datos: Dictionary
@@ -81,7 +82,8 @@ func configurar(op: Dictionary) -> void:
 	if op.has("cg_mm"): dcg = (cg_mm[0] - op["cg_mm"]) / 1000.0
 
 func deriv(nombre: String, alfa: float) -> float:
-	return interp(DA, DER[nombre], alfa) if DER.has(nombre) else 0.0
+	var col = DER.get(nombre)
+	return interp(DA, col, alfa) if col != null else 0.0
 
 ## Estado inicial: en la mano del piloto, a 1,6 m del suelo.
 func estado_inicial() -> Dictionary:
@@ -129,23 +131,23 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 		av["dr"] = 0.0
 
 ## Aportacion de las superficies de mando a los coeficientes (d: derivada en el alfa actual; kman: eficacia).
-func mandos_coef(av: Dictionary, d: Callable, kman: float) -> Dictionary:
+func mandos_coef(av: Dictionary, aD: float, kman: float) -> Dictionary:
 	var de: float = av["de"] * kman
 	if tipo == "timon":
 		var dr: float = av["dr"] * kman
-		return { "CL": d.call("CLde") * de, "CY": d.call("CYdr") * dr, "Cl": d.call("Cldr") * dr, "Cm": d.call("Cmde") * de, "Cn": d.call("Cndr") * dr }
+		return { "CL": deriv("CLde", aD) * de, "CY": deriv("CYdr", aD) * dr, "Cl": deriv("Cldr", aD) * dr, "Cm": deriv("Cmde", aD) * de, "Cn": deriv("Cndr", aD) * dr }
 	var da: float = av["da"] * kman
 	if tipo == "cuatro":
 		var dr: float = av["dr"] * kman
-		return { "CL": d.call("CLde") * de, "CY": d.call("CYda") * da + d.call("CYdr") * dr, "Cl": d.call("Clda") * da + d.call("Cldr") * dr,
-				 "Cm": d.call("Cmde") * de, "Cn": d.call("Cnda") * da + d.call("Cndr") * dr }
-	return { "CL": d.call("CLde") * de, "CY": d.call("CYda") * da, "Cl": d.call("Clda") * da, "Cm": d.call("Cmde") * de, "Cn": d.call("Cnda") * da }
+		return { "CL": deriv("CLde", aD) * de, "CY": deriv("CYda", aD) * da + deriv("CYdr", aD) * dr, "Cl": deriv("Clda", aD) * da + deriv("Cldr", aD) * dr,
+				 "Cm": deriv("Cmde", aD) * de, "Cn": deriv("Cnda", aD) * da + deriv("Cndr", aD) * dr }
+	return { "CL": deriv("CLde", aD) * de, "CY": deriv("CYda", aD) * da, "Cl": deriv("Clda", aD) * da, "Cm": deriv("Cmde", aD) * de, "Cn": deriv("Cnda", aD) * da }
 
 ## Un paso de integracion. viento: velocidad del aire en NED (m/s). Opcionales en av: agl (efecto suelo) y pg
 ## (alabeo de la turbulencia). Devuelve la velocidad en NED.
 func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var q: Array = av["q"]; var v: Array = av["v"]; var w: Array = av["w"]; var fac := facil; var dens: float = RHO if fac else rho
-	var wb := Cuat.rot(Cuat.inv(q), viento)
+	var wb := Cuat.rot_inv(q, viento)
 	var va := [v[0] - wb[0], v[1] - wb[1], v[2] - wb[2]]
 	var V := maxf(0.3, sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2]))
 	var alfa := atan2(va[2], va[0]); var beta := asin(clampf(va[1] / V, -1.0, 1.0))
@@ -170,13 +172,13 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var CL0 := ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS))
 	var pr := propulsion; var g: float = 0.0 if av["motorRoto"] else av["gases"]
 	var CDhel := (CD_helice_parada_datos if fac else CD_helice_parada) if g < 0.05 else 0.0
-	var CD: float = CD0 + CDhel + (1 - f) * CDi + f * 2 * pow(sin(alfa), 2) if fac else CD0 * calib["resistencia"] + k_perfil * pow(CL0 - 0.3, 2) + (1 - f) * CDi + f * 2 * pow(sin(alfa), 2) + CDhel
+	var s2a := pow(sin(alfa), 2)                     # sin(alfa) al cuadrado, una vez (se usaba tres veces)
+	var CD: float = CD0 + CDhel + (1 - f) * CDi + f * 2 * s2a if fac else CD0 * calib["resistencia"] + k_perfil * pow(CL0 - 0.3, 2) + (1 - f) * CDi + f * 2 * s2a + CDhel
 	var aP: float = aPerd if ad > 0 else aNeg
 	var Cm0 := (1 - f) * Cmlin + f * (interp(TA, TCM, aP) - 0.5 * (alfa - aP * D2R))
 	var kman: float = 1 - f * (1 - P["mando_post_perdida"])
 	var aD := clampf(ad, DA[0], DA[DA.size() - 1])
-	var d := func(n: String) -> float: return deriv(n, aD)
-	var M := mandos_coef(av, d, kman)
+	var M := mandos_coef(av, aD, kman)
 	# motor y helice
 	if av["motorRoto"]: av["gases"] = 0.0
 	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1.0 if fac else 1 - 0.10 * (1 - bat))
@@ -193,13 +195,13 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	M["CL"] *= kProf; M["Cm"] *= kProf
 	if mandos["timon_max_grados"] > 0:
 		M["CY"] *= kTimon; M["Cl"] *= kTimon; M["Cn"] *= kTimon
-	var ClpEf: float = d.call("Clp") if fac else d.call("Clp") * (1 - 0.6 * f)
-	var CL: float = CL0 + d.call("CLq") * qh + M["CL"]
-	var CY: float = d.call("CYb") * beta + d.call("CYp") * ph + d.call("CYr") * rh + M["CY"]
+	var ClpEf: float = deriv("Clp", aD) if fac else deriv("Clp", aD) * (1 - 0.6 * f)
+	var CL: float = CL0 + deriv("CLq", aD) * qh + M["CL"]
+	var CY: float = deriv("CYb", aD) * beta + deriv("CYp", aD) * ph + deriv("CYr", aD) * rh + M["CY"]
 	var dCLside := maxf(0, minf(CLlin, interp(TA, TCL, aPerd)) - CLplaca); var yP := brazoPerdida * b
-	var Cl: float = d.call("Clb") * beta + ClpEf * ph + d.call("Clr") * rh + M["Cl"] + (fR - fL) * dCLside * yP / (2 * b)
-	var Cm: float = Cm0 + d.call("Cmq") * qh + M["Cm"]
-	var Cn: float = d.call("Cnb") * beta + d.call("Cnp") * ph + d.call("Cnr") * rh + M["Cn"] + (fR - fL) * maxf(0, 2 * pow(sin(alfa), 2) - CDi) * yP / (2 * b)
+	var Cl: float = deriv("Clb", aD) * beta + ClpEf * ph + deriv("Clr", aD) * rh + M["Cl"] + (fR - fL) * dCLside * yP / (2 * b)
+	var Cm: float = Cm0 + deriv("Cmq", aD) * qh + M["Cm"]
+	var Cn: float = deriv("Cnb", aD) * beta + deriv("Cnp", aD) * ph + deriv("Cnr", aD) * rh + M["Cn"] + (fR - fL) * maxf(0, 2 * s2a - CDi) * yP / (2 * b)
 	var ca := cos(alfa); var sa := sin(alfa)
 	var Fa := [qS * (-CD * ca + CL * sa), qS * CY, qS * (-CD * sa - CL * ca)]
 	var Ma := [qS * b * Cl, qS * c * Cm, qS * b * Cn]
@@ -219,7 +221,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 		Ma[2] += -s * T * e
 	var Hx: float = 0.0 if fac else s * Ihelice * 2 * PI * n
 	Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx
-	var gb := Cuat.rot(Cuat.inv(q), [0.0, 0.0, G0]); var m := masa_kg
+	var gb := Cuat.rot_inv(q, GVEC); var m := masa_kg
 	var F := [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]]
 	var dv := [F[0] / m - (w[1] * v[2] - w[2] * v[1]), F[1] / m - (w[2] * v[0] - w[0] * v[2]), F[2] / m - (w[0] * v[1] - w[1] * v[0])]
 	var I := inercia; var Ixx: float = I["Ixx"]; var Iyy: float = I["Iyy"]; var Izz: float = I["Izz"]; var Ixz: float = I["Ixz"]

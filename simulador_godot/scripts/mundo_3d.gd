@@ -311,13 +311,14 @@ void fragment() {
 """
 
 static var _grano: NoiseTexture2D
+static var _sh_suelo: Shader          # un solo shader para todas las teselas (antes se compilaba uno por tesela, con el mismo codigo)
 
 static func _mat_suelo(tex: Texture2D) -> ShaderMaterial:
 	if _grano == null:
 		_grano = NoiseTexture2D.new(); _grano.width = 512; _grano.height = 512; _grano.seamless = true; _grano.generate_mipmaps = true
 		var fn := FastNoiseLite.new(); fn.frequency = 0.05; fn.fractal_octaves = 5; fn.seed = 3; _grano.noise = fn
-	var sh := Shader.new(); sh.code = SHADER_SUELO
-	var m := ShaderMaterial.new(); m.shader = sh; m.set_shader_parameter("orto", tex); m.set_shader_parameter("grano", _grano)
+	if _sh_suelo == null: _sh_suelo = Shader.new(); _sh_suelo.code = SHADER_SUELO
+	var m := ShaderMaterial.new(); m.shader = _sh_suelo; m.set_shader_parameter("orto", tex); m.set_shader_parameter("grano", _grano)
 	return m
 
 const SHADER_ARBOL := """
@@ -425,11 +426,12 @@ func _crear_manga() -> void:
 	manga.add_child(palo)
 	var saco := MeshInstance3D.new(); var sm := CylinderMesh.new(); sm.top_radius = 0.22; sm.bottom_radius = 0.08; sm.height = 1.2
 	saco.mesh = sm; var ms := StandardMaterial3D.new(); ms.albedo_color = Color(1.0, 0.45, 0.1); saco.material_override = ms
-	saco.name = "saco"; manga.add_child(saco)
+	saco.name = "saco"; manga.add_child(saco); _saco = saco
 
 ## Orienta la manga hacia donde va el viento (vn: viento NED actual, m/s); con poco viento cuelga.
+var _saco: MeshInstance3D
 func actualizar_manga(vn: Array) -> void:
-	var saco := manga.get_node("saco") as MeshInstance3D
+	var saco := _saco if _saco else manga.get_node("saco") as MeshInstance3D
 	var dir := Vector3(vn[1], 0, -vn[0]); var vel := dir.length()
 	if vel < 0.05: dir = Vector3(1, 0, 0)
 	dir = dir.normalized()

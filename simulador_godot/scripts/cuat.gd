@@ -13,8 +13,14 @@ static func norm(q: Array) -> Array:
 ## Gira v (cuerpo) a mundo.
 static func rot(q: Array, v: Array) -> Array:
 	var w: float = q[0]; var x: float = q[1]; var y: float = q[2]; var z: float = q[3]
-	var t := [2*(y*v[2]-z*v[1]), 2*(z*v[0]-x*v[2]), 2*(x*v[1]-y*v[0])]
-	return [v[0]+w*t[0]+y*t[2]-z*t[1], v[1]+w*t[1]+z*t[0]-x*t[2], v[2]+w*t[2]+x*t[1]-y*t[0]]
+	var t0: float = 2*(y*v[2]-z*v[1]); var t1: float = 2*(z*v[0]-x*v[2]); var t2: float = 2*(x*v[1]-y*v[0])   # sin el array intermedio (mismas operaciones)
+	return [v[0]+w*t0+y*t2-z*t1, v[1]+w*t1+z*t0-x*t2, v[2]+w*t2+x*t1-y*t0]
+
+## Gira v de mundo a cuerpo: rot(inv(q), v) sin crear el cuaternion inverso (negar es exacto: mismos numeros).
+static func rot_inv(q: Array, v: Array) -> Array:
+	var w: float = q[0]; var x: float = -q[1]; var y: float = -q[2]; var z: float = -q[3]
+	var t0: float = 2*(y*v[2]-z*v[1]); var t1: float = 2*(z*v[0]-x*v[2]); var t2: float = 2*(x*v[1]-y*v[0])
+	return [v[0]+w*t0+y*t2-z*t1, v[1]+w*t1+z*t0-x*t2, v[2]+w*t2+x*t1-y*t0]
 
 static func inv(q: Array) -> Array:
 	return [q[0], -q[1], -q[2], -q[3]]

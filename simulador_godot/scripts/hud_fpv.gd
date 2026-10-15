@@ -45,6 +45,8 @@ func _init(p_: Node) -> void:
 	bat = _osd(0.16, 0.09, -1, true); arm = _osd(0.5, 0.09, 0, true); amp = _osd(0.16, 0.09, 1, true)
 
 static func _color(l: Label, cl: String) -> void:
+	if l.get_meta("cl", "?") == cl: return                 # el color solo se toca al cambiar (cada override rehace el texto)
+	l.set_meta("cl", cl)
 	l.add_theme_color_override("font_color", Color("#ff5252") if cl == "rojo" else (Color("#ffd740") if cl == "ambar" else Color.WHITE))
 
 static func fmt_tiempo(s: float) -> String: return "%d:%02d" % [int(s / 60), int(fmod(s, 60))]

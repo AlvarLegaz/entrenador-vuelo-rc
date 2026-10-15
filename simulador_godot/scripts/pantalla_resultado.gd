@@ -173,7 +173,7 @@ class Progreso extends Control:
 			t.add_child(Tema.margen(h, 8, 6, 8, 6)); t.add_child(Tema.linea())
 		cv.add_child(t)
 		var estado := ""
-		if a.get("habilitado", false): estado = "[bgcolor=#58d06a33][color=#9be59f] CONCEDIDO [/color][/bgcolor] %s desde %s." % [cert, String(a.get("habilitado_en", ""))]
+		if a.get("habilitado", false): estado = "[bgcolor=#58d06a33][color=#9be59f] CONCEDIDO [/color][/bgcolor] %s desde %s." % [Tema.bb(cert), Tema.bb(String(a.get("habilitado_en", "")))]
 		elif g["requisitos_cumplidos"]: estado = "[bgcolor=#ffffff1a] Requisitos cumplidos [/bgcolor] Pide al profesor que te conceda el certificado."
 		else: estado = "[bgcolor=#ff6e6633][color=#ffb4ab] Todavía no [/color][/bgcolor] Te falta: %s." % " y ".join(faltan)
 		cv.add_child(Tema.rico(estado, 15))

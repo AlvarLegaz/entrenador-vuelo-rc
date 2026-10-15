@@ -14,6 +14,7 @@ var t_d: Label; var t_h: Label; var t_hs: Label; var t_vs: Label
 var flash: ColorRect
 var _bat_pct := 100.0; var _bat_rojo := false
 var _video := false; var _grabando := false
+var _modo_ant := ""; var _cl_ant := "?"; var _bat_rojo_ant = null; var _rth_ant = null     # lo que ya esta puesto: los estilos solo se tocan al cambiar
 # ⇧ y ⇩ de la web (flecha hueca), dibujadas en SVG
 static var FLECHA_ARRIBA: ImageTexture = Tema.svg('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M9 2 L16 9 H12 V16 H6 V9 H2 Z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>')
 static var MAPA: ImageTexture = Tema.svg('<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>')
@@ -128,7 +129,7 @@ static func _f1(x: float) -> String: return ("%.1f" % (0.0 if absf(x) < 0.05 els
 ## hudDji: lo que muestra la app en cada cuadro. h: altura (m sobre el mar del modelo), vn: velocidad NED, vs: vertical.
 func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	var av: Dictionary = p.av; var modelo = p.modelo; var M: String = modelo.modo if modelo.modo != "" else "N"; var D: Dictionary = p.DJI
-	modo.text = M; _estilo_modo(M)
+	if _modo_ant != M: _modo_ant = M; modo.text = M; _estilo_modo(M)
 	var est := ""; var cl := ""
 	if p.rep_activa: est = "REPETICIÓN"
 	elif av["estado"] == "en mano": est = "Motores parados · pulsa despegar o L"; cl = "aviso"
@@ -141,7 +142,7 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	else: est = String(av["estado"]).to_upper(); cl = "" if av["estado"] == "aterrizado" else "rojo"
 	if p.pausado: est += " · PAUSA"
 	estado.text = est
-	estado.add_theme_color_override("font_color", Color("#ffb74d") if cl == "aviso" else (Color("#ff5252") if cl == "rojo" else Color("#8be08f")))
+	if _cl_ant != cl: _cl_ant = cl; estado.add_theme_color_override("font_color", Color("#ffb74d") if cl == "aviso" else (Color("#ff5252") if cl == "rojo" else Color("#8be08f")))
 	if D["grabando"] and not p.pausado: D["tRec"] += maxf(0, av["t"] - D["tAnt"])
 	D["tAnt"] = av["t"]
 	rec.text = ("● REC " + fmt_tiempo(D["tRec"])) if D["grabando"] else ""; rec.visible = D["grabando"]
@@ -149,7 +150,7 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	var P: float = av["Wh"] / av["t"] * 3600 if (av["t"] > 5 and av["Wh"] > 0) else 35.0
 	_bat_pct = b; _bat_rojo = b < 20; bat_icono.queue_redraw()
 	bat.text = "%d %% · %s" % [int(round(b)), fmt_tiempo(minf(5999, rest_wh / P * 3600))]
-	bat.add_theme_color_override("font_color", Color("#ff5252") if _bat_rojo else Tema.TEXTO)
+	if _bat_rojo_ant != _bat_rojo: _bat_rojo_ant = _bat_rojo; bat.add_theme_color_override("font_color", Color("#ff5252") if _bat_rojo else Tema.TEXTO)
 	var c: Dictionary = p.casa; var h_casa: float = p.ent.altura(c["N"], c["E"])
 	t_d.text = (_f1(dist / 1000) + " km") if dist >= 1000 else ("%d m" % int(round(dist)))
 	t_h.text = "%d m" % int(round(maxf(0, -p.av["p"][2] - h_casa)))      # sobre el punto de despegue (h viene recortado a 0)
@@ -162,7 +163,9 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	b_despegar.icon = FLECHA_ABAJO if volando else FLECHA_ARRIBA
 	b_despegar.tooltip_text = "Aterrizar aquí (botón A del mando)" if volando else "Despegar: arma y sube a 1,2 m (botón A del mando)"
 	var activo: bool = av.get("rth") != null and av["rth"]["fase"] != "bajar"
-	var s_rth := _redondo(44, Color("#ffb74d") if activo else Color(0, 0, 0, 0.55), Color("#ffb74d") if activo else Color(1, 1, 1, 0.4))
-	b_rth.add_theme_stylebox_override("normal", s_rth); b_rth.add_theme_color_override("font_color", Color.BLACK if activo else Color.WHITE)
+	if _rth_ant != activo:
+		_rth_ant = activo
+		var s_rth := _redondo(44, Color("#ffb74d") if activo else Color(0, 0, 0, 0.55), Color("#ffb74d") if activo else Color(1, 1, 1, 0.4))
+		b_rth.add_theme_stylebox_override("normal", s_rth); b_rth.add_theme_color_override("font_color", Color.BLACK if activo else Color.WHITE)
 	if _video != D["video"] or _grabando != D["grabando"]: _video = D["video"]; _grabando = D["grabando"]; disparo.queue_redraw()
 	cam_txt.text = "VÍDEO" if D["video"] else "FOTO"

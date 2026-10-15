@@ -48,9 +48,12 @@ func entrar(direccion: String, usu: String, clave: String, crear := false) -> Di
 	if not r["ok"]:
 		if r["status"] == 0: r["error"] = "No se puede conectar con el aula en %s. Comprueba la dirección y que el profesor tenga abierto SERVIDOR_AULA.bat." % url
 		return { "ok": false, "status": r["status"], "alumno": null, "error": r["error"] }
-	activo = true; pase = String(r["datos"]["pase"]); pase_id = String(r["datos"]["alumno"]["id"]); nombre_aula = url
+	var d = r["datos"]
+	if not (d is Dictionary and d.get("alumno") is Dictionary and d.get("pase") is String and d["alumno"].get("id") is String):
+		return { "ok": false, "status": r["status"], "alumno": null, "error": "El servidor del aula ha respondido algo que no entiendo: comprueba la dirección." }
+	activo = true; pase = String(d["pase"]); pase_id = String(d["alumno"]["id"]); nombre_aula = url
 	var e := await api("GET", "estado")
-	if e["ok"]: nombre_aula = String(e["datos"].get("aula", url))
+	if e["ok"] and e["datos"] is Dictionary: nombre_aula = String(e["datos"].get("aula", url))
 	vaciar_cola()
 	return { "ok": true, "status": r["status"], "alumno": r["datos"]["alumno"], "error": "" }
 
@@ -67,7 +70,7 @@ func texto_estado() -> String:
 ## Devuelve { ok, status, datos, error }.
 func api(metodo: String, ruta: String, cuerpo = null, con_pase = null) -> Dictionary:
 	if url == "": return { "ok": false, "status": 0, "datos": null, "error": "no hay servidor del aula" }
-	var req := HTTPRequest.new(); req.timeout = 6; add_child(req)
+	var req := HTTPRequest.new(); req.timeout = 6; req.body_size_limit = 8 << 20; req.max_redirects = 0; add_child(req)   # respuestas de menos de 8 MB y sin saltar a otro servidor
 	var cab := PackedStringArray(["Content-Type: application/json"]) if cuerpo != null else PackedStringArray()
 	var P: String = String(con_pase) if con_pase != null else pase
 	if P != "": cab.append("X-Alumno: " + P)       # sin el, el servidor no acepta los vuelos del alumno
@@ -106,7 +109,7 @@ func vaciar_cola() -> void:
 func enviar_vuelo(v: Dictionary) -> Dictionary:
 	if not activo: return { "estado": "sin_aula" }
 	var r := await api("POST", "vuelos", v)
-	if r["ok"]: vaciar_cola(); return { "estado": "ok", "progreso": r["datos"].get("progreso", {}) }
+	if r["ok"]: vaciar_cola(); return { "estado": "ok", "progreso": r["datos"].get("progreso", {}) if r["datos"] is Dictionary else {} }
 	if r["status"] >= 400 and r["status"] < 500 and r["status"] != 401 and r["status"] != 429: return { "estado": "error", "msg": r["error"] }
 	var vc := v.duplicate(); vc["_pase"] = pase
 	var c := _leer_cola(); c.append(vc); _guardar_cola(c)

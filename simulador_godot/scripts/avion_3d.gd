@@ -146,4 +146,5 @@ func actualizar(av: Dictionary) -> void:
 	for l in luces:
 		var pat: String = l.get_meta("patron")
 		l.visible = enc and (tl < 0.5 if pat == "lento" else (tl < 0.06 or (tl > 0.15 and tl < 0.21)) if pat == "estrobo" else true)
-		(l.get_child(0) as Sprite3D).pixel_size = sc / 32
+		var sp := l.get_child(0) as Sprite3D; var ps := sc / 32
+		if sp.pixel_size != ps: sp.pixel_size = ps          # el setter rehace la malla del sprite aunque sea el mismo valor
