@@ -93,6 +93,10 @@ var ui: CanvasLayer
 var hud: HudVuelo
 var hud_dji: HudDji
 var hud_uav: HudUav                 # estacion de control del UAV (hud_uav.gd)
+var hud_carrera: HudCarrera         # carrera de drones: barra de arriba e indicador del siguiente obstaculo (hud_carrera.gd)
+var carrera_mejor = null            # carrera: el mejor tiempo de esta sesion { t, avion } (CARRERA_MEJOR de la web)
+var destino_prueba = null           # pruebas: tras la fisica de cada paso, el dron se pone aqui (prueba_carrera.gd)
+var op_vehiculo := {}               # operaciones que dejan elegir el vehiculo (la carrera): el elegido por trabajo
 var briefing: PanelContainer; var briefing_img: TextureRect
 var hud_fpv: HudFPV                 # OSD de Betaflight del dron FPV
 var pantallas := {}
@@ -444,6 +448,7 @@ func _construir_ui() -> void:
 	raiz.move_child(hud_dji, 0)
 	hud_fpv = HudFPV.new(self); raiz.add_child(hud_fpv); hud_fpv.visible = false; raiz.move_child(hud_fpv, 0)
 	hud_uav = HudUav.new(self); raiz.add_child(hud_uav); hud_uav.visible = false; raiz.move_child(hud_uav, 0); hud.uav = hud_uav
+	hud_carrera = HudCarrera.new(self); raiz.add_child(hud_carrera); hud_carrera.visible = false
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
@@ -488,6 +493,7 @@ func mostrar(id: String) -> void:
 	hud_dji.visible = en_vuelo and modelo != null and es_dron() and not es_fpv() and not sin_instrumentos
 	hud_fpv.visible = en_vuelo and modelo != null and es_fpv() and not sin_instrumentos
 	hud_uav.visible = en_vuelo and modelo != null and es_uav() and not sin_instrumentos
+	if not en_vuelo: hud_carrera.visible = false
 	get_viewport().disable_3d = not en_vuelo                  # en las pantallas no se dibuja el mundo
 	if not en_vuelo: hud.ayuda.visible = false; poner_pausa(false); sonido.silenciar(true)
 	else: sonido.silenciar(not sonido.on); get_viewport().gui_release_focus()
@@ -729,6 +735,7 @@ func _enviar_sala() -> void:
 	if es_bipode():
 		e["bip"] = [av["cintura"], av["brazos"], av["fase"], av["amp"], av["angCanones"], av["disparos"], av["puno"]]
 		if juego_bip != null: e["golpes"] = juego_bip.golpes
+	if carrera_mejor != null and ev != null and ev.op != null and ev.op.carr != null: e["carrera"] = snappedf(carrera_mejor["t"], 0.01)   # carrera: el mejor de la sesion
 	var cod: String = sala["codigo"]
 	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
 	_multi_enviando = false
@@ -741,6 +748,8 @@ func _enviar_sala() -> void:
 		for k in multi_otros.keys():
 			if not vivos.has(k): multi_otros.erase(k)
 		aplicar_ordenes(r["datos"].get("ordenes", []))
+		var sd = r["datos"].get("sala"); var rec = sd.get("record") if sd is Dictionary else null
+		sala["record"] = rec if (rec is Dictionary and (rec.get("t") is float or rec.get("t") is int)) else null
 	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
 	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", Tema.bb(String(r["error"])), "Vale")   # expulsado por el profesor
 ## Un estado de otro jugador que se puede usar (estadoValido de la web): id, p de 3 y q de 4 numeros finitos, vn de 3 si
@@ -810,9 +819,14 @@ func _pintar_sala_info() -> void:
 func ir_operaciones() -> void:
 	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
 ## Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
+## El vehiculo con el que se vuela el trabajo id (vehOp de la web): el que pide o, si deja elegir, el elegido.
+func veh_op(id: String) -> String:
+	var O: Dictionary = Escenarios.datos()[id]["operacion"]; var a: String = op_vehiculo.get(id, "")
+	if O.has("elegir") and ids_aviones.has(a) and (O["elegir"] as Array).has(Escenarios.vehiculo_de(a)): return a
+	return String(O.get("avion", ""))
 func volar_operacion(id: String) -> void:
 	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
-	if ids_aviones.has(String(E["operacion"].get("avion", ""))): sesion["avion"] = String(E["operacion"]["avion"])     # el dron que pide el trabajo
+	if ids_aviones.has(veh_op(id)): sesion["avion"] = veh_op(id)     # el dron que pide el trabajo (o el elegido, en la carrera)
 	elif Escenarios.vehiculo_de(sesion["avion"]) != "dron":
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) == "dron": sesion["avion"] = a; break
@@ -1064,6 +1078,7 @@ func paso(dt: float) -> void:
 	var p_ant: Array = av["p"].duplicate()
 	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
 	var vn: Array = modelo.paso(av, viento, dt)
+	if destino_prueba != null: av["p"] = (destino_prueba as Array).duplicate(); av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]   # pruebas: el dron llevado en volandas
 	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
 	else: av["gasMotor"] = av["gases"]
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
@@ -1090,6 +1105,13 @@ func paso(dt: float) -> void:
 		var cam_op := { "gimbal": av["torreta"]["tilt"] * R2D, "pan": av["torreta"]["pan"], "grabando": false } if (es_uav() and av.has("torreta")) else { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }   # UAV: la torreta
 		for t in ev.op.paso(p_ant, av, dt, cam_op.merged(cam_dji())): poner_toast(t)
 		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
+		var C = ev.op.carr
+		if C != null and C["tFin"] != null and not C.get("anotado", false):     # carrera: la meta, el mejor de la sesion y la marca del vuelo
+			C["anotado"] = true; var s: float = C["tFin"] - C["t0"]
+			if carrera_mejor == null or s < carrera_mejor["t"]: carrera_mejor = { "t": s, "avion": sesion["avion"] }
+			if vuelo != null: vuelo["marca"] = s
+		var fin_c: String = ev.op.acabada(av["t"])
+		if fin_c != "": terminar_vuelo(fin_c, vn); return
 	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
 	var su = ev.contador.actualizar(p_ant, av["p"], av["t"]) if (ev.zona == 1 and ev.contador != null) else {}
 	if ev.zona <= 2 and not E.has("mundo") and ev.fpv == null: _zona2(p_ant)
@@ -1289,7 +1311,7 @@ func guardar_vuelo(v: Dictionary, d: Dictionary) -> Dictionary:
 	return await aula.enviar_vuelo({ "id": v["id"], "alumno_id": sesion["alumno"]["id"], "inicio": v["inicio"], "fin": Aula.ahora_iso(),
 		"avion": DatosComunes.avion(sesion["avion"]).get("nombre", sesion["avion"]), "escenario": v["escenario"], "tiempo_vuelo_s": snappedf(v["tVuelo"], 0.1),
 		"accidentes": 1 if final.begins_with("roto") else 0, "aterrizajes": 1 if final == "aterrizado" else 0,
-		"objetivos": d["objs"], "resultado": d["resultado"], "final": final, "viento": vv })
+		"objetivos": d["objs"], "resultado": d["resultado"], "final": final, "viento": vv, "marca": snappedf(v["marca"], 0.01) if v.has("marca") else null })
 
 func mostrar_resultado(v: Dictionary) -> void:
 	var R: PantallaResultado.Resultado = pantallas["pResultado"]
@@ -1952,6 +1974,7 @@ func _pintar_objetivos() -> void:
 	if hud.guia_rt.text != ev.guia_bb: hud.guia_rt.text = ev.guia_bb
 
 func _hud() -> void:
+	hud_carrera.pintar()
 	var e := Cuat.euler(av["q"]); var roll: float = e[0] * R2D; var pitch: float = e[1] * R2D; var yaw: float = e[2] * R2D
 	var h := maxf(0, -av["p"][2]); var dist := Vector2(av["p"][0] - casa["N"], av["p"][1] - casa["E"]).length()
 	var vn := Cuat.rot(av["q"], av["v"]); var vs: float = -vn[2]; _vs = vs

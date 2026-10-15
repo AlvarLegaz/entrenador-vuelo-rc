@@ -170,6 +170,26 @@ pz = (pista_despegue() + junto(VERT[0], 700, 300, 90, 4, 0) + junto(VERT[1], 160
 V.append(vuelo("patrulla ok, a mano", "op_patrulla", pz, vertidos=(VERT, SECT)))
 pz = pista_despegue(t=120) + junto(VERT[0], 700, 100, 0, 4, 0) + junto(VERT[1], 600, 300, 180, 4, 1) + pista_toma(t=90)
 V.append(vuelo("patrulla baja, fuera de pista y con el automatico", "op_patrulla", pz, vertidos=(VERT, SECT), automatico=True))
+# ---- carrera de drones del Politecnico: completa, saltandose uno, chocando con un poste y cruzando uno al reves ----
+O = ESC["op_carrera"]["operacion"]; OB = O["carrera"]["obstaculos"]; MED = {"puerta": (3, 2.4), "arco": (6, 4), "banderas": (5, 5), "picado": (4, 4)}
+SAL = (O["salida"]["n"], O["salida"]["e"])
+def por_obst(o, antes=6, despues=6, lateral=0.0, al_reves=False):
+    """puntos (N, E, h) para cruzar el obstaculo o por el centro (lateral: desplazado a su derecha, m)."""
+    if o["tipo"] == "picado": return [(o["n"], o["e"], o["h"] + 5), (o["n"], o["e"], o["h"] - 3)]
+    r = math.radians(o["rumbo"] + (180 if al_reves else 0)); h = o["h"] + MED[o["tipo"]][1] / 2; ln, le = -math.sin(r) * lateral, math.cos(r) * lateral
+    return [(o["n"] - antes * math.cos(r) + ln, o["e"] - antes * math.sin(r) + le, h), (o["n"] + despues * math.cos(r) + ln, o["e"] + despues * math.sin(r) + le, h)]
+def carrera(lista, choque_en=None):
+    """la carrera por los obstaculos de "lista" (indices; ("reves", i) lo cruza al reves), y con choque_en = i se va contra un poste de ese."""
+    pz = [(SAL[0], SAL[1], 0, O["salida"]["rumbo"], -10, 0, 0, True)] * 3; ant = (SAL[0], SAL[1], 0.1)
+    for x in lista:
+        rev = isinstance(x, tuple); o = OB[x[1] if rev else x]
+        P = por_obst(o, lateral=(MED[o["tipo"]][0] / 2 if x == choque_en else 0), al_reves=rev)
+        for q in P: pz += tramo(ant, q, v=20); ant = q
+    return pz + [(ant[0], ant[1], ant[2], 0, -10, 0, 0, False)] * 25          # unos segundos despues de la meta
+V.append(vuelo("carrera completa", "op_carrera", carrera(range(len(OB))), final="carrera terminada"))
+V.append(vuelo("carrera saltandose el 5", "op_carrera", carrera([0, 1, 2, 3, 5, 6]), final="descalificado"))
+V.append(vuelo("carrera contra un poste del 3", "op_carrera", carrera([0, 1, 2], choque_en=2), final="roto"))
+V.append(vuelo("carrera con el 2 al reves", "op_carrera", carrera([0, ("reves", 1), 1, 2, 3]), final="aterrizado"))
 
 JS = r"""V => V.map(v => {
   const E = ESCENARIOS[v.mision], obj = {}, CURSO = ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura"];

@@ -72,6 +72,9 @@ def briefing(id_):
         q.append((O["antorcha"]["n"], O["antorcha"]["e"]))
         n0, n1 = min(p[0] for p in q) - 20, max(p[0] for p in q) + 20; e0, e1 = min(p[1] for p in q) - 20, max(p[1] for p in q) + 20
         zona = [(n0, e0), (n0, e1), (n1, e1), (n1, e0)]
+    elif "carrera" in O:                                 # carrera: el recorrido entero (lo que se dibuja abajo)
+        Ob = O["carrera"]["obstaculos"]; zona = None
+        pts += [(min(o["n"] for o in Ob) - 30, min(o["e"] for o in Ob) - 30), (max(o["n"] for o in Ob) + 30, max(o["e"] for o in Ob) + 30)]
     elif "candidatos_vertido" in O:                      # patrulla: donde puede haber manchas, con el radio del sector
         R = O["radio_sector"]; q = sorted(set((round(n), round(e)) for n, e in O["candidatos_vertido"]))
         q = [(n + R * math.cos(a * math.pi / 8), e + R * math.sin(a * math.pi / 8)) for n, e in q for a in range(16)]
@@ -119,6 +122,16 @@ def briefing(id_):
         for r, a in ((O["orbita"][1], 45), (O["orbita"][0], 0)):
             c = (X(Fr["e"]), Y(Fr["n"])); d.ellipse([c[0] - r * k, c[1] - r * k, c[0] + r * k, c[1] + r * k], outline=AMARILLO, width=4)
         d.text((X(Fr["e"]) + O["orbita"][1] * k + 8, Y(Fr["n"]) - 10), "órbita %d–%d m" % tuple(O["orbita"]), fill=AMARILLO, font=F(20))
+    if "carrera" in O:                                            # carrera: la linea del recorrido y los obstaculos numerados
+        Ob = O["carrera"]["obstaculos"]; COLC = {"puerta": (255, 109, 0), "arco": (229, 57, 53), "banderas": (255, 214, 0), "picado": (124, 77, 255)}
+        linea = [(X(S["e"]), Y(S["n"]))] + [(X(o["e"]), Y(o["n"])) for o in Ob]
+        d.line(linea, fill=(0, 0, 0, 160), width=7); d.line(linea, fill=(102, 187, 106, 255), width=4)
+        for i, o in enumerate(Ob):
+            c = (X(o["e"]), Y(o["n"])); d.ellipse([c[0] - 14, c[1] - 14, c[0] + 14, c[1] + 14], fill=COLC[o["tipo"]], outline=(255, 255, 255), width=2)
+            d.text(c, str(i + 1), fill=(0, 0, 0) if o["tipo"] == "banderas" else (255, 255, 255), font=F(16), anchor="mm")
+        for k, (t, cl) in enumerate((("marco", COLC["puerta"]), ("arco", COLC["arco"]), ("banderas", COLC["banderas"]), ("picado", COLC["picado"]))):
+            x0, y0 = 18 + k * 120, H - 108; d.ellipse([x0, y0, x0 + 18, y0 + 18], fill=cl, outline=(255, 255, 255), width=2)
+            d.text((x0 + 26, y0 + 9), t, fill=(255, 255, 255), font=F(16), anchor="lm", stroke_width=3, stroke_fill=(0, 0, 0))
     if "pista" in O:                                              # UAV: la pista de despegue y aterrizaje
         P = O["pista"]; r = math.radians(P["rumbo"]); ne = lambda l, t: (P["n"] + l * math.cos(r) - t * math.sin(r), P["e"] + l * math.sin(r) + t * math.cos(r))
         esq = [ne(0, -P["ancho"] / 2), ne(P["largo"], -P["ancho"] / 2), ne(P["largo"], P["ancho"] / 2), ne(0, P["ancho"] / 2)]

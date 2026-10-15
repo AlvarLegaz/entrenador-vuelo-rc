@@ -42,7 +42,7 @@ NOMBRES_ESC = {"primer_vuelo": "Primer vuelo", "orientacion": "Orientación", "v
                # operaciones (trabajos de operador de dron con el dron comercial en el mapa real)
                "op_inspeccion": "Operación: inspección de edificios", "op_fotogrametria": "Operación: fotogrametría",
                "op_busqueda": "Operación: búsqueda y rescate", "op_agricultura": "Operación: agricultura",
-               "op_paneles": "Operación: paneles fotovoltaicos", "op_video": "Operación: grabación de vídeo", "libre_cartagena": "Vuelo libre (Cartagena)"}
+               "op_paneles": "Operación: paneles fotovoltaicos", "op_video": "Operación: grabación de vídeo", "op_carrera": "Operación: carrera de drones del Politécnico", "libre_cartagena": "Vuelo libre (Cartagena)"}
 
 SESIONES = {}            # token -> caduca (epoch)
 # ---- multijugador: salas en memoria (no van a la base de datos). Cada simulador manda su estado unas 10 veces por
@@ -100,6 +100,8 @@ def crear_bd():
     """)
     if "clave" not in [c[1] for c in con.execute("PRAGMA table_info(alumnos)")]:      # clave de acceso de cada alumno (2026-10-14)
         con.execute("ALTER TABLE alumnos ADD COLUMN clave TEXT")
+    if "marca" not in [c[1] for c in con.execute("PRAGMA table_info(vuelos)")]:        # tiempo de la carrera de drones (s) (2026-10-15)
+        con.execute("ALTER TABLE vuelos ADD COLUMN marca REAL")
     con.commit(); con.close()
 
 
@@ -222,7 +224,12 @@ def catalogo_logros():
         m = re.search(r'"id"\s*:\s*"([A-Za-z0-9_]+)"', t)
         if not m: continue
         tipo = re.search(r'"tipo"\s*:\s*"([a-z]+)"', t); tipo = tipo.group(1) if tipo else "avion"
-        clase[m.group(1)] = "dron" if tipo in ("cuadricoptero", "fpv") else None if tipo == "bipode" else "ala"
+        c = "dron" if tipo in ("cuadricoptero", "fpv") else None if tipo == "bipode" else "ala"
+        clase[m.group(1)] = c
+        nm = re.search(r'"nombre"\s*:\s*("(?:[^"\\]|\\.)*")', t)          # los vuelos guardan el nombre del vehiculo
+        if nm:
+            try: clase[normalizar(json.loads(nm.group(1)))] = c
+            except ValueError: pass
     esc = {}
     try:
         t = open(f_esc, encoding="utf-8").read(); m = re.search(r"(?m)^window[.]ESCENARIOS = ", t)
@@ -234,11 +241,21 @@ def catalogo_logros():
     return datos
 
 
+def clase_vehiculo(K, avion):
+    """La clase (ala, dron o None) del vehiculo de un vuelo: los vuelos guardan su nombre (los de antes, a veces un nombre
+    que ya no existe: "Cuadricoptero DJI Mini 4K", "Entrenador E2"...); si no esta en el catalogo, por las palabras."""
+    if avion in K["clase"]: return K["clase"][avion]
+    n = normalizar(str(avion))
+    if n in K["clase"]: return K["clase"][n]
+    if "bipode" in n: return None
+    return "dron" if any(k in n for k in ("dron", "drone", "fpv", "dji", "cuadricoptero", "multirrotor")) else "ala"
+
+
 def logros(con, alumno_id):
     """Los tres logros del piloto y si el robot esta desbloqueado. Un entrenamiento cuenta para la clase del vehiculo con
     el que se supero (primer_vuelo es del avion y del dron: con el avion no vale para el logro del dron)."""
     K = catalogo_logros(); horas = {"ala": 0.0, "dron": 0.0}; ap = {"ala": set(), "dron": set(), "todas": set()}
-    clase = lambda av: K["clase"].get(av, "ala")             # aviones de antes que ya no estan (E1, E2): eran de ala fija
+    clase = lambda av: clase_vehiculo(K, av)
     for r in con.execute("SELECT avion, COALESCE(SUM(tiempo_vuelo_s), 0) t FROM vuelos WHERE alumno_id = ? GROUP BY avion", (alumno_id,)):
         if clase(r["avion"]): horas[clase(r["avion"])] += r["t"] / 3600.0
     for r in con.execute("SELECT DISTINCT avion, escenario FROM vuelos WHERE alumno_id = ? AND resultado = 'APTO'", (alumno_id,)):
@@ -268,10 +285,13 @@ def progreso(con, alumno_id, C=None):
     horas = r["t"] / 3600.0
     req = horas >= HM and all(e in sup for e in PR)
     L, robot = logros(con, alumno_id)
+    mc = con.execute("""SELECT marca, avion, inicio FROM vuelos WHERE alumno_id = ? AND escenario = 'op_carrera' AND marca IS NOT NULL
+                        ORDER BY marca LIMIT 1""", (alumno_id,)).fetchone()       # el mejor tiempo historico en la carrera de drones
     return dict(vuelos=r["n"], horas=round(horas, 3), accidentes=r["acc"], aterrizajes=r["att"], ultimo_vuelo=r["ultimo"],
                 escenarios={e: dict(superado=e in sup, intentos=intentos.get(e, 0)) for e in PR},
                 escenarios_superados=sum(e in sup for e in PR), escenarios_total=len(PR), horas_minimas=HM,
-                certificado=C["nombre"], requisitos_cumplidos=req, logros=L, robot=robot)
+                certificado=C["nombre"], requisitos_cumplidos=req, logros=L, robot=robot,
+                carrera=dict(mejor=round(mc["marca"], 2), avion=mc["avion"], fecha=mc["inicio"]) if mc else None)
 
 
 def alumno_dict(con, row, con_progreso=True, privado=False):
@@ -323,7 +343,8 @@ def validar_vuelo(v):
     return dict(inicio=fecha_iso(v["inicio"], "inicio"), fin=fecha_iso(v.get("fin"), "fin"), equipo=texto(v.get("equipo"), 60),
                 avion=texto(v["avion"], 40), escenario=texto(v["escenario"], 40), tiempo_vuelo_s=numero(v.get("tiempo_vuelo_s"), 0, 4 * 3600, "tiempo_vuelo_s"),
                 accidentes=int(numero(v.get("accidentes"), 0, 1000, "accidentes")), aterrizajes=int(numero(v.get("aterrizajes"), 0, 1000, "aterrizajes")),
-                objetivos=objetivos, final=texto(v.get("final"), 200), viento=viento)
+                objetivos=objetivos, final=texto(v.get("final"), 200), viento=viento,
+                marca=numero(v.get("marca"), 1, 3600, "marca") if v.get("marca") is not None else None)
 
 
 def _num_estado(x, lim=1e7):
@@ -489,7 +510,7 @@ class Manejador(BaseHTTPRequestHandler):
     # ---- multijugador ----
     @staticmethod
     def _sala_publica(sala, con_jugadores=True, profesor=False):
-        d = {k: sala.get(k) for k in ("codigo", "nombre", "escenario", "lanz", "viento", "ajustes", "creada")}
+        d = {k: sala.get(k) for k in ("codigo", "nombre", "escenario", "lanz", "viento", "ajustes", "creada", "record")}
         d["con_clave"] = bool(sala.get("clave"))
         if profesor: d["clave"] = sala.get("clave"); d["expulsados"] = sorted(sala.get("expulsados_nombres", []))
         if not con_jugadores: d["jugadores"] = len(sala["jugadores"])
@@ -584,6 +605,10 @@ class Manejador(BaseHTTPRequestHandler):
                     if isinstance(g, dict):                      # bipode: impactos que lleva dados a cada piloto (id -> cuantos)
                         e["golpes"] = {str(k)[:40]: int(v) for k, v in list(g.items())[:30] if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)}
                     e["_t"] = t; e["_ip"] = ip
+                    c = b.get("carrera")                         # carrera de drones: el mejor tiempo de la sesion del piloto -> el de la sala
+                    if isinstance(c, (int, float)) and not isinstance(c, bool) and math.isfinite(c) and 1 <= c <= 3600:
+                        R = sala.get("record")
+                        if not R or c < R["t"]: sala["record"] = dict(nombre=e.get("nombre") or "?", avion=e.get("avion") or "", t=round(float(c), 2))
                     sala["jugadores"][jid] = e; sala["ultimo"] = t
                     self._apuntar_ruta(sala, jid, e, t)
                     return dict(otros=[x for k, x in sala["jugadores"].items() if k != jid], sala=self._sala_publica(sala, False),
@@ -701,12 +726,12 @@ class Manejador(BaseHTTPRequestHandler):
                 if not ra: raise Error(404, "alumno no encontrado")
                 if not self.pase_ok(con, ra): raise Error(401, "Hace falta la clave del alumno")
                 cur = con.execute("""INSERT OR IGNORE INTO vuelos (id, alumno_id, inicio, fin, equipo, avion, escenario,
-                    tiempo_vuelo_s, accidentes, aterrizajes, objetivos, resultado, final, viento, recibido)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    tiempo_vuelo_s, accidentes, aterrizajes, objetivos, resultado, final, viento, recibido, marca)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (str(v["id"]), ra["id"], w["inicio"], w["fin"], w["equipo"] or self.address_string(),
                      w["avion"], w["escenario"], w["tiempo_vuelo_s"], w["accidentes"], w["aterrizajes"],
                      json.dumps(w["objetivos"], ensure_ascii=False), v["resultado"], w["final"],
-                     json.dumps(w["viento"], ensure_ascii=False), ahora()))
+                     json.dumps(w["viento"], ensure_ascii=False), ahora(), w["marca"]))
             CAMBIOS["desde_copia"] += 1
             return dict(ok=True, nuevo=cur.rowcount == 1, progreso=progreso(con, v["alumno_id"]))
 

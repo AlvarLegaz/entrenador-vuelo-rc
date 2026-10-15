@@ -815,7 +815,67 @@ func poner_pista(P) -> void:
 		l.position = c; l.rotation = Vector3(-PI / 2, -r - float(q[2]), 0); l.rotation_order = EULER_ORDER_YXZ; G.add_child(l)
 
 var _op: Node3D
+## Carrera de drones (_carrera3d de visor_real.js): cada obstaculo (Operacion.CARRERA: medidas y grosores) con su numero
+## encima, girado a su rumbo y apoyado en el suelo; su material principal queda en carrera_obst para resaltar el siguiente.
+var carrera_obst := []
+var _carrera_k = null
+func _carrera3d(G: Node3D, d: Dictionary) -> void:
+	carrera_obst = []; _carrera_k = null
+	var COL := { "puerta": Color.hex(0xff6d00ff), "arco": Color.hex(0xe53935ff), "banderas": Color.hex(0xffd600ff), "picado": Color.hex(0x7c4dffff) }
+	var gris := StandardMaterial3D.new(); gris.albedo_color = Color.hex(0x9e9e9eff); gris.roughness = 0.6; gris.metallic = 0.4
+	var tubo := func(P: Node3D, a: Vector3, b: Vector3, r: float, mt: Material) -> void:       # un tubo entre dos puntos (x lateral, y arriba, z al frente)
+		var L := a.distance_to(b); var cm := CylinderMesh.new(); cm.top_radius = r; cm.bottom_radius = r; cm.height = L; cm.radial_segments = 12
+		var mi := MeshInstance3D.new(); mi.mesh = cm; mi.material_override = mt; mi.position = (a + b) / 2
+		var dir := (b - a).normalized()
+		if absf(dir.dot(Vector3.UP)) < 0.9999: mi.basis = Basis(Quaternion(Vector3.UP, dir))
+		elif dir.y < 0: mi.basis = Basis(Vector3.RIGHT, PI)
+		P.add_child(mi)
+	var obs: Array = d["carrera"]["obstaculos"]
+	for i in obs.size():
+		var o: Dictionary = obs[i]; var Md: Array = Operacion.CARRERA["MEDIDAS"][o["tipo"]]; var A: float = Md[0] / 2.0; var alto: float = Md[1]
+		var g: float = Operacion.CARRERA["GROSOR"][o["tipo"]]; var h: float = float(o["h"]); var P := Node3D.new()
+		var mat := StandardMaterial3D.new(); mat.albedo_color = COL[o["tipo"]]; mat.roughness = 0.55 if o["tipo"] == "arco" else 0.7; mat.emission_enabled = true; mat.emission = Color.BLACK
+		var arriba := h + alto
+		match String(o["tipo"]):
+			"puerta":
+				for s in [-1.0, 1.0]: tubo.call(P, Vector3(s * A, 0, 0), Vector3(s * A, arriba, 0), g, mat)
+				tubo.call(P, Vector3(-A, arriba, 0), Vector3(A, arriba, 0), g, mat)
+				if h > 0: tubo.call(P, Vector3(-A, h, 0), Vector3(A, h, 0), g, mat)
+			"arco":                                                        # arco hinchable: postes, esquinas en chaflan y arriba
+				for s in [-1.0, 1.0]:
+					tubo.call(P, Vector3(s * A, 0, 0), Vector3(s * A, alto - 1, 0), g, mat); tubo.call(P, Vector3(s * A, alto - 1, 0), Vector3(s * (A - 1), alto, 0), g, mat)
+				tubo.call(P, Vector3(-(A - 1), alto, 0), Vector3(A - 1, alto, 0), g, mat)
+			"banderas":                                                    # dos mastiles con su bandera hacia fuera
+				mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				for s in [-1.0, 1.0]:
+					tubo.call(P, Vector3(s * A, 0, 0), Vector3(s * A, alto, 0), 0.04, gris)
+					var pm := PlaneMesh.new(); pm.size = Vector2(0.8, 3.6); pm.orientation = PlaneMesh.FACE_Z
+					var f := MeshInstance3D.new(); f.mesh = pm; f.material_override = mat; f.position = Vector3(s * (A + 0.42), alto - 2, 0); P.add_child(f)
+			_:                                                             # picado: andamio con el marco arriba (horizontal)
+				var L := A; arriba = h
+				for c in [[L, L], [L, -L], [-L, L], [-L, -L]]: tubo.call(P, Vector3(c[0], 0, c[1]), Vector3(c[0], h, c[1]), Operacion.CARRERA["PATA"], gris)
+				for c in [[L, L, L, -L], [-L, L, -L, -L], [L, L, -L, L], [L, -L, -L, -L]]:
+					tubo.call(P, Vector3(c[0], h, c[1]), Vector3(c[2], h, c[3]), g, mat)    # el marco
+					if c[0] == c[2]:                                       # cruces en los lados (delante y detras, abierto: se sale por delante)
+						var y := 0.0
+						while y + 3 <= h: tubo.call(P, Vector3(c[0], y, c[1]), Vector3(c[2], y + 3, c[3]), 0.03, gris); y += 3
+		var svg := '<svg viewBox="0 0 128 128" width="128" height="128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="58" fill="#%s" stroke="#ffffff" stroke-width="8"/></svg>' % COL[o["tipo"]].to_html(false)
+		var disco := Sprite3D.new(); disco.texture = Tema.svg(svg, 1.0); disco.pixel_size = 1.4 / 128.0; disco.billboard = BaseMaterial3D.BILLBOARD_ENABLED; disco.position = Vector3(0, arriba + 1.3, 0)
+		var num := Label3D.new(); num.text = str(i + 1); num.font = Tema.negrita; num.font_size = 66; num.pixel_size = 1.4 / 128.0; num.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		num.outline_size = 0; num.modulate = Color.WHITE; num.position = Vector3(0, -0.03, 0.01); num.render_priority = 1; disco.add_child(num); P.add_child(disco)
+		var ys: float = ent.altura(o["n"], o["e"]); P.position = Vector3(o["e"], ys, -o["n"]); P.rotation.y = -float(o["rumbo"]) * PI / 180
+		G.add_child(P); carrera_obst.append({ "mat": mat, "num": disco })
+## Resalta en verde el obstaculo k de la carrera (el siguiente); -1 ninguno.
+func resaltar_carrera(k: int) -> void:
+	if carrera_obst.is_empty() or _carrera_k == k: return
+	_carrera_k = k
+	for i in carrera_obst.size():
+		var q: Dictionary = carrera_obst[i]
+		(q["mat"] as StandardMaterial3D).emission = Color(0.13, 0.8, 0.33) * 0.9 if i == k else Color.BLACK
+		(q["num"] as Sprite3D).pixel_size = (2.2 if i == k else 1.4) / 128.0
+
 func poner_operacion(d: Dictionary, casa: Array) -> void:
+	carrera_obst = []; _carrera_k = null
 	if _op: _op.queue_free(); _op = null
 	if d.is_empty(): return
 	var G := Node3D.new(); add_child(G); _op = G
@@ -942,6 +1002,7 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
 			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
 			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))
+	if d.has("carrera"): _carrera3d(G, d)
 	if d.get("vertidos") is Array:                                    # patrulla: cada vertido, una irisacion parda grande y un nucleo oscuro
 		for V in d["vertidos"]:
 			for q in [[1.0, Color.hex(0x8a7a5aff), 0.5, 0.35], [0.55, Color.hex(0x1e1a14ff), 0.85, 0.4]]:

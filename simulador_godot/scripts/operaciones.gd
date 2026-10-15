@@ -204,6 +204,18 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 	return dd
 static func _n(x) -> String: return PasadaBaja._num(float(x))
 static func mmss(s: float) -> String: return "%d:%02d" % [int(floor(s / 60)), int(floor(fmod(s, 60)))]
+## Tiempo de carrera con decimas: 1:05,3 (opCrono).
+static func crono(s: float) -> String: return ("%d:%04.1f" % [int(floor(s / 60)), fmod(s, 60)]).replace(".", ",")
+# carrera de drones (CARRERA de operaciones.js): medidas (ancho y alto, m; el picado: el lado), grosor de marcos y postes,
+# nombres, radio del dron, patas del andamio del picado y cuanto se espera tras la meta (o la descalificacion)
+const CARRERA := {
+	"MEDIDAS": { "puerta": [3.0, 2.4], "arco": [6.0, 4.0], "banderas": [5.0, 5.0], "picado": [4.0, 4.0] },
+	"GROSOR": { "puerta": 0.1, "arco": 0.45, "banderas": 0.15, "picado": 0.1 },
+	"NOMBRE": { "puerta": "marco", "arco": "arco", "banderas": "banderas", "picado": "picado, de arriba abajo" },
+	"R_DRON": 0.2, "PATA": 0.08, "FIN_S": 2.0,
+}
+var obst := []
+var carr = null
 func _cuenta() -> int: return hechos.filter(func(x): return x).size()
 
 func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dictionary) -> void:
@@ -222,6 +234,7 @@ func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dicti
 	if d.has("planta"): _planta()
 	if d.has("racks"): _fabrica()
 	if d.get("vertidos") is Array: _patrulla()
+	if d.has("carrera"): _carrera()
 
 ## Punto de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo).
 func z(n: float, e: float, q: Dictionary) -> float:
@@ -383,14 +396,15 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	if d.has("faro"):
 		var F: Dictionary = d["faro"]
 		if Vector2(N - F["n"], E - F["e"]).length() < F["radio"] + 0.3 and up - suelo.call(F["n"], F["e"]) < F["alto"]: choque = "choque con el faro"
+	if d.has("carrera") and not av.get("posado", false): _paso_carrera(_p_ant, av, T)
 	if choque != "": return T
-	# ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas) ----
+	# ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas; la carrera, ninguna) ----
 	if d.get("vertidos") is Array:
 		if t0 != null and not av.get("enTierra", false) and not av.get("posado", false):
 			var cp := centro_pista(); var lejos: bool = Vector2(N - cp[0], E - cp[1]).length() > d["radio_pista"]
 			if lejos and agl < d["h_min"]: m.call("altura", "mal"); _aviso("altura", "¡Por debajo de %s m lejos de la pista! Sube" % _n(d["h_min"]), T)
 			if agl > d["techo"]: m.call("techo", "mal"); _aviso("techo", "¡Por encima de %s m! Baja" % _n(d["techo"]), T)
-	else:
+	elif not d.has("carrera"):
 		if agl > TECHO: m.call("techo", "mal"); _aviso("techo", "¡Por encima de 120 m de altura! Baja", T)
 		if Vector2(N - casa[0], E - casa[1]).length() > VLOS: m.call("vlos", "mal"); _aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T)
 		if Vector2(N - ARP["n"], E - ARP["e"]).length() < ARP["r"]: m.call("zona", "mal"); _aviso("zona", "¡Dentro de la zona del %s!" % ARP["nombre"], T)
@@ -620,6 +634,10 @@ func final(fin: String, av: Dictionary, info: Dictionary) -> void:
 	if d.has("racks"):
 		a.call("calientes", "%d de %d" % [hechos_c.filter(func(x): return x).size(), (d["puntosCalientes"] as Array).size()])
 		if t_todo != null: marcar.call("tiempo", "ok"); a.call("tiempo", mmss(t_todo - t0))
+	if d.has("carrera"):
+		a.call("secuencia", ("descalificado: te saltaste el %d" % (carr["fuera"] + 1)) if carr["fuera"] != null else "%d de %d" % [carr["k"], obst.size()])
+		if carr["tFin"] != null: a.call("tiempo", crono(carr["tFin"] - carr["t0"]))
+		marcar.call("choques", "mal" if fin.begins_with("roto") else "ok")
 	if d.get("vertidos") is Array:
 		a.call("vertidos", "%d de %d" % [n, (d["vertidos"] as Array).size()])
 		if t_todo != null: marcar.call("tiempo", "ok"); a.call("tiempo", mmss(t_todo - t0))
@@ -636,6 +654,80 @@ func _patrulla() -> void:
 		hechos.append(false); errores.append(null)
 		var P := [float(VV[i][0]), float(VV[i][1]), suelo.call(VV[i][0], VV[i][1])]
 		termicos.append({ "tipo": "vertido", "i": i, "nombre": "vertido %d" % (i + 1), "T": 41, "P0": P, "P1": P.duplicate(), "r": float(VV[i][2]) / 2 })
+## Carrera: los obstaculos con sus medidas, el suelo (ys) y su borde de abajo (y0, m hacia arriba), y el estado: el
+## siguiente (k), la salida (t0), la meta (tFin), la descalificacion (fuera: el que se salto) y cuando acabo (tAcabo).
+func _carrera() -> void:
+	obst = []
+	for o in d["carrera"]["obstaculos"]:
+		var q: Dictionary = (o as Dictionary).duplicate(); var Md: Array = CARRERA["MEDIDAS"][q["tipo"]]; var ys: float = suelo.call(q["n"], q["e"])
+		q["ancho"] = Md[0]; q["alto"] = Md[1]; q["ys"] = ys; q["y0"] = ys + float(q["h"]); obst.append(q)
+	carr = { "k": 0, "t0": null, "tFin": null, "fuera": null, "tAcabo": null }
+## Cruce de un obstaculo entre dos posiciones (NED): {} (nada), { tipo: "pasa" | "reves" | "choque" } (cruceObst).
+static func cruce_obst(pa: Array, p: Array, o: Dictionary) -> Dictionary:
+	var R: float = CARRERA["R_DRON"]; var g: float = CARRERA["GROSOR"][o["tipo"]]; var r: float = float(o["rumbo"]) * D2R
+	if o["tipo"] == "picado":
+		var v0: float = -pa[2] - o["y0"]; var v1: float = -p[2] - o["y0"]
+		if (v0 < 0) == (v1 < 0): return {}
+		var f := v0 / (v0 - v1); var N: float = pa[0] + f * (p[0] - pa[0]); var E: float = pa[1] + f * (p[1] - pa[1]); var L: float = o["ancho"] / 2.0
+		var a := absf((N - o["n"]) * cos(r) + (E - o["e"]) * sin(r)); var b := absf(-(N - o["n"]) * sin(r) + (E - o["e"]) * cos(r))
+		if a < L - g - R and b < L - g - R: return { "tipo": "pasa" if v1 < v0 else "reves" }
+		if a < L + g + R and b < L + g + R: return { "tipo": "choque" }
+		return {}
+	var dN := cos(r); var dE := sin(r)
+	var s0: float = (pa[0] - o["n"]) * dN + (pa[1] - o["e"]) * dE; var s1: float = (p[0] - o["n"]) * dN + (p[1] - o["e"]) * dE
+	if (s0 < 0) == (s1 < 0): return {}
+	var f := s0 / (s0 - s1); var N: float = pa[0] + f * (p[0] - pa[0]); var E: float = pa[1] + f * (p[1] - pa[1]); var v: float = -(pa[2] + f * (p[2] - pa[2]))
+	var u := absf(-(N - o["n"]) * dE + (E - o["e"]) * dN); var A: float = o["ancho"] / 2.0; var H0: float = o["y0"]; var H1: float = o["y0"] + o["alto"]
+	var lado: bool = u > A - g - R and u < A + g + R and v < H1 + g + R and v > o["ys"] - R           # los postes
+	var arriba: bool = o["tipo"] != "banderas" and u < A + g + R and absf(v - H1) < g + R             # el travesano de arriba
+	var abajo: bool = float(o["h"]) > 0 and u < A + g + R and absf(v - H0) < g + R                     # el de abajo (marco en alto)
+	if lado or arriba or abajo: return { "tipo": "choque" }
+	if u < A - g - R and v > H0 and v < H1: return { "tipo": "pasa" if s1 > s0 else "reves" }
+	return {}
+## true si el dron (posicion NED) toca un poste del obstaculo (o una pata del andamio del picado) sin cruzarlo.
+static func toca_postes(p: Array, o: Dictionary) -> bool:
+	var g: float = CARRERA["GROSOR"][o["tipo"]]; var R: float = CARRERA["R_DRON"]; var up: float = -p[2]; var r: float = float(o["rumbo"]) * D2R
+	if o["tipo"] == "picado":
+		if up > o["y0"] or up < o["ys"]: return false
+		var L: float = o["ancho"] / 2.0
+		for q in [[L, L], [L, -L], [-L, L], [-L, -L]]:
+			var pn: float = o["n"] + q[0] * cos(r) - q[1] * sin(r); var pe: float = o["e"] + q[0] * sin(r) + q[1] * cos(r)
+			if Vector2(p[0] - pn, p[1] - pe).length() < CARRERA["PATA"] + R: return true
+		return false
+	if up > o["y0"] + o["alto"] + g or up < o["ys"]: return false
+	for s in [-1.0, 1.0]:
+		var pn: float = o["n"] - s * o["ancho"] / 2.0 * sin(r); var pe: float = o["e"] + s * o["ancho"] / 2.0 * cos(r)
+		if Vector2(p[0] - pn, p[1] - pe).length() < g + R: return true
+	return false
+## Un paso de la carrera: choques con los obstaculos y su cruce en orden (saltarse uno descalifica).
+func _paso_carrera(p_ant, av: Dictionary, T: Array) -> void:
+	var c: Dictionary = carr; var p: Array = av["p"]; var t: float = av["t"]; var n := obst.size(); var m := marcar
+	for j in n:
+		var o: Dictionary = obst[j]
+		if absf(p[0] - o["n"]) > 15 or absf(p[1] - o["e"]) > 15: continue
+		if toca_postes(p, o): choque = "choque con el obstáculo %d" % (j + 1); return
+		var x: Dictionary = cruce_obst(p_ant, p, o) if p_ant != null else {}
+		if x.is_empty(): continue
+		if x["tipo"] == "choque": choque = "choque con el obstáculo %d" % (j + 1); return
+		if x["tipo"] != "pasa" or c["fuera"] != null or c["tFin"] != null or j < c["k"]: continue
+		if j > c["k"]: c["fuera"] = c["k"]; c["tAcabo"] = t; m.call("secuencia", "mal"); T.append("¡Descalificado! Te has saltado el obstáculo %d" % (c["k"] + 1)); continue
+		c["k"] += 1
+		if j == 0: c["t0"] = t; T.append("¡Salida! El cronómetro está en marcha · 1/%d" % n)
+		elif c["k"] == n:
+			c["tFin"] = t; c["tAcabo"] = t; var s: float = t - c["t0"]
+			m.call("secuencia", "ok"); m.call("meta", "ok"); m.call("tiempo", "ok" if s <= float(d["carrera"]["limite_s"]) else "mal")
+			T.append("¡Meta! %s" % crono(s))
+		else: T.append("%d/%d" % [c["k"], n])
+## El siguiente obstaculo de la carrera { i, o, d (m) } o {} (terminada o descalificado).
+func siguiente(av: Dictionary) -> Dictionary:
+	if carr == null or carr["fuera"] != null or carr["tFin"] != null: return {}
+	var o: Dictionary = obst[carr["k"]]
+	var yc: float = o["y0"] if o["tipo"] == "picado" else o["y0"] + o["alto"] / 2.0
+	return { "i": carr["k"], "o": o, "d": Vector3(av["p"][0] - o["n"], av["p"][1] - o["e"], -av["p"][2] - yc).length() }
+## El final de la carrera para el simulador ("carrera terminada" o "descalificado") unos segundos despues, o "".
+func acabada(t: float) -> String:
+	if carr == null or carr["tAcabo"] == null or t - carr["tAcabo"] < CARRERA["FIN_S"]: return ""
+	return "carrera terminada" if carr["tFin"] != null else "descalificado"
 ## La pista del trabajo: [d, t] a lo largo de su eje desde el umbral y a su derecha; y su centro [N, E].
 func eje_pista(N: float, E: float) -> Array:
 	var p: Dictionary = d["pista"]; var r: float = float(p["rumbo"]) * D2R; var dn: float = N - p["n"]; var de: float = E - p["e"]
@@ -664,6 +756,14 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 		var sn: float = d["sectores"][iv][0]; var se: float = d["sectores"][iv][1]; var rumbo := fposmod(atan2(se - E, sn - N) * R2D + 360, 360)
 		return "Tiempo: <b>%s</b> · vertidos <b>%d de %d</b> · siguiente: sector %d a %s km, rumbo %03d°" % [mmss(maxf(0, d["limite_s"] - (av["t"] - t0))), n, (d["vertidos"] as Array).size(), iv + 1,
 			("%.1f" % (Vector2(N - sn, E - se).length() / 1000)).replace(".", ","), int(round(rumbo)) % 360]
+	if d.has("carrera"):
+		var s := siguiente(av)
+		if carr["fuera"] != null: return "<b>Descalificado</b>: te has saltado el obstáculo %d" % (carr["fuera"] + 1)
+		if carr["tFin"] != null: return "<b>¡Carrera terminada!</b> Tiempo: <b>%s</b>" % crono(carr["tFin"] - carr["t0"])
+		var nom: String = CARRERA["NOMBRE"][s["o"]["tipo"]]
+		var sig := "obstáculo <b>%d de %d</b> (%s) a %d m" % [s["i"] + 1, obst.size(), nom, int(round(s["d"]))]
+		return ("Ahora: <b>despega y cruza el obstáculo 1</b> (%s, a %d m): ahí empieza el cronómetro" % [nom, int(round(s["d"]))]) if carr["t0"] == null \
+			else "Tiempo: <b>%s</b> · siguiente: %s" % [crono(av["t"] - carr["t0"]), sig]
 	if t0 == null: return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo"
 	if d.has("puntos"):
 		var i := hechos.find(false)

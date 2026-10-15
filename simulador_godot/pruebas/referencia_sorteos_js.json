@@ -293,6 +293,21 @@
   ]
  },
  {
+  "semilla": 1,
+  "mision": "op_carrera",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null
+ },
+ {
   "semilla": 7,
   "mision": "op_inspeccion",
   "puntos": [
@@ -584,6 +599,21 @@
     20231
    ]
   ]
+ },
+ {
+  "semilla": 7,
+  "mision": "op_carrera",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null
  },
  {
   "semilla": 42,
@@ -879,6 +909,21 @@
   ]
  },
  {
+  "semilla": 42,
+  "mision": "op_carrera",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null
+ },
+ {
   "semilla": 2026,
   "mision": "op_inspeccion",
   "puntos": [
@@ -1170,5 +1215,20 @@
     19508
    ]
   ]
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_carrera",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null
  }
 ]

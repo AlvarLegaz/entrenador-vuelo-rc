@@ -75,7 +75,7 @@
     "nombre": "Operador profesional",
     "desc": "Todas las operaciones superadas",
     "hechas": 0,
-    "total": 8,
+    "total": 9,
     "pendientes": [
      "op_inspeccion",
      "op_fotogrametria",
@@ -84,19 +84,21 @@
      "op_paneles",
      "op_video",
      "op_sabic",
-     "op_patrulla"
+     "op_patrulla",
+     "op_carrera"
     ],
     "ok": false
    }
   ],
-  "robot": false
+  "robot": false,
+  "carrera": null
  },
  "progreso": {
-  "vuelos": 24,
-  "horas": 4.733,
+  "vuelos": 25,
+  "horas": 4.75,
   "accidentes": 0,
   "aterrizajes": 0,
-  "ultimo_vuelo": "2026-10-15T08:24:00",
+  "ultimo_vuelo": "2026-10-15T08:25:00",
   "escenarios": {
    "primer_vuelo": {
     "superado": true,
@@ -140,19 +142,20 @@
     "total": 6,
     "pendientes": [],
     "ok": true,
-    "horas": 2.633,
+    "horas": 2.65,
     "horas_meta": 2
    },
    {
     "id": "operaciones",
     "nombre": "Operador profesional",
     "desc": "Todas las operaciones superadas",
-    "hechas": 8,
-    "total": 8,
+    "hechas": 9,
+    "total": 9,
     "pendientes": [],
     "ok": true
    }
   ],
-  "robot": true
+  "robot": true,
+  "carrera": null
  }
 }

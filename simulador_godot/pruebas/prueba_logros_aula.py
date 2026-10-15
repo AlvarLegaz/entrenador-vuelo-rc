@@ -32,6 +32,16 @@ def pedir(metodo, ruta, cuerpo=None, pase=None):
     except (urllib.error.URLError, OSError) as e: return 0, str(e)
 
 
+def nombres():
+    """id -> nombre de cada vehiculo (como aviones/*.js)"""
+    import glob, re
+    N = {}
+    for f in glob.glob(str(REPO / "simulador" / "aviones" / "*.js")):
+        t = open(f, encoding="utf-8").read(); i = re.search(r'"id"\s*:\s*"([^"]+)"', t); nm = re.search(r'"nombre"\s*:\s*("(?:[^"\\]|\\.)*")', t)
+        if i and nm: N[i.group(1)] = json.loads(nm.group(1))
+    return N
+
+
 def main():
     global fallos
     import servidor_aula as sa
@@ -59,7 +69,9 @@ def pruebas(sa):
     ok("catalogo: el E3, el T1, el Poli-1 y el XM-7 son de ala fija; los dos drones y el FPV, de dron; el bipode, de nada",
        all(K["clase"].get(a) == "ala" for a in ("E3", "T1", "G1", "XM7")) and all(K["clase"].get(a) == "dron" for a in ("DJI_MINI", "HQ3T", "FPV"))
        and K["clase"].get("BIPODE") is None, str(K["clase"]))
-    ok("catalogo: entrenamientos de ala fija y de dron, y 8 operaciones", len(K["ala"]) >= 4 and "primer_vuelo" in K["dron"] and len(K["operaciones"]) == 8,
+    ok("catalogo: tambien por el nombre y por las palabras de los nombres de antes", sa.clase_vehiculo(K, "Dron FPV de 5 pulgadas") == "dron" and sa.clase_vehiculo(K, "Cuadricóptero DJI Mini 4K") == "dron"
+       and sa.clase_vehiculo(K, "Entrenador E2") == "ala" and sa.clase_vehiculo(K, "Cernícalo XM-7") == "ala")
+    ok("catalogo: entrenamientos de ala fija y de dron, y 9 operaciones", len(K["ala"]) >= 4 and "primer_vuelo" in K["dron"] and len(K["operaciones"]) == 9,
        "%d / %d / %d" % (len(K["ala"]), len(K["dron"]), len(K["operaciones"])))
     c, a = pedir("POST", "/api/entrar", {"usuario": "Piloto de logros", "clave": "abcd", "crear": True})
     pase, aid = a["pase"], a["alumno"]["id"]
@@ -68,10 +80,13 @@ def pruebas(sa):
        and not any(x["ok"] for x in g["logros"]) and g["robot"] is False, str([(x["id"], x["ok"]) for x in g["logros"]]))
     n = [0]
 
-    def vuelo(avion, escenario, minutos, res="APTO"):
+    NOMBRE = nombres()
+
+    def vuelo(avion, escenario, minutos, res="APTO", marca=None):
+        """como lo mandan los simuladores: con el NOMBRE del vehiculo (no su id)"""
         n[0] += 1
         c, r = pedir("POST", "/api/vuelos", {"id": str(uuid.uuid4()), "alumno_id": aid, "inicio": "2026-10-15T%02d:%02d:00" % (8 + n[0] // 60, n[0] % 60),
-                                            "avion": avion, "escenario": escenario, "resultado": res, "tiempo_vuelo_s": minutos * 60}, pase=pase)
+                                            "avion": NOMBRE.get(avion, avion), "escenario": escenario, "resultado": res, "tiempo_vuelo_s": minutos * 60, "marca": marca}, pase=pase)
         assert c in (200, 201), (c, r)
         return {x["id"]: x for x in r["progreso"]["logros"]}, r["progreso"]["robot"]
 
@@ -92,14 +107,38 @@ def pruebas(sa):
     L, rb = vuelo("FPV", "libre", 120 - 10 * (len(K["dron"]) + 1))
     ok("2 h entre el Mini Dron y el FPV y sus entrenamientos: Piloto de dron", L["dron"]["ok"] and not rb, "%.3f h, %d/%d" % (L["dron"]["horas"], L["dron"]["hechas"], L["dron"]["total"]))
     # ---- operaciones ----
-    for e in K["operaciones"][:-1]: L, rb = vuelo("DJI_MINI", e, 10)
-    ok("con una operacion pendiente, ni el logro ni el robot", not L["operaciones"]["ok"] and not rb and L["operaciones"]["pendientes"] == K["operaciones"][-1:])
-    L, rb = vuelo("XM7", K["operaciones"][-1], 30)
+    ops = [e for e in K["operaciones"] if e != "op_carrera"] + ["op_carrera"]
+    for e in ops[:-1]: L, rb = vuelo("DJI_MINI", e, 10)
+    ok("con una operacion pendiente (la carrera), ni el logro ni el robot", not L["operaciones"]["ok"] and not rb and L["operaciones"]["pendientes"] == ["op_carrera"])
+    L, rb = vuelo("FPV", "op_carrera", 2, marca=95.3)
     ok("todas las operaciones: Operador profesional y el robot desbloqueado", L["operaciones"]["ok"] and rb is True)
     c, a = pedir("GET", "/api/alumnos/" + aid)
     ok("la ficha del piloto lo dice tambien", c == 200 and a["progreso"]["robot"] is True and all(x["ok"] for x in a["progreso"]["logros"]))
     c, b = pedir("POST", "/api/entrar", {"usuario": "Otro piloto", "clave": "abcd", "crear": True})
     ok("y otro piloto sigue con el robot bloqueado", b["alumno"]["progreso"]["robot"] is False)
+    # ---- la carrera de drones: el mejor tiempo historico en el perfil ----
+    ok("el perfil guarda el tiempo de la carrera", a["progreso"]["carrera"] and a["progreso"]["carrera"]["mejor"] == 95.3, str(a["progreso"].get("carrera")))
+    vuelo("DJI_MINI", "op_carrera", 3, marca=88.14, res="NO APTO"); vuelo("FPV", "op_carrera", 2, marca=101.0)
+    c, a = pedir("GET", "/api/alumnos/" + aid); C = a["progreso"]["carrera"]
+    ok("y se queda el mejor de todos (aunque el vuelo no fuera APTO por otra cosa)", C["mejor"] == 88.14 and C["avion"] == NOMBRE["DJI_MINI"], str(C))
+    ok("otro piloto sin carrera: sin tiempo", b["alumno"]["progreso"]["carrera"] is None)
+    c, r = pedir("POST", "/api/vuelos", {"id": str(uuid.uuid4()), "alumno_id": aid, "inicio": "2026-10-15T12:00:00", "avion": "FPV", "escenario": "op_carrera",
+                                        "resultado": "APTO", "tiempo_vuelo_s": 60, "marca": 0.2}, pase=pase)
+    ok("un tiempo imposible (0,2 s) se rechaza", c == 400, str(c))
+    # ---- la carrera en una sala: el mejor de la sala, aunque el que lo hizo se vaya ----
+    c, d = pedir("POST", "/api/profesor/entrar", {"pin": "2468"}); tok = d.get("token")
+    req = urllib.request.Request(BASE + "/api/salas", data=json.dumps({"escenario": "op_carrera", "nombre": "Carrera"}).encode(), method="POST")
+    req.add_header("Content-Type", "application/json"); req.add_header("Authorization", "Bearer " + tok)
+    cod = json.loads(urllib.request.urlopen(req, timeout=10).read())["codigo"]
+    est = lambda jid, nombre, avion, t: pedir("POST", "/api/salas/%s/estado" % cod, {"id": jid, "nombre": nombre, "avion": avion, "p": [0, 0, 0], "q": [1, 0, 0, 0], "carrera": t})
+    est("a", "Ana", "FPV", None); c, r = est("b", "Bea", "DJI_MINI", None)
+    ok("sala nueva: sin mejor tiempo", r["sala"].get("record") is None, str(r["sala"].get("record")))
+    est("a", "Ana", "FPV", 70.5); est("b", "Bea", "DJI_MINI", 65.25); c, r = est("a", "Ana", "FPV", 80)
+    ok("el mejor de la sala es el mas rapido de todos", r["sala"]["record"] == {"nombre": "Bea", "avion": "DJI_MINI", "t": 65.25}, str(r["sala"]["record"]))
+    pedir("POST", "/api/salas/%s/salir" % cod, {"id": "b"}); c, r = est("a", "Ana", "FPV", 70.5)
+    ok("y sigue aunque Bea se vaya de la sala", r["sala"]["record"]["nombre"] == "Bea")
+    c, r = est("a", "Ana", "FPV", "rapidisimo"); c2, r2 = est("a", "Ana", "FPV", -5)
+    ok("tiempos raros (texto, negativos) no cuentan", r["sala"]["record"]["t"] == 65.25 and r2["sala"]["record"]["t"] == 65.25)
 
 
 if __name__ == "__main__":

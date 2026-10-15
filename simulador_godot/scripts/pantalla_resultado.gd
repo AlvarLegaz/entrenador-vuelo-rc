@@ -234,6 +234,10 @@ class Progreso extends Control:
 			[str(int(g["accidentes"])), "accidentes"], ["%d/%d" % [int(g["escenarios_superados"]), total], "pruebas superadas"]]))
 		cont.add_child(Tema.etiqueta("Logros", 20, Tema.TEXTO, true))
 		cont.add_child(PantallaResultado.logros(g, p))
+		cont.add_child(Tema.etiqueta("Carrera de drones del Politécnico", 20, Tema.TEXTO, true))
+		var cc := Tema.capa(10); cont.add_child(cc[0]); var C = g.get("carrera")
+		(cc[1] as VBoxContainer).add_child(Tema.rico(("🏁 Tu mejor tiempo: [font_size=20][b]%s[/b][/font_size]  con %s, el %s" % [Operacion.crono(C["mejor"]), Tema.bb(String(C.get("avion", ""))), String(C.get("fecha", "")).substr(0, 16).replace("T", " ")])
+			if C is Dictionary else "🏁 Todavía no has terminado la carrera (Operaciones → Carrera de drones del Politécnico).", 15))
 		cont.add_child(Tema.etiqueta("Camino al certificado: " + cert, 20, Tema.TEXTO, true))
 		var c := Tema.capa(10); cont.add_child(c[0]); var cv: VBoxContainer = c[1]
 		cv.add_child(Tema.etiqueta("%s de %d h mínimas" % [PantallaPilotos.fmt_horas(g["horas"]), int(g["horas_minimas"])], 14, Tema.TEXTO, true))

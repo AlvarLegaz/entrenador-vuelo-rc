@@ -28,6 +28,16 @@ const OPS = {
 const opCalor = T => T >= 40 ? 0.55 + 0.45 * Math.min(1, (T - 40) / 110) : T <= 10 ? 0.15 * Math.max(0, (T + 20) / 30) : 0.15 + 0.4 * (T - 10) / 30;
 const opDesenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
 const opMMSS = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+/** Tiempo de carrera con decimas: 1:05,3. */
+const opCrono = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0").replace(".", ",")}`;
+// carrera de drones: medidas de los obstaculos (ancho y alto, m; el picado: el lado del marco), grosor del marco o de los
+// postes para los choques, radio del dron, patas del andamio del picado y cuanto se espera tras la meta (o la descalificacion)
+const CARRERA = {
+  MEDIDAS: { puerta: [3, 2.4], arco: [6, 4], banderas: [5, 5], picado: [4, 4] },
+  GROSOR: { puerta: 0.1, arco: 0.45, banderas: 0.15, picado: 0.1 },
+  NOMBRE: { puerta: "marco", arco: "arco", banderas: "banderas", picado: "picado, de arriba abajo" },
+  R_DRON: 0.2, PATA: 0.08, FIN_S: 2,
+};
 // nombres de los desperfectos de la inspeccion: los sitios salen al azar de "candidatos" y cada uno lleva uno de estos
 const OP_NOMBRES_CUBIERTA = ["Lucernario de la cubierta", "Placas solares de la cubierta", "Extractor de la cubierta", "Antena del tejado",
   "Impermeabilización levantada", "Claraboya rota", "Chimenea de ventilación", "Equipo de aire acondicionado"];
@@ -162,6 +172,7 @@ class Operacion {
     if (d.planta) this._planta();
     if (d.racks) this._fabrica();
     if (Array.isArray(d.vertidos)) this._patrulla();
+    if (d.carrera) this._carrera();
     this.encontrado = false; this.error = null;                                 // busqueda
     this.orb = null; this.yawAnt = null; this.giro = 0;                         // video
   }
@@ -315,15 +326,16 @@ class Operacion {
       const F = d.faro;
       if (Math.hypot(N - F.n, E - F.e) < F.radio + 0.3 && up - this.suelo(F.n, F.e) < F.alto) this.choque = "choque con el faro";
     }
+    if (d.carrera && !av.posado) this._pasoCarrera(pAnt, av, T);
     if (this.choque) return T;
-    // ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas) ----
+    // ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas; la carrera, ninguna) ----
     if (Array.isArray(d.vertidos)) {
       if (this.t0 !== null && !av.enTierra && !av.posado) {
         const lejos = Math.hypot(N - this.centroPista()[0], E - this.centroPista()[1]) > d.radio_pista;
         if (lejos && agl < d.h_min) { m("altura", "mal"); this._aviso("altura", `¡Por debajo de ${d.h_min} m lejos de la pista! Sube`, T); }
         if (agl > d.techo) { m("techo", "mal"); this._aviso("techo", `¡Por encima de ${d.techo} m! Baja`, T); }
       }
-    } else {
+    } else if (!d.carrera) {
     if (agl > OPS.TECHO) { m("techo", "mal"); this._aviso("techo", "¡Por encima de 120 m de altura! Baja", T); }
     if (Math.hypot(N - this.casa[0], E - this.casa[1]) > OPS.VLOS) { m("vlos", "mal"); this._aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T); }
     if (Math.hypot(N - OPS.ARP.n, E - OPS.ARP.e) < OPS.ARP.r) { m("zona", "mal"); this._aviso("zona", `¡Dentro de la zona del ${OPS.ARP.nombre}!`, T); }
@@ -558,6 +570,11 @@ class Operacion {
       a("calientes", `${this.hechosC.filter(Boolean).length} de ${d.puntosCalientes.length}`);
       if (this.tTodo) { this.marcar("tiempo", "ok"); a("tiempo", opMMSS(this.tTodo - this.t0)); }
     }
+    if (d.carrera) {
+      const c = this.carr; a("secuencia", c.fuera !== null ? `descalificado: te saltaste el ${c.fuera + 1}` : `${c.k} de ${this.obst.length}`);
+      if (c.tFin !== null) a("tiempo", opCrono(c.tFin - c.t0));
+      this.marcar("choques", final.startsWith("roto") ? "mal" : "ok");
+    }
     if (Array.isArray(d.vertidos)) {
       a("vertidos", `${n} de ${d.vertidos.length}`);
       if (this.tTodo) { this.marcar("tiempo", "ok"); a("tiempo", opMMSS(this.tTodo - this.t0)); }
@@ -575,6 +592,94 @@ class Operacion {
       const P = [n, e, this.suelo(n, e)];
       this.termicos.push({ tipo: "vertido", i, nombre: `vertido ${i + 1}`, T: 41, P0: P, P1: P.slice(), r: L / 2 });
     });
+  }
+  /** Carrera: los obstaculos con sus medidas, el suelo (ys) y su borde de abajo (y0, m hacia arriba), y el estado: el
+   *  siguiente (k), la salida (t0), la meta (tFin), la descalificacion (fuera: el que se salto) y cuando acabo (tAcabo). */
+  _carrera() {
+    this.obst = this.d.carrera.obstaculos.map(o => {
+      const [a, al] = CARRERA.MEDIDAS[o.tipo], ys = this.suelo(o.n, o.e);
+      return Object.assign({}, o, { ancho: a, alto: al, ys, y0: ys + o.h });
+    });
+    this.carr = { k: 0, t0: null, tFin: null, fuera: null, tAcabo: null };
+  }
+  /** Cruce de un obstaculo entre dos posiciones (NED): null, {tipo: "pasa"} (por dentro y en su sentido), {tipo: "reves"}
+   *  o {tipo: "choque"} (por el marco, los postes o los travesanos). Los marcos, arcos y banderas se cruzan en horizontal
+   *  (rumbo: hacia donde); el picado, de arriba abajo por su marco horizontal. */
+  static cruceObst(pAnt, p, o) {
+    const R = CARRERA.R_DRON, g = CARRERA.GROSOR[o.tipo], r = o.rumbo * D2R;
+    if (o.tipo === "picado") {
+      const v0 = -pAnt[2] - o.y0, v1 = -p[2] - o.y0;
+      if ((v0 < 0) === (v1 < 0)) return null;
+      const f = v0 / (v0 - v1), N = pAnt[0] + f * (p[0] - pAnt[0]), E = pAnt[1] + f * (p[1] - pAnt[1]), L = o.ancho / 2;
+      const a = Math.abs((N - o.n) * Math.cos(r) + (E - o.e) * Math.sin(r)), b = Math.abs(-(N - o.n) * Math.sin(r) + (E - o.e) * Math.cos(r));
+      if (a < L - g - R && b < L - g - R) return { tipo: v1 < v0 ? "pasa" : "reves" };
+      if (a < L + g + R && b < L + g + R) return { tipo: "choque" };
+      return null;
+    }
+    const dN = Math.cos(r), dE = Math.sin(r);
+    const s0 = (pAnt[0] - o.n) * dN + (pAnt[1] - o.e) * dE, s1 = (p[0] - o.n) * dN + (p[1] - o.e) * dE;
+    if ((s0 < 0) === (s1 < 0)) return null;
+    const f = s0 / (s0 - s1), N = pAnt[0] + f * (p[0] - pAnt[0]), E = pAnt[1] + f * (p[1] - pAnt[1]), v = -(pAnt[2] + f * (p[2] - pAnt[2]));
+    const u = Math.abs(-(N - o.n) * dE + (E - o.e) * dN), A = o.ancho / 2, H0 = o.y0, H1 = o.y0 + o.alto;
+    const lado = u > A - g - R && u < A + g + R && v < H1 + g + R && v > o.ys - R;              // los postes
+    const arriba = o.tipo !== "banderas" && u < A + g + R && Math.abs(v - H1) < g + R;         // el travesano de arriba
+    const abajo = o.h > 0 && u < A + g + R && Math.abs(v - H0) < g + R;                         // el de abajo (marco en alto)
+    if (lado || arriba || abajo) return { tipo: "choque" };
+    if (u < A - g - R && v > H0 && v < H1) return { tipo: s1 > s0 ? "pasa" : "reves" };
+    return null;
+  }
+  /** true si el dron (posicion NED) toca un poste del obstaculo (o una pata del andamio del picado) sin cruzarlo. */
+  static tocaPostes(p, o) {
+    const g = CARRERA.GROSOR[o.tipo], R = CARRERA.R_DRON, up = -p[2], r = o.rumbo * D2R;
+    if (o.tipo === "picado") {
+      if (up > o.y0 || up < o.ys) return false;
+      const L = o.ancho / 2;
+      for (const [a, b] of [[L, L], [L, -L], [-L, L], [-L, -L]]) {
+        const pn = o.n + a * Math.cos(r) - b * Math.sin(r), pe = o.e + a * Math.sin(r) + b * Math.cos(r);
+        if (Math.hypot(p[0] - pn, p[1] - pe) < CARRERA.PATA + R) return true;
+      }
+      return false;
+    }
+    if (up > o.y0 + o.alto + g || up < o.ys) return false;
+    for (const s of [-1, 1]) {
+      const pn = o.n - s * o.ancho / 2 * Math.sin(r), pe = o.e + s * o.ancho / 2 * Math.cos(r);
+      if (Math.hypot(p[0] - pn, p[1] - pe) < g + R) return true;
+    }
+    return false;
+  }
+  /** Un paso de la carrera: choques con los obstaculos y su cruce en orden (saltarse uno descalifica). */
+  _pasoCarrera(pAnt, av, T) {
+    const c = this.carr, p = av.p, t = av.t, n = this.obst.length, m = this.marcar;
+    for (let j = 0; j < n; j++) {
+      const o = this.obst[j];
+      if (Math.abs(p[0] - o.n) > 15 || Math.abs(p[1] - o.e) > 15) continue;
+      if (Operacion.tocaPostes(p, o)) { this.choque = `choque con el obstáculo ${j + 1}`; return; }
+      const x = pAnt ? Operacion.cruceObst(pAnt, p, o) : null;
+      if (!x) continue;
+      if (x.tipo === "choque") { this.choque = `choque con el obstáculo ${j + 1}`; return; }
+      if (x.tipo !== "pasa" || c.fuera !== null || c.tFin !== null || j < c.k) continue;
+      if (j > c.k) { c.fuera = c.k; c.tAcabo = t; m("secuencia", "mal"); T.push(`¡Descalificado! Te has saltado el obstáculo ${c.k + 1}`); continue; }
+      c.k++;
+      if (j === 0) { c.t0 = t; T.push(`¡Salida! El cronómetro está en marcha · 1/${n}`); }
+      else if (c.k === n) {
+        c.tFin = t; c.tAcabo = t; const s = t - c.t0;
+        m("secuencia", "ok"); m("meta", "ok"); m("tiempo", s <= this.d.carrera.limite_s ? "ok" : "mal");
+        T.push(`¡Meta! ${opCrono(s)}`);
+      } else T.push(`${c.k}/${n}`);
+    }
+  }
+  /** El siguiente obstaculo de la carrera {i, o, d (m)} o null (terminada o descalificado). */
+  siguiente(av) {
+    const c = this.carr;
+    if (!c || c.fuera !== null || c.tFin !== null) return null;
+    const o = this.obst[c.k];
+    return { i: c.k, o, d: Math.hypot(av.p[0] - o.n, av.p[1] - o.e, -av.p[2] - (o.tipo === "picado" ? o.y0 : o.y0 + o.alto / 2)) };
+  }
+  /** El final de la carrera para el simulador ("carrera terminada" o "descalificado") cuando ya han pasado unos segundos, o null. */
+  acabada(t) {
+    const c = this.carr;
+    if (!c || c.tAcabo === null || t - c.tAcabo < CARRERA.FIN_S) return null;
+    return c.tFin !== null ? "carrera terminada" : "descalificado";
   }
   /** La pista del trabajo: (d, t) a lo largo de su eje desde el umbral y a su derecha; y su centro (N, E). */
   ejePista(N, E) { const p = this.d.pista, r = p.rumbo * D2R, dn = N - p.n, de = E - p.e; return [dn * Math.cos(r) + de * Math.sin(r), -dn * Math.sin(r) + de * Math.cos(r)]; }
@@ -597,6 +702,14 @@ class Operacion {
       if (i < 0) return `Ahora: <b>vuelve a San Javier y aterriza en la pista</b> (a ${(Math.hypot(N - cn, E - ce) / 1000).toFixed(1).replace(".", ",")} km)`;
       const [sn, se] = d.sectores[i], rumbo = ((Math.atan2(se - E, sn - N) * R2D) + 360) % 360;
       return `Tiempo: <b>${opMMSS(Math.max(0, d.limite_s - (av.t - this.t0)))}</b> · vertidos <b>${n} de ${d.vertidos.length}</b> · siguiente: sector ${i + 1} a ${(Math.hypot(N - sn, E - se) / 1000).toFixed(1).replace(".", ",")} km, rumbo ${String(Math.round(rumbo) % 360).padStart(3, "0")}°`;
+    }
+    if (d.carrera) {
+      const c = this.carr, s = this.siguiente(av);
+      if (c.fuera !== null) return `<b>Descalificado</b>: te has saltado el obstáculo ${c.fuera + 1}`;
+      if (c.tFin !== null) return `<b>¡Carrera terminada!</b> Tiempo: <b>${opCrono(c.tFin - c.t0)}</b>`;
+      const sig = `obstáculo <b>${s.i + 1} de ${this.obst.length}</b> (${CARRERA.NOMBRE[s.o.tipo]}) a ${s.d.toFixed(0)} m`;
+      return c.t0 === null ? `Ahora: <b>despega y cruza el obstáculo 1</b> (${CARRERA.NOMBRE[s.o.tipo]}, a ${s.d.toFixed(0)} m): ahí empieza el cronómetro`
+        : `Tiempo: <b>${opCrono(av.t - c.t0)}</b> · siguiente: ${sig}`;
     }
     if (this.t0 === null) return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo";
     if (d.puntos) {

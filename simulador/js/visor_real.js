@@ -21,6 +21,60 @@ function manchaVertido(V, esc, alt, dy) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); g.setIndex(ix); g.computeVertexNormals(); return g;
 }
 Object.assign(Visor.prototype, {
+  /** Carrera de drones: cada obstaculo (CARRERA de operaciones.js: medidas y grosores) con su numero encima, girado a su
+   *  rumbo y apoyado en el suelo; su material principal queda en this.carreraObst para resaltar el siguiente. */
+  _carrera3d(G, d, alt) {
+    this.carreraObst = []; this.carreraK = null;
+    const tubo = (P, x0, y0, x1, y1, r, mat, z0 = 0, z1 = 0) => {      // un tubo entre dos puntos (x lateral, y arriba, z al frente)
+      const a = new THREE.Vector3(x0, y0, z0), b = new THREE.Vector3(x1, y1, z1), L = a.distanceTo(b);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 12), mat); m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); P.add(m); return m;
+    };
+    const numero = (i, color) => {
+      const [c, g] = lienzo(128, 128); g.fillStyle = color; g.beginPath(); g.arc(64, 64, 58, 0, 2 * Math.PI); g.fill();
+      g.lineWidth = 8; g.strokeStyle = "#fff"; g.stroke(); g.fillStyle = "#fff"; g.font = "bold 66px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(i + 1), 64, 68);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSRGB(c), depthWrite: false })); s.scale.set(1.4, 1.4, 1); return s;
+    };
+    const COL = { puerta: 0xff6d00, arco: 0xe53935, banderas: 0xffd600, picado: 0x7c4dff };
+    d.carrera.obstaculos.forEach((o, i) => {
+      const [A2, alto] = CARRERA.MEDIDAS[o.tipo], A = A2 / 2, g = CARRERA.GROSOR[o.tipo], P = new THREE.Group(), r = o.rumbo * D2R;
+      const mat = new THREE.MeshStandardMaterial({ color: COL[o.tipo], roughness: o.tipo === "arco" ? 0.55 : 0.7, emissive: 0x000000 });
+      const gris = new THREE.MeshStandardMaterial({ color: 0x9e9e9e, roughness: 0.6, metalness: 0.4 });
+      let arriba = o.h + alto;
+      if (o.tipo === "puerta") {
+        for (const s of [-1, 1]) tubo(P, s * A, 0, s * A, arriba, g, mat);
+        tubo(P, -A, arriba, A, arriba, g, mat); if (o.h > 0) tubo(P, -A, o.h, A, o.h, g, mat);
+      } else if (o.tipo === "arco") {                                    // arco hinchable: postes, esquinas en chaflan y arriba
+        for (const s of [-1, 1]) { tubo(P, s * A, 0, s * A, alto - 1, g, mat); tubo(P, s * A, alto - 1, s * (A - 1), alto, g, mat); }
+        tubo(P, -(A - 1), alto, A - 1, alto, g, mat);
+      } else if (o.tipo === "banderas") {                                // dos mastiles con su bandera hacia fuera
+        for (const s of [-1, 1]) {
+          tubo(P, s * A, 0, s * A, alto, 0.04, gris);
+          mat.side = THREE.DoubleSide;
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 3.6), mat); f.position.set(s * (A + 0.42), alto - 2, 0); P.add(f);
+        }
+      } else {                                                           // picado: andamio con el marco arriba (horizontal)
+        const L = A, H = o.h; arriba = H;
+        for (const [x, z] of [[L, L], [L, -L], [-L, L], [-L, -L]]) tubo(P, x, 0, x, H, CARRERA.PATA, gris, z, z);
+        for (const [x0, z0, x1, z1] of [[L, L, L, -L], [-L, L, -L, -L], [L, L, -L, L], [L, -L, -L, -L]]) {
+          tubo(P, x0, H, x1, H, g, mat, z0, z1);                          // el marco
+          if (x0 === x1) for (let y = 0; y + 3 <= H; y += 3) tubo(P, x0, y, x1, y + 3, 0.03, gris, z0, z1);   // cruces en los lados (delante y detras, abierto: se sale por delante)
+        }
+      }
+      const num = numero(i, "#" + COL[o.tipo].toString(16).padStart(6, "0")); num.position.set(0, arriba + 1.3, 0); P.add(num);
+      const ys = alt(o.n, o.e); P.position.set(o.e, ys, -o.n); P.rotation.y = -r; G.add(P);
+      this.carreraObst.push({ mat, num, color: COL[o.tipo] });
+    });
+  },
+  /** Resalta en verde el obstaculo k de la carrera (el siguiente); -1 ninguno. */
+  resaltarCarrera(k) {
+    if (!this.carreraObst || this.carreraK === k) return;
+    this.carreraK = k;
+    this.carreraObst.forEach((q, i) => {
+      q.mat.emissive.setHex(i === k ? 0x22cc55 : 0x000000); q.mat.emissiveIntensity = i === k ? 0.9 : 0;
+      q.num.scale.set(i === k ? 2.2 : 1.4, i === k ? 2.2 : 1.4, 1);
+    });
+  },
 
   /** Tras construir la escena de un mundo real: guarda su terreno lejano (para hundirlo bajo la zona) y carga la
    *  ortofoto de la region, que sustituye a la textura sintetica cuando llega. */
@@ -178,6 +232,7 @@ Object.assign(Visor.prototype, {
 
   ponerOperacion(d, casa) {
     if (this.operacion) { this.operacion.parent && this.operacion.parent.remove(this.operacion); liberar(this.operacion); this.operacion = null; }
+    this.carreraObst = null;
     if (!d || !this.mundo) return;
     const G = new THREE.Group(), alt = this.entorno.altura, h0 = this.mundo.terreno.h0, std = (c, extra) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8 }, extra || {}));
     const en = (o, N, E, y) => { o.position.set(E, y, -N); G.add(o); return o; };
@@ -197,6 +252,7 @@ Object.assign(Visor.prototype, {
       if (q.normal !== undefined) { en(o, q.n + 0.06 * Math.cos(q.normal * D2R), q.e + 0.06 * Math.sin(q.normal * D2R), y); o.rotation.y = Math.PI - q.normal * D2R; }
       else { en(o, q.n, q.e, y + 0.06); o.rotation.x = -Math.PI / 2; }
     });
+    if (d.carrera) this._carrera3d(G, d, alt);
     if (d.parcela && d.parcela.poligono) for (const [N, E] of d.parcela.poligono) jalon(N, E, "#2e7d32");      // el bancal: un jalon en cada esquina
     else if (d.parcela) esquinas(d.parcela, d.solape ? "#e53935" : "#2e7d32");
     if (d.solape) {                                                     // dianas de apoyo de la fotogrametria
