@@ -12,7 +12,7 @@ if not exist "herramientas\godot\Godot_v4.7.2-stable_win64.exe" (
   )
 )
 rem Las zonas de detalle (La Manga, Mar Menor, CIFP Politecnico, Los Halcones, el Mingrano, las plantas fotovoltaicas y
-rem SABIC) no van en git: si faltan o hay una version nueva, se descargan de la release del repositorio (unos 340 MB;
+rem SABIC) no van en git: si faltan o hay una version nueva, se descargan de la release del repositorio (unos 330 MB;
 rem simulador\descargar_zonas.ps1 mira zonas\version_zonas.txt y sale enseguida si ya estan). Sin ellas el simulador
 rem funciona igual, con menos detalle en esos sitios.
 powershell -NoProfile -ExecutionPolicy Bypass -File "simulador\descargar_zonas.ps1"

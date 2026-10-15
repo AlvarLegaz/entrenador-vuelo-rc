@@ -68,7 +68,7 @@
   },
   "arboles": {
    "archivo": "arboles.bin",
-   "n": 37104,
+   "n": 26325,
    "nota": "float32 little-endian: E, N, radio de copa (m)"
   },
   "fuente": "Ortofoto y MDT: (c) Instituto Geografico Nacional (CC BY 4.0). Edificios: (c) Direccion General del Catastro. Costa: (c) OpenStreetMap (ODbL)."
@@ -661,6 +661,43 @@
   "arboles": {
    "archivo": "arboles.bin",
    "n": 545,
+   "nota": "float32 little-endian: E, N, radio de copa (m)"
+  },
+  "fuente": "Ortofoto y MDT: (c) Instituto Geografico Nacional (CC BY 4.0). Edificios: (c) Direccion General del Catastro. Costa: (c) OpenStreetMap (ODbL)."
+ },
+ {
+  "id": "mm_n18_e20",
+  "mundo": "cartagena",
+  "centro": {
+   "lat": 37.775587,
+   "lon": -0.817427,
+   "N": 18001.3,
+   "E": 20501.5
+  },
+  "lado_m": 3000.0,
+  "N0": 16501.336625999968,
+  "E0": 19001.466206064226,
+  "orto": {
+   "teselas": 6,
+   "tesela_m": 500.0,
+   "tesela_px": 1024,
+   "archivo": "orto_{i}_{j}.jpg",
+   "nota": "i hacia el norte, j hacia el este; fila 0 de cada imagen = su borde norte"
+  },
+  "dem": {
+   "archivo": "dem.bin",
+   "n": 601,
+   "paso_m": 5.0,
+   "unidad": "dm sobre el nivel del mar, int16 little-endian, fila 0 = sur, -32768 = agua"
+  },
+  "edificios": {
+   "archivo": "edificios.json",
+   "n": 1304,
+   "nota": "p: [E, N, ...] (m, plano del mundo); pl: plantas; b: cota de la base (m); c: color del tejado"
+  },
+  "arboles": {
+   "archivo": "arboles.bin",
+   "n": 15903,
    "nota": "float32 little-endian: E, N, radio de copa (m)"
   },
   "fuente": "Ortofoto y MDT: (c) Instituto Geografico Nacional (CC BY 4.0). Edificios: (c) Direccion General del Catastro. Costa: (c) OpenStreetMap (ODbL)."
