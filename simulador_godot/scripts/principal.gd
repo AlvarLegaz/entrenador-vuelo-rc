@@ -906,7 +906,7 @@ func _texto_ayuda(A: Dictionary) -> void:
 		t += "[b]W[/b] / [b]S[/b] gases · [b]Espacio[/b] cortar gases · [b]L[/b] lanzar · [b]R[/b] empezar de nuevo\n"
 		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / a bordo · [b][[/b] [b]][/b] compensador\n"
 		t += "[b]H[/b] datos de vuelo · [b]I[/b] instrumentos · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b]: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa\n"
+		t += "[b]Mando[/b]: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · RB cámara · X empezar de nuevo · Start pausa\n"
 	if not es_fpv(): t += "[color=#ffb74d]Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.[/color]\n"
 	t += "[color=#aaaaaa]En vuelo libre: [b]+[/b] [b]−[/b] viento, [b]G[/b] rachas. %s[/color]" % String(A.get("ayuda", "El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto."))
 	hud.ayuda_rt.text = t
@@ -1526,7 +1526,7 @@ func _leer_mando(dt: float) -> bool:
 	elif pantalla_actual == "" and not pausado:
 		if bs[JOY_BUTTON_A]: lanzar()
 		if bs[JOY_BUTTON_B]: av["gases"] = 0.0
-		if bs[JOY_BUTTON_Y]: camara = camara % 3 + 1
+		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1     # el mismo boton que en el dron, el FPV y el bipode
 		if bs[JOY_BUTTON_X]: reiniciar()
 		if bs[JOY_BUTTON_DPAD_UP]: mando["trim"] = minf(6, mando["trim"] + 0.25)
 		if bs[JOY_BUTTON_DPAD_DOWN]: mando["trim"] = maxf(-6, mando["trim"] - 0.25)
@@ -1631,8 +1631,9 @@ func _camara() -> void:
 		if d > 0.1: cam.look_at(t, Vector3.UP)
 	elif avion3d.bipode and avion3d.bipode.camara(cam, av, camara): pass      # bipode: sus camaras 2 y 3
 	elif camara == 2:
-		var yaw: float = Cuat.euler(av["q"])[2]
-		cam.fov = 60; cam.global_position = t + Avion3D.ned([-cos(yaw) * 5, -sin(yaw) * 5, -1.5]); cam.look_at(t, Vector3.UP)
+		# a escala del vehiculo: el dron de 25 cm se ve tan grande como el avion de 1,2 m (que sigue a 5 m y 1,5 m de altura)
+		var yaw: float = Cuat.euler(av["q"])[2]; var dc: float = float(modelo.b_m) * (5.0 / 1.2); var hc: float = float(modelo.b_m) * (1.5 / 1.2)
+		cam.fov = 60; cam.global_position = t + Avion3D.ned([-cos(yaw) * dc, -sin(yaw) * dc, -hc]); cam.look_at(t, Vector3.UP)
 	elif es_fpv():
 		# camara FPV: fija al bastidor, inclinada hacia arriba (uptilt) y gran angular (campo de vision HORIZONTAL fijo)
 		var F: Dictionary = modelo.fc; var ti: float = F["camara_inclinacion_grados"] * D2R; var q: Array = av["q"]

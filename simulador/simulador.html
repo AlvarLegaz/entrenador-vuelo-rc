@@ -388,7 +388,7 @@
   <b>W</b> / <b>S</b> gases · <b>Espacio</b> cortar gases · <b>L</b> lanzar · <b>R</b> empezar de nuevo<br>
   <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / a bordo · <b>[</b> <b>]</b> compensador<br>
   <b>H</b> datos de vuelo · <b>I</b> instrumentos · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
-  <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · Y cámara · X empezar de nuevo · Start pausa<br>
+  <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · RB cámara · X empezar de nuevo · Start pausa<br>
   </div>
   <span id="ayudaPar" style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.<br></span>
   <span style="color:#aaa">En vuelo libre: <b>+</b> <b>−</b> viento, <b>G</b> rachas.
@@ -2812,7 +2812,7 @@ function leerMando(dt) {
   } else if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
     if (pulsado(1)) av.gases = 0;
-    if (pulsado(3)) visor.camara = visor.camara % 3 + 1;
+    if (pulsado(5)) visor.camara = visor.camara % 3 + 1;        // RB: el mismo boton que en el dron, el FPV y el bipode
     if (pulsado(2)) reiniciar();
     if (pulsado(12)) mando.trim = Math.min(6, mando.trim + 0.25);
     if (pulsado(13)) mando.trim = Math.max(-6, mando.trim - 0.25);

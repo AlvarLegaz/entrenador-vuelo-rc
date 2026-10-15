@@ -97,7 +97,7 @@ func _initialize() -> void:
 	await _pulsa(KEY_ESCAPE); _ok("Esc cierra los controles sin pausar", not p.hud.ayuda.visible and not p.pausado)
 	await _pulsa(KEY_SPACE); _ok("Espacio corta el gas", p.av["gases"] == 0.0)
 	print("Avion (E1), mando:")
-	await _boton(JOY_BUTTON_Y); _ok("Y cambia la camara", p.camara == 3, "(camara %d)" % p.camara)
+	await _boton(JOY_BUTTON_RIGHT_SHOULDER); _ok("RB cambia la camara", p.camara == 3, "(camara %d)" % p.camara)
 	_eje(JOY_AXIS_RIGHT_Y, 0.8); await create_timer(0.4).timeout
 	_ok("palanca derecha hacia ti tira", p.mando["pitch"] > 0.5 and p._mando_usado, "(%.2f)" % p.mando["pitch"])
 	_eje(JOY_AXIS_RIGHT_Y, 0.0); _eje(JOY_AXIS_LEFT_Y, -1.0); await create_timer(0.5).timeout

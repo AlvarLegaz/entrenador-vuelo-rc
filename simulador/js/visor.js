@@ -1133,7 +1133,9 @@ class Visor {
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }
     else if (this.camara === 2) {
-      const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * 5, -Math.sin(yaw) * 5, -1.5]);
+      // a escala del vehiculo: el dron de 25 cm se ve tan grande como el avion de 1,2 m (que sigue a 5 m y 1,5 m de altura)
+      const env = (this.avion && this.avion.envergadura) || 1, dc = env * (5 / 1.2), hc = env * (1.5 / 1.2);
+      const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * dc, -Math.sin(yaw) * dc, -hc]);
       cam.position.set(t[0] + back[0], t[1] + back[1], t[2] + back[2]); cam.fov = 60; cam.lookAt(t[0], t[1], t[2]);
     } else if (this.avion && this.avion.fpv) {
       // camara FPV: fija al bastidor, inclinada hacia arriba (uptilt) y gran angular (campo de vision HORIZONTAL fijo)
