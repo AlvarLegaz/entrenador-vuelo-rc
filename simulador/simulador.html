@@ -134,6 +134,14 @@
   #djiGimbal { position: absolute; right: 94px; top: 50%; transform: translateY(-50%); width: 5px; height: 130px; background: rgba(255,255,255,.25); border-radius: 3px; }
   #djiGimbal i { position: absolute; left: -6px; width: 17px; height: 4px; background: #fff; border-radius: 2px; margin-top: -2px; box-shadow: 0 0 4px #000; }
   #djiGimbal span { position: absolute; right: 16px; font-size: 11px; color: #fff; margin-top: -7px; white-space: nowrap; text-shadow: 0 0 4px #000; }
+  #djiZoomCaja { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 4px; }
+  .djiBotones #djiZoomCaja button { width: 36px; height: 36px; font-size: 15px; }
+  #djiMedidor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; text-align: center; }
+  #djiMedidor svg { width: 46px; height: 46px; display: block; margin: 0 auto; }
+  #djiTemp { display: inline-block; margin-top: 4px; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; color: #fff; background: rgba(0,0,0,.55); border-radius: 5px; padding: 1px 7px; }
+  #djiPaleta { position: absolute; right: 150px; top: 50%; transform: translateY(-50%); display: none; font-size: 11px; color: #fff; text-shadow: 0 0 4px #000; text-align: center; }
+  #djiPaleta i { display: block; width: 10px; height: 120px; margin: 3px auto; border: 1px solid rgba(255,255,255,.5);
+                 background: linear-gradient(#fffeed, #ffdb33 7%, #ff8000 20%, #db2933 35%, #8c008c 55%, #1f005c 78%, #00000d); }
   #djiFlash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity .3s; }
   #djiFlash.on { opacity: .75; transition: none; }
   /* ---------- OSD de Betaflight (dron FPV): lo que se ve en las gafas, sustituye al panel de instrumentos ---------- */
@@ -706,7 +714,11 @@
   <div class="djiBotones" id="djiIzq"><button id="djiDespegar" title="Despegar / aterrizar (botón A del mando)">⇧</button><button id="djiRTH" title="Volver a casa (H, botón B)">H</button><button id="djiBriefing" title="Briefing: mapa de la zona de trabajo (B)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></button></div>
   <div id="djiGimbal" title="Inclinación de la cámara (Q/E, gatillos)"><i id="djiGimbalMarca"></i><span id="djiGimbalTxt">−10°</span></div>
   <div class="djiBotones" id="djiLado"><button class="disparo" id="djiDisparo" title="Disparar: foto o vídeo (F / V, botones Y / X)"><i></i></button>
-    <button id="djiCamModo" title="Cambiar entre foto y vídeo">⇄</button><span class="txt" id="djiCamTxt">FOTO</span></div>
+    <button id="djiCamModo" title="Cambiar entre foto y vídeo">⇄</button><span class="txt" id="djiCamTxt">FOTO</span>
+    <div id="djiZoomCaja"><button id="djiZoomMas" title="Acercar el zoom (Z, cruceta arriba)">+</button><span class="txt" id="djiZoomTxt">1x</span>
+      <button id="djiZoomMenos" title="Alejar el zoom (X, cruceta abajo)">−</button><button id="djiIR" title="Cámara térmica (C, cruceta derecha)">IR</button></div></div>
+  <div id="djiMedidor"><svg viewBox="0 0 46 46" aria-hidden="true"><path d="M23 2V17M23 29V44M2 23H17M29 23H44" stroke="#000" stroke-width="4"/><path d="M23 2V17M23 29V44M2 23H17M29 23H44" stroke="#fff" stroke-width="2"/><circle cx="23" cy="23" r="3" fill="none" stroke="#fff" stroke-width="1.5"/></svg><span id="djiTemp"></span></div>
+  <div id="djiPaleta">150 °C<i></i>−20 °C</div>
   <div id="djiAbajo"><div id="djiMapa"></div><div id="djiTele"><div><span>D</span><b id="djiD">0 m</b></div><div><span>H</span><b id="djiH">0 m</b></div>
     <div><span>HS</span><b id="djiHS">0,0 m/s</b></div><div><span>VS</span><b id="djiVS">0,0 m/s</b></div></div></div>
   <div id="djiFlash"></div>
@@ -739,16 +751,16 @@
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
-<script src="js/modelos.js?v=21"></script>
+<script src="js/modelos.js?v=22"></script>
 <script src="js/entorno.js?v=25"></script>
 <script src="js/pista_fpv.js?v=1"></script>
-<script src="js/operaciones.js?v=3"></script>
-<script src="js/visor.js?v=34"></script>
-<script src="js/industria.js?v=3"></script>
-<script src="js/visor_real.js?v=34"></script>
+<script src="js/operaciones.js?v=5"></script>
+<script src="js/visor.js?v=35"></script>
+<script src="js/industria.js?v=4"></script>
+<script src="js/visor_real.js?v=35"></script>
 <script src="js/bipode.js?v=3"></script>
 <script src="mundos/cartagena.js?v=20"></script>
-<script src="escenarios.js?v=7"></script>
+<script src="escenarios.js?v=8"></script>
 <script src="singulares.js?v=3"></script>
 <script>
 "use strict";
@@ -1278,12 +1290,12 @@ function nuevoEvaluador() {
          contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
          pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
-  for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
+  for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
   const O = ESCENARIOS[sesion.escenario].operacion;
   ev.op = null;
   if (O && entorno.mundo) {                    // operaciones: el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
     const d = Operacion.sortear(Operacion.ajustar(O, MULTI.sala && MULTI.sala.ajustes)), c = casa();
-    ev.op = new Operacion(d, (k, e) => marcar(k, e), (k, t) => { if (ev.obj[k]) ev.obj[k].texto += ` (${t})`; }, { casa: [c.N, c.E], suelo: (N, E) => entorno.altura(N, E), h0: entorno.terreno.h0 });
+    ev.op = new Operacion(d, (k, e) => marcar(k, e), (k, t) => { if (ev.obj[k]) ev.obj[k].texto += ` (${t})`; }, { casa: [c.N, c.E], suelo: (N, E) => entorno.altura(N, E), h0: entorno.terreno.h0, solido: (N, E, up) => !!(entorno.chocaEdificio && entorno.chocaEdificio([N, E, -up], 0)) });
   }
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   ev.fpv = F && !mundoDe(sesion.escenario) ? new PistaFpv(F, (k, e) => marcar(k, e)) : null;   // entrenamientos del dron FPV
@@ -1591,7 +1603,7 @@ function reiniciar() {
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
   nuevoEvaluador(); vuelo = null; ponerPausa(false); ordenesAlEvaluador();
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
-  DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
+  DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; DJI.zoomI = 0; DJI.termica = false; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; ponerTxt($h("lejos"), "");
   iniciarJuegoBip();
   if (ESCENARIOS[sesion.escenario].enVuelo && !modelo.esTerrestre) { empezarEnVuelo(); return; }
@@ -1648,7 +1660,7 @@ function paso(dt) {
     if (ev.fpv.choque) { terminarVuelo("roto (" + ev.fpv.choque + ")", vn); return; }
   }
   if (ev && ev.op) {                          // operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-    for (const t of ev.op.paso(pAnt, av, dt, { gimbal: av.gimbal, grabando: DJI.grabando })) toast(t);
+    for (const t of ev.op.paso(pAnt, av, dt, Object.assign({ gimbal: av.gimbal, grabando: DJI.grabando }, camDJI()))) toast(t);
     if (ev.op.choque) { terminarVuelo("roto (" + ev.op.choque + ")", vn); return; }
   }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
@@ -2060,7 +2072,8 @@ function entrarSala(s) {
   const E = ESCENARIOS[s.escenario]; if (!E) { toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return; }
   MULTI.sala = s; MULTI.otros.clear(); ORDENES.reiniciar();
   const veh = (E.vehiculos || ["avion", "dron", "fpv"]).concat(E.objetivos.length || E.operacion ? [] : ["bipode"]);   // vuelo libre: tambien el bipode
-  if (!veh.includes(vehiculoDe(sesion.avion))) elegirAvion(Modelos.ids().find(a => veh.includes(vehiculoDe(a))) || sesion.avion);
+  if (E.operacion && E.operacion.avion && Modelos.datos(E.operacion.avion)) elegirAvion(E.operacion.avion);       // trabajos: el dron que piden
+  else if (!veh.includes(vehiculoDe(sesion.avion))) elegirAvion(Modelos.ids().find(a => veh.includes(vehiculoDe(a))) || sesion.avion);
   sesion.escenario = s.escenario;
   if (s.lanz && typeof s.lanz === "object" && numsFinitos([s.lanz.N, s.lanz.E, s.lanz.rumbo], 3)) sesion.lanz = s.lanz;         // solo si viene bien formado
   if (s.viento && typeof s.viento === "object" && numsFinitos([s.viento.vel, s.viento.desde], 2) && !E.viento) sesion.viento = s.viento;
@@ -2293,7 +2306,8 @@ function irOperaciones() {
 /** Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue. */
 function volarOperacion(id) {
   const E = ESCENARIOS[id], S = E.operacion.salida;
-  if (vehiculoDe(sesion.avion) !== "dron") elegirAvion(Object.keys(Modelos._datos || {}).find(a => vehiculoDe(a) === "dron") || "DJI_MINI");
+  if (E.operacion.avion && Modelos.datos(E.operacion.avion)) elegirAvion(E.operacion.avion);       // el dron que pide el trabajo
+  else if (vehiculoDe(sesion.avion) !== "dron") elegirAvion(Object.keys(Modelos._datos || {}).find(a => vehiculoDe(a) === "dron") || "DJI_MINI");
   sesion.escenario = id; sesion.lanz = { mundo: E.mundo, N: S.n, E: S.e, rumbo: S.rumbo }; empezar();
 }
 document.getElementById("btnOpVolver").onclick = irInicio;
@@ -2632,6 +2646,9 @@ window.addEventListener("keydown", e => {
     if (e.code === "KeyH") djiRTH();
     if (e.code === "KeyF") djiFoto();
     if (e.code === "KeyV") djiVideo();
+    if (e.code === "KeyZ") djiZoom(1);
+    if (e.code === "KeyX") djiZoom(-1);
+    if (e.code === "KeyC") djiTermica();
   }
   if (e.code === "KeyL" && !modelo.esFPV) lanzar();
   if (e.code === "KeyR") reiniciar();
@@ -2812,6 +2829,9 @@ function leerMando(dt) {
     if (pulsado(4)) djiModo();
     if (pulsado(5)) visor.camara = visor.camara % 3 + 1;
     if (pulsado(8)) reiniciar();
+    if (pulsado(12)) djiZoom(1);                            // cruceta: arriba y abajo el zoom, a la derecha la termica
+    if (pulsado(13)) djiZoom(-1);
+    if (pulsado(15)) djiTermica();
     const tr = i => p.buttons[i] ? (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0)) : 0;
     MANDO.gimbal = tr(7) - tr(6);                           // gatillos: rueda del gimbal (RT sube, LT baja)
     // CSC (combinacion de palancas de los drones comerciales): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
@@ -2879,7 +2899,15 @@ function leerGasTeclado(dt) {
 //  APP dron comercial FLY (cuadricoptero): modo de vuelo C/N/S, foto y video, despegue automatico, aterrizar y volver a casa.
 //  La pantalla #dji imita lo que ve el piloto en el movil con el mando: solo eso, sin los instrumentos del avion.
 // =====================================================================
-const DJI = { grabando: false, tRec: 0, fotos: 0, video: false, tAnt: 0 };
+const DJI = { grabando: false, tRec: 0, fotos: 0, video: false, tAnt: 0, zoomI: 0, termica: false };
+/** La camara del dron de inspeccion (datos.camara: niveles de zoom y termica): el zoom actual y si esta la termica. */
+function camDJI() { const C = modelo && modelo.camara; return { zoom: C ? C.zoom[DJI.zoomI] || 1 : 1, termica: !!(C && C.termica && DJI.termica) }; }
+function djiZoom(paso) {
+  const C = modelo && modelo.camara; if (!C || Repeticion.activa) return;
+  DJI.zoomI = Math.max(0, Math.min(C.zoom.length - 1, DJI.zoomI + paso)); const z = C.zoom[DJI.zoomI];
+  toast(`Zoom ${z}x` + (z === 1 ? " · gran angular" : z <= C.zoom_optico ? " · teleobjetivo" : " · digital"));
+}
+function djiTermica() { const C = modelo && modelo.camara; if (!C || !C.termica || Repeticion.activa) return; DJI.termica = !DJI.termica; toast(DJI.termica ? "Cámara térmica" : "Cámara normal"); }
 const NOMBRES_MODO = { C: "Cine", N: "Normal", S: "Sport" };
 function djiModo(m) {
   if (!modelo || !modelo.esCuadricoptero) return;
@@ -2889,7 +2917,7 @@ function djiModo(m) {
 function djiFoto() {
   if (!modelo || !modelo.esCuadricoptero) return;
   DJI.fotos++; const f = document.getElementById("djiFlash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 80);
-  const T = ev && ev.op ? ev.op.foto(av, av.gimbal) : [];        // operaciones: lo que vale esa foto para el trabajo
+  const T = ev && ev.op ? ev.op.foto(av, av.gimbal, camDJI()) : [];        // operaciones: lo que vale esa foto para el trabajo
   toast(T.length ? T.join(" · ") : `Foto ${DJI.fotos}`);
 }
 function djiVideo() {
@@ -2914,6 +2942,9 @@ function djiRTH() {
 document.getElementById("djiModo").onclick = () => djiModo();
 document.getElementById("djiDisparo").onclick = djiDisparo;
 document.getElementById("djiCamModo").onclick = djiCamModo;
+document.getElementById("djiZoomMas").onclick = () => djiZoom(1);
+document.getElementById("djiZoomMenos").onclick = () => djiZoom(-1);
+document.getElementById("djiIR").onclick = djiTermica;
 document.getElementById("djiDespegar").onclick = djiDespegar;
 document.getElementById("djiRTH").onclick = djiRTH;
 /** Briefing de los trabajos: la misma imagen de la orden de trabajo (la zona y el despegue, sin las soluciones), encima del vuelo. */
@@ -2964,6 +2995,13 @@ function hudDji(h, vn, vs, dist) {
   $("djiRTH").classList.toggle("activo", !!(av.rth && av.rth.fase !== "bajar"));
   const d = $("djiDisparo"); d.classList.toggle("video", DJI.video); d.classList.toggle("rec", DJI.grabando);
   ponerTxt($("djiCamTxt"), DJI.video ? "VÍDEO" : "FOTO");
+  // camara de inspeccion: zoom, termica, el medidor puntual del centro y la escala de temperaturas
+  const Cm = modelo.camara, cm = camDJI(), verMed = cm.termica && visor.camara === 3;
+  ponerEstilo($("djiZoomCaja"), "display", Cm ? "" : "none");
+  if (Cm) { ponerTxt($("djiZoomTxt"), cm.zoom + "x"); ponerClase($("djiIR"), cm.termica ? "activo" : ""); ponerEstilo($("djiIR"), "display", Cm.termica ? "" : "none"); }
+  ponerEstilo($("djiMedidor"), "display", verMed ? "block" : "none"); ponerEstilo($("djiPaleta"), "display", verMed ? "block" : "none");
+  if (verMed) { const L = ev && ev.op ? ev.op.lectura : null, Tm = L ? L.T : OPS.AMBIENTE; ponerTxt($("djiTemp"), Tm > 150 ? ">150 °C" : Tm.toFixed(1).replace(".", ",") + " °C"); }
+  visor.zoomCam = cm.zoom; visor.termica = cm.termica;
   const mapa = $("djiMapa"), gps = $("gps"); if (gps.parentNode !== mapa) mapa.appendChild(gps);
 }
 // =====================================================================
@@ -3178,6 +3216,19 @@ function pintarGPSMundo(cv, rumbo, N, E) {
   if (PL && PL.rumbo === undefined) {                                  // con rumbo (SABIC) las filas ya estan en la ortofoto
     const fondo = PL.ancho * Math.cos(PL.inclinacion * D2R); g.fillStyle = "#182c52";
     for (let i = 0; i < PL.filas; i++) { const n = PL.n0 + i * PL.separacion; g.fillRect(X(PL.e0), Y(n + fondo / 2), PL.largo * k, Math.max(1, fondo * k)); }
+  }
+  const OPf = ev && ev.op && ev.op.d.racks ? ev.op : null;
+  if (OPf) {                                                          // fabrica: las pistas (racks con puntos calientes, unidad con la fuga y su ATEX, antorcha)
+    g.save(); g.lineCap = "round"; g.lineJoin = "round";
+    const U = OPf.unidadFuga.poligono, contorno = () => { g.beginPath(); U.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.closePath(); };
+    contorno(); g.strokeStyle = "rgba(229,57,53,0.35)"; g.lineWidth = Math.max(3, 2 * OPf.d.atex * k); g.stroke();
+    contorno(); g.fillStyle = "rgba(229,57,53,0.55)"; g.fill(); g.strokeStyle = "#e53935"; g.lineWidth = 2; g.stroke();
+    g.strokeStyle = "#ff9800"; g.lineWidth = 3; g.setLineDash([6, 4]);
+    for (const ri of OPf.racksPista) { const R = OPf.d.racks[ri]; g.beginPath(); g.moveTo(X(R.e0), Y(R.n0)); g.lineTo(X(R.e1), Y(R.n1)); g.stroke(); }
+    g.setLineDash([]); const A = OPf.d.antorcha;
+    g.fillStyle = "#ffb300"; g.strokeStyle = "#000"; g.lineWidth = 1; g.beginPath(); g.arc(X(A.e), Y(A.n), 6, 0, 2 * Math.PI); g.fill(); g.stroke();
+    g.fillStyle = "#000"; g.font = "bold 9px sans-serif"; g.textAlign = "center"; g.fillText("A", X(A.e), Y(A.n) + 3); g.textAlign = "start";
+    g.restore();
   }
   g.fillStyle = "#fff"; g.font = "bold 10px sans-serif";
   for (const [nombre, rango, e, n] of M.lugares) if (rango <= (semi < 5000 ? 5 : 3) && Math.abs(e - E) < semi && Math.abs(n - N) < semi) { g.fillText(nombre, X(e) + 3, Y(n) - 3); g.fillRect(X(e) - 1.5, Y(n) - 1.5, 3, 3); }

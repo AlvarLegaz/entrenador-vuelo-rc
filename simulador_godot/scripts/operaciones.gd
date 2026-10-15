@@ -8,8 +8,9 @@ extends RefCounted
 ## (poner_operacion).
 ##
 ## Uso: op = Operacion.new(Operacion.sortear(datos), marcar, anotar, {casa: [N, E], suelo: Callable(N, E), h0}); en cada paso de la fisica
-## op.paso(p_ant, av, dt, {gimbal, grabando}) devuelve los avisos y deja op.choque si ha chocado; con cada foto
-## op.foto(av, gimbal); al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la linea "Ahora: ..." del panel.
+## op.paso(p_ant, av, dt, {gimbal, grabando, zoom, termica}) devuelve los avisos y deja op.choque si ha chocado; con cada foto
+## op.foto(av, gimbal, {zoom, termica}); al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la linea "Ahora: ..." del panel.
+## Con la termica, op.lectura es lo que mide el medidor puntual ({T, tipo, nombre} o null) y op.termicos lo que se ve caliente o frio.
 
 const TECHO := 120.0
 const VLOS := 500.0
@@ -18,6 +19,13 @@ const CAM_V := 29.0
 static var CAM_H := atan(tan(29 * PI / 180) * 4 / 3) * 180 / PI
 const CASA := 10.0
 const RESERVA := 20.0
+const RETICULA := 0.6               # radio de la cruz del medidor puntual de la termica (grados con zoom 1x)
+const AMBIENTE := 29.5              # lo que mide la termica en el suelo (grados C)
+## Temperatura (grados C) -> "calor" de la imagen termica (0 frio, 1 lo mas caliente): opCalor de operaciones.js.
+static func calor(T: float) -> float:
+	if T >= 40: return 0.55 + 0.45 * minf(1, (T - 40) / 110)
+	if T <= 10: return 0.15 * maxf(0, (T + 20) / 30)
+	return 0.15 + 0.4 * (T - 10) / 30
 const D2R := PI / 180.0
 const R2D := 180.0 / PI
 
@@ -40,6 +48,21 @@ var error = null
 var orb = null
 var yaw_ant = null
 var giro := 0.0
+var termicos := []                  # termica: lo que se ve caliente o frio
+var lectura = null                  # lo que mide el medidor puntual
+var medida = null
+var hechos_c := []                  # puntos calientes medidos (fabrica) o fotografiados (paneles)
+var modulos_c := []
+var racks_pista := []
+var boca := []
+var placa := []
+var valvula := []
+var unidad_fuga := {}
+var hecho_fuga := false
+var hecho_placa := false
+var hecho_piloto := false
+var t_todo = null
+var solido := Callable()
 
 static func desenrollar(x: float) -> float: return x - TAU * round(x / TAU)
 # nombres de los desperfectos de la inspeccion: los sitios salen al azar de "candidatos" y cada uno lleva uno de estos
@@ -128,6 +151,32 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 			if P.has("huecos") and f in P["huecos"]: continue               # pasillo sin paneles
 			if r.all(func(g): return g[0] != f or absi(g[1] - x) >= 10): r.append([f, x])
 		dd["defectos"] = r
+		if O.has("calientes"):                      # y los modulos con punto caliente (solo se ven con la termica), en otros sitios
+			var c := []
+			while c.size() < int(O["calientes"]):
+				var f := int(floor(rnd.call() * P["filas"])); var x := 3 + int(floor(rnd.call() * (P["largo"] - 6)))
+				if P.has("huecos") and f in P["huecos"]: continue
+				if (r + c).all(func(g): return g[0] != f or absi(g[1] - x) >= 10): c.append([f, x])
+			dd["calientes"] = c
+	if O.has("racks"):                                # fabrica: puntos calientes en tuberias de plata de racks distintos, la fuga y la antorcha
+		var libres := []
+		for i in (O["racks"] as Array).size(): libres.append(i)
+		var c := []
+		while c.size() < int(O["calientes"]):
+			var k := int(floor(rnd.call() * libres.size())); var ri: int
+			if not libres.is_empty(): ri = libres[k]; libres.remove_at(k)
+			else: ri = int(floor(rnd.call() * (O["racks"] as Array).size()))
+			var tbs := Industria.tuberias(O["racks"][ri]); var plata := []
+			for i in tbs.size():
+				if int(tbs[i]["color"]) == 5: plata.append(i)
+			var ti: int = plata[int(floor(rnd.call() * plata.size()))]
+			var f := roundf((0.15 + 0.7 * rnd.call()) * 1000) / 1000; var Tc := roundf(105 + 30 * rnd.call())
+			c.append([ri, ti, f, Tc])
+		dd["puntosCalientes"] = c
+		var ui := int(floor(rnd.call() * (O["unidades"] as Array).size()))
+		var vi := int(floor(rnd.call() * (O["unidades"][ui]["valvulas"] as Array).size())); var lado := int(floor(rnd.call() * 4))
+		dd["fuga"] = [ui, vi, lado]
+		dd["placaTxt"] = "A-%d" % (10 + int(floor(rnd.call() * 90))); dd["piloto"] = rnd.call() < 0.7
 	if O.has("parcela") and O.has("manchas"):         # agricultura: las manchas en la parcela (o en su poligono), sin pisarse
 		var P: Dictionary = O["parcela"]; var r := []
 		for mm in O["manchas"]:
@@ -150,6 +199,7 @@ func _cuenta() -> int: return hechos.filter(func(x): return x).size()
 
 func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dictionary) -> void:
 	d = datos; marcar = marcar_; anotar = anotar_; casa = mundo["casa"]; suelo = mundo["suelo"]; h0 = mundo["h0"]
+	solido = mundo.get("solido", Callable())         # (N, E, arriba) -> true si hay un edificio o una instalacion: tapa la vista de la termica
 	var nh := 0
 	for k in ["puntos", "manchas", "defectos"]:
 		if d.has(k): nh = (d[k] as Array).size()
@@ -161,6 +211,7 @@ func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dicti
 			while e < P["e1"]: celdas.append([n, e, 0]); e += 5
 			n += 5
 	if d.has("planta"): _planta()
+	if d.has("racks"): _fabrica()
 
 ## Punto de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo).
 func z(n: float, e: float, q: Dictionary) -> float:
@@ -172,8 +223,38 @@ static func camara(av: Dictionary, gimbal: float, P: Array) -> Dictionary:
 	var v := [P[0] - av["p"][0], P[1] - av["p"][1], -(P[2] + av["p"][2])]
 	return { "x": v[0] * cy * cg + v[1] * sy * cg - v[2] * sg, "y": -v[0] * sy + v[1] * cy, "z": v[0] * cy * sg + v[1] * sy * sg + v[2] * cg,
 			 "d": sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) }
-static func en_foto(c: Dictionary, k: float) -> bool:
-	return c["x"] > 0 and absf(c["y"]) <= k * tan(CAM_H * D2R) * c["x"] and absf(c["z"]) <= k * tan(CAM_V * D2R) * c["x"]
+static func en_foto(c: Dictionary, k: float, zoom := 1.0) -> bool:
+	return c["x"] > 0 and absf(c["y"]) <= k * tan(CAM_H * D2R) / zoom * c["x"] and absf(c["z"]) <= k * tan(CAM_V * D2R) / zoom * c["x"]
+
+## Distancia del rayo del centro de la camara (rumbo y gimbal) a un segmento P0-P1 (N, E, arriba): {t, d} (rayoSegmento).
+static func rayo_segmento(av: Dictionary, gimbal: float, P0: Array, P1: Array) -> Dictionary:
+	var y: float = Cuat.euler(av["q"])[2]; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
+	var O := [av["p"][0], av["p"][1], -av["p"][2]]; var v := [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]]; var w0 := [O[0] - P0[0], O[1] - P0[1], O[2] - P0[2]]
+	var b: float = u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; var c: float = v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
+	var dd: float = u[0] * w0[0] + u[1] * w0[1] + u[2] * w0[2]; var e: float = v[0] * w0[0] + v[1] * w0[1] + v[2] * w0[2]
+	var s := 0.0
+	if c > 1e-9:
+		var den := c - b * b; s = clampf((e - b * dd) / den, 0, 1) if den > 1e-12 else 0.0
+	var t := maxf(0, s * b - dd)
+	if c > 1e-9: s = clampf((e + t * b) / c, 0, 1)
+	var q := [w0[0] + t * u[0] - s * v[0], w0[1] + t * u[1] - s * v[1], w0[2] + t * u[2] - s * v[2]]
+	return { "t": t, "d": sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]) }
+## Lo que mide el medidor puntual de la termica: el objeto termico mas cercano dentro de la cruz del centro, o null.
+func medir(av: Dictionary, gimbal: float, zoom: float):
+	var mejor = null; var tm := 0.0
+	for o in termicos:
+		var r := rayo_segmento(av, gimbal, o["P0"], o["P1"])
+		if r["t"] > 0.5 and r["d"] <= o["r"] + r["t"] * tan(RETICULA * D2R) / zoom and (mejor == null or r["t"] < tm): mejor = o; tm = r["t"]
+	if mejor != null and solido.is_valid() and _tapado(av, gimbal, tm): return null
+	return { "T": mejor["T"], "tipo": mejor["tipo"], "nombre": mejor["nombre"], "i": mejor["i"], "dist": tm } if mejor != null else null
+## Si un edificio o una instalacion tapa el rayo del centro antes de llegar a t m (los ultimos 6 m no cuentan) (_tapado).
+func _tapado(av: Dictionary, gimbal: float, t: float) -> bool:
+	var y: float = Cuat.euler(av["q"])[2]; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
+	var s := 2.5
+	while s < t - 6:
+		if solido.call(av["p"][0] + s * u[0], av["p"][1] + s * u[1], -av["p"][2] + s * u[2]): return true
+		s += 2.5
+	return false
 
 func _aviso(clave: String, texto: String, lista: Array) -> void:
 	if not avisos.get(clave, false): avisos[clave] = true; lista.append(texto)
@@ -205,6 +286,64 @@ func _planta() -> void:
 		var F: Array = mesas_fila[int(q[0])]; var M: Dictionary = F[0]; var x: float = q[1]
 		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
 		var pq := ne(x, int(q[0]) * P["separacion"]); modulos.append([pq[0], pq[1], M["y"] + P["h0"] + P["ancho"] * s / 2])
+	var ic := 0
+	for q in (d["calientes"] if d.get("calientes") is Array else []):    # modulos con punto caliente: una celula quemada a 70-95 grados
+		var F: Array = mesas_fila[int(q[0])]; var M: Dictionary = F[0]; var x: float = q[1]
+		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
+		var pq := ne(x, int(q[0]) * P["separacion"]); var P3 := [pq[0], pq[1], M["y"] + P["h0"] + P["ancho"] * s / 2]
+		var Tm := 70 + 5 * ((int(q[0]) * 7 + int(q[1])) % 6)
+		termicos.append({ "tipo": "modulo", "i": ic, "nombre": "módulo con punto caliente", "T": Tm, "P0": P3, "P1": P3.duplicate(), "r": 0.5 })
+		modulos_c.append(P3); hechos_c.append(false); ic += 1
+
+## Fabrica (trabajo de SABIC): los objetos de la termica, la valvula de la fuga y su zona ATEX, y la placa de la antorcha (_fabrica).
+func _fabrica() -> void:
+	var T := termicos; var k := 0
+	for pc in d["puntosCalientes"]:
+		var ri: int = int(pc[0]); var R: Dictionary = d["racks"][ri]; var tb: Dictionary = Industria.tuberias(R)[int(pc[1])]
+		var y: float = suelo.call((R["n0"] + R["n1"]) / 2, (R["e0"] + R["e1"]) / 2) + tb["yc"]
+		var L := Vector2(tb["n1"] - tb["n0"], tb["e1"] - tb["e0"]).length(); var un: float = (tb["n1"] - tb["n0"]) / L; var ue: float = (tb["e1"] - tb["e0"]) / L
+		var f: float = pc[2]; var n: float = tb["n0"] + f * (tb["n1"] - tb["n0"]); var e: float = tb["e0"] + f * (tb["e1"] - tb["e0"])
+		T.append({ "tipo": "caliente", "i": k, "nombre": "aislamiento roto en el rack %s" % R["nombre"], "T": pc[3], "P0": [n - 0.6 * un, e - 0.6 * ue, y], "P1": [n + 0.6 * un, e + 0.6 * ue, y], "r": tb["d"] / 2 + 0.05 })
+		if not ri in racks_pista:
+			racks_pista.append(ri)
+			for v in Industria.tuberias(R):
+				if int(v["color"]) == 6:              # las de vapor de ese rack: calientes de verdad
+					T.append({ "tipo": "vapor", "i": -1, "nombre": "tubería de vapor del rack %s" % R["nombre"], "T": 62, "P0": [v["n0"], v["e0"], y - tb["yc"] + v["yc"]], "P1": [v["n1"], v["e1"], y - tb["yc"] + v["yc"]], "r": v["d"] / 2 + 0.03 })
+		k += 1; hechos_c.append(false)
+	for C in d["chimeneas"]:                       # chimeneas: la parte de arriba templada
+		var yc: float = suelo.call(C["n"], C["e"])
+		T.append({ "tipo": "chimenea", "i": -1, "nombre": "chimenea", "T": 85, "P0": [C["n"], C["e"], yc + 0.85 * C["alto"]], "P1": [C["n"], C["e"], yc + C["alto"]], "r": C["radio"] + 0.3 })
+	var A: Dictionary = d["antorcha"]; var ya: float = suelo.call(A["n"], A["e"])
+	boca = [A["n"], A["e"], ya + A["alto"]]
+	T.append({ "tipo": "antorcha", "i": -1, "nombre": "llama del piloto de la antorcha" if d["piloto"] else "boca de la antorcha (piloto apagado)", "T": 600 if d["piloto"] else 70,
+			   "P0": [A["n"], A["e"], ya + A["alto"] - 1], "P1": [A["n"], A["e"], ya + A["alto"] + (1.5 if d["piloto"] else 0.0)], "r": A["radio"] })
+	var a := atan2(casa[1] - A["e"], casa[0] - A["n"])      # la placa, en la boca de la antorcha, de cara al despegue
+	placa = [A["n"] + (A["radio"] + 0.3) * cos(a), A["e"] + (A["radio"] + 0.3) * sin(a), ya + A["alto"] - 2.2, a * R2D]
+	_fuga()
+## La valvula de la fuga (d.fuga: unidad, estructura y cara), su objeto termico (gas frio) y la zona ATEX de su unidad (_fuga).
+func _fuga() -> void:
+	var fg: Array = d["fuga"]; var U: Dictionary = d["unidades"][int(fg[0])]; var V: Array = U["valvulas"][int(fg[1])]; var lado := int(fg[2])
+	var e: float = V[0]; var n: float = V[1]; var h: float = V[2]; var largo: float = V[3]; var ancho: float = V[4]; var r: float = V[5] * D2R
+	var x := (largo / 2 + 0.3) if lado == 0 else ((-largo / 2 - 0.3) if lado == 1 else 0.0); var z := (ancho / 2 + 0.3) if lado == 2 else ((-ancho / 2 - 0.3) if lado == 3 else 0.0)
+	var N := n + x * cos(r) - z * sin(r); var E := e + x * sin(r) + z * cos(r); var up: float = suelo.call(n, e) + h
+	valvula = [N, E, up]; unidad_fuga = U; hecho_fuga = false
+	termicos = termicos.filter(func(o): return o["tipo"] != "fuga")
+	termicos.append({ "tipo": "fuga", "i": -1, "nombre": "fuga de gas en la unidad %s" % U["nombre"], "T": -15, "P0": [N, E, up], "P1": [N, E, up], "r": 0.6 })
+## Orden del profesor: la fuga pasa a la unidad mas cercana a (N, E), en su estructura mas cercana (moverFuga).
+func mover_fuga(N: float, E: float) -> bool:
+	if not d.has("racks"): return false
+	var cen := func(U: Dictionary) -> Array:
+		var sn := 0.0; var se := 0.0
+		for p in U["poligono"]: sn += p[0]; se += p[1]
+		return [sn / (U["poligono"] as Array).size(), se / (U["poligono"] as Array).size()]
+	var ui := 0
+	for i in (d["unidades"] as Array).size():
+		var c: Array = cen.call(d["unidades"][i]); var c0: Array = cen.call(d["unidades"][ui])
+		if Vector2(c[0] - N, c[1] - E).length() < Vector2(c0[0] - N, c0[1] - E).length(): ui = i
+	var V: Array = d["unidades"][ui]["valvulas"]; var vi := 0
+	for i in V.size():
+		if Vector2(V[i][1] - N, V[i][0] - E).length() < Vector2(V[vi][1] - N, V[vi][0] - E).length(): vi = i
+	d["fuga"] = [ui, vi, d["fuga"][2]]; _fuga(); return true
 
 ## Un paso de la fisica. info: {gimbal (grados), grabando (video)}.
 func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
@@ -237,6 +376,33 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 		var P: Dictionary = d["planta"]; var q := lt(N, E); var M0: Dictionary = mesas[0]; var f: float = M0["fondo"]
 		if q[1] > -f and q[1] < (P["filas"] - 1) * P["separacion"] + f and q[0] > 0 and q[0] < P["largo"] and agl < M0["alto"] + d["minima"]:
 			m.call("baja", "mal"); _aviso("baja", "¡A menos de %s m de los paneles! Sube" % _n(d["minima"]), T)
+	# ---- termica: lo que mide el medidor puntual (y, sostenido sobre un punto caliente o la fuga, se da por medido) ----
+	var zoom: float = float(info.get("zoom", 1.0))
+	lectura = medir(av, info["gimbal"], zoom) if info.get("termica", false) and not termicos.is_empty() else null
+	var L = lectura
+	if L != null and (L["tipo"] == "caliente" or L["tipo"] == "fuga") and not (hecho_fuga if L["tipo"] == "fuga" else hechos_c[L["i"]]):
+		var lim: float = d["dist_fuga"] if L["tipo"] == "fuga" else d["dist_caliente"]; var clave := "%s%d" % [L["tipo"], L["i"]]
+		if L["dist"] / zoom > lim:
+			medida = null; _aviso("lejos" + clave, "%s está a %d m: acércate a menos de %s m o usa más zoom para medirlo" % ["La fuga" if L["tipo"] == "fuga" else "Un punto caliente", int(round(L["dist"])), _n(lim)], T)
+		else:
+			medida = { "clave": clave, "t": medida["t"] + dt } if (medida != null and medida["clave"] == clave) else { "clave": clave, "t": dt }
+			if medida["t"] >= d["medir_s"]:
+				medida = null
+				if L["tipo"] == "fuga": hecho_fuga = true; m.call("fuga", "ok"); T.append("¡Fuga localizada! %s: gas a %s °C · posición enviada" % [L["nombre"], _n(L["T"])])
+				else:
+					hechos_c[L["i"]] = true; var k := hechos_c.filter(func(x): return x).size()
+					T.append("Punto caliente %d: %s, %s °C ✓ (%d/%d)" % [k, L["nombre"], _n(L["T"]), k, (d["puntosCalientes"] as Array).size()])
+					if k == (d["puntosCalientes"] as Array).size(): m.call("calientes", "ok")
+				_todo(t)
+	else: medida = null
+	if L != null and L["tipo"] == "vapor": _aviso("vapor", "Tubería de vapor a 62 °C: está caliente por diseño (va aislada), no es una avería", T)
+	# ---- fabrica: zona ATEX alrededor de la unidad con la fuga y nunca a menos de 10 m sobre las unidades ----
+	if d.has("racks"):
+		var A: Array = unidad_fuga["poligono"]
+		if dentro(A, N, E) or a_borde(A, N, E) < d["atex"]: m.call("atex", "mal"); _aviso("atex", "¡Dentro de la zona ATEX de la unidad %s! Sal: no se puede volar a menos de %s m" % [unidad_fuga["nombre"], _n(d["atex"])], T)
+		for U in d["unidades"]:
+			if not av.get("posado", false) and dentro(U["poligono"], N, E) and agl < U["alto"] + d["sobre_unidades"]: m.call("unidades", "mal"); _aviso("unidades", "¡A menos de %s m por encima de la unidad %s! Sube" % [_n(d["sobre_unidades"]), U["nombre"]], T)
+		if t0 != null and t - t0 > d["limite_s"] and t_todo == null: m.call("tiempo", "mal"); _aviso("tiempo", "Se han acabado los 30 minutos: termina lo que puedas y vuelve", T)
 	# ---- busqueda: el tiempo ----
 	if d.has("zona") and not encontrado and t0 != null and t - t0 > d["limite_s"]:
 		m.call("tiempo", "mal"); _aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T)
@@ -265,8 +431,9 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	return T
 
 ## Una foto (boton de foto del dron comercial): lo que vale para el trabajo y el aviso.
-func foto(av: Dictionary, gimbal: float) -> Array:
+func foto(av: Dictionary, gimbal: float, cam := {}) -> Array:
 	var T := []; var N: float = av["p"][0]; var E: float = av["p"][1]; var up: float = -av["p"][2]; var agl: float = up - suelo.call(N, E); var m := marcar
+	var zoom: float = float(cam.get("zoom", 1.0)); var ter: bool = bool(cam.get("termica", false))
 	fotos += 1
 	if av["estado"] != "volando" or av.get("posado", false): return T
 	if d.has("puntos"):                                # inspeccion: cada punto bien encuadrado, cerca, de frente o desde arriba
@@ -329,24 +496,48 @@ func foto(av: Dictionary, gimbal: float) -> Array:
 				hechos[i] = true; T.append("Mancha %d ✓ (%d/%d)" % [i + 1, _cuenta(), Ms.size()])
 		if _cuenta() == Ms.size(): m.call("manchas", "ok")
 		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ninguna mancha")
-	if d.has("planta"):                                # paneles: cada modulo danado, desde arriba y de 4 a 20 m
-		var motivo := ""
-		for i in modulos.size():
-			if hechos[i]: continue
-			var c := camara(av, gimbal, modulos[i])
-			if not en_foto(c, 1): continue
-			if gimbal > d["gimbal"]:
-				if motivo == "": motivo = "los paneles se fotografían desde arriba (cámara a %s° o más)" % _n(d["gimbal"])
-			elif c["d"] > d["dist"][1]:
-				if motivo == "": motivo = "módulo %d demasiado lejos (%d m; a menos de %s m)" % [i + 1, int(round(c["d"])), _n(d["dist"][1])]
-			elif c["d"] < d["dist"][0]:
-				if motivo == "": motivo = "módulo %d demasiado cerca" % (i + 1)
-			elif not en_foto(c, 0.8):
-				if motivo == "": motivo = "módulo %d en el borde de la foto: encuádralo" % (i + 1)
-			else:
-				hechos[i] = true; T.append("Módulo dañado %d ✓ (%d/%d)" % [i + 1, _cuenta(), modulos.size()])
-		if _cuenta() == modulos.size(): m.call("defectos", "ok")
-		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ningún módulo dañado")
+	if d.has("planta"):                                # paneles: cada modulo danado, desde arriba y de 4 a 20 m (con zoom, la distancia equivalente)
+		var mot := [""]
+		var revisar := func(lista: Array, hech: Array, termico: bool, nombre: String, id: String) -> void:
+			for i in lista.size():
+				if hech[i]: continue
+				var c := camara(av, gimbal, lista[i]); var de: float = c["d"] / zoom
+				if not en_foto(c, 1, zoom): continue
+				var motivo := ""
+				if termico != ter: motivo = ("el %s %d solo se ve con la cámara térmica (C)" % [nombre, i + 1]) if termico else "con la térmica no se ven los cristales rotos ni la suciedad: cambia a la cámara normal (C)"
+				elif gimbal > d["gimbal"]: motivo = "los paneles se fotografían desde arriba (cámara a %s° o más)" % _n(d["gimbal"])
+				elif de > d["dist"][1]: motivo = "%s %d demasiado lejos (%d m; a menos de %s m%s)" % [nombre, i + 1, int(round(c["d"])), _n(d["dist"][1]), " con este zoom" if zoom > 1 else ""]
+				elif de < d["dist"][0]: motivo = "%s %d demasiado cerca" % [nombre, i + 1]
+				elif not en_foto(c, 0.8, zoom): motivo = "%s %d en el borde de la foto: encuádralo" % [nombre, i + 1]
+				else:
+					hech[i] = true; var k := hech.filter(func(x): return x).size()
+					T.append(("Punto caliente %d ✓ (%d/%d)" if termico else "Módulo dañado %d ✓ (%d/%d)") % [i + 1, k, lista.size()])
+					if k == lista.size(): m.call(id, "ok")
+				if motivo != "" and mot[0] == "": mot[0] = motivo
+		revisar.call(modulos, hechos, false, "módulo", "defectos")
+		while hechos_c.size() < modulos_c.size(): hechos_c.append(false)
+		revisar.call(modulos_c, hechos_c, true, "punto caliente", "calientes")
+		if T.is_empty(): T.append(("Foto no válida: " + mot[0]) if mot[0] != "" else "Foto sin ningún módulo dañado")
+	if d.has("racks"):                                 # fabrica: la placa de la antorcha (zoom) y su piloto (termica)
+		var A: Dictionary = d["antorcha"]; var P: Dictionary = d["placa"]; var h := Vector2(N - A["n"], E - A["e"]).length()
+		if not hecho_placa:
+			var c := camara(av, gimbal, placa); var frente := cos(desenrollar(atan2(E - placa[1], N - placa[0]) - placa[3] * D2R))   # 1 de frente, 0 de lado
+			if en_foto(c, 0.5, zoom):
+				if frente < 0.5: T.append("La placa no se ve desde este lado: está en la cara de la antorcha que da al despegue")
+				elif ter: T.append("Con la térmica no se lee la placa: cambia a la cámara normal (C)")
+				elif zoom < P["zoom"]: T.append("La placa no se lee: hace falta un zoom de %sx o más (ahora %sx)" % [_n(P["zoom"]), _n(zoom)])
+				elif agl < P["altura"]: T.append("Foto no válida: a %d m de altura (desde más de %s m)" % [int(round(agl)), _n(P["altura"])])
+				elif h < P["distancia"]: T.append("Foto no válida: a %d m de la antorcha (desde más de %s m)" % [int(round(h)), _n(P["distancia"])])
+				else: hecho_placa = true; m.call("placa", "ok"); T.append("Placa de la antorcha: «%s» ✓" % d["placaTxt"]); _todo(av["t"])
+		if not hecho_piloto:
+			var c := camara(av, gimbal, boca)
+			if en_foto(c, 0.5, zoom):
+				if not ter: T.append("Para ver el piloto de la antorcha hace falta la cámara térmica (C)")
+				elif c["d"] / zoom > 60: T.append("La boca de la antorcha sale muy pequeña (a %d m): acércate o usa más zoom" % int(round(c["d"])))
+				else:
+					hecho_piloto = true; m.call("piloto", "ok")
+					T.append("Piloto de la antorcha: ENCENDIDO (la llama, a más de 150 °C) ✓" if d["piloto"] else "Piloto de la antorcha: APAGADO (la boca, a 70 °C): hay que avisar a la sala de control ✓"); _todo(av["t"])
+		if T.is_empty(): T.append("Foto %d%s" % [fotos, " (térmica)" if ter else ""])
 	if d.has("faro"): T.append("Este trabajo es de vídeo: pulsa V para grabar")
 	return T
 
@@ -369,6 +560,15 @@ func final(fin: String, av: Dictionary, info: Dictionary) -> void:
 	if d.has("zona") and error != null: a.call("posicion", "error %.1f m" % error)
 	if d.has("manchas"): a.call("manchas", "%d de %d" % [n, (d["manchas"] as Array).size()])
 	if d.has("planta"): a.call("defectos", "%d de %d" % [n, modulos.size()])
+	if d.has("planta") and not modulos_c.is_empty(): a.call("calientes", "%d de %d" % [hechos_c.filter(func(x): return x).size(), modulos_c.size()])
+	if d.has("racks"):
+		a.call("calientes", "%d de %d" % [hechos_c.filter(func(x): return x).size(), (d["puntosCalientes"] as Array).size()])
+		if t_todo != null: marcar.call("tiempo", "ok"); a.call("tiempo", mmss(t_todo - t0))
+
+## Fabrica: cuando estan las tres tareas (sin pasarse del tiempo), apunta cuando se acabaron (_todo).
+func _todo(t: float) -> void:
+	if not d.has("racks") or t_todo != null: return
+	if hechos_c.filter(func(x): return x).size() == (d["puntosCalientes"] as Array).size() and hecho_fuga and hecho_placa and hecho_piloto and t0 != null and t - t0 <= d["limite_s"]: t_todo = t
 
 ## Lo que toca ahora (texto del panel, con <b>).
 func ahora(obj: Dictionary, av: Dictionary) -> String:
@@ -384,6 +584,13 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 	if d.has("solape"): return volver if hecho.call("cobertura") else "Parcela cubierta con solape: <b>%d %%</b> (hace falta %d %%) · altura %d m" % [int(round(cobertura() * 100)), int(round(d["cubrir"] * 100)), int(round(maxf(0, -av["p"][2] - suelo.call(N, E))))]
 	if d.has("zona"): return volver if encontrado else "Tiempo: <b>%s</b> · busca la chaqueta roja dentro de los jalones amarillos" % mmss(maxf(0, d["limite_s"] - (av["t"] - t0)))
 	if d.has("manchas"): return volver if n == (d["manchas"] as Array).size() else "Manchas fotografiadas: <b>%d de %d</b> · fotos verticales de 10 a 30 m" % [n, (d["manchas"] as Array).size()]
-	if d.has("planta"): return volver if n == modulos.size() else "Módulos dañados: <b>%d de %d</b> · recorre las filas con la cámara hacia abajo" % [n, modulos.size()]
+	if d.has("planta"):
+		var nc := hechos_c.filter(func(x): return x).size(); var tc := modulos_c.size()
+		if n == modulos.size() and nc == tc: return volver
+		return "Módulos dañados: <b>%d de %d</b>" % [n, modulos.size()] + ((" · puntos calientes (térmica): <b>%d de %d</b>" % [nc, tc]) if tc > 0 else "") + " · recorre las filas con la cámara hacia abajo"
+	if d.has("racks"):
+		var nc := hechos_c.filter(func(x): return x).size(); var tc := (d["puntosCalientes"] as Array).size(); var ok := func(x: bool) -> String: return "✓" if x else "pendiente"
+		if nc == tc and hecho_fuga and hecho_placa and hecho_piloto: return volver
+		return "Tiempo: <b>%s</b> · puntos calientes <b>%d de %d</b> · fuga %s · placa %s · piloto %s" % [mmss(maxf(0, d["limite_s"] - (av["t"] - t0))), nc, tc, ok.call(hecho_fuga), ok.call(hecho_placa), ok.call(hecho_piloto)]
 	if d.has("faro"): return volver if hecho.call("orbita") else "Órbita: <b>%d°</b> de 330° · a %d m del faro" % [int(round(absf(orb["acc"] * R2D))) if orb != null else 0, int(round(Vector2(N - d["faro"]["n"], E - d["faro"]["e"]).length()))]
 	return volver

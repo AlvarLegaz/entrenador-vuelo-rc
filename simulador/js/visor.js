@@ -362,6 +362,7 @@ class Visor {
     this.escena.fog = new THREE.Fog(0xd3dfe9, 450, 2700);           // calima: el cerro y la autopista se difuminan
     this.cam = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);        // mas lejos todo es calima; con mas alcance el mar parpadea sobre el suelo (z-fighting)
     this.camara = 1;                                  // 1 piloto, 2 persecucion, 3 a bordo
+    this.zoomCam = 1; this.termica = false;           // dron con camara de inspeccion: zoom y camara termica (solo en la camara 3)
     this.avion = null;
     this.escena.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a5a3a, 0.72 * 2 * Math.PI));     // cielo azul, rebote de la tierra rojiza
     const sol = new THREE.DirectionalLight(0xfff1dc, 1.05 * 2 * Math.PI); sol.position.set(-350, 520, 260); this.escena.add(sol);
@@ -1113,7 +1114,49 @@ class Visor {
       const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
       for (const sp of this.rotulos) { const h = sp.userData.px * k; sp.scale.set(h * 4, h, 1); }
     }
-    this.renderer.render(this.escena, this.cam);
+    if (this.termica && this.camara === 3 && this.avion && this.avion.dron) this._renderTermico();
+    else this.renderer.render(this.escena, this.cam);
+  }
+
+  /** Imagen de la camara termica (dron de inspeccion, camara 3): la escena a 640 px de ancho, sin tonemapping, con lo que
+   *  solo se ve en la termica (capa 1: lo caliente y lo frio de los trabajos, en colores clave) y pasada por la paleta
+   *  Ironbow: el calor sale de la luz de la escena (suelo al sol templado), el cielo (sin profundidad) frio, y los
+   *  objetos clave con su temperatura (operaciones.js, opCalor). Mismo sombreador que el de mundo_3d.gd. */
+  _renderTermico() {
+    const R = this.renderer, w = R.domElement.width, h = R.domElement.height, tw = 640, th = Math.max(2, Math.round(640 * h / w));
+    if (!this._ter) {
+      const rt = new THREE.WebGLRenderTarget(tw, th, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthTexture: new THREE.DepthTexture(tw, th) });
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture } },
+        vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+        fragmentShader: `uniform sampler2D tColor; uniform sampler2D tDepth; varying vec2 vUv;
+vec3 ironbow(float t) {                 // paleta de las camaras termicas (frio negro-morado, caliente amarillo-blanco)
+  vec3 c0 = vec3(0.0, 0.0, 0.05), c1 = vec3(0.12, 0.0, 0.36), c2 = vec3(0.55, 0.0, 0.55), c3 = vec3(0.86, 0.16, 0.2), c4 = vec3(1.0, 0.5, 0.0), c5 = vec3(1.0, 0.86, 0.2), c6 = vec3(1.0, 1.0, 0.93);
+  if (t < 0.15) return mix(c0, c1, t / 0.15);
+  if (t < 0.35) return mix(c1, c2, (t - 0.15) / 0.2);
+  if (t < 0.55) return mix(c2, c3, (t - 0.35) / 0.2);
+  if (t < 0.72) return mix(c3, c4, (t - 0.55) / 0.17);
+  if (t < 0.88) return mix(c4, c5, (t - 0.72) / 0.16);
+  return mix(c5, c6, (t - 0.88) / 0.12);
+}
+void main() {
+  vec4 c = texture2D(tColor, vUv); float dp = texture2D(tDepth, vUv).x, heat;
+  if (c.r > 0.97 && c.g < 0.03) heat = 0.55 + 0.45 * c.b;            // caliente (clave: rojo puro; azul = cuanto)
+  else if (c.r < 0.03 && c.g > 0.97) heat = 0.15 * c.b;              // frio (clave: verde puro)
+  else if (dp >= 0.99999) heat = 0.05;                               // cielo
+  else heat = 0.16 + 0.3 * clamp(dot(c.rgb, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
+  gl_FragColor = vec4(ironbow(clamp(heat, 0.0, 1.0)), 1.0);
+}`, depthTest: false, depthWrite: false });
+      const esc = new THREE.Scene(); esc.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+      this._ter = { rt, esc, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+    }
+    const T = this._ter;
+    if (T.rt.width !== tw || T.rt.height !== th) T.rt.setSize(tw, th);
+    const tm = R.toneMapping, capas = this.cam.layers.mask;
+    R.toneMapping = THREE.NoToneMapping; this.cam.layers.enable(1);
+    R.setRenderTarget(T.rt); R.render(this.escena, this.cam); R.setRenderTarget(null);
+    R.toneMapping = tm; this.cam.layers.mask = capas;
+    R.render(T.esc, T.cam);
   }
 
   _camara(av) {
@@ -1148,7 +1191,8 @@ class Visor {
       // inclinacion de la rueda (av.gimbal: 0 horizontal, -90 vertical). Campo de vision como el del Mini Dron HQ (83 grados en diagonal)
       const yaw = Cuat.euler(av.q)[2], g = (av.gimbal === undefined ? -10 : av.gimbal) * Math.PI / 180;
       const pos = ned2three(Cuat.rot(av.q, [0.1, 0, -0.1])), fw = ned2three([Math.cos(yaw) * Math.cos(g), Math.sin(yaw) * Math.cos(g), -Math.sin(g)]);   // 10 cm sobre el dron: en el suelo el plano cercano (0,1 m) no corta el terreno
-      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 58;
+      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]);
+      cam.fov = this.zoomCam > 1 ? 2 * Math.atan(Math.tan(29 * Math.PI / 180) / this.zoomCam) * 180 / Math.PI : 58;   // con zoom, el campo se cierra
       cam.up.set(0, 1, 0); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else {
       const q = av.q, pos = ned2three(Cuat.rot(q, [0.3, 0, -0.1])), fw = ned2three(Cuat.rot(q, [1, 0, 0])), up = ned2three(Cuat.rot(q, [0, 0, -1]));

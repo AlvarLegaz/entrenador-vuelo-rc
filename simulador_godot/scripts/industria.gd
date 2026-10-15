@@ -91,6 +91,19 @@ static func primitivas(p: Dictionary) -> Array:
 				var x := (i + 0.5) * L / nc - L / 2; cil.call(x, 0, H, d, 2.6, 5); cil.call(x, 0, H + 2.6, d - 0.3, 0.05, 1)
 	return P
 
+## Las tuberias de un rack, como las dibuja primitivas() (tuberias de industria.js): por nivel j e indice i, su eje (e0, n0
+## a e1, n1), su centro sobre el suelo del punto medio del rack (yc), su diametro d y su color (5 plata, 6 vapor, 7 verde).
+static func tuberias(p: Dictionary) -> Array:
+	var de: float = p["e1"] - p["e0"]; var dn: float = p["n1"] - p["n0"]; var L := Vector2(de, dn).length(); var s2 := de / L; var c2 := dn / L
+	var W: float = p["ancho"]; var niv: int = int(p["niveles"]); var alto: float = p["alto"]; var r := []
+	for j in range(1, niv + 1):
+		var nt := maxi(3, int(floor(W / 0.9)))
+		for i in nt:
+			var d := 0.25 + 0.45 * Industria.azar(j, i); var a := Industria.azar(j, 50 + i); var z := -W / 2 + 0.5 + i * (W - 1) / (nt - 1)
+			r.append({ "j": j, "i": i, "e0": p["e0"] + z * c2, "n0": p["n0"] - z * s2, "e1": p["e0"] + L * s2 + z * c2, "n1": p["n0"] + L * c2 - z * s2,
+					   "yc": alto * j / niv + d / 2, "d": d, "color": 5 if a < 0.7 else (6 if a < 0.85 else 7) })
+	return r
+
 ## Solido para las colisiones: [planta (E, N, ...), alto]. [] si no es industrial.
 static func solido(p: Dictionary) -> Array:
 	var R := deg_to_rad(float(p.get("rumbo", 0.0))); var sr := sin(R); var cr := cos(R)

@@ -59,7 +59,7 @@ var mostrar_hud := false
 var pausado := false
 var salir_tras := false
 var pantalla_actual := "pInicio"
-var DJI := { "grabando": false, "tRec": 0.0, "fotos": 0, "video": false, "tAnt": 0.0 }
+var DJI := { "grabando": false, "tRec": 0.0, "fotos": 0, "video": false, "tAnt": 0.0, "zoomI": 0, "termica": false }
 var REP := { "activa": false, "filas": [], "t": 0.0, "dur": 0.0, "pausa": false, "i": 0, "vuelo": null }
 var rep_activa := false
 var _acum := 0.0
@@ -564,7 +564,8 @@ func entrar_sala(s: Dictionary) -> void:
 	sala = s; multi_otros = {}; reiniciar_ordenes()
 	var veh: Array = (E.get("vehiculos", ["avion", "dron", "fpv"]) as Array).duplicate()
 	if (E["objetivos"] as Array).is_empty() and not E.has("operacion"): veh.append("bipode")     # vuelo libre: tambien el bipode
-	if not Escenarios.vehiculo_de(sesion["avion"]) in veh:
+	if E.has("operacion") and ids_aviones.has(String(E["operacion"].get("avion", ""))): sesion["avion"] = String(E["operacion"]["avion"])     # trabajos: el dron que piden
+	elif not Escenarios.vehiculo_de(sesion["avion"]) in veh:
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
 	sesion["escenario"] = s["escenario"]
@@ -784,7 +785,8 @@ func ir_operaciones() -> void:
 ## Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
 func volar_operacion(id: String) -> void:
 	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
-	if Escenarios.vehiculo_de(sesion["avion"]) != "dron":
+	if ids_aviones.has(String(E["operacion"].get("avion", ""))): sesion["avion"] = String(E["operacion"]["avion"])     # el dron que pide el trabajo
+	elif Escenarios.vehiculo_de(sesion["avion"]) != "dron":
 		for a in ids_aviones:
 			if Escenarios.vehiculo_de(a) == "dron": sesion["avion"] = a; break
 	sesion["escenario"] = id; sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(S["n"]), "E": float(S["e"]), "rumbo": float(S["rumbo"]) }
@@ -934,7 +936,7 @@ func reiniciar() -> void:
 	ent.configurar_viento(float(vv["vel"]), float(vv["desde"]), bool(vv["rachas"]))
 	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false); ordenes_al_evaluador()
 	if mundo3d != null: mundo3d.poner_operacion(ev.op.d if ev.op != null else {}, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
-	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0
+	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0; DJI["zoomI"] = 0; DJI["termica"] = false
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
 	_iniciar_juego_bip()
@@ -1029,7 +1031,7 @@ func paso(dt: float) -> void:
 		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
 		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
 	if ev.op != null:                         # operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-		for t in ev.op.paso(p_ant, av, dt, { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }): poner_toast(t)
+		for t in ev.op.paso(p_ant, av, dt, { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }.merged(cam_dji())): poner_toast(t)
 		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
 	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
 	var su = ev.contador.actualizar(p_ant, av["p"], av["t"]) if (ev.zona == 1 and ev.contador != null) else {}
@@ -1370,7 +1372,7 @@ func dji_modo(m := "") -> void:
 func dji_foto() -> void:
 	if modelo == null or not es_dron(): return
 	DJI["fotos"] += 1; hud_dji.foto()
-	var T: Array = ev.op.foto(av, av.get("gimbal", -10.0)) if (ev != null and ev.op != null) else []     # operaciones: lo que vale esa foto
+	var T: Array = ev.op.foto(av, av.get("gimbal", -10.0), cam_dji()) if (ev != null and ev.op != null) else []     # operaciones: lo que vale esa foto
 	poner_toast(" · ".join(T) if not T.is_empty() else "Foto %d" % DJI["fotos"])
 func dji_video() -> void:
 	if modelo == null or not es_dron(): return
@@ -1383,6 +1385,25 @@ func dji_disparo() -> void:
 func dji_cam_modo() -> void:
 	DJI["video"] = not DJI["video"]
 	if not DJI["video"]: DJI["grabando"] = false
+## La camara del dron de inspeccion (datos.camara: niveles de zoom, hasta donde es optico y si lleva termica), o null.
+func camara_dron():
+	var Dm = modelo.get("datos") if modelo != null else null
+	return Dm["camara"] if Dm is Dictionary and Dm.get("camara") is Dictionary else null
+## El zoom actual y si esta la termica (camDJI de la web).
+func cam_dji() -> Dictionary:
+	var C = camara_dron()
+	if C == null: return { "zoom": 1.0, "termica": false }
+	var Z: Array = C["zoom"]
+	return { "zoom": float(Z[clampi(DJI["zoomI"], 0, Z.size() - 1)]), "termica": bool(C.get("termica", false)) and DJI["termica"] }
+func dji_zoom(paso: int) -> void:
+	var C = camara_dron()
+	if C == null or rep_activa: return
+	var Z: Array = C["zoom"]; DJI["zoomI"] = clampi(DJI["zoomI"] + paso, 0, Z.size() - 1); var z: float = Z[DJI["zoomI"]]
+	poner_toast("Zoom %dx" % int(z) + (" · gran angular" if z == 1 else (" · teleobjetivo" if z <= float(C["zoom_optico"]) else " · digital")))
+func dji_termica() -> void:
+	var C = camara_dron()
+	if C == null or not C.get("termica", false) or rep_activa: return
+	DJI["termica"] = not DJI["termica"]; poner_toast("Cámara térmica" if DJI["termica"] else "Cámara normal")
 ## Boton de despegue de la app: en el suelo arma y sube a 1,2 m; en vuelo, aterriza en el sitio.
 func dji_despegar() -> void:
 	if modelo == null or not es_dron() or rep_activa: return
@@ -1470,6 +1491,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_H: dji_rth()
 			KEY_F: dji_foto()
 			KEY_V: dji_video()
+			KEY_Z: dji_zoom(1)
+			KEY_X: dji_zoom(-1)
+			KEY_C: dji_termica()
 	match k:
 		KEY_L:
 			if not es_fpv(): lanzar()
@@ -1511,7 +1535,7 @@ func _leer_mando(dt: float) -> bool:
 		return ahora and not antes
 	var b_start: bool = pulsado.call(JOY_BUTTON_START)
 	var bs := {}
-	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN]:
+	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT]:
 		bs[b] = pulsado.call(b)
 	if pantalla_actual == "" and b_start: poner_pausa(not pausado)
 	M.gimbal = 0.0
@@ -1533,6 +1557,9 @@ func _leer_mando(dt: float) -> bool:
 		if bs[JOY_BUTTON_LEFT_SHOULDER]: dji_modo()
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
 		if bs[JOY_BUTTON_BACK]: reiniciar()
+		if bs[JOY_BUTTON_DPAD_UP]: dji_zoom(1)                 # cruceta: arriba y abajo el zoom, a la derecha la termica
+		if bs[JOY_BUTTON_DPAD_DOWN]: dji_zoom(-1)
+		if bs[JOY_BUTTON_DPAD_RIGHT]: dji_termica()
 		if M.perfil == "consola": M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)   # gatillos: rueda del gimbal
 		# CSC (combinacion de palancas de los drones comerciales): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
 		var csc := ly > 0.8 and ry > 0.8 and ((lx > 0.6 and rx < -0.6) or (lx < -0.6 and rx > 0.6))
@@ -1622,6 +1649,7 @@ func _process(dt_real: float) -> void:
 	if not sala.is_empty() or not _fantasmas.is_empty(): _poner_fantasmas()
 	vista.actualizar_manga(ent.viento["actual"])
 	_camara()
+	_termica(cam_dji()["termica"] and camara == 3 and es_dron() and not es_fpv())
 	_hud()
 	if _args.has("auto") and _t_auto > 1.5: _us.append([t_fis, Time.get_ticks_usec() - t_us])
 	_auto(dt_real)
@@ -1660,12 +1688,61 @@ func _camara() -> void:
 		var yaw: float = Cuat.euler(av["q"])[2]; var g: float = av.get("gimbal", -10.0) * D2R
 		var pos := t + Avion3D.ned(Cuat.rot(av["q"], [0.1, 0.0, -0.1]))
 		var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
-		cam.fov = 58; cam.global_position = pos
+		var zc: float = cam_dji()["zoom"]
+		cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zc)) if zc > 1 else 58.0; cam.global_position = pos     # con zoom, el campo se cierra
 		cam.look_at(pos + fw, Vector3.UP if absf(g) < 89.5 * D2R else Avion3D.ned([cos(yaw), sin(yaw), 0.0]))
 	else:
 		var q: Array = av["q"]
 		var pos := t + Avion3D.ned(Cuat.rot(q, [0.3, 0.0, -0.1])); var fw := Avion3D.ned(Cuat.rot(q, [1.0, 0.0, 0.0])); var up := Avion3D.ned(Cuat.rot(q, [0.0, 0.0, -1.0]))
 		cam.fov = 80; cam.global_position = pos; cam.look_at(pos + fw, up)
+
+## Imagen de la camara termica (dron de inspeccion, camara 3): _renderTermico de visor.js. La camara ve tambien la capa 2
+## (lo que solo se ve en la termica, en colores clave: mundo_3d.gd, _termicos), el entorno pasa a tonemap lineal sin
+## brillo, ajustes ni SSAO, y un cuadro a toda pantalla pasa la imagen (a 640 px de ancho) por la paleta Ironbow.
+var _ter: MeshInstance3D; var _ter_env: Environment; var _ter_de: Environment
+const SOMBREADOR_TERMICA := """shader_type spatial;
+render_mode unshaded, depth_draw_never, depth_test_disabled, cull_disabled, fog_disabled, shadows_disabled;
+uniform sampler2D pantalla : hint_screen_texture, filter_nearest;
+uniform sampler2D prof : hint_depth_texture, filter_nearest;
+uniform vec2 res = vec2(640.0, 360.0);
+vec3 ironbow(float t) {
+	vec3 c0 = vec3(0.0, 0.0, 0.05), c1 = vec3(0.12, 0.0, 0.36), c2 = vec3(0.55, 0.0, 0.55), c3 = vec3(0.86, 0.16, 0.2), c4 = vec3(1.0, 0.5, 0.0), c5 = vec3(1.0, 0.86, 0.2), c6 = vec3(1.0, 1.0, 0.93);
+	if (t < 0.15) return mix(c0, c1, t / 0.15);
+	if (t < 0.35) return mix(c1, c2, (t - 0.15) / 0.2);
+	if (t < 0.55) return mix(c2, c3, (t - 0.35) / 0.2);
+	if (t < 0.72) return mix(c3, c4, (t - 0.55) / 0.17);
+	if (t < 0.88) return mix(c4, c5, (t - 0.72) / 0.16);
+	return mix(c5, c6, (t - 0.88) / 0.12);
+}
+void vertex() { POSITION = vec4(VERTEX.xy, 1.0, 1.0); }
+void fragment() {
+	vec2 uv = (floor(SCREEN_UV * res) + 0.5) / res;
+	vec3 c = texture(pantalla, uv).rgb; float dp = texture(prof, uv).x; float heat;
+	if (c.r > 0.97 && c.g < 0.03) heat = 0.55 + 0.45 * c.b;
+	else if (c.r < 0.03 && c.g > 0.97) heat = 0.15 * c.b;
+	else if (dp <= 0.000001) heat = 0.05;
+	else heat = 0.16 + 0.3 * clamp(dot(c, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
+	vec3 s = ironbow(clamp(heat, 0.0, 1.0));
+	ALBEDO = mix(pow((s + 0.055) / 1.055, vec3(2.4)), s / 12.92, lessThan(s, vec3(0.04045)));
+}"""
+func _termica(activa: bool) -> void:
+	if cam.get_cull_mask_value(2) != activa: cam.set_cull_mask_value(2, activa)
+	if not activa:
+		if _ter != null and _ter.visible: _ter.visible = false; cam.environment = null
+		return
+	if _ter == null:
+		var q := QuadMesh.new(); q.size = Vector2(2, 2)
+		var sm := ShaderMaterial.new(); sm.shader = Shader.new(); sm.shader.code = SOMBREADOR_TERMICA; sm.render_priority = 127
+		_ter = MeshInstance3D.new(); _ter.mesh = q; _ter.material_override = sm; _ter.extra_cull_margin = 16384.0; _ter.layers = 2
+		_ter.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; cam.add_child(_ter)
+	var fuente: Environment = cam.get_world_3d().environment if cam.get_world_3d() != null else null
+	if fuente != _ter_de or _ter_env == null:
+		_ter_de = fuente; _ter_env = fuente.duplicate() if fuente != null else Environment.new()
+		_ter_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR; _ter_env.tonemap_exposure = 1.0; _ter_env.tonemap_white = 1.0
+		_ter_env.glow_enabled = false; _ter_env.adjustment_enabled = false; _ter_env.ssao_enabled = false; _ter_env.ssil_enabled = false
+	cam.environment = _ter_env; _ter.visible = true
+	var tam := get_viewport().get_visible_rect().size
+	(_ter.material_override as ShaderMaterial).set_shader_parameter("res", Vector2(640, maxf(2, round(640 * tam.y / maxf(1, tam.x)))))
 
 func _pintar_objetivos() -> void:
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]

@@ -86,9 +86,14 @@ static func _malla_cuadricoptero(datos: Dictionary) -> void:
 		_caja(V, "fuselaje", x * 0.62, y * 0.62, -0.004, 0.11, 0.012, 0.008, atan2(y, x))   # brazo
 		_caja(V, "estab", x, y, -0.008, 0.02, 0.02, 0.016)                                   # motor
 		_caja(V, "estab", x * 0.5, y * 0.4, 0.03, 0.01, 0.01, 0.02)                          # pata
+	var S: float = float(datos.get("modelo3d", {}).get("escala", 1.0))     # aviones/HQ3T.js: la misma malla a escala
+	if S != 1.0:
+		for parte in V.values():
+			var mv: Array = parte["v"]
+			for i in mv.size(): mv[i] = mv[i] * S
 	var malla: Dictionary = datos["malla"]
 	malla["fuselaje"] = V["fuselaje"]; malla["estab"] = V["estab"]
-	malla["helices"] = brazos.map(func(b): return [b[0], b[1], -0.018])
+	malla["helices"] = brazos.map(func(b): return [b[0] * S, b[1] * S, -0.018 * S])
 
 ## Caja centrada en (cx, cy, cz), de lados sx, sy, sz, girada ang radianes sobre z.
 static func _caja(V: Dictionary, parte: String, cx: float, cy: float, cz: float, sx: float, sy: float, sz: float, ang := 0.0) -> void:

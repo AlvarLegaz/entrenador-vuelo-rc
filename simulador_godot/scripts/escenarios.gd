@@ -117,13 +117,14 @@ class Evaluador extends RefCounted:
 		if not E.has("mundo"):
 			contador = ent.contador_vueltas(int(E.get("sentido", 0)))
 			pasada = ent.pasada_baja()
-		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave"]:
+		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades"]:
 			if obj.has(k): obj[k]["estado"] = "curso"
 		if E.has("operacion") and not ent.mundo.is_empty():    # el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
 			var dd: Dictionary = Operacion.sortear(Operacion.ajustar(E["operacion"], p.sala.get("ajustes")))
 			var anotar := func(k: String, tx: String) -> void:
 				if obj.has(k): obj[k]["texto"] += " (%s)" % tx
-			op = Operacion.new(dd, marcar, anotar, { "casa": [p.casa["N"], p.casa["E"]], "suelo": func(N: float, Ee: float) -> float: return ent.altura(N, Ee), "h0": float(ent.terreno["h0"]) })
+			op = Operacion.new(dd, marcar, anotar, { "casa": [p.casa["N"], p.casa["E"]], "suelo": func(N: float, Ee: float) -> float: return ent.altura(N, Ee), "h0": float(ent.terreno["h0"]),
+				"solido": func(N: float, Ee: float, up: float) -> bool: return ent.choca_edificio([N, Ee, -up], 0.0) })
 		if E.has("pista_fpv") and not E.has("mundo"): fpv = PistaFpv.new(E["pista_fpv"], marcar)
 
 	func marcar(k: String, estado: String) -> void:

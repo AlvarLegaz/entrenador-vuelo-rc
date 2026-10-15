@@ -60,9 +60,17 @@ var _luces_lejos := false
 var _t := 0.0
 
 
+var escala := 1.0                   # datos.modelo3d (otros drones con este modelo, como el Inspector HQ-3T): escala y colores
+var _col := [C_CARCASA, C_CUERPO, C_BRAZO]
 func _init(datos: Dictionary = {}) -> void:
 	name = "DJI_Mini_4K"
 	_rpm_max = float(datos.get("propulsion", {}).get("rpm_max", 16000.0))
+	var M3: Dictionary = datos.get("modelo3d", {})
+	escala = float(M3.get("escala", 1.0))
+	for i in 3:
+		var k: String = ["carcasa", "cuerpo", "brazo"][i]
+		if M3.has(k): _col[i] = Color.hex((int(M3[k]) << 8) | 0xff)
+	scale = Vector3.ONE * escala; position = Vector3(0, 0, -(escala - 1.0) * SUELO)     # patas en el suelo (el CG posado, a 0,02 m)
 	_crear_materiales()
 	var C := _mallas()
 	# carcasa, cuerpo, brazos, motores, bujes y detalles fijos: una malla con una superficie por material
@@ -179,7 +187,7 @@ func _crear_materiales() -> void:
 		_sh_casco = Shader.new(); _sh_casco.code = SHADER_CASCO
 		_sh_disco = Shader.new(); _sh_disco.code = SHADER_DISCO
 	var casco := ShaderMaterial.new(); casco.shader = _sh_casco
-	casco.set_shader_parameter("carcasa", C_CARCASA); casco.set_shader_parameter("cuerpo", C_CUERPO); casco.set_shader_parameter("brazo", C_BRAZO)
+	casco.set_shader_parameter("carcasa", _col[0]); casco.set_shader_parameter("cuerpo", _col[1]); casco.set_shader_parameter("brazo", _col[2])
 	_mats["casco"] = casco
 	_mats["oscuro"] = _std(Color("2b2c2f"), 0.5, 0.0, 0.2)
 	_mats["camara"] = _std(Color("232427"), 0.42, 0.0, 0.35)

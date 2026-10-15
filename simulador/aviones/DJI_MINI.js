@@ -500,9 +500,9 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   /** Plastico gris satinado con barniz ligero (SHADER_CASCO de Godot). Marcas de vertice (atributo color): r = 1
    *  carcasa superior (rejillas de ventilacion detras y junta de la tapa de la bateria), g = 1 cuerpo inferior (tomas
    *  de aire, rejilla de la panza y extremo de la bateria), resto brazos. */
-  function materialCasco() {
+  function materialCasco(col) {
     const m = std(0xffffff, 0.42, 0, 0.25);
-    const u = { uCarcasa: { value: new THREE.Color(C_CARCASA) }, uCuerpo: { value: new THREE.Color(C_CUERPO) }, uBrazo: { value: new THREE.Color(C_BRAZO) }, uOscuro: { value: new THREE.Color(0.0222, 0.0234, 0.0247) } };
+    const u = { uCarcasa: { value: new THREE.Color(col.carcasa) }, uCuerpo: { value: new THREE.Color(col.cuerpo) }, uBrazo: { value: new THREE.Color(col.brazo) }, uOscuro: { value: new THREE.Color(0.0222, 0.0234, 0.0247) } };
     m.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, u);
       sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute vec3 color;\nvarying vec3 vLp;\nvarying vec3 vLn;\nvarying vec2 vMarca;")
@@ -565,10 +565,10 @@ diffuseColor.a = uInt * clamp(cob * 1.6 * (0.75 + 0.6 * fantasma), 0.0, 1.0) * s
     m.customProgramCacheKey = () => "dji3d_disco";
     return m;
   }
-  function materiales() {
+  function materiales(col) {
     const vidrio = std(0x04060a, 0.02, 0, 1, { clearcoatRoughness: 0, specularIntensity: 1 });
     return {
-      casco: materialCasco(), oscuro: std(0x2b2c2f, 0.5, 0, 0.2), camara: std(0x232427, 0.42, 0, 0.35), frontal: std(0xb9bbbc, 0.35, 0, 0.4),
+      casco: materialCasco(col), oscuro: std(0x2b2c2f, 0.5, 0, 0.2), camara: std(0x232427, 0.42, 0, 0.35), frontal: std(0xb9bbbc, 0.35, 0, 0.4),
       metal: std(0x6a6e74, 0.32, 0.85, 0), aro: std(0x3c3e42, 0.25, 0.9, 0), goma: std(0x1b1b1c, 0.9, 0, 0), tornillo: std(0x8d9095, 0.3, 1, 0),
       vidrio, sensor: std(0x0a0b0d, 0.06, 0, 0.8), led: std(0xe6e9eb, 0.1, 0, 0.7), buje: std(0x47484c, 0.4, 0.2, 0.2),
       palas: std(0xffffff, 0.38, 0, 0.25, { vertexColors: true, side: THREE.DoubleSide, transparent: true, depthWrite: false }),
@@ -586,7 +586,10 @@ diffuseColor.a = uInt * clamp(cob * 1.6 * (0.75 + 0.6 * fantasma), 0.0, 1.0) * s
 
   window.ModeloDJI = {
     construir3D(datos) {
-      const C = mallas(), M = materiales(), grupo = new THREE.Group(), todos = Object.values(M);
+      // datos.modelo3d (otros drones con este mismo modelo, como el Inspector HQ-3T): escala y colores de la carcasa
+      const M3 = datos.modelo3d || {}, esc = M3.escala || 1;
+      const col = { carcasa: M3.carcasa !== undefined ? M3.carcasa : C_CARCASA, cuerpo: M3.cuerpo !== undefined ? M3.cuerpo : C_CUERPO, brazo: M3.brazo !== undefined ? M3.brazo : C_BRAZO };
+      const C = mallas(), M = materiales(col), grupo = new THREE.Group(), todos = Object.values(M);
       const instancia = (padre, geos, pos) => {
         const g = new THREE.Group(); g.position.set(...pos); padre.add(g);
         for (const [k, geo] of Object.entries(geos)) { const ms = new THREE.Mesh(geo, M[k]); ms.castShadow = k !== "palas"; ms.receiveShadow = true; g.add(ms); }
@@ -655,7 +658,11 @@ diffuseColor.a = uInt * clamp(cob * 1.6 * (0.75 + 0.6 * fantasma), 0.0, 1.0) * s
         ponerGimbal(rb.transpose().multiply(rz.multiply(ry)));
         if (oculto) for (const l of luces) l.visible = false;
       }
-      return { grupo, prof: new THREE.Group(), timon: new THREE.Group(), alerones: [], helice: new THREE.Group(), luces, dron: true, animar };
+      // a escala: el modelo dentro de un grupo escalado (el de fuera lo coloca el visor con su matriz) y levantado para
+      // que las patas sigan en el suelo (el CG posado esta a 0,02 m del suelo en la fisica)
+      let raiz = grupo;
+      if (esc !== 1) { raiz = new THREE.Group(); grupo.scale.setScalar(esc); grupo.position.set(0, 0, -(esc - 1) * SUELO); raiz.add(grupo); }
+      return { grupo: raiz, prof: new THREE.Group(), timon: new THREE.Group(), alerones: [], helice: new THREE.Group(), luces, dron: true, animar };
     },
   };
 })();

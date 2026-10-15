@@ -8,9 +8,10 @@
 //  (ponerOperacion). simulador_godot/scripts/operaciones.gd es su traduccion literal: mismos datos, reglas y textos.
 //
 //  Uso: op = new Operacion(Operacion.sortear(datos), marcar, anotar, {casa: [N, E], suelo(N, E), h0}); en cada paso de la fisica
-//  op.paso(pAnt, av, dt, {gimbal, grabando}) devuelve los avisos (toasts) y deja op.choque si ha chocado; con cada foto
-//  op.foto(av, gimbal) devuelve el aviso de esa foto; al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la
-//  linea "Ahora: ..." del panel.
+//  op.paso(pAnt, av, dt, {gimbal, grabando, zoom, termica}) devuelve los avisos (toasts) y deja op.choque si ha chocado; con cada foto
+//  op.foto(av, gimbal, {zoom, termica}) devuelve el aviso de esa foto; al acabar op.final(final, av, {bateria}); op.ahora(obj, av) es la
+//  linea "Ahora: ..." del panel. Con la camara termica (dron de inspeccion), op.lectura es lo que mide el medidor puntual
+//  del centro de la imagen ({T, tipo, nombre} o null) y op.termicos lo que se ve caliente o frio en la termica (para dibujarlo).
 // =====================================================================
 const OPS = {
   TECHO: 120,                                     // m sobre el suelo
@@ -19,7 +20,12 @@ const OPS = {
   CAM_V: 29,                                      // semiangulo vertical de la camara del dron comercial (grados)
   CAM_H: Math.atan(Math.tan(29 * Math.PI / 180) * 4 / 3) * 180 / Math.PI,         // horizontal (foto 4:3)
   CASA: 10, RESERVA: 20,                          // aterrizar a menos de 10 m del despegue, con mas del 20 % de bateria
+  RETICULA: 0.6,                                  // radio de la cruz del medidor puntual de la termica (grados con zoom 1x)
+  AMBIENTE: 29.5,                                 // lo que mide la termica en el suelo y lo que no esta caliente ni frio (grados C)
 };
+/** Temperatura (grados C) -> "calor" de la imagen termica (0 frio, 1 lo mas caliente): la que usan visor.js y mundo_3d.gd
+ *  para pintar lo caliente y lo frio de un trabajo encima de la imagen (el resto sale de la luz de la escena). */
+const opCalor = T => T >= 40 ? 0.55 + 0.45 * Math.min(1, (T - 40) / 110) : T <= 10 ? 0.15 * Math.max(0, (T + 20) / 30) : 0.15 + 0.4 * (T - 10) / 30;
 const opDesenrollar = d => d - 2 * Math.PI * Math.round(d / (2 * Math.PI));
 const opMMSS = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 // nombres de los desperfectos de la inspeccion: los sitios salen al azar de "candidatos" y cada uno lleva uno de estos
@@ -72,6 +78,28 @@ class Operacion {
         if (r.every(([g, y]) => g !== f || Math.abs(y - x) >= 10)) r.push([f, x]);
       }
       d.defectos = r;
+      if (O.calientes) {                              // y los modulos con punto caliente (solo se ven con la termica), en otros sitios
+        const c = [];
+        while (c.length < O.calientes) {
+          const f = azar(P.filas), x = 3 + azar(P.largo - 6);
+          if (P.huecos && P.huecos.includes(f)) continue;
+          if (r.concat(c).every(([g, y]) => g !== f || Math.abs(y - x) >= 10)) c.push([f, x]);
+        }
+        d.calientes = c;
+      }
+    }
+    if (O.racks) {                                    // fabrica: puntos calientes en tuberias de plata de racks distintos, la fuga y la antorcha
+      const libres = O.racks.map((_, i) => i), c = [];
+      while (c.length < O.calientes) {
+        const k = azar(libres.length), ri = libres.length ? libres.splice(k, 1)[0] : azar(O.racks.length);
+        const T = Industria.tuberias(O.racks[ri]).map((t, i) => [t, i]).filter(([t]) => t.color === 5);
+        const ti = T[azar(T.length)][1];
+        c.push([ri, ti, Math.round((0.15 + 0.7 * rnd()) * 1000) / 1000, Math.round(105 + 30 * rnd())]);
+      }
+      d.puntosCalientes = c;
+      const ui = azar(O.unidades.length);
+      d.fuga = [ui, azar(O.unidades[ui].valvulas.length), azar(4)];
+      d.placaTxt = "A-" + (10 + azar(90)); d.piloto = rnd() < 0.7;
     }
     if (O.parcela && O.manchas) {                     // agricultura: las manchas en la parcela (o en su poligono), sin pisarse
       const P = O.parcela, r = [];
@@ -117,13 +145,17 @@ class Operacion {
 
   constructor(d, marcar, anotar, mundo) {
     this.d = d; this.marcar = marcar; this.anotar = anotar; this.casa = mundo.casa; this.suelo = mundo.suelo; this.h0 = mundo.h0;
+    this.solido = mundo.solido || null;               // (N, E, arriba) -> true si hay un edificio o una instalacion: tapa la vista de la termica
+    this.nPaso = 0; this.visto = null;
     this.choque = null; this.avisos = {}; this.t0 = null; this.fotos = 0;
     this.hechos = [];                                                           // inspeccion, manchas, modulos
     if (d.parcela && d.solape) {                                                // fotogrametria: celdas de 5 m de la parcela
       const P = d.parcela; this.celdas = [];
       for (let n = P.n0 + 2.5; n < P.n1; n += 5) for (let e = P.e0 + 2.5; e < P.e1; e += 5) this.celdas.push([n, e, 0]);
     }
+    this.termicos = []; this.lectura = null; this.medida = null; this.hechosC = [];   // termica: objetos, lo que mide y los puntos calientes medidos
     if (d.planta) this._planta();
+    if (d.racks) this._fabrica();
     this.encontrado = false; this.error = null;                                 // busqueda
     this.orb = null; this.yawAnt = null; this.giro = 0;                         // video
   }
@@ -139,7 +171,39 @@ class Operacion {
     return { x: v[0] * cy * cg + v[1] * sy * cg - v[2] * sg, y: -v[0] * sy + v[1] * cy, z: v[0] * cy * sg + v[1] * sy * sg + v[2] * cg, d: Math.hypot(v[0], v[1], v[2]) };
   }
   /** Dentro de la imagen (k = 1 el borde; 0,8 bien encuadrado; 0,3 en el centro). */
-  static enFoto(c, k) { return c.x > 0 && Math.abs(c.y) <= k * Math.tan(OPS.CAM_H * D2R) * c.x && Math.abs(c.z) <= k * Math.tan(OPS.CAM_V * D2R) * c.x; }
+  static enFoto(c, k, zoom = 1) { return c.x > 0 && Math.abs(c.y) <= k * Math.tan(OPS.CAM_H * D2R) / zoom * c.x && Math.abs(c.z) <= k * Math.tan(OPS.CAM_V * D2R) / zoom * c.x; }
+
+  /** Distancia del rayo que sale del dron por el centro de la camara (rumbo y gimbal) a un segmento P0-P1 (N, E, arriba):
+   *  {t: distancia a lo largo del rayo, d: distancia del rayo al segmento}. */
+  static rayoSegmento(av, gimbal, P0, P1) {
+    const y = Cuat.euler(av.q)[2], g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
+    const O = [av.p[0], av.p[1], -av.p[2]], v = [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]], w0 = [O[0] - P0[0], O[1] - P0[1], O[2] - P0[2]];
+    const b = u[0] * v[0] + u[1] * v[1] + u[2] * v[2], c = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    const dd = u[0] * w0[0] + u[1] * w0[1] + u[2] * w0[2], e = v[0] * w0[0] + v[1] * w0[1] + v[2] * w0[2];
+    let s = 0;
+    if (c > 1e-9) { const den = c - b * b; s = den > 1e-12 ? Math.max(0, Math.min(1, (e - b * dd) / den)) : 0; }
+    const t = Math.max(0, s * b - dd);
+    if (c > 1e-9) s = Math.max(0, Math.min(1, (e + t * b) / c));
+    const q = [w0[0] + t * u[0] - s * v[0], w0[1] + t * u[1] - s * v[1], w0[2] + t * u[2] - s * v[2]];
+    return { t, d: Math.hypot(q[0], q[1], q[2]) };
+  }
+  /** Lo que mide el medidor puntual de la termica: el objeto termico mas cercano que cae dentro de la cruz del centro, o null. */
+  medir(av, gimbal, zoom) {
+    let mejor = null;
+    for (const o of this.termicos) {
+      const r = Operacion.rayoSegmento(av, gimbal, o.P0, o.P1);
+      if (r.t > 0.5 && r.d <= o.r + r.t * Math.tan(OPS.RETICULA * D2R) / zoom && (!mejor || r.t < mejor.t)) mejor = { o, t: r.t };
+    }
+    if (mejor && this.solido && this._tapado(av, gimbal, mejor.t)) return null;
+    return mejor ? { T: mejor.o.T, tipo: mejor.o.tipo, nombre: mejor.o.nombre, i: mejor.o.i, dist: mejor.t } : null;
+  }
+  /** Si un edificio o una instalacion tapa el rayo del centro de la camara antes de llegar a t m (los ultimos 6 m no
+   *  cuentan: el objeto esta dentro del solido de su rack o de su unidad). Muestras cada 2,5 m. */
+  _tapado(av, gimbal, t) {
+    const y = Cuat.euler(av.q)[2], g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
+    for (let s = 2.5; s < t - 6; s += 2.5) if (this.solido(av.p[0] + s * u[0], av.p[1] + s * u[1], -av.p[2] + s * u[2])) return true;
+    return false;
+  }
 
   _aviso(clave, texto, lista) { if (!this.avisos[clave]) { this.avisos[clave] = true; lista.push(texto); } }
 
@@ -166,6 +230,57 @@ class Operacion {
       const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion);
       return [n, e, M.y + P.h0 + P.ancho * s / 2];
     });
+    this.modulosC = (Array.isArray(this.d.calientes) ? this.d.calientes : []).map(([f, x], i) => {     // modulos con punto caliente: una celula quemada a 70-95 grados
+      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion);
+      const T = 70 + 5 * ((f * 7 + x) % 6);
+      this.termicos.push({ tipo: "modulo", i, nombre: "módulo con punto caliente", T, P0: [n, e, M.y + P.h0 + P.ancho * s / 2], P1: [n, e, M.y + P.h0 + P.ancho * s / 2], r: 0.5 });
+      return [n, e, M.y + P.h0 + P.ancho * s / 2];
+    });
+  }
+
+  /** Fabrica (trabajo de SABIC): los objetos de la termica (puntos calientes, tuberias de vapor de sus racks, la fuga,
+   *  las chimeneas y la antorcha), la valvula de la fuga y su zona ATEX, y la placa de la antorcha. */
+  _fabrica() {
+    const d = this.d, T = this.termicos;
+    this.racksPista = [];
+    d.puntosCalientes.forEach(([ri, ti, f, Tc], i) => {
+      const R = d.racks[ri], tb = Industria.tuberias(R)[ti], y = this.suelo((R.n0 + R.n1) / 2, (R.e0 + R.e1) / 2) + tb.yc;
+      const L = Math.hypot(tb.n1 - tb.n0, tb.e1 - tb.e0), un = (tb.n1 - tb.n0) / L, ue = (tb.e1 - tb.e0) / L, n = tb.n0 + f * (tb.n1 - tb.n0), e = tb.e0 + f * (tb.e1 - tb.e0);
+      T.push({ tipo: "caliente", i, nombre: `aislamiento roto en el rack ${R.nombre}`, T: Tc, P0: [n - 0.6 * un, e - 0.6 * ue, y], P1: [n + 0.6 * un, e + 0.6 * ue, y], r: tb.d / 2 + 0.05 });
+      if (!this.racksPista.includes(ri)) {
+        this.racksPista.push(ri);
+        for (const v of Industria.tuberias(R)) if (v.color === 6)                  // las de vapor de ese rack: calientes de verdad
+          T.push({ tipo: "vapor", i: -1, nombre: `tubería de vapor del rack ${R.nombre}`, T: 62, P0: [v.n0, v.e0, y - tb.yc + v.yc], P1: [v.n1, v.e1, y - tb.yc + v.yc], r: v.d / 2 + 0.03 });
+      }
+    });
+    for (const C of d.chimeneas) {                                             // chimeneas: la parte de arriba templada
+      const y = this.suelo(C.n, C.e); T.push({ tipo: "chimenea", i: -1, nombre: "chimenea", T: 85, P0: [C.n, C.e, y + 0.85 * C.alto], P1: [C.n, C.e, y + C.alto], r: C.radio + 0.3 });
+    }
+    const A = d.antorcha, ya = this.suelo(A.n, A.e);
+    this.boca = [A.n, A.e, ya + A.alto];
+    T.push({ tipo: "antorcha", i: -1, nombre: d.piloto ? "llama del piloto de la antorcha" : "boca de la antorcha (piloto apagado)", T: d.piloto ? 600 : 70,
+             P0: [A.n, A.e, ya + A.alto - 1], P1: [A.n, A.e, ya + A.alto + (d.piloto ? 1.5 : 0)], r: A.radio });
+    // la placa, en la boca de la antorcha, de cara al despegue
+    const a = Math.atan2(this.casa[1] - A.e, this.casa[0] - A.n);
+    this.placa = [A.n + (A.radio + 0.3) * Math.cos(a), A.e + (A.radio + 0.3) * Math.sin(a), ya + A.alto - 2.2, a * R2D];
+    this._fuga();
+  }
+  /** La valvula de la fuga (d.fuga: unidad, estructura y cara), su objeto termico (gas frio) y la zona ATEX de su unidad. */
+  _fuga() {
+    const d = this.d, [ui, vi, lado] = d.fuga, U = d.unidades[ui], [e, n, h, largo, ancho, rumbo] = U.valvulas[vi], r = rumbo * D2R;
+    const x = lado === 0 ? largo / 2 + 0.3 : lado === 1 ? -largo / 2 - 0.3 : 0, z = lado === 2 ? ancho / 2 + 0.3 : lado === 3 ? -ancho / 2 - 0.3 : 0;
+    const N = n + x * Math.cos(r) - z * Math.sin(r), E = e + x * Math.sin(r) + z * Math.cos(r), up = this.suelo(n, e) + h;
+    this.valvula = [N, E, up]; this.unidadFuga = U; this.hechoFuga = false;
+    this.termicos = this.termicos.filter(o => o.tipo !== "fuga");
+    this.termicos.push({ tipo: "fuga", i: -1, nombre: `fuga de gas en la unidad ${U.nombre}`, T: -15, P0: [N, E, up], P1: [N, E, up], r: 0.6 });
+  }
+  /** Orden del profesor: la fuga pasa a la unidad mas cercana a (N, E), en su estructura mas cercana. */
+  moverFuga(N, E) {
+    const d = this.d; if (!d.racks) return false;
+    const cen = U => [U.poligono.reduce((s, p) => s + p[0], 0) / U.poligono.length, U.poligono.reduce((s, p) => s + p[1], 0) / U.poligono.length];
+    let ui = 0; d.unidades.forEach((U, i) => { const c = cen(U), c0 = cen(d.unidades[ui]); if (Math.hypot(c[0] - N, c[1] - E) < Math.hypot(c0[0] - N, c0[1] - E)) ui = i; });
+    const V = d.unidades[ui].valvulas; let vi = 0; V.forEach((v, i) => { if (Math.hypot(v[1] - N, v[0] - E) < Math.hypot(V[vi][1] - N, V[vi][0] - E)) vi = i; });
+    d.fuga = [ui, vi, d.fuga[2]]; this._fuga(); return true;
   }
   /** De coordenadas de la planta (l a lo largo de la fila, t a traves) a (N, E), y al reves. */
   ne(l, t) { const P = this.d.planta, { cr, sr } = this.pl; return [P.n0 + l * cr + t * sr, P.e0 + l * sr - t * cr]; }
@@ -204,6 +319,36 @@ class Operacion {
         m("baja", "mal"); this._aviso("baja", `¡A menos de ${d.minima} m de los paneles! Sube`, T);
       }
     }
+    // ---- termica: lo que mide el medidor puntual (y, sostenido sobre un punto caliente o la fuga, se da por medido) ----
+    const zoom = info.zoom || 1;
+    this.lectura = info.termica && this.termicos.length ? this.medir(av, info.gimbal, zoom) : null;
+    const L = this.lectura;
+    if (L && (L.tipo === "caliente" || L.tipo === "fuga") && !(L.tipo === "fuga" ? this.hechoFuga : this.hechosC[L.i])) {
+      const lim = L.tipo === "fuga" ? d.dist_fuga : d.dist_caliente, clave = L.tipo + L.i;
+      if (L.dist / zoom > lim) { this.medida = null; this._aviso("lejos" + clave, `${L.tipo === "fuga" ? "La fuga" : "Un punto caliente"} está a ${L.dist.toFixed(0)} m: acércate a menos de ${lim} m o usa más zoom para medirlo`, T); }
+      else {
+        this.medida = this.medida && this.medida.clave === clave ? { clave, t: this.medida.t + dt } : { clave, t: dt };
+        if (this.medida.t >= d.medir_s) {
+          this.medida = null;
+          if (L.tipo === "fuga") { this.hechoFuga = true; m("fuga", "ok"); T.push(`¡Fuga localizada! ${L.nombre}: gas a ${L.T} °C · posición enviada`); }
+          else {
+            this.hechosC[L.i] = true; const k = this.hechosC.filter(Boolean).length;
+            T.push(`Punto caliente ${k}: ${L.nombre}, ${L.T} °C ✓ (${k}/${d.puntosCalientes.length})`);
+            if (k === d.puntosCalientes.length) m("calientes", "ok");
+          }
+          this._todo(t);
+        }
+      }
+    } else this.medida = null;
+    if (L && L.tipo === "vapor") this._aviso("vapor", "Tubería de vapor a 62 °C: está caliente por diseño (va aislada), no es una avería", T);
+    // ---- fabrica: zona ATEX alrededor de la unidad con la fuga y nunca a menos de 10 m sobre las unidades ----
+    if (d.racks) {
+      const A = this.unidadFuga.poligono;
+      if (Operacion.dentro(A, N, E) || Operacion.aBorde(A, N, E) < d.atex) { m("atex", "mal"); this._aviso("atex", `¡Dentro de la zona ATEX de la unidad ${this.unidadFuga.nombre}! Sal: no se puede volar a menos de ${d.atex} m`, T); }
+      for (const U of d.unidades)
+        if (!av.posado && Operacion.dentro(U.poligono, N, E) && agl < U.alto + d.sobre_unidades) { m("unidades", "mal"); this._aviso("unidades", `¡A menos de ${d.sobre_unidades} m por encima de la unidad ${U.nombre}! Sube`, T); }
+      if (this.t0 !== null && t - this.t0 > d.limite_s && !this.tTodo) { m("tiempo", "mal"); this._aviso("tiempo", "Se han acabado los 30 minutos: termina lo que puedas y vuelve", T); }
+    }
     // ---- busqueda: el tiempo ----
     if (d.zona && !this.encontrado && this.t0 !== null && t - this.t0 > d.limite_s) { m("tiempo", "mal"); this._aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T); }
     // ---- video: giro suave y orbita ----
@@ -234,8 +379,8 @@ class Operacion {
   }
 
   /** Una foto (boton de foto del dron comercial): lo que vale para el trabajo y el aviso. */
-  foto(av, gimbal) {
-    const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), m = this.marcar;
+  foto(av, gimbal, cam = {}) {
+    const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), m = this.marcar, zoom = cam.zoom || 1, ter = !!cam.termica;
     this.fotos++;
     if (av.estado !== "volando" || av.posado) return T;
     if (d.puntos) {                                    // inspeccion: cada punto bien encuadrado, cerca, de frente o desde arriba
@@ -299,20 +444,50 @@ class Operacion {
       if (this.hechos.filter(Boolean).length === d.manchas.length) m("manchas", "ok");
       if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ninguna mancha");
     }
-    if (d.planta) {                                    // paneles: cada modulo danado, desde arriba y de 4 a 20 m
+    if (d.planta) {                                    // paneles: cada modulo danado, desde arriba y de 4 a 20 m (con zoom, la distancia equivalente)
       let motivo = null;
-      this.modulos.forEach((P, i) => {
-        if (this.hechos[i]) return;
-        const c = Operacion.camara(av, gimbal, P);
-        if (!Operacion.enFoto(c, 1)) return;
-        if (gimbal > d.gimbal) motivo = motivo || `los paneles se fotografían desde arriba (cámara a ${d.gimbal}° o más)`;
-        else if (c.d > d.dist[1]) motivo = motivo || `módulo ${i + 1} demasiado lejos (${c.d.toFixed(0)} m; a menos de ${d.dist[1]} m)`;
-        else if (c.d < d.dist[0]) motivo = motivo || `módulo ${i + 1} demasiado cerca`;
-        else if (!Operacion.enFoto(c, 0.8)) motivo = motivo || `módulo ${i + 1} en el borde de la foto: encuádralo`;
-        else { this.hechos[i] = true; T.push(`Módulo dañado ${i + 1} ✓ (${this.hechos.filter(Boolean).length}/${this.modulos.length})`); }
+      const revisar = (lista, hechos, termico, nombre, id) => lista.forEach((P, i) => {
+        if (hechos[i]) return;
+        const c = Operacion.camara(av, gimbal, P), de = c.d / zoom;
+        if (!Operacion.enFoto(c, 1, zoom)) return;
+        if (termico !== ter) motivo = motivo || (termico ? `el ${nombre} ${i + 1} solo se ve con la cámara térmica (C)` : `con la térmica no se ven los cristales rotos ni la suciedad: cambia a la cámara normal (C)`);
+        else if (gimbal > d.gimbal) motivo = motivo || `los paneles se fotografían desde arriba (cámara a ${d.gimbal}° o más)`;
+        else if (de > d.dist[1]) motivo = motivo || `${nombre} ${i + 1} demasiado lejos (${c.d.toFixed(0)} m; a menos de ${d.dist[1]} m${zoom > 1 ? " con este zoom" : ""})`;
+        else if (de < d.dist[0]) motivo = motivo || `${nombre} ${i + 1} demasiado cerca`;
+        else if (!Operacion.enFoto(c, 0.8, zoom)) motivo = motivo || `${nombre} ${i + 1} en el borde de la foto: encuádralo`;
+        else {
+          hechos[i] = true;
+          T.push(termico ? `Punto caliente ${i + 1} ✓ (${hechos.filter(Boolean).length}/${lista.length})` : `Módulo dañado ${i + 1} ✓ (${hechos.filter(Boolean).length}/${lista.length})`);
+          if (hechos.filter(Boolean).length === lista.length) m(id, "ok");
+        }
       });
-      if (this.hechos.filter(Boolean).length === this.modulos.length) m("defectos", "ok");
+      revisar(this.modulos, this.hechos, false, "módulo", "defectos");
+      revisar(this.modulosC, this.hechosC, true, "punto caliente", "calientes");
       if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ningún módulo dañado");
+    }
+    if (d.racks) {                                     // fabrica: la placa de la antorcha (zoom) y su piloto (termica)
+      const A = d.antorcha, P = d.placa, h = Math.hypot(N - A.n, E - A.e);
+      if (!this.hechoPlaca) {
+        const c = Operacion.camara(av, gimbal, this.placa);
+        const frente = Math.cos(opDesenrollar(Math.atan2(E - this.placa[1], N - this.placa[0]) - this.placa[3] * D2R));   // 1 de frente, 0 de lado
+        if (Operacion.enFoto(c, 0.5, zoom)) {
+          if (frente < 0.5) T.push("La placa no se ve desde este lado: está en la cara de la antorcha que da al despegue");
+          else if (ter) T.push("Con la térmica no se lee la placa: cambia a la cámara normal (C)");
+          else if (zoom < P.zoom) T.push(`La placa no se lee: hace falta un zoom de ${P.zoom}x o más (ahora ${zoom}x)`);
+          else if (agl < P.altura) T.push(`Foto no válida: a ${agl.toFixed(0)} m de altura (desde más de ${P.altura} m)`);
+          else if (h < P.distancia) T.push(`Foto no válida: a ${h.toFixed(0)} m de la antorcha (desde más de ${P.distancia} m)`);
+          else { this.hechoPlaca = true; m("placa", "ok"); T.push(`Placa de la antorcha: «${d.placaTxt}» ✓`); this._todo(av.t); }
+        }
+      }
+      if (!this.hechoPiloto) {
+        const c = Operacion.camara(av, gimbal, this.boca);
+        if (Operacion.enFoto(c, 0.5, zoom)) {
+          if (!ter) T.push("Para ver el piloto de la antorcha hace falta la cámara térmica (C)");
+          else if (c.d / zoom > 60) T.push(`La boca de la antorcha sale muy pequeña (a ${c.d.toFixed(0)} m): acércate o usa más zoom`);
+          else { this.hechoPiloto = true; m("piloto", "ok"); T.push(d.piloto ? "Piloto de la antorcha: ENCENDIDO (la llama, a más de 150 °C) ✓" : "Piloto de la antorcha: APAGADO (la boca, a 70 °C): hay que avisar a la sala de control ✓"); this._todo(av.t); }
+        }
+      }
+      if (!T.length) T.push(`Foto ${this.fotos}${ter ? " (térmica)" : ""}`);
     }
     if (d.faro) T.push("Este trabajo es de vídeo: pulsa V para grabar");
     return T;
@@ -334,6 +509,17 @@ class Operacion {
     if (d.zona && this.error !== null) a("posicion", `error ${this.error.toFixed(1)} m`);
     if (d.manchas) a("manchas", `${n} de ${d.manchas.length}`);
     if (d.planta) a("defectos", `${n} de ${this.modulos.length}`);
+    if (d.planta && this.modulosC.length) a("calientes", `${this.hechosC.filter(Boolean).length} de ${this.modulosC.length}`);
+    if (d.racks) {
+      a("calientes", `${this.hechosC.filter(Boolean).length} de ${d.puntosCalientes.length}`);
+      if (this.tTodo) { this.marcar("tiempo", "ok"); a("tiempo", opMMSS(this.tTodo - this.t0)); }
+    }
+  }
+  /** Fabrica: cuando estan las tres tareas (con el tiempo, si no se ha pasado), apunta cuando se acabaron. */
+  _todo(t) {
+    const d = this.d;
+    if (!d.racks || this.tTodo) return;
+    if (this.hechosC.filter(Boolean).length === d.puntosCalientes.length && this.hechoFuga && this.hechoPlaca && this.hechoPiloto && this.t0 !== null && t - this.t0 <= d.limite_s) this.tTodo = t;
   }
 
   /** Lo que toca ahora (texto del panel, con <b>). */
@@ -348,7 +534,16 @@ class Operacion {
     if (d.solape) return hecho("cobertura") ? volver : `Parcela cubierta con solape: <b>${(this.cobertura() * 100).toFixed(0)} %</b> (hace falta ${(d.cubrir * 100).toFixed(0)} %) · altura ${Math.max(0, -av.p[2] - this.suelo(N, E)).toFixed(0)} m`;
     if (d.zona) return this.encontrado ? volver : `Tiempo: <b>${opMMSS(Math.max(0, d.limite_s - (av.t - this.t0)))}</b> · busca la chaqueta roja dentro de los jalones amarillos`;
     if (d.manchas) return n === d.manchas.length ? volver : `Manchas fotografiadas: <b>${n} de ${d.manchas.length}</b> · fotos verticales de 10 a 30 m`;
-    if (d.planta) return n === this.modulos.length ? volver : `Módulos dañados: <b>${n} de ${this.modulos.length}</b> · recorre las filas con la cámara hacia abajo`;
+    if (d.planta) {
+      const nc = this.hechosC.filter(Boolean).length, tc = this.modulosC.length;
+      if (n === this.modulos.length && nc === tc) return volver;
+      return `Módulos dañados: <b>${n} de ${this.modulos.length}</b>` + (tc ? ` · puntos calientes (térmica): <b>${nc} de ${tc}</b>` : "") + " · recorre las filas con la cámara hacia abajo";
+    }
+    if (d.racks) {
+      const nc = this.hechosC.filter(Boolean).length, tc = d.puntosCalientes.length, ok = x => x ? "✓" : "pendiente";
+      if (nc === tc && this.hechoFuga && this.hechoPlaca && this.hechoPiloto) return volver;
+      return `Tiempo: <b>${opMMSS(Math.max(0, d.limite_s - (av.t - this.t0)))}</b> · puntos calientes <b>${nc} de ${tc}</b> · fuga ${ok(this.hechoFuga)} · placa ${ok(this.hechoPlaca)} · piloto ${ok(this.hechoPiloto)}`;
+    }
     if (d.faro) return hecho("orbita") ? volver : `Órbita: <b>${this.orb ? Math.abs(this.orb.acc * R2D).toFixed(0) : 0}°</b> de 330° · a ${Math.hypot(N - d.faro.n, E - d.faro.e).toFixed(0)} m del faro`;
     return volver;
   }

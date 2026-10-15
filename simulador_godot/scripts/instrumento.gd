@@ -339,6 +339,19 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			var n: float = PL["n0"] + i * PL["separacion"]
 			var r := Rect2(X.call(PL["e0"]), Y.call(n + fondo / 2), PL["largo"] * k, maxf(1, fondo * k)).intersection(Rect2(0, 0, W, W))
 			if r.size.x > 0 and r.size.y > 0: draw_rect(r, Color("#182c52"))
+	var OPf = p.ev.op if (p.ev != null and p.ev.op != null and p.ev.op.d.has("racks")) else null
+	if OPf != null:                                     # fabrica: las pistas (racks con puntos calientes, unidad con la fuga y su ATEX, antorcha)
+		var U := PackedVector2Array()
+		for ne in OPf.unidad_fuga["poligono"]: U.append(Vector2(X.call(ne[1]), Y.call(ne[0])))
+		var cerr := U.duplicate(); cerr.append(U[0])
+		draw_polyline(cerr, Color(229 / 255.0, 57 / 255.0, 53 / 255.0, 0.35), maxf(3, 2 * float(OPf.d["atex"]) * k), true)
+		draw_colored_polygon(U, Color(229 / 255.0, 57 / 255.0, 53 / 255.0, 0.55)); draw_polyline(cerr, Color("#e53935"), 2, true)
+		for ri in OPf.racks_pista:
+			var R: Dictionary = OPf.d["racks"][ri]
+			draw_dashed_line(Vector2(X.call(R["e0"]), Y.call(R["n0"])), Vector2(X.call(R["e1"]), Y.call(R["n1"])), Color("#ff9800"), 3, 6.0, false)
+		var A: Dictionary = OPf.d["antorcha"]; var qa := Vector2(X.call(A["e"]), Y.call(A["n"]))
+		draw_circle(qa, 6, Color("#ffb300")); draw_arc(qa, 6, 0, TAU, 24, Color.BLACK, 1, true)
+		_txt(qa + Vector2(0, 3), "A", 9 * k0, Color.BLACK, true)
 	for l in p.mundo_datos["lugares"]:
 		if l[1] <= (5 if semi < 5000 else 3) and absf(l[2] - E) < semi and absf(l[3] - N) < semi:
 			var q := Vector2(X.call(l[2]), Y.call(l[3]))

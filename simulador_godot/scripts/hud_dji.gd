@@ -12,6 +12,9 @@ var disparo: Button; var cam_txt: Label
 var mapa: PanelContainer
 var t_d: Label; var t_h: Label; var t_hs: Label; var t_vs: Label
 var flash: ColorRect
+var zoom_caja: VBoxContainer; var zoom_txt: Label; var b_ir: Button      # camara de inspeccion (solo los drones que la llevan)
+var medidor: VBoxContainer; var temp: Label; var paleta: VBoxContainer
+var _ir_ant = null
 var _bat_pct := 100.0; var _bat_rojo := false
 var _video := false; var _grabando := false
 var _modo_ant := ""; var _cl_ant := "?"; var _bat_rojo_ant = null; var _rth_ant = null     # lo que ya esta puesto: los estilos solo se tocan al cambiar
@@ -29,11 +32,11 @@ static func _redondo(lado: float, fondo: Color, borde: Color, grosor := 1) -> St
 	var s := Tema.caja(fondo, borde, int(lado / 2) - 1, grosor); s.corner_detail = 16; s.content_margin_left = 0; s.content_margin_right = 0; s.content_margin_top = 0; s.content_margin_bottom = 0
 	return s
 
-func _boton_redondo(texto: String, tip: String, f: Callable) -> Button:
-	var b := Button.new(); b.text = texto; b.tooltip_text = tip; b.custom_minimum_size = Vector2(44, 44); b.focus_mode = Control.FOCUS_NONE
+func _boton_redondo(texto: String, tip: String, f: Callable, lado := 44) -> Button:
+	var b := Button.new(); b.text = texto; b.tooltip_text = tip; b.custom_minimum_size = Vector2(lado, lado); b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 15); b.add_theme_font_override("font", Tema.negrita)
-	for e in ["normal", "focus", "disabled"]: b.add_theme_stylebox_override(e, _redondo(44, Color(0, 0, 0, 0.55), Color(1, 1, 1, 0.4)))
-	for e in ["hover", "pressed"]: b.add_theme_stylebox_override(e, _redondo(44, Color(1, 1, 1, 0.22), Color(1, 1, 1, 0.4)))
+	for e in ["normal", "focus", "disabled"]: b.add_theme_stylebox_override(e, _redondo(lado, Color(0, 0, 0, 0.55), Color(1, 1, 1, 0.4)))
+	for e in ["hover", "pressed"]: b.add_theme_stylebox_override(e, _redondo(lado, Color(1, 1, 1, 0.22), Color(1, 1, 1, 0.4)))
 	for e in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: b.add_theme_color_override(e, Color.WHITE)
 	b.pressed.connect(f)
 	return b
@@ -82,7 +85,7 @@ func _init(p_: Node) -> void:
 	# ---- disparador ----
 	var der := VBoxContainer.new(); der.add_theme_constant_override("separation", 10); der.alignment = BoxContainer.ALIGNMENT_CENTER
 	der.anchor_left = 1; der.anchor_right = 1; der.anchor_top = 0.5; der.anchor_bottom = 0.5; der.offset_right = -16; der.offset_left = -76
-	der.offset_top = -70; der.offset_bottom = 70; der.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	der.offset_top = -70; der.offset_bottom = 70; der.grow_horizontal = Control.GROW_DIRECTION_BEGIN; der.grow_vertical = Control.GROW_DIRECTION_BOTH
 	disparo = Button.new(); disparo.custom_minimum_size = Vector2(60, 60); disparo.focus_mode = Control.FOCUS_NONE; disparo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	disparo.tooltip_text = "Disparar: foto o vídeo (F / V, botones Y / X)"
 	for e in ["normal", "focus", "hover", "pressed"]: disparo.add_theme_stylebox_override(e, _redondo(60, Color(0, 0, 0, 0.35), Color.WHITE, 3))
@@ -94,7 +97,42 @@ func _init(p_: Node) -> void:
 	der.add_child(disparo)
 	var bcm := _boton_redondo("⇄", "Cambiar entre foto y vídeo", func(): p.dji_cam_modo()); bcm.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; der.add_child(bcm)
 	cam_txt = Tema.etiqueta("FOTO", 10, Tema.SUAVE); cam_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(cam_txt); der.add_child(cam_txt)
+	# ---- camara de inspeccion: zoom y termica ----
+	zoom_caja = VBoxContainer.new(); zoom_caja.add_theme_constant_override("separation", 6); zoom_caja.visible = false; zoom_caja.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	zoom_caja.add_child(_boton_redondo("+", "Acercar el zoom (Z, cruceta arriba)", func(): p.dji_zoom(1), 36))
+	zoom_txt = Tema.etiqueta("1x", 10, Tema.SUAVE); zoom_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(zoom_txt); zoom_caja.add_child(zoom_txt)
+	zoom_caja.add_child(_boton_redondo("−", "Alejar el zoom (X, cruceta abajo)", func(): p.dji_zoom(-1), 36))
+	b_ir = _boton_redondo("IR", "Cámara térmica (C, cruceta derecha)", func(): p.dji_termica(), 36); zoom_caja.add_child(b_ir)
+	for bz in zoom_caja.get_children(): bz.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	der.add_child(zoom_caja)
 	add_child(der)
+	# ---- termica: medidor puntual en el centro y escala de temperaturas ----
+	medidor = VBoxContainer.new(); medidor.add_theme_constant_override("separation", 4); medidor.mouse_filter = Control.MOUSE_FILTER_IGNORE; medidor.visible = false
+	medidor.set_anchors_preset(Control.PRESET_CENTER); medidor.grow_horizontal = Control.GROW_DIRECTION_BOTH; medidor.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var cruz := Control.new(); cruz.custom_minimum_size = Vector2(46, 46); cruz.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; cruz.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cruz.draw.connect(func():
+		for par in [[Color.BLACK, 4.0], [Color.WHITE, 2.0]]:
+			for s in [[Vector2(23, 2), Vector2(23, 17)], [Vector2(23, 29), Vector2(23, 44)], [Vector2(2, 23), Vector2(17, 23)], [Vector2(29, 23), Vector2(44, 23)]]:
+				cruz.draw_line(s[0], s[1], par[0], par[1])
+		cruz.draw_arc(Vector2(23, 23), 3, 0, TAU, 24, Color.WHITE, 1.5, true))
+	medidor.add_child(cruz)
+	temp = Tema.etiqueta("", 15, Color.WHITE, true); temp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	temp.add_theme_stylebox_override("normal", Tema.caja(Color(0, 0, 0, 0.55), Color(0, 0, 0, 0), 5, 0, 7, 1)); medidor.add_child(temp)
+	add_child(medidor)
+	paleta = VBoxContainer.new(); paleta.add_theme_constant_override("separation", 3); paleta.mouse_filter = Control.MOUSE_FILTER_IGNORE; paleta.visible = false
+	paleta.anchor_left = 1; paleta.anchor_right = 1; paleta.anchor_top = 0.5; paleta.anchor_bottom = 0.5; paleta.offset_right = -150; paleta.offset_left = -150
+	paleta.grow_horizontal = Control.GROW_DIRECTION_BEGIN; paleta.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var p_alta := Tema.etiqueta("150 °C", 11); p_alta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(p_alta); paleta.add_child(p_alta)
+	var grad := Gradient.new(); grad.offsets = PackedFloat32Array([0.0, 0.07, 0.2, 0.35, 0.55, 0.78, 1.0])
+	grad.colors = PackedColorArray([Color("#fffeed"), Color("#ffdb33"), Color("#ff8000"), Color("#db2933"), Color("#8c008c"), Color("#1f005c"), Color("#00000d")])
+	var gtx := GradientTexture2D.new(); gtx.gradient = grad; gtx.fill_from = Vector2(0, 0); gtx.fill_to = Vector2(0, 1); gtx.width = 10; gtx.height = 120
+	var barra := Control.new(); barra.custom_minimum_size = Vector2(12, 122); barra.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; barra.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	barra.draw.connect(func():
+		barra.draw_texture_rect(gtx, Rect2(1, 1, 10, 120), false)
+		barra.draw_rect(Rect2(0.5, 0.5, 11, 121), Color(1, 1, 1, 0.5), false, 1))
+	paleta.add_child(barra)
+	var p_baja := Tema.etiqueta("−20 °C", 11); p_baja.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(p_baja); paleta.add_child(p_baja)
+	add_child(paleta)
 	# ---- abajo: mapa y telemetria ----
 	var abajo := HBoxContainer.new(); abajo.add_theme_constant_override("separation", 16); abajo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	abajo.anchor_top = 1; abajo.anchor_bottom = 1; abajo.anchor_right = 1; abajo.offset_left = 16; abajo.offset_right = -16; abajo.offset_bottom = -12; abajo.offset_top = -12 - 130
@@ -169,3 +207,16 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 		b_rth.add_theme_stylebox_override("normal", s_rth); b_rth.add_theme_color_override("font_color", Color.BLACK if activo else Color.WHITE)
 	if _video != D["video"] or _grabando != D["grabando"]: _video = D["video"]; _grabando = D["grabando"]; disparo.queue_redraw()
 	cam_txt.text = "VÍDEO" if D["video"] else "FOTO"
+	# camara de inspeccion: zoom, termica, el medidor puntual del centro y la escala de temperaturas
+	var Cm = p.camara_dron(); var cm: Dictionary = p.cam_dji(); var ver_med: bool = cm["termica"] and p.camara == 3
+	zoom_caja.visible = Cm != null
+	if Cm != null:
+		zoom_txt.text = "%dx" % int(cm["zoom"]); b_ir.visible = bool(Cm.get("termica", false))
+		if _ir_ant != cm["termica"]:
+			_ir_ant = cm["termica"]
+			var s_ir := _redondo(36, Color("#ffb74d") if _ir_ant else Color(0, 0, 0, 0.55), Color("#ffb74d") if _ir_ant else Color(1, 1, 1, 0.4))
+			b_ir.add_theme_stylebox_override("normal", s_ir); b_ir.add_theme_color_override("font_color", Color.BLACK if _ir_ant else Color.WHITE)
+	medidor.visible = ver_med; paleta.visible = ver_med
+	if ver_med:
+		var L = p.ev.op.lectura if (p.ev != null and p.ev.op != null) else null; var Tm: float = float(L["T"]) if L != null else Operacion.AMBIENTE
+		temp.text = ">150 °C" if Tm > 150 else ("%.1f" % Tm).replace(".", ",") + " °C"

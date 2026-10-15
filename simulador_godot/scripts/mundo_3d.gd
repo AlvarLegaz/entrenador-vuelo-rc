@@ -886,6 +886,48 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
 			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
 			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))
+	if d.has("racks") or d.has("calientes"): _termicos(G, Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 }), d)
+
+## Lo que solo se ve con la camara termica (capa 2: la camara normal no la dibuja) en colores clave para el sombreador
+## de la termica (principal.gd, _termica): caliente en rojo puro con el calor en el azul, frio en verde puro. Y lo que se
+## ve tambien a simple vista: la placa de la boca de la antorcha y la llama de su piloto (_termicos de visor_real.js).
+## op: la Operacion del trabajo (mismos datos sorteados), con sus objetos termicos.
+func _termicos(G: Node3D, op: Operacion, d: Dictionary) -> void:
+	var mat := func(T: float) -> StandardMaterial3D:
+		var c := Operacion.calor(T); var k := Color(1, 0, (c - 0.55) / 0.45) if c >= 0.55 else Color(0, 1, c / 0.15)
+		var mt := StandardMaterial3D.new(); mt.albedo_color = k.linear_to_srgb(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.disable_fog = true; return mt
+	var capa2 := func(mesh: Mesh, mt: Material) -> MeshInstance3D:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mt; mi.layers = 2; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; G.add_child(mi); return mi
+	var esfera := func(r: float, seg: int) -> SphereMesh:
+		var s := SphereMesh.new(); s.radius = r; s.height = 2 * r; s.radial_segments = seg; s.rings = 8; return s
+	for o in op.termicos:
+		var P0: Array = o["P0"]; var P1: Array = o["P1"]
+		var a := Vector3(P0[1], P0[2], -P0[0]); var b := Vector3(P1[1], P1[2], -P1[0]); var L := a.distance_to(b)
+		if L < 0.01: (capa2.call(esfera.call(float(o["r"]), 12), mat.call(float(o["T"]))) as MeshInstance3D).position = a; continue
+		var cm := CylinderMesh.new(); cm.top_radius = o["r"]; cm.bottom_radius = o["r"]; cm.height = L; cm.radial_segments = 12; cm.rings = 0
+		var mi: MeshInstance3D = capa2.call(cm, mat.call(float(o["T"]))); mi.position = (a + b) / 2
+		mi.quaternion = Quaternion(Vector3.UP, (b - a).normalized())
+	if not d.has("racks"): return
+	# el penacho de la fuga: gas frio que se aleja con el viento, cada vez mas ancho
+	var v: Dictionary = ent.viento; var rv: float = float(v["rumbo"]) if float(v["base"]) > 0.2 else 0.0; var V: Array = op.valvula
+	for k in range(1, 7):
+		var s: MeshInstance3D = capa2.call(esfera.call(0.5 + 0.35 * k, 10), mat.call(-15.0 + 3 * k))
+		s.position = Vector3(V[1] + 1.5 * k * sin(rv), V[2] - 0.25 * k, -(V[0] + 1.5 * k * cos(rv)))
+	# la placa de la antorcha (se lee con el zoom): blanca con borde negro y el codigo en negro
+	var pl: Array = op.placa
+	var img := Image.create(256, 128, false, Image.FORMAT_RGB8); img.fill(Color("#111111")); img.fill_rect(Rect2i(8, 8, 240, 112), Color("#f2f2f2"))
+	var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(img); mt.roughness = 0.6
+	var qm := QuadMesh.new(); qm.size = Vector2(1.6, 0.8)
+	var P := Node3D.new(); P.position = Vector3(pl[1], pl[2], -pl[0]); P.rotation.y = PI - float(pl[3]) * PI / 180; G.add_child(P)
+	var mp := MeshInstance3D.new(); mp.mesh = qm; mp.material_override = mt; P.add_child(mp)
+	var lt := Label3D.new(); lt.text = String(d["placaTxt"]); lt.font_size = 80; lt.pixel_size = 0.8 / 128.0; lt.font = Tema.negrita; lt.modulate = Color("#111111")
+	lt.outline_size = 0; lt.double_sided = false; lt.alpha_cut = Label3D.ALPHA_CUT_DISCARD; lt.position = Vector3(0, -0.025, 0.005); P.add_child(lt)
+	if d.get("piloto", false):                         # la llama del piloto (si esta encendido)
+		var B: Array = op.boca
+		for f in [[0.45, 1.8, Color("#ff7a1a")], [0.22, 1.1, Color("#ffe27a")]]:
+			var cn := CylinderMesh.new(); cn.top_radius = 0.0; cn.bottom_radius = f[0]; cn.height = f[1]; cn.radial_segments = 12; cn.rings = 0
+			var mf := StandardMaterial3D.new(); mf.albedo_color = Color(f[2], 0.85); mf.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mf.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			var mi := MeshInstance3D.new(); mi.mesh = cn; mi.material_override = mf; mi.position = Vector3(B[1], B[2] + f[1] / 2, -B[0]); G.add_child(mi)
 
 var _sing: Node3D
 func _singulares() -> void:

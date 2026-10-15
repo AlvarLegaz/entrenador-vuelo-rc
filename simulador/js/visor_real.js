@@ -202,7 +202,46 @@ Object.assign(Visor.prototype, {
       });
     }
     G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    if (d.racks || d.calientes) this._termicos(G, new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), d);
     this.operacion = G; this.escena.add(G);
+  },
+
+  /** Lo que solo se ve con la camara termica (capa 1: la camara normal no la dibuja) en colores clave para el sombreador
+   *  de la termica (visor.js, _renderTermico): caliente en rojo puro con el calor en el azul, frio en verde puro. Y lo
+   *  que se ve tambien a simple vista: la placa de la boca de la antorcha y la llama de su piloto. op: la Operacion del
+   *  trabajo (mismos datos sorteados), con sus objetos termicos (puntos calientes, vapor, chimeneas, antorcha, fuga). */
+  _termicos(G, op, d) {
+    const clave = T => { const c = opCalor(T); return c >= 0.55 ? new THREE.Color(1, 0, (c - 0.55) / 0.45) : new THREE.Color(0, 1, c / 0.15); };
+    const mat = T => new THREE.MeshBasicMaterial({ color: clave(T), toneMapped: false, fog: false });
+    const capa1 = o => { o.layers.set(1); o.castShadow = false; o.receiveShadow = false; G.add(o); return o; };
+    for (const o of op.termicos) {
+      const [n0, e0, y0] = o.P0, [n1, e1, y1] = o.P1, L = Math.hypot(n1 - n0, e1 - e0, y1 - y0);
+      if (L < 0.01) { const s = capa1(new THREE.Mesh(new THREE.SphereGeometry(o.r, 12, 8), mat(o.T))); s.position.set(e0, y0, -n0); continue; }
+      const c = capa1(new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r, L, 12), mat(o.T)));
+      c.position.set((e0 + e1) / 2, (y0 + y1) / 2, -(n0 + n1) / 2);
+      c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(e1 - e0, y1 - y0, -(n1 - n0)).normalize());
+    }
+    if (d.racks) {
+      // el penacho de la fuga: gas frio que se aleja con el viento, cada vez mas ancho
+      const v = this.entorno.viento, rv = v && v.base > 0.2 ? v.rumbo : 0, [N, E, up] = op.valvula;
+      for (let k = 1; k <= 6; k++) {
+        const s = capa1(new THREE.Mesh(new THREE.SphereGeometry(0.5 + 0.35 * k, 10, 8), mat(-15 + 3 * k)));
+        s.position.set(E + 1.5 * k * Math.sin(rv), up - 0.25 * k, -(N + 1.5 * k * Math.cos(rv)));
+      }
+      // la placa de la antorcha (se lee con el zoom) y la llama del piloto (si esta encendido)
+      const [pn, pe, py, pr] = op.placa, [c, g] = lienzo(256, 128);
+      g.fillStyle = "#f2f2f2"; g.fillRect(0, 0, 256, 128); g.strokeStyle = "#111"; g.lineWidth = 8; g.strokeRect(4, 4, 248, 120);
+      g.fillStyle = "#111"; g.font = "bold 80px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(d.placaTxt, 128, 68);
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: texSRGB(c), roughness: 0.6 }));
+      pl.position.set(pe, py, -pn); pl.rotation.y = Math.PI - pr * Math.PI / 180; G.add(pl);
+      if (d.piloto) {
+        const [bn, be, by] = op.boca;
+        for (const [r, h, col] of [[0.45, 1.8, 0xff7a1a], [0.22, 1.1, 0xffe27a]]) {
+          const f = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, depthWrite: false }));
+          f.position.set(be, by + h / 2, -bn); G.add(f);
+        }
+      }
+    }
   },
 
   /** Elementos singulares del mundo (simulador/singulares.js, comun con Godot): la entrada del CIFP Politecnico... */

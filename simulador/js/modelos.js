@@ -279,5 +279,5 @@ class Modelos {
     return Object.keys(Modelos._datos).sort((a, b) => pos(a) - pos(b) || a.localeCompare(b));
   }
   static datos(id) { return Modelos._datos[id]; }
-  static crear(id) { return new Modelos._clases[id](Modelos._datos[id]); }
+  static crear(id) { const C = Modelos._clases[id]; return new (typeof C === "string" ? window[C] : C)(Modelos._datos[id]); }   // clase por nombre: la define otro fichero de aviones/ que puede cargar despues
 }

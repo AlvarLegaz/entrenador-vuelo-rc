@@ -90,14 +90,14 @@ func _luces(K: Dictionary) -> void:
 	# luces (K.luces: posicion en ejes cuerpo, color y patron de parpadeo): un punto brillante de tamano fijo en pantalla
 	# (sprite de tamano fijo), para que un dron de 25 cm se vea desde el puesto del piloto, y una bolita para las camaras cercanas
 	for l in K.get("luces", []):
-		var g := Node3D.new(); g.position = ModeloDJI3D.posicion_luz(l["p"]) if dji else Vector3(l["p"][0], l["p"][1], l["p"][2])
+		var g := Node3D.new(); g.position = (ModeloDJI3D.posicion_luz(l["p"]) * dji.escala + dji.position) if dji else Vector3(l["p"][0], l["p"][1], l["p"][2])
 		g.set_meta("patron", l.get("patron", "fijo"))
 		var color := Color.hex((int(l["color"]) << 8) | 0xff)
 		var sp := Sprite3D.new(); sp.texture = _textura_luz(); sp.modulate = color; sp.fixed_size = true
 		sp.billboard = BaseMaterial3D.BILLBOARD_ENABLED; sp.shaded = false; sp.transparent = true; sp.double_sided = true
 		sp.pixel_size = 0.01 / 32; sp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF     # se reescala cada cuadro a un tamano fijo en pixeles
 		g.add_child(sp)
-		var rb := 0.0026 if dji else 0.007      # en el modelo detallado, del tamano de su lente
+		var rb := 0.0026 * dji.escala if dji else 0.007      # en el modelo detallado, del tamano de su lente
 		var bola := MeshInstance3D.new(); var esf := SphereMesh.new(); esf.radius = rb; esf.height = 2 * rb; esf.radial_segments = 8; esf.rings = 6
 		var mb := StandardMaterial3D.new(); mb.albedo_color = color; mb.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		bola.mesh = esf; bola.material_override = mb; bola.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; g.add_child(bola)

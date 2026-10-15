@@ -93,6 +93,21 @@ const Industria = {
     return P;
   },
 
+  /** Las tuberias de un rack, como las dibuja primitivas(): por nivel j (1..niveles) e indice i, su eje (de e0, n0 a
+   *  e1, n1), su centro sobre el suelo del punto medio del rack (yc), su diametro d y su color (5 plata, 6 amarillo:
+   *  vapor con aislante, 7 verde). Las usan los trabajos de inspeccion termica (operaciones.js). */
+  tuberias(p) {
+    const de = p.e1 - p.e0, dn = p.n1 - p.n0, L = Math.hypot(de, dn), s2 = de / L, c2 = dn / L, W = p.ancho, r = [];
+    for (let j = 1; j <= p.niveles; j++) {
+      const nt = Math.max(3, Math.floor(W / 0.9));
+      for (let i = 0; i < nt; i++) {
+        const d = 0.25 + 0.45 * Industria.azar(j, i), a = Industria.azar(j, 50 + i), z = -W / 2 + 0.5 + i * (W - 1) / (nt - 1);
+        r.push({ j, i, e0: p.e0 + z * c2, n0: p.n0 - z * s2, e1: p.e0 + L * s2 + z * c2, n1: p.n0 + L * c2 - z * s2, yc: p.alto * j / p.niveles + d / 2, d, color: a < 0.7 ? 5 : a < 0.85 ? 6 : 7 });
+      }
+    }
+    return r;
+  },
+
   /** Solido para las colisiones: [planta (E, N, ...), alto]. Null si no es industrial. */
   solido(p) {
     const R = (p.rumbo || 0) * Math.PI / 180, sr = Math.sin(R), cr = Math.cos(R);

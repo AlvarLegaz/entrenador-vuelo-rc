@@ -91,6 +91,6 @@ func _initialize() -> void:
 		_ok("%s, semilla %d" % [x["mision"], x["semilla"]], dif.is_empty(), "" if dif.is_empty() else "\n      " + "\n      ".join(dif))
 	print("Las operaciones no son entrenamientos:")
 	_ok("el dron comercial tiene sus 6 entrenamientos", Escenarios.misiones_de("dron").size() == 6, str(Escenarios.misiones_de("dron")))
-	_ok("y 6 operaciones", Escenarios.operaciones().size() == 6, str(Escenarios.operaciones()))
+	_ok("y 7 operaciones", Escenarios.operaciones().size() == 7, str(Escenarios.operaciones()))
 	print("RESULTADO: " + ("todo igual" if fallos == 0 else "%d fallos" % fallos))
 	quit(1 if fallos else 0)
