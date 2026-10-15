@@ -125,6 +125,41 @@ Object.assign(Visor.prototype, {
   /** Lo que hay que ver en un trabajo del modo Operaciones (escenarios.js, "operacion"; las reglas en js/operaciones.js),
    *  o null para quitarlo: la plataforma de despegue, las placas numeradas de la inspeccion, los jalones de la parcela o
    *  de la zona de busqueda, el senderista, las manchas de plaga y las torres y cables de la linea. casa: [N, E]. */
+  /** La pista (escenarios.js "pista": umbral n, e, rumbo, largo, ancho, nombre "05R/23L") sobre el terreno: el asfalto,
+   *  que sigue el relieve cada 20 m, y sus marcas (bandas de umbral, bordes, eje discontinuo, puntos de visada y las
+   *  designaciones de las dos cabeceras). P null la quita. Lo mismo que poner_pista de mundo_3d.gd. */
+  ponerPista(P) {
+    if (this.pista) { this.escena.remove(this.pista); liberar(this.pista); this.pista = null; }
+    if (!P || !this.mundo) return;
+    const G = new THREE.Group(), r = P.rumbo * D2R, cr = Math.cos(r), sr = Math.sin(r), alt = this.entorno.altura;
+    const pt = (d, t, dz) => { const n = P.n + d * cr - t * sr, e = P.e + d * sr + t * cr; return [e, alt(n, e) + dz, -n]; };
+    const malla = (quads, dz) => {          // quads [[d0, d1, t0, t1], ...] -> una malla (cada esquina a la altura del suelo + dz)
+      const v = [], ix = [];
+      for (const [d0, d1, t0, t1] of quads) { const b = v.length / 3; for (const [d, t] of [[d0, t0], [d1, t0], [d1, t1], [d0, t1]]) v.push(...pt(d, t, dz)); ix.push(b, b + 2, b + 1, b, b + 3, b + 2); }
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); g.setIndex(ix); g.computeVertexNormals(); return g;
+    };
+    const a = P.ancho / 2, asf = [];
+    for (let d = 0; d < P.largo; d += 20) asf.push([d, Math.min(P.largo, d + 20), -a - 3, a + 3]);
+    const mAsf = new THREE.Mesh(malla(asf, 0.10), new THREE.MeshStandardMaterial({ color: 0x45484b, roughness: 0.95, side: THREE.DoubleSide })); mAsf.receiveShadow = true; G.add(mAsf);
+    const marcas = [];
+    for (let d = 0; d < P.largo; d += 50) for (const s of [-1, 1]) marcas.push([d, Math.min(P.largo, d + 50), s * a - (s > 0 ? 0.9 : 0), s * a + (s < 0 ? 0.9 : 0)]);   // bordes
+    for (let d = 200; d + 30 < P.largo - 200; d += 50) marcas.push([d, d + 30, -0.45, 0.45]);                                      // eje
+    for (const [d0, sgn] of [[6, 1], [P.largo - 6, -1]]) {
+      for (let k = 0; k < 8; k++) for (const s of [-1, 1]) { const t0 = s * (1.8 + k * 3.6), t1 = t0 + s * 1.8; marcas.push([Math.min(d0, d0 + sgn * 30), Math.max(d0, d0 + sgn * 30), Math.min(t0, t1), Math.max(t0, t1)]); }   // umbral
+      const dv = sgn > 0 ? 400 : P.largo - 400; for (const s of [-1, 1]) marcas.push([dv - 22.5, dv + 22.5, s * 6 - 3, s * 6 + 3]);                    // puntos de visada
+    }
+    G.add(new THREE.Mesh(malla(marcas, 0.13), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, side: THREE.DoubleSide })));
+    const [n1, n2] = (P.nombre || "").split(" ").pop().split("/");                 // "San Javier 05R/23L" -> 05R y 23L
+    for (const [txt, d, giro] of [[n1, 60, 0], [n2, P.largo - 60, Math.PI]]) {
+      if (!txt) continue;
+      const [c, g] = lienzo(128, 256); g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.font = "bold 110px sans-serif";
+      g.fillText(txt.slice(0, 2), 64, 70); g.fillText(txt.slice(2), 64, 195);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(14, 28), new THREE.MeshStandardMaterial({ map: texSRGB(c), transparent: true, roughness: 0.8 }));
+      const q = pt(d + (giro ? -14 : 14), 0, 0.14); m.position.set(q[0], q[1], q[2]); m.rotation.order = "YXZ"; m.rotation.set(-Math.PI / 2, -r - giro, 0); G.add(m);
+    }
+    this.pista = G; this.escena.add(G);
+  },
+
   ponerOperacion(d, casa) {
     if (this.operacion) { this.operacion.parent && this.operacion.parent.remove(this.operacion); liberar(this.operacion); this.operacion = null; }
     if (!d || !this.mundo) return;

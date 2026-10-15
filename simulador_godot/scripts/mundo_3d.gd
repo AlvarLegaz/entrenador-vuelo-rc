@@ -763,6 +763,52 @@ static func singulares_datos() -> Array:
 ## Lo que hay que ver en un trabajo (escenarios.js, "operacion"; las reglas en operaciones.gd), o {} para quitarlo: la
 ## plataforma de despegue, las placas numeradas de la inspeccion, los jalones de la parcela o de la zona de busqueda, el
 ## senderista, las manchas de plaga y las torres y cables de la linea (ponerOperacion de visor_real.js). casa: [N, E].
+## La pista (escenarios.js "pista") sobre el terreno: el asfalto, que sigue el relieve cada 20 m, y sus marcas (bandas de
+## umbral, bordes, eje discontinuo, puntos de visada y las designaciones de las cabeceras). Como ponerPista de visor_real.js.
+var _pista: Node3D
+func poner_pista(P) -> void:
+	if _pista: _pista.queue_free(); _pista = null
+	if P == null: return
+	var G := Node3D.new(); add_child(G); _pista = G
+	var r: float = float(P["rumbo"]) * PI / 180; var cr := cos(r); var sr := sin(r); var largo: float = P["largo"]; var a: float = float(P["ancho"]) / 2
+	var pt := func(d: float, t: float, dz: float) -> Vector3:
+		var n: float = P["n"] + d * cr - t * sr; var e: float = P["e"] + d * sr + t * cr
+		return Vector3(e, ent.altura(n, e) + dz, -n)
+	var malla := func(quads: Array, dz: float) -> ArrayMesh:
+		var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for q in quads:
+			var c: Array = [pt.call(q[0], q[2], dz), pt.call(q[1], q[2], dz), pt.call(q[1], q[3], dz), pt.call(q[0], q[3], dz)]
+			for k in [0, 1, 2, 0, 2, 3]: st.add_vertex(c[k])
+		st.generate_normals(); return st.commit()
+	var asf := []; var d := 0.0
+	while d < largo: asf.append([d, minf(largo, d + 20), -a - 3, a + 3]); d += 20
+	var m_asf := StandardMaterial3D.new(); m_asf.albedo_color = Color.hex(0x45484bff); m_asf.roughness = 0.95; m_asf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var mi := MeshInstance3D.new(); mi.mesh = malla.call(asf, 0.10); mi.material_override = m_asf; G.add_child(mi)
+	var marcas := []; d = 0.0
+	while d < largo:
+		for s in [-1.0, 1.0]: marcas.append([d, minf(largo, d + 50), s * a - (0.9 if s > 0 else 0.0), s * a + (0.9 if s < 0 else 0.0)])
+		d += 50
+	d = 200.0
+	while d + 30 < largo - 200: marcas.append([d, d + 30, -0.45, 0.45]); d += 50
+	for q in [[6.0, 1.0], [largo - 6, -1.0]]:
+		var d0: float = q[0]; var sgn: float = q[1]
+		for k in 8:
+			for s in [-1.0, 1.0]:
+				var t0: float = s * (1.8 + k * 3.6); var t1: float = t0 + s * 1.8
+				marcas.append([minf(d0, d0 + sgn * 30), maxf(d0, d0 + sgn * 30), minf(t0, t1), maxf(t0, t1)])
+		var dv: float = 400.0 if sgn > 0 else largo - 400
+		for s in [-1.0, 1.0]: marcas.append([dv - 22.5, dv + 22.5, s * 6 - 3, s * 6 + 3])
+	var m_mar := StandardMaterial3D.new(); m_mar.albedo_color = Color.hex(0xeeeeeeff); m_mar.roughness = 0.8; m_mar.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var mm := MeshInstance3D.new(); mm.mesh = malla.call(marcas, 0.13); mm.material_override = m_mar; G.add_child(mm)
+	var nom: PackedStringArray = String(P.get("nombre", "")).split(" ")[-1].split("/")
+	for q in [[nom[0] if nom.size() > 0 else "", 60.0, 0.0], [nom[1] if nom.size() > 1 else "", largo - 60, PI]]:
+		var txt: String = q[0]
+		if txt == "": continue
+		var c: Vector3 = pt.call(q[1] + (-14.0 if q[2] != 0 else 14.0), 0.0, 0.14)
+		var l := Label3D.new(); l.text = txt.substr(0, 2) + "\n" + txt.substr(2); l.font = Tema.negrita; l.font_size = 110; l.pixel_size = 28.0 / 256.0
+		l.outline_size = 0; l.modulate = Color.WHITE; l.double_sided = true; l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+		l.position = c; l.rotation = Vector3(-PI / 2, -r - float(q[2]), 0); l.rotation_order = EULER_ORDER_YXZ; G.add_child(l)
+
 var _op: Node3D
 func poner_operacion(d: Dictionary, casa: Array) -> void:
 	if _op: _op.queue_free(); _op = null

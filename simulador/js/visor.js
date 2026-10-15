@@ -36,6 +36,7 @@ function construirAvion(datos) {
   const geom = m => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(m.v, 3)); g.setIndex(m.i);
+    if (m.suave) { g.computeVertexNormals(); return g; }          // superficies curvas (XM-7): normales suaves
     const n = g.toNonIndexed(); n.computeVertexNormals(); return n;
   };
   const mat = c => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
@@ -50,10 +51,17 @@ function construirAvion(datos) {
   const prof = K.prof ? pivote(K.prof, K.bisagra_prof) : new THREE.Group();
   const timon = K.timon ? pivote(K.timon, K.bisagra_timon) : new THREE.Group();
   // alerones (si la malla los trae): cada uno gira sobre su bisagra, cuyo eje lleva el diedro y el calado del ala.
-  // Con prof: true es un elevon: ademas del alabeo (signo * da) gira con la profundidad (de)
+  // Con prof: true es un elevon: ademas del alabeo (signo * da) gira con la profundidad (de); con timon: true es un
+  // timon (los dos de la doble deriva del XM-7): gira con dr
   const alerones = (K.alerones || []).map(a => {
-    const p = pivote(a, a.bisagra); p.eje = new THREE.Vector3(...a.eje).normalize(); p.signo = a.signo; p.prof = !!a.prof; return p;
+    const p = pivote(a, a.bisagra); p.eje = new THREE.Vector3(...a.eje).normalize(); p.signo = a.signo; p.prof = !!a.prof; p.timon = !!a.timon; return p;
   });
+  let torreta = null;
+  if (K.torreta) {          // torreta EO/IR: gira (pan, sobre el eje z del avion) e inclina (tilt) con la camara
+    torreta = new THREE.Group(); torreta.position.set(...K.torreta.centro); torreta.rotation.order = "ZYX";
+    for (const m of [K.torreta, K.torreta.ventanas]) { const mm = new THREE.Mesh(geom(m), mat(m.color)); mm.position.set(-K.torreta.centro[0], -K.torreta.centro[1], -K.torreta.centro[2]); torreta.add(mm); }
+    grupo.add(torreta);
+  }
   const matHelice = () => new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
   let helice;
   if (K.helices) {          // multicoptero: un disco horizontal por rotor (en ejes cuerpo el plano x-y ya es horizontal)
@@ -81,7 +89,7 @@ function construirAvion(datos) {
     g.add(new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 6), new THREE.MeshBasicMaterial({ color: l.color })));
     grupo.add(g); return g;
   });
-  return { grupo, prof, timon, alerones, helice, luces, dron: !!K.helices };
+  return { grupo, prof, timon, alerones, helice, luces, torreta, centroTorreta: K.torreta ? K.torreta.centro : null, dron: !!K.helices };
 }
 
 // ---------------------------------------------------------------------
@@ -1077,7 +1085,8 @@ class Visor {
       a.grupo.matrix.set(ex[0], ey[0], ez[0], t[0], ex[1], ey[1], ez[1], t[1], ex[2], ey[2], ez[2], t[2], 0, 0, 0, 1);
       a.prof.rotation.y = av.de;           // + = borde de fuga abajo
       a.timon.rotation.z = -av.dr;         // + = borde de fuga a la derecha
-      for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.signo * (av.da || 0) + (al.prof ? av.de : 0));   // + = aleron derecho arriba
+      for (const al of a.alerones) al.setRotationFromAxisAngle(al.eje, al.timon ? al.signo * (av.dr || 0) : al.signo * (av.da || 0) + (al.prof ? av.de : 0));   // + = aleron derecho arriba
+      if (a.torreta) { const tr = av.torreta || { pan: 0, tilt: 0 }; a.torreta.rotation.set(0, tr.tilt, tr.pan); }
       a.helice.visible = av.gases > 0.05;
       // luces: en el suelo con los motores parados, apagadas; "lento" (navegacion) 1 Hz, "estrobo" dos destellos por segundo
       // el sprite sin atenuacion se proyecta a scale / tan(fov/2) del semialto de la pantalla: se reescala a unos 12 px sea cual sea el zoom
@@ -1114,7 +1123,7 @@ class Visor {
       const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
       for (const sp of this.rotulos) { const h = sp.userData.px * k; sp.scale.set(h * 4, h, 1); }
     }
-    if (this.termica && this.camara === 3 && this.avion && this.avion.dron) this._renderTermico();
+    if (this.termica && this.camara === 3 && this.avion && (this.avion.dron || this.avion.torreta)) this._renderTermico();
     else this.renderer.render(this.escena, this.cam);
   }
 
@@ -1175,7 +1184,20 @@ void main() {
       this._fov1 = this._fov1 === undefined ? fovObj : this._fov1 + (fovObj - this._fov1) * 0.08;
       cam.fov = this._fov1; cam.lookAt(t[0], t[1], t[2]);
     }
-    else if (this.camara === 2) {
+    else if (this.camara === 1 && this.avion && this.avion.torreta) {
+      // UAV: camara de vuelo, fija en el morro y algo inclinada hacia abajo (la que usa el piloto para despegar y aterrizar)
+      const q = av.q, ti = -4 * Math.PI / 180, pos = ned2three(Cuat.rot(q, [1.1, 0, 0.05])), fw = ned2three(Cuat.rot(q, [Math.cos(ti), 0, -Math.sin(ti)])), up = ned2three(Cuat.rot(q, [-Math.sin(ti), 0, -Math.cos(ti)]));
+      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 55;
+      cam.up.set(up[0], up[1], up[2]); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
+    } else if (this.camara === 3 && this.avion && this.avion.torreta) {
+      // UAV: la torreta EO/IR, estabilizada (sin el alabeo ni el cabeceo del avion), con el rumbo del avion mas su giro
+      // (av.torreta.pan) y su inclinacion (tilt); con zoom, el campo se cierra
+      const tr = av.torreta || { pan: 0, tilt: 0 }, yaw = Cuat.euler(av.q)[2] + tr.pan, g = tr.tilt;
+      const pos = ned2three(Cuat.rot(av.q, this.avion.centroTorreta)), fw = ned2three([Math.cos(yaw) * Math.cos(g), Math.sin(yaw) * Math.cos(g), -Math.sin(g)]);
+      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]);
+      cam.fov = this.zoomCam > 1 ? 2 * Math.atan(Math.tan(29 * Math.PI / 180) / this.zoomCam) * 180 / Math.PI : 58;
+      cam.up.set(0, 1, 0); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
+    } else if (this.camara === 2) {
       // a escala del vehiculo: el dron de 25 cm se ve tan grande como el avion de 1,2 m (que sigue a 5 m y 1,5 m de altura)
       const env = (this.avion && this.avion.envergadura) || 1, dc = env * (5 / 1.2), hc = env * (1.5 / 1.2);
       const yaw = Cuat.euler(av.q)[2], back = ned2three([-Math.cos(yaw) * dc, -Math.sin(yaw) * dc, -hc]);

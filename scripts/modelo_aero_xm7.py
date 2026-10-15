@@ -10,7 +10,7 @@ Lo que hace, como modelo_aero_g1.py para el Poli-1:
   - resistencia parasita (materiales compuestos lisos, barquilla, vigas, tren fijo y torreta) y helice propulsora de
     28" con un motor de 28 CV; el "combustible" es la energia en el eje de 45 l de gasolina
   - el tren triciclo (ruedas, amortiguadores, rodadura, frenos y rueda de morro dirigible) para la fisica en pista
-  - una malla de cajas y prismas (la de respaldo: el visor usa el modelo detallado de aviones/XM7_3D.js si esta)
+  - el modelo 3D (barquilla, ala, vigas, cola en H, timones, motor, helice, torreta EO/IR, tren y antenas)
 y escribe simulador/aviones/XM7.js con la clase ModeloG1 (scripts/clase_g1.js: alerones, profundidad y timon, de 4
 canales como en una emisora) y lo anade a simulador/aviones/indice.js.
 
@@ -133,123 +133,199 @@ tren = dict(ruedas=ruedas, k=float(k_ppal), c=float(2 * 0.6 * np.sqrt(k_ppal * m
                  "agarre lateral; la rueda de morro gira con los timones. Lo usa ModeloAvion.paso (fuerzasTren)")
 
 # =====================================================================
-#  MALLA DE RESPALDO (prismas y cajas)
+#  MODELO 3D (el mismo en los dos simuladores: construirAvion de visor.js y avion_3d.gd lo montan de "malla")
+#  Barquilla torneada con la torreta EO/IR bajo el morro (gira con la camara: malla.torreta), ala con su perfil,
+#  vigas, cola en H con la profundidad, dos derivas con sus timones (alerones con timon: true), motor y escape,
+#  helice bipala con el cono, tren triciclo y antenas. Coordenadas del proyecto (mm) -> ejes cuerpo (m).
 # =====================================================================
-def prisma(poli, a0, a1, eje):
-    poli = np.asarray(poli, float); n = len(poli)
-    def p3(q, a):
-        return {"y": (q[0], a, q[1]), "z": (q[0], q[1], a), "x": (a, q[0], q[1])}[eje]
-    v = [p3(q, a0) for q in poli] + [p3(q, a1) for q in poli]
-    c = poli.mean(0); v += [p3(c, a0), p3(c, a1)]
-    i = []
-    for k in range(n):
-        j = (k + 1) % n
-        i += [k, j, n + j, k, n + j, n + k, 2 * n, j, k, 2 * n + 1, n + k, n + j]
-    return v, i
+GRIS, OSCURO, NEGRO, CRISTAL, AMARILLO = 0x7c8288, 0x2b2f33, 0x141618, 0x0d1a24, 0xf2c200
 
 
-def caja(x0, x1, y0, y1, z0, z1):
-    return prisma([(x0, z0), (x1, z0), (x1, z1), (x0, z1)], y0, y1, "y")
-
-
-def barra(p0, p1, r, n=8):
-    """Tubo de n lados de radio r entre dos puntos."""
-    p0, p1 = np.asarray(p0, float), np.asarray(p1, float); d = p1 - p0; d /= np.linalg.norm(d)
-    a = np.cross(d, [0, 0, 1.0] if abs(d[2]) < 0.9 else [1.0, 0, 0]); a /= np.linalg.norm(a); b = np.cross(d, a)
-    esq = [r * (np.cos(t) * a + np.sin(t) * b) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
-    v = [tuple(p0 + e) for e in esq] + [tuple(p1 + e) for e in esq]
-    i = []
-    for k in range(n):
-        j = (k + 1) % n; i += [k, j, n + j, k, n + j, n + k]
-    for k in range(1, n - 1): i += [0, k + 1, k, n, n + k, n + k + 1]
-    return v, i
-
-
-def juntar(*partes, color=None):
+def juntar(*partes, color=None, suave=False):
     v, i = [], []
     for pv, pi in partes:
         i += [k + len(v) for k in pi]; v += list(pv)
     m = dict(v=np.round(a_cuerpo(v), 4).ravel().tolist(), i=[int(k) for k in i])
     if color is not None: m["color"] = color
+    if suave: m["suave"] = True
     return m
 
 
-def circulo(cx, cz, r, n=16):
-    return [(cx + r * np.cos(t), cz + r * np.sin(t)) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
+def anillos(secciones, n=20, cerrar=(True, True)):
+    """Superficie torneada: secciones [(X, semiancho, semialto, Zc)] (elipses a lo largo de X). Tapas si se piden."""
+    v, i = [], []
+    for x, w, h, zc in secciones:
+        v += [(x, w * np.cos(t), zc + h * np.sin(t)) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
+    for j in range(len(secciones) - 1):
+        for k in range(n):
+            a, b = j * n + k, j * n + (k + 1) % n
+            i += [a, n + b, b, a, n + a, n + b]
+    for extremo, cierra in ((0, cerrar[0]), (len(secciones) - 1, cerrar[1])):
+        if not cierra: continue
+        x, w, h, zc = secciones[extremo]; c = len(v); v.append((x, 0.0, zc)); base = extremo * n
+        for k in range(n):
+            a, b = base + k, base + (k + 1) % n
+            i += [c, b, a] if extremo == 0 else [c, a, b]
+    return v, i
 
 
-mC, pC, tC = P.PERFIL
-inc = np.radians(P.INC); Z0 = P.Z_ALA + 0.04 * P.C
+def tubo(p0, p1, r0, r1=None, n=14, tapas=True):
+    """Tubo (o tronco de cono) entre dos puntos."""
+    r1 = r0 if r1 is None else r1
+    p0, p1 = np.asarray(p0, float), np.asarray(p1, float); d = p1 - p0; L = np.linalg.norm(d); d /= L
+    a = np.cross(d, [0, 0, 1.0] if abs(d[2]) < 0.9 else [1.0, 0, 0]); a /= np.linalg.norm(a); b = np.cross(d, a)
+    v = [tuple(p0 + r0 * (np.cos(t) * a + np.sin(t) * b)) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
+    v += [tuple(p1 + r1 * (np.cos(t) * a + np.sin(t) * b)) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
+    i = []
+    for k in range(n):
+        j = (k + 1) % n; i += [k, j, n + j, k, n + j, n + k]
+    if tapas:
+        c0, c1 = len(v), len(v) + 1; v += [tuple(p0), tuple(p1)]
+        for k in range(n): j = (k + 1) % n; i += [c0, j, k, c1, n + k, n + j]
+    return v, i
 
 
-def perfil(s0, s1, n=14):
+def esfera(c, r, n=16, m=10, z0=-1.0, z1=1.0):
+    """Esfera (o casquete entre las alturas relativas z0..z1) de centro c y radio r."""
+    v, i = [], []
+    fs = np.linspace(np.arcsin(z0), np.arcsin(z1), m + 1)
+    for f in fs:
+        v += [(c[0] + r * np.cos(f) * np.cos(t), c[1] + r * np.cos(f) * np.sin(t), c[2] + r * np.sin(f)) for t in np.linspace(0, 2 * np.pi, n, endpoint=False)]
+    for j in range(m):
+        for k in range(n):
+            a, b = j * n + k, j * n + (k + 1) % n
+            i += [a, b, n + b, a, n + b, n + a]
+    return v, i
+
+
+def perfil_pts(perfil, n=16, s0=0.0, s1=1.0):
+    """Contorno de un perfil NACA de 4 cifras (fracciones de cuerda: (s, z)), extrados e intrados, entre s0 y s1."""
+    m_, p_, t_ = perfil
     s = s0 + (s1 - s0) * 0.5 * (1 - np.cos(np.linspace(0, np.pi, n)))
-    yt = 5 * tC * (0.2969 * np.sqrt(s) - 0.126 * s - 0.3516 * s ** 2 + 0.2843 * s ** 3 - 0.1036 * s ** 4)
-    yc = np.where(s < pC, mC / pC ** 2 * (2 * pC * s - s ** 2), mC / (1 - pC) ** 2 * (1 - 2 * pC + 2 * pC * s - s ** 2))
-    arriba, abajo = (yc + yt) * P.C, (yc - yt) * P.C
-    x = s * P.C
-    pts = list(zip(x, arriba)) + list(zip(x[::-1], abajo[::-1]))
-    return [(P.X_LE + px * np.cos(inc) + pz * np.sin(inc), Z0 + pz * np.cos(inc) - px * np.sin(inc)) for px, pz in pts]
+    yt = 5 * t_ * (0.2969 * np.sqrt(s) - 0.126 * s - 0.3516 * s ** 2 + 0.2843 * s ** 3 - 0.1036 * s ** 4)
+    if m_ > 0: yc = np.where(s < p_, m_ / p_ ** 2 * (2 * p_ * s - s ** 2), m_ / (1 - p_) ** 2 * (1 - 2 * p_ + 2 * p_ * s - s ** 2))
+    else: yc = 0 * s
+    return list(zip(s, yc + yt)) + list(zip(s[::-1], (yc - yt)[::-1]))
 
 
-def con_diedro(m, lado):
-    """Sube los vertices de una semiala con el diedro (giro sobre el plano de simetria)."""
-    v = np.asarray(m[0], float).copy(); t = np.tan(np.radians(P.DIEDRO))
-    v[:, 2] += np.abs(v[:, 1]) * t
-    return [tuple(q) for q in v], m[1]
+def superficie(perfil, cuerda, xle, z, y0, y1, inc=0.0, diedro=0.0, s0=0.0, s1=1.0, n=16, cuerda1=None, eje="y"):
+    """Superficie con perfil entre y0 e y1 (eje "y": horizontal, con diedro; eje "z": vertical, en el plano y = xle[1]).
+    Cuerda constante o de cuerda (en y0) a cuerda1 (en y1) con el borde de fuga recto."""
+    c1 = cuerda if cuerda1 is None else cuerda1
+    pts = perfil_pts(perfil, n, s0, s1); k = len(pts); a = np.radians(inc); t = np.tan(np.radians(diedro))
+    v = []
+    for y, c in ((y0, cuerda), (y1, c1)):
+        x0 = xle + (cuerda - c)                                 # borde de fuga recto
+        for s, zz in pts:
+            px, pz = s * c, zz * c
+            X = x0 + px * np.cos(a) + pz * np.sin(a); Zs = pz * np.cos(a) - px * np.sin(a)
+            v.append((X, y, z + Zs + abs(y) * t) if eje == "y" else (X, Zs, y))
+    i = []
+    for j in range(k):
+        jj = (j + 1) % k; i += [j, k + j, k + jj, j, k + jj, jj]
+    c0 = len(v); v.append(tuple(np.mean(v[:k], axis=0))); c1_ = len(v); v.append(tuple(np.mean(v[k:2 * k], axis=0)))
+    for j in range(k): jj = (j + 1) % k; i += [c0, jj, j, c1_, k + j, k + jj]
+    return v, i
 
 
-AL = P.ALERON; sb = AL["bisagra"]; y0a, y1a, semi = AL["y0"], AL["y1"], P.B / 2
-ala_partes, alerones = [], []
+def caja(x0, x1, y0, y1, z0, z1):
+    v = [(x, y, z) for z in (z0, z1) for y in (y0, y1) for x in (x0, x1)]
+    caras = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    i = []
+    for a, b, c, d in caras: i += [a, b, c, a, c, d]
+    return v, i
+
+
+# ---- barquilla: morro redondeado, flancos rectos, lomo para el ala y cola en cono hasta el motor ----
+sec = []
+for x in list(np.linspace(0, P.X_MORRO, 9)) + list(np.linspace(P.X_MORRO + 150, P.L, 12)):
+    w, h, zc = P.fus_seccion(float(x)); sec.append((float(x), w, h, zc))
+barquilla = anillos(sec, n=24, cerrar=(False, True))
+morro = esfera((sec[0][0] + 0.0, 0.0, sec[0][3]), 20.0, n=24, m=4)          # tapa del morro
+lomo = superficie((0, 0.4, 0.30), 900.0, P.X_LE - 120, P.FUS_H / 2 - 40, -160, 160, eje="y")      # carenado del ala sobre la barquilla
+lomo = ([(x, y, max(z, P.FUS_H / 2 - 30)) for x, y, z in lomo[0]], lomo[1])
+# ---- ala: dos semialas con el perfil, alerones exteriores y puntas redondeadas ----
+AL = P.ALERON; sb = AL["bisagra"]; semi = P.B / 2; y0a, y1a = AL["y0"], AL["y1"]
+ala_p, alerones = [], []
 for lado in (-1, 1):
-    for (ya, yb), (s0, s1) in (((0, y0a), (0, 1)), ((y0a, y1a), (0, sb)), ((y1a, semi), (0, 1))):
-        a, b = sorted((lado * ya, lado * yb)); ala_partes.append(con_diedro(prisma(perfil(s0, s1), a, b, "y"), lado))
-    a, b = sorted((lado * y0a, lado * y1a))
-    xb, zb = perfil(sb, sb, n=2)[0]
-    al = juntar(con_diedro(prisma(perfil(sb, 1.0, n=8), a, b, "y"), lado))
+    for (ya, yb), (s0, s1) in (((0, y0a), (0, 1)), ((y0a, y1a), (0, sb)), ((y1a, semi - 60), (0, 1))):
+        a_, b_ = sorted((lado * ya, lado * yb)); ala_p.append(superficie(P.PERFIL, P.C, P.X_LE, P.Z_ALA, a_, b_, inc=P.INC, diedro=P.DIEDRO, s0=s0, s1=s1, n=18))
+    a_, b_ = sorted((lado * (semi - 60), lado * semi)); ala_p.append(superficie(P.PERFIL, P.C, P.X_LE, P.Z_ALA, a_, b_, inc=P.INC, diedro=P.DIEDRO, n=18, cuerda1=P.C * 0.7) if lado > 0
+                                                                      else superficie(P.PERFIL, P.C * 0.7, P.X_LE + 0.3 * P.C, P.Z_ALA, a_, b_, inc=P.INC, diedro=P.DIEDRO, n=18, cuerda1=P.C))
+    a_, b_ = sorted((lado * y0a, lado * y1a))
+    al = juntar(superficie(P.PERFIL, P.C, P.X_LE, P.Z_ALA, a_, b_, inc=P.INC, diedro=P.DIEDRO, s0=sb, s1=1.0, n=10), color=GRIS)
     t = np.tan(np.radians(P.DIEDRO)); ye = lado * y0a
-    p0 = a_cuerpo([(xb, ye, zb + abs(ye) * t)])[0]
+    xb = P.X_LE + sb * P.C * np.cos(np.radians(P.INC)); zb = P.Z_ALA - sb * P.C * np.sin(np.radians(P.INC)) + abs(ye) * t
     eje = np.array([0.0, 1.0, -lado * t]) if lado > 0 else np.array([0.0, 1.0, t])
-    al.update(bisagra=np.round(p0, 4).tolist(), eje=np.round(eje / np.linalg.norm(eje), 4).tolist(), signo=1.0 if lado < 0 else -1.0)
+    al.update(bisagra=np.round(a_cuerpo([(xb, ye, zb)])[0], 4).tolist(), eje=np.round(eje / np.linalg.norm(eje), 4).tolist(), signo=1.0 if lado < 0 else -1.0)
     alerones.append(al)
-
-# barquilla: anillos octogonales que siguen la seccion
-anillos = []
-for x in list(np.linspace(0, P.X_MORRO, 8)) + list(np.linspace(P.X_MORRO + 100, P.L, 10)):
-    w, h, zc = P.fus_seccion(x)
-    anillos.append([(x, w * np.cos(t), zc + h * np.sin(t)) for t in np.linspace(0, 2 * np.pi, 12, endpoint=False)])
-vf, fi = [p for a in anillos for p in a], []
-for j in range(len(anillos) - 1):
-    for k in range(12):
-        a, b = 12 * j + k, 12 * j + (k + 1) % 12
-        fi += [a, b, b + 12, a, b + 12, a + 12]
-n12 = 12 * (len(anillos) - 1)
-for k in range(1, 11): fi += [0, k, k + 1, n12, n12 + k + 1, n12 + k]
-vigas = [barra((P.BOOM_X0, s * P.BOOM_Y, P.BOOM_Z), (P.BOOM_X1, s * P.BOOM_Y, P.BOOM_Z), P.BOOM_R) for s in (-1, 1)]
-
+# ---- vigas de cola: tubos con cono al final ----
+vigas = []
+for s in (-1, 1):
+    y = s * P.BOOM_Y
+    vigas.append(tubo((P.BOOM_X0, y, P.BOOM_Z), (P.BOOM_X1 - 80, y, P.BOOM_Z), P.BOOM_R, n=16, tapas=False))
+    vigas.append(tubo((P.BOOM_X1 - 80, y, P.BOOM_Z), (P.BOOM_X1 + 60, y, P.BOOM_Z), P.BOOM_R, 12, n=16))
+    vigas.append(tubo((P.BOOM_X0 - 60, y, P.BOOM_Z), (P.BOOM_X0, y, P.BOOM_Z), 15, P.BOOM_R, n=16))
+# ---- cola en H: estabilizador con la profundidad y dos derivas con sus timones ----
 te_h = P.HT_XLE + P.HT_C; xh = te_h - (1 - P.ELEV_HINGE) * P.HT_C; sh = P.HT_B / 2
-estab = caja(P.HT_XLE, xh, -sh, sh, P.HT_Z - 15, P.HT_Z + 15)
-prof = juntar(caja(xh, te_h, -sh + 30, sh - 30, P.HT_Z - 12, P.HT_Z + 12))
-te_v = P.FIN_XLE + P.FIN_C
-derivas = [caja(P.FIN_XLE, te_v, s * P.FIN_Y - 18, s * P.FIN_Y + 18, P.FIN_Z0, P.FIN_Z0 + P.FIN_H) for s in (-1, 1)]
-
-# tren, ruedas, motor, torreta y antenas
+estab = superficie((0, 0.4, 0.10), P.HT_C, P.HT_XLE, P.HT_Z, -sh, sh, s0=0.0, s1=P.ELEV_HINGE, n=12)
+prof = juntar(superficie((0, 0.4, 0.10), P.HT_C, P.HT_XLE, P.HT_Z, -sh + 25, sh - 25, s0=P.ELEV_HINGE, s1=1.0, n=8), color=GRIS)
+derivas, timones = [], []
+te_v = P.FIN_XLE + P.FIN_C; xr = te_v - (1 - P.RUD_HINGE) * P.FIN_C
+for s in (-1, 1):
+    y = s * P.FIN_Y
+    d = superficie((0, 0.4, 0.10), P.FIN_C, P.FIN_XLE, 0, P.FIN_Z0, P.FIN_Z0 + P.FIN_H, s0=0.0, s1=P.RUD_HINGE, n=12, cuerda1=P.FIN_C * 0.75, eje="z")
+    derivas.append(([(x, yy + y, z) for x, yy, z in d[0]], d[1]))
+    tm = superficie((0, 0.4, 0.10), P.FIN_C, P.FIN_XLE, 0, P.FIN_Z0 + 20, P.FIN_Z0 + P.FIN_H - 20, s0=P.RUD_HINGE, s1=1.0, n=8, cuerda1=P.FIN_C * 0.75, eje="z")
+    t_ = juntar(([(x, yy + y, z) for x, yy, z in tm[0]], tm[1]), color=GRIS)
+    t_.update(bisagra=np.round(a_cuerpo([(xr, y, P.FIN_Z0)])[0], 4).tolist(), eje=[0.0, 0.0, 1.0], signo=-1.0, timon=True)   # dr > 0: borde de fuga a la derecha
+    timones.append(t_)
+# ---- motor: carenado trasero, cilindros a los lados, escape, cono y palas de la helice ----
+motor = [tubo((P.L - 20, 0, P.Z_MOTOR), (P.X_HELICE - 60, 0, P.Z_MOTOR), 150, 95, n=20)]
+cilindros = [tubo((2080, s * 120, P.Z_MOTOR), (2080, s * 230, P.Z_MOTOR), 55, 45, n=12) for s in (-1, 1)]
+escape = [tubo((2150, s * 150, P.Z_MOTOR - 60), (2330, s * 120, P.Z_MOTOR - 110), 22, n=10) for s in (-1, 1)]
+cono = anillos([(P.X_HELICE - 40, 70, 70, P.Z_MOTOR), (P.X_HELICE + 30, 60, 60, P.Z_MOTOR), (P.X_HELICE + 130, 6, 6, P.Z_MOTOR)], n=16, cerrar=(True, True))
+R_h = P.D_HELICE_MM / 2
+palas = []
+for s in (-1, 1):                       # bipala con torsion: una caja fina girada a lo largo
+    v_, i_ = caja(-12, 12, 0, s * (R_h - 10), -45, 45)
+    tw = lambda y: np.radians(35 - 20 * abs(y) / R_h) * s
+    v_ = [(P.X_HELICE + x * np.cos(tw(y)) - z * np.sin(tw(y)), y, P.Z_MOTOR + x * np.sin(tw(y)) + z * np.cos(tw(y))) for x, y, z in v_]
+    palas.append((v_, i_))
+puntas = [caja(P.X_HELICE - 13, P.X_HELICE + 13, s * (R_h - 60), s * (R_h - 10), P.Z_MOTOR - 40, P.Z_MOTOR + 40) for s in (-1, 1)]
+# ---- torreta EO/IR: horquilla fija bajo el morro y bola con la ventana (la bola gira con la camara) ----
+TC = (230.0, 0.0, -P.FUS_H / 2 - 150.0)                 # centro de la bola
+yugo = [tubo((TC[0], 0, -P.FUS_H / 2 + 20), (TC[0], 0, TC[2] + 140), 95, 80, n=20)]
+bola = esfera(TC, 135.0, n=24, m=14)
+ventanas = [esfera((TC[0] + 128, s * 38, TC[2]), 26.0, n=14, m=8) for s in (-1, 1)]   # dos ventanas: cámara diurna y térmica
+# ---- tren triciclo: patas, horquilla de morro, ruedas ----
 z_eje = P.TREN_Z
-patas = [barra((P.TREN_MORRO_X, 0, -P.FUS_H / 2 + 40), (P.TREN_MORRO_X, 0, z_eje), 25)]
-patas += [barra((P.TREN_PPAL_X - 100, s * 150, -P.FUS_H / 2 + 30), (P.TREN_PPAL_X, s * P.TREN_PPAL_Y, z_eje), 30) for s in (-1, 1)]
-rued = [prisma(circulo(P.TREN_MORRO_X, z_eje, P.R_RUEDA * 0.85), -45, 45, "y")]
-rued += [prisma(circulo(P.TREN_PPAL_X, z_eje, P.R_RUEDA), s * P.TREN_PPAL_Y - 55, s * P.TREN_PPAL_Y + 55, "y") for s in (-1, 1)]
-torreta = prisma(circulo(230.0, -P.FUS_H / 2 - 120, 150.0), -150, 150, "y")
-piezas = [
-    juntar(*patas, color=0x2b2f33),
-    juntar(*rued, color=0x111111),
-    juntar(prisma(circulo(P.L, P.Z_MOTOR, 120.0), 0.0, 0.0, "x") if False else caja(P.L - 10, P.X_HELICE - 30, -110, 110, P.Z_MOTOR - 110, P.Z_MOTOR + 110), color=0x3a3f44),
-    juntar(torreta, color=0x24272b),
-    juntar(barra((900, 0, P.FUS_H / 2), (900, 0, P.FUS_H / 2 + 260), 8), barra((1700, 0, P.FUS_H / 2 - 20), (1700, 0, P.FUS_H / 2 + 180), 8), color=0x1c1c1c),
-]
-malla = dict(fuselaje=juntar((vf, fi), *vigas), ala=juntar(*ala_partes), estab=juntar(estab, *derivas), prof=prof,
+patas = [tubo((P.TREN_MORRO_X, 0, -P.FUS_H / 2 + 60), (P.TREN_MORRO_X, 0, z_eje + 60), 28, n=12),
+         tubo((P.TREN_MORRO_X - 10, -60, z_eje + 60), (P.TREN_MORRO_X, -60, z_eje), 14, n=8), tubo((P.TREN_MORRO_X - 10, 60, z_eje + 60), (P.TREN_MORRO_X, 60, z_eje), 14, n=8)]
+for s in (-1, 1):
+    patas.append(tubo((P.TREN_PPAL_X - 120, s * 170, -P.FUS_H / 2 + 40), (P.TREN_PPAL_X, s * P.TREN_PPAL_Y, z_eje), 30, 24, n=12))
+    patas.append(tubo((P.TREN_PPAL_X - 280, s * 150, -P.FUS_H / 2 + 60), (P.TREN_PPAL_X, s * (P.TREN_PPAL_Y - 40), z_eje + 40), 16, n=8))
+ruedas3d = [tubo((P.TREN_MORRO_X, -40, z_eje), (P.TREN_MORRO_X, 40, z_eje), P.R_RUEDA * 0.85, n=20)]
+ruedas3d += [tubo((P.TREN_PPAL_X, s * (P.TREN_PPAL_Y - 50), z_eje), (P.TREN_PPAL_X, s * (P.TREN_PPAL_Y + 50), z_eje), P.R_RUEDA, n=20) for s in (-1, 1)]
+llantas = [tubo((P.TREN_MORRO_X, -42, z_eje), (P.TREN_MORRO_X, 42, z_eje), P.R_RUEDA * 0.45, n=12)]
+llantas += [tubo((P.TREN_PPAL_X, s * (P.TREN_PPAL_Y - 52), z_eje), (P.TREN_PPAL_X, s * (P.TREN_PPAL_Y + 52), z_eje), P.R_RUEDA * 0.5, n=12) for s in (-1, 1)]
+# ---- antenas: enlace de datos (aletas en el lomo y la panza), GPS y tubo de pitot ----
+antenas = [superficie((0, 0.4, 0.12), 140.0, 820.0, 0, P.FUS_H / 2 - 10, P.FUS_H / 2 + 230, n=8, cuerda1=70.0, eje="z"),
+           superficie((0, 0.4, 0.12), 120.0, 1500.0, 0, -P.FUS_H / 2 + 10, -P.FUS_H / 2 - 170, n=8, cuerda1=60.0, eje="z")]
+antenas = [([(x, yy, z) for x, yy, z in a[0]], a[1]) for a in antenas]
+gps = [tubo((1150, 0, P.FUS_H / 2 - 5), (1150, 0, P.FUS_H / 2 + 25), 45, n=14)]
+pitot = [tubo((P.X_LE + 60, P.B / 2 - 300, P.Z_ALA - 40), (P.X_LE - 260, P.B / 2 - 300, P.Z_ALA - 40), 6, n=6)]
+
+malla = dict(fuselaje=juntar(barquilla, morro, lomo, *vigas, color=GRIS, suave=True),
+             ala=juntar(*ala_p, color=GRIS), estab=juntar(estab, *derivas, color=GRIS), prof=prof,
              bisagra_prof=np.round(a_cuerpo([(xh, 0.0, P.HT_Z)])[0], 4).tolist(),
-             alerones=alerones, piezas=piezas,
+             alerones=alerones + timones,
+             torreta=dict(juntar(bola, color=OSCURO, suave=True), centro=np.round(a_cuerpo([TC])[0], 4).tolist(),
+                          ventanas=juntar(*ventanas, color=CRISTAL, suave=True)),
+             piezas=[juntar(*motor, cono, color=OSCURO, suave=True), juntar(*cilindros, *escape, color=NEGRO),
+                     juntar(*palas, color=NEGRO), juntar(*puntas, color=AMARILLO), juntar(*yugo, color=OSCURO, suave=True),
+                     juntar(*patas, color=OSCURO), juntar(*ruedas3d, color=NEGRO, suave=True), juntar(*llantas, color=0x9aa0a6),
+                     juntar(*antenas, *gps, *pitot, color=NEGRO)],
              helice=np.round(a_cuerpo([(P.X_HELICE, 0.0, P.Z_MOTOR)])[0], 4).tolist(), helice_r=D_prop / 2)
 
 # =====================================================================
@@ -266,7 +342,7 @@ modelo = dict(
            "1 estabilizado, 2 crucero (mantiene altura, rumbo y velocidad), 3 ir a punto (clic en el mapa), 4 vuelta a "
            "base y 0 manual; P despega o aterriza solo. Con el automático puesto, las flechas mueven la torreta EO/IR "
            "(Z / X zoom, C térmica, F foto)."),
-    perfil="NACA %d%d%02d" % (round(mC * 100), round(pC * 10), round(tC * 100)),
+    perfil="NACA %d%d%02d" % (round(P.PERFIL[0] * 100), round(P.PERFIL[1] * 10), round(P.PERFIL[2] * 100)),
     caracteristicas=[["Envergadura", "%.1f m" % (P.B / 1e3)], ["Longitud", "%.1f m" % ((P.BOOM_X1 + 60) / 1e3)],
                      ["Superficie alar", "%.2f m²" % S], ["Peso al despegue", "%.0f kg" % m_kg],
                      ["Carga alar", "%.0f kg/m²" % (m_kg / S)], ["Mandos", P.MANDOS_TXT],
@@ -334,5 +410,5 @@ print("  espiral %+.4f 1/s (%s) | holandes %.2f Hz amort. %.2f | aleron con tecl
     s, ("dobla en %.0f s" % (np.log(2) / s)) if s > 0 else ("se corrige a la mitad en %.0f s" % (np.log(2) / -s)),
     modos["holandes_hz"], modos["holandes_amort"], da_sim, tasa(da_sim)))
 print("  tren: k %.0f N/m, c %.0f N s/m | ruedas (ejes cuerpo, m): %s" % (tren["k"], tren["c"], [r["p"] for r in ruedas]))
-ntri = sum(len(m["i"]) // 3 for m in [malla["fuselaje"], malla["ala"], malla["estab"], prof] + alerones + piezas)
+ntri = sum(len(m["i"]) // 3 for m in [malla["fuselaje"], malla["ala"], malla["estab"], prof, malla["torreta"]] + malla["alerones"] + malla["piezas"])
 print("  malla: %d triangulos | %.0f kB" % (ntri, os.path.getsize(os.path.join(DIR_AV, ID + ".js")) / 1024))

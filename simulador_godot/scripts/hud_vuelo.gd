@@ -20,6 +20,7 @@ var gps: Instrumento; var barra: Instrumento; var vario: Instrumento; var anemo:
 var lecturas: HBoxContainer
 var esp1: Control; var esp2: Control
 var dji: Control                 # pantalla de la app dron comercial (la pone principal con el dron)
+var uav: Control                 # estacion de control del UAV (la pone principal)
 var bip: HBoxContainer; var bip_drones: Label; var bip_canon: Label    # bipode: marcador (arriba en el centro)
 var mira: Control                                                     # bipode: mira del puesto de tiro (camara 3)
 
@@ -133,7 +134,7 @@ func pintar_lecturas(cajas: Array) -> void:          # [[valor, nombre, clase ("
 var _firma_col := []
 func _process(_dt: float) -> void:
 	var W := size.x; var H := size.y
-	var dji_vis: bool = dji != null and dji.visible
+	var dji_vis: bool = (dji != null and dji.visible) or (uav != null and uav.visible)
 	objetivos.visible = obj_rt.text != ""          # #objetivos:empty de la web
 	# lo que depende del tamano de la pantalla o de los textos solo se recoloca cuando cambia alguno: poner size = 0 cada
 	# cuadro obligaba a rehacer la maquetacion (y el texto) de estas cajas aunque nada hubiera cambiado

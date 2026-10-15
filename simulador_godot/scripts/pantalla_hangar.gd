@@ -177,8 +177,9 @@ func refrescar_cm() -> void:
 	else: txt = "Margen estático %d %% (punto neutro al %d %%): dentro de lo normal en un entrenador (10–30 %%)." % [int(round(margen)), int(round(np))]
 	if c["masa"] > dd["masa"] * 1.15: txt += " Con %d g más, pierde a %s m/s: hay que lanzarlo más fuerte y aterrizar más rápido." % [int(c["masa"] - dd["masa"]), _f1(vs)]
 	elif c["masa"] < dd["masa"] * 0.9: txt += " Más ligero: vuela más despacio, pero las rachas lo mueven más."
-	var gmin = p.gas_minimo_lanzamiento({})
-	if gmin == null: color = Color("#ff6e66"); txt += " ⚠ Con %d g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano." % int(c["masa"])
+	var gmin = null if A.has("tren") else p.gas_minimo_lanzamiento({})      # un avion de pista no se lanza a mano
+	if A.has("tren"): txt += " Despega y aterriza en pista."
+	elif gmin == null: color = Color("#ff6e66"); txt += " ⚠ Con %d g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano." % int(c["masa"])
 	else: txt += " Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el %d %% de gas." % p.pct_gas(gmin)
 	t_efecto.text = txt; t_efecto.add_theme_color_override("font_color", color)
 	var dbat: float = (c["cg"] - dd["cg"]) / 100.0 * C * c["masa"] / 115.0

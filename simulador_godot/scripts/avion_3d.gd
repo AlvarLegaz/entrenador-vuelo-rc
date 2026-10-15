@@ -8,6 +8,7 @@ extends Node3D
 ## modelo_dji_3d.gd (ModeloDJI3D: cuerpo, brazos, motores, helices con disco de desenfoque y gimbal), con las mismas luces.
 
 var prof: Node3D; var timon: Node3D; var alerones := []; var helice: Node3D; var luces := []
+var torreta: Node3D                  # torreta EO/IR (XM-7): gira e inclina con av.torreta {pan, tilt}
 var fpv: ModeloFPV3D = null      # dron FPV: su modelo 3D (modelo_fpv_3d.gd, con los datos de aviones/FPV.js)
 var camara_fpv := false          # con la camara FPV el dron no se dibuja (la camara va dentro del bastidor)
 var dji: ModeloDJI3D            # cuadricoptero: el modelo detallado (null en los aviones)
@@ -20,6 +21,18 @@ static func ned(p: Array) -> Vector3:
 
 static func _malla(m: Dictionary) -> ArrayMesh:
 	var v: Array = m["v"]; var idx: Array = m["i"]
+	if m.get("suave", false):          # superficies curvas (XM-7): normales suaves (como computeVertexNormals de three.js)
+		var P := PackedVector3Array(); var NN := PackedVector3Array(); var I := PackedInt32Array()
+		for k in range(0, v.size(), 3): P.append(Vector3(v[k], v[k + 1], v[k + 2])); NN.append(Vector3.ZERO)
+		for k in range(0, idx.size() - 2, 3):
+			var a: int = idx[k]; var b: int = idx[k + 1]; var c: int = idx[k + 2]
+			var fn := (P[c] - P[b]).cross(P[a] - P[b])
+			NN[a] += fn; NN[b] += fn; NN[c] += fn
+			I.append_array([a, c, b])            # Godot: cara frontal en sentido horario
+		for k in NN.size(): NN[k] = NN[k].normalized()
+		var arr0 := []; arr0.resize(Mesh.ARRAY_MAX); arr0[Mesh.ARRAY_VERTEX] = P; arr0[Mesh.ARRAY_NORMAL] = NN; arr0[Mesh.ARRAY_INDEX] = I
+		var am0 := ArrayMesh.new(); am0.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr0)
+		return am0
 	var pos := PackedVector3Array(); var nor := PackedVector3Array()
 	for k in range(0, idx.size() - 2, 3):
 		var a := Vector3(v[3 * idx[k]], v[3 * idx[k] + 1], v[3 * idx[k] + 2])
@@ -71,8 +84,11 @@ func _init(datos: Dictionary) -> void:
 	for a in K.get("alerones", []):
 		var p := _pivote(a, a["bisagra"], int(a.get("color", col["moviles"])))
 		p.set_meta("eje", Vector3(a["eje"][0], a["eje"][1], a["eje"][2]).normalized())
-		p.set_meta("signo", float(a["signo"])); p.set_meta("prof", bool(a.get("prof", false)))
+		p.set_meta("signo", float(a["signo"])); p.set_meta("prof", bool(a.get("prof", false))); p.set_meta("timon", bool(a.get("timon", false)))
 		alerones.append(p)
+	if K.has("torreta"):                 # torreta EO/IR: la bola y sus ventanas, sobre su centro
+		var TQ: Dictionary = K["torreta"]; torreta = Node3D.new(); torreta.position = Vector3(TQ["centro"][0], TQ["centro"][1], TQ["centro"][2]); add_child(torreta)
+		for mm in [TQ, TQ["ventanas"]]: var mi := _pieza(torreta, mm, int(mm["color"])); mi.position = -torreta.position
 	if K.has("helices"):        # multicoptero: un disco horizontal por rotor (en ejes cuerpo el plano x-y ya es horizontal)
 		helice = Node3D.new()
 		for hp in K["helices"]:
@@ -132,8 +148,11 @@ func actualizar(av: Dictionary) -> void:
 	prof.rotation = Vector3(0, av["de"], 0)          # + = borde de fuga abajo
 	timon.rotation = Vector3(0, 0, -av["dr"])        # + = borde de fuga a la derecha
 	for p in alerones:
-		var ang: float = p.get_meta("signo") * av["da"] + (av["de"] if p.get_meta("prof") else 0.0)
+		var ang: float = p.get_meta("signo") * av["dr"] if p.get_meta("timon") else p.get_meta("signo") * av["da"] + (av["de"] if p.get_meta("prof") else 0.0)
 		p.basis = Basis(p.get_meta("eje"), ang)
+	if torreta:
+		var tr: Dictionary = av.get("torreta", { "pan": 0.0, "tilt": 0.0 })
+		torreta.basis = Basis(Vector3(0, 0, 1), float(tr["pan"])) * Basis(Vector3(0, 1, 0), float(tr["tilt"]))
 	if dji: dji.actualizar(av)          # helices (palas o disco segun las rpm) y gimbal
 	else: helice.visible = av["gases"] > 0.05
 	if luces.is_empty(): return

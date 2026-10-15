@@ -143,6 +143,26 @@
   #djiPaleta i { display: block; width: 10px; height: 120px; margin: 3px auto; border: 1px solid rgba(255,255,255,.5);
                  background: linear-gradient(#fffeed, #ffdb33 7%, #ff8000 20%, #db2933 35%, #8c008c 55%, #1f005c 78%, #00000d); }
   #djiFlash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity .3s; }
+  /* estacion de control del UAV (XM-7): barra de arriba, consignas del piloto automatico, botones a la derecha y mira de la torreta */
+  #gcs { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.uav #gcs { display: block; } body.uav #estado { display: none !important; }
+  #gcsTop { position: absolute; left: 0; right: 0; top: 0; height: 40px; background: linear-gradient(rgba(5,12,8,.85), rgba(5,12,8,0)); display: flex; align-items: center;
+            gap: 18px; padding: 0 16px; font: 600 13px/1 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; letter-spacing: .04em; }
+  #gcsTop .modo { border: 1px solid #b8f5b0; border-radius: 4px; padding: 3px 9px; font-weight: 700; }
+  #gcsTop .modo.auto { color: #4dd0e1; border-color: #4dd0e1; } #gcsTop .modo.pista { color: #ffb74d; border-color: #ffb74d; }
+  #gcsTop .estado { flex: 1; text-align: center; } #gcsTop .rojo { color: #ff5252; }
+  #gcsConsignas { position: absolute; left: 16px; top: 48px; font: 600 12px/1.6 ui-monospace, Consolas, monospace; color: #4dd0e1; text-shadow: 0 0 4px #000; }
+  #gcsDer { right: 16px; } #gcsDer button { width: 52px; height: 30px; border-radius: 5px; font: 700 12px ui-monospace, Consolas, monospace; }
+  #gcsDer .sep { height: 6px; } #gcsDer .txt { font: 600 11px ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
+  #gcsMira { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; text-align: center;
+             font: 600 12px/1.5 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
+  #gcsMira svg { width: 120px; height: 120px; display: block; margin: 0 auto; }
+  #gcsMira .fijo { color: #ffb74d; font-weight: 700; } #gcsMira .temp { color: #fff; background: rgba(0,0,0,.55); border-radius: 4px; padding: 0 6px; }
+  #gcsPaleta { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); display: none; font-size: 11px; color: #fff; text-shadow: 0 0 4px #000; text-align: center; }
+  #gcsPaleta i { display: block; width: 10px; height: 120px; margin: 3px auto; border: 1px solid rgba(255,255,255,.5);
+                 background: linear-gradient(#fffeed, #ffdb33 7%, #ff8000 20%, #db2933 35%, #8c008c 55%, #1f005c 78%, #00000d); }
+  body.uav #objetivos { top: 46px; }
+  #gcsSensor { position: absolute; left: 16px; top: 72px; font: 600 12px/1.6 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; display: none; }
   #djiFlash.on { opacity: .75; transition: none; }
   /* ---------- OSD de Betaflight (dron FPV): lo que se ve en las gafas, sustituye al panel de instrumentos ---------- */
   #fpv { left: 0; right: 0; top: 0; bottom: 0; display: none; }
@@ -708,6 +728,24 @@
 </div>
 
 <!-- ============ CAPAS ============ -->
+<div id="gcs" class="hudCapa">
+  <div id="gcsTop"><span class="modo" id="gcsModo">MANUAL</span><span class="estado" id="gcsEstado"></span><span id="gcsEnlace">ENLACE ▮▮▮▮ 100 %</span><span id="gcsComb"></span></div>
+  <div id="gcsConsignas"></div>
+  <div class="djiBotones" id="gcsDer">
+    <button data-modo="MANUAL" title="Manual (M)">MAN</button><button data-modo="ESTAB" title="Estabilizado (M)">EST</button>
+    <button data-modo="CRUCERO" title="Crucero: mantiene altura, rumbo y velocidad (M)">CRU</button><button data-modo="BASE" title="Vuelta a base (H, Y)">BASE</button>
+    <button data-modo="AUTO" title="Despegue o aterrizaje automático (P, cruceta izquierda)">ATO</button>
+    <div class="sep"></div>
+    <button id="gcsZoomMas" title="Acercar el zoom de la torreta (Z, cruceta arriba)">+</button><span class="txt" id="gcsZoomTxt">1x</span>
+    <button id="gcsZoomMenos" title="Alejar el zoom (X, cruceta abajo)">−</button><button id="gcsIR" title="Cámara térmica (C, cruceta derecha)">IR</button>
+    <button id="gcsFijar" title="Fijar la torreta en el punto de la cruz (K)">FIJAR</button><button id="gcsFoto" title="Foto de la torreta (F, botón X)">FOTO</button>
+  </div>
+  <div id="gcsMira"><svg viewBox="0 0 120 120" aria-hidden="true"><g fill="none" stroke="#000" stroke-width="3"><path d="M60 8V44M60 76V112M8 60H44M76 60H112"/><path d="M38 38h-8v8M82 38h8v8M38 82h-8v-8M82 82h8v-8"/></g>
+    <g fill="none" stroke="#b8f5b0" stroke-width="1.5"><path d="M60 8V44M60 76V112M8 60H44M76 60H112"/><path d="M38 38h-8v8M82 38h8v8M38 82h-8v-8M82 82h8v-8"/><circle cx="60" cy="60" r="2"/></g></svg>
+    <div id="gcsObj"></div></div>
+  <div id="gcsSensor"></div>
+  <div id="gcsPaleta">150 °C<i></i>−20 °C</div>
+</div>
 <div id="dji" class="hudCapa">
   <div id="djiTop"><span class="modo" id="djiModo" title="Modo de vuelo: Cine / Normal / Sport (M, LB)">N</span><span class="estado" id="djiEstado"></span><span id="djiRec"></span>
     <span id="djiGps" title="Satélites GPS">GPS 18</span><span title="Señal del mando y del vídeo">RC ▮▮▮▮ · HD ▮▮▮▮</span><span class="bat" id="djiBat"><i></i>100 % · 30:00</span></div>
@@ -756,9 +794,9 @@
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=6"></script>
 <script src="js/piloto_uav.js?v=1"></script>
-<script src="js/visor.js?v=35"></script>
+<script src="js/visor.js?v=37"></script>
 <script src="js/industria.js?v=4"></script>
-<script src="js/visor_real.js?v=36"></script>
+<script src="js/visor_real.js?v=37"></script>
 <script src="js/bipode.js?v=3"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script src="escenarios.js?v=11"></script>
@@ -974,8 +1012,9 @@ function pintarCM() {
   else { color = "#8be08f"; txt = `Margen estático ${margen.toFixed(0)} % (punto neutro al ${np.toFixed(0)} %): dentro de lo normal en un entrenador (10–30 %).`; }
   if (c.masa > d.masa * 1.15) txt += ` Con ${c.masa - d.masa} g más, pierde a ${vs.toFixed(1)} m/s: hay que lanzarlo más fuerte y aterrizar más rápido.`;
   else if (c.masa < d.masa * 0.9) txt += ` Más ligero: vuela más despacio, pero las rachas lo mueven más.`;
-  const gmin = gasMinimoLanzamiento({});
-  if (gmin === null) { color = "#ff6e66"; txt += ` ⚠ Con ${c.masa} g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano.`; }
+  const gmin = A.tren ? undefined : gasMinimoLanzamiento({});      // un avion de pista no se lanza a mano
+  if (gmin === undefined) txt += " Despega y aterriza en pista.";
+  else if (gmin === null) { color = "#ff6e66"; txt += ` ⚠ Con ${c.masa} g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano.`; }
   else txt += ` Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el ${pctGas(gmin)} % de gas.`;
   const e = document.getElementById("cmEfecto"); e.textContent = txt; e.style.color = color;
   const dBat = (c.cg - d.cg) / 100 * C * c.masa / BATERIA_G;
@@ -1146,6 +1185,7 @@ function textoVientoLanz() {
   return `${v.base.toFixed(0)} m/s del ${RUMBOS_TXT[Math.round(desde / 45) % 8]}`;
 }
 function avisoLanzamiento() {
+  if (modelo.tren) return "";                    // avion de pista: no se lanza a mano
   const L = lanzamientoActual();
   if (L.gmin === null && gasSinViento(L) !== null)
     return `⚠ Con este viento (${textoVientoLanz()}) no saldría de la mano sin tocar los mandos: lánzalo de cara al viento o prepárate para corregir con la profundidad nada más soltarlo.`;
@@ -1589,7 +1629,7 @@ async function empezar() {
   if (modelo.esBipode) visor.camara = 2;                   // el bipode se maneja desde detras
   // el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
   if (!!modelo.esCuadricoptero !== !!visor.eraDron) visor.camara = modelo.esCuadricoptero ? 3 : 1;
-  visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero && !modelo.esFPV);
+  visor.eraDron = !!modelo.esCuadricoptero; document.body.classList.toggle("dron", !!modelo.esCuadricoptero && !modelo.esFPV); document.body.classList.toggle("uav", !!modelo.uav);
   document.body.classList.toggle("fpv", !!modelo.esFPV);
   document.body.classList.toggle("operacion", !!ESCENARIOS[sesion.escenario].operacion); verBriefing(false);   // trabajos: el briefing a mano (B)       // dron FPV: el OSD de Betaflight en vez de la app del dron comercial
   construirAnemometro(velPerdida());
@@ -1610,6 +1650,7 @@ function reiniciar() {
   MANDO.gasFpv = false; MULTI.caida = null;
   av = modelo.estadoInicial(); colocarEnBase(av);
   piloto = modelo.uav ? (c => new PilotoUAV(modelo.piloto, pistaActual(), [c.N, c.E, entorno.altura ? entorno.altura(c.N, c.E) : 0]))(casa()) : null;
+  if (modelo.uav) { av.torreta = { pan: 0, tilt: -20 * D2R }; UAV.fijo = null; UAV.cruz = null; UAV.fotos = 0; }
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
   orientarLanzamiento();
@@ -1617,6 +1658,7 @@ function reiniciar() {
   entorno.configurarViento(ESCENARIOS[sesion.escenario].viento || sesion.viento);
   nuevoEvaluador(); vuelo = null; ponerPausa(false); ordenesAlEvaluador();
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
+  if (visor.ponerPista) visor.ponerPista(pistaActual());
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; DJI.zoomI = 0; DJI.termica = false; mando.gimbal = 0;
   document.getElementById("guia").innerHTML = ""; ponerTxt($h("lejos"), "");
   iniciarJuegoBip();
@@ -2703,6 +2745,11 @@ window.addEventListener("keydown", e => {
     if (e.code === "KeyM") uavModo();
     if (e.code === "KeyH") uavPoner("BASE");
     if (e.code === "KeyP") uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE");
+    if (e.code === "KeyZ") djiZoom(1);
+    if (e.code === "KeyX") djiZoom(-1);
+    if (e.code === "KeyC") djiTermica();
+    if (e.code === "KeyK") uavFijar();
+    if (e.code === "KeyF") uavFoto();
   } else if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
   if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
@@ -2850,7 +2897,9 @@ function leerMando(dt) {
   MANDO.activo = !!p; MANDO.gimbal = 0; if (!p) return false;
   MANDO.id = p.id;
   const ax = p.axes, E = k => ejeMando(ax, k);                     // ejes segun el orden configurado (consola o emisora)
-  const rx = zonaMuerta(E("rx"), MANDO.zona), ry = zonaMuerta(E("ry"), MANDO.zona), ly = zonaMuerta(E("ly"), MANDO.zona), lx = zonaMuerta(E("lx"), MANDO.zona);
+  let rx = zonaMuerta(E("rx"), MANDO.zona), ry = zonaMuerta(E("ry"), MANDO.zona), ly = zonaMuerta(E("ly"), MANDO.zona), lx = zonaMuerta(E("lx"), MANDO.zona);
+  MANDO.torreta = null;
+  if (modelo && modelo.uav && torretaConFlechas()) { MANDO.torreta = [rx, ry]; rx = 0; ry = 0; }      // UAV con el automatico navegando: la palanca derecha mueve la torreta
   const cuad = modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre), fpv = modelo && modelo.esFPV;   // el FPV lleva el gas como un avion; el bipode, la izquierda como el dron
   const bip = modelo && modelo.esBipode;
   MANDO.disparo = false; MANDO.puno = false;
@@ -2889,12 +2938,16 @@ function leerMando(dt) {
   } else if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
     if (modelo.tren) { MANDO.freno = !!(p.buttons[1] && p.buttons[1].pressed); if (pulsado(1)) quitarFrenoAparc(); }   // avion de pista: B frena
-    if (modelo.uav) { if (pulsado(4)) uavModo(); if (pulsado(3)) uavPoner("BASE"); if (pulsado(14)) uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE"); }   // LB modo, Y base, cruceta izquierda: P
+    if (modelo.uav) {          // LB modo, Y base, cruceta izquierda: P; cruceta arriba y abajo zoom, derecha termica; X foto; gatillos: torreta arriba y abajo
+      if (pulsado(4)) uavModo(); if (pulsado(3)) uavPoner("BASE"); if (pulsado(14)) uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE");
+      if (pulsado(12)) djiZoom(1); if (pulsado(13)) djiZoom(-1); if (pulsado(15)) djiTermica(); if (pulsado(2)) uavFoto();
+      const tr = i => p.buttons[i] ? (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0)) : 0; MANDO.gimbal = tr(7) - tr(6);
+    }
     else if (pulsado(1)) av.gases = 0;
     if (pulsado(5)) visor.camara = visor.camara % 3 + 1;        // RB: el mismo boton que en el dron, el FPV y el bipode
-    if (pulsado(2)) reiniciar();
-    if (pulsado(12)) mando.trim = Math.min(6, mando.trim + 0.25);
-    if (pulsado(13)) mando.trim = Math.max(-6, mando.trim - 0.25);
+    if (pulsado(2) && !modelo.uav) reiniciar();
+    if (pulsado(12) && !modelo.uav) mando.trim = Math.min(6, mando.trim + 0.25);
+    if (pulsado(13) && !modelo.uav) mando.trim = Math.max(-6, mando.trim - 0.25);
   }
   MANDO.botones = p.buttons.map(x => x.pressed);
   if (pausado) return false;
@@ -2918,11 +2971,71 @@ function leerMando(dt) {
   return moviendo || MANDO.usado;
 }
 
+// ---- torreta EO/IR del UAV: av.torreta {pan (rad, + a la derecha del morro), tilt (rad, - hacia abajo)}, su punto fijo
+// (K: la torreta sigue ese punto del terreno mientras el avion vuela) y el punto de la cruz (donde el eje de la camara
+// corta el terreno o el agua)
+const UAV = { fijo: null, cruz: null, fotos: 0 };
+const TORRETA = { vel: 45 * D2R, tiltMin: -90 * D2R, tiltMax: 10 * D2R };
+/** Las flechas mueven la torreta (y no el avion) con el piloto automatico navegando, o con Mayusculas. */
+function torretaConFlechas() { return !!(piloto && (teclas["ShiftLeft"] || teclas["ShiftRight"] || ["PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"].includes(piloto.modo))); }
+/** Donde esta la torreta (NED) y hacia donde mira (vector unitario NED). */
+function ejeTorreta() {
+  const tr = av.torreta, yaw = Cuat.euler(av.q)[2] + tr.pan, c = visor.avion && visor.avion.centroTorreta ? Cuat.rot(av.q, visor.avion.centroTorreta) : [0, 0, 0];
+  return [[av.p[0] + c[0], av.p[1] + c[1], av.p[2] + c[2]], [Math.cos(yaw) * Math.cos(tr.tilt), Math.sin(yaw) * Math.cos(tr.tilt), -Math.sin(tr.tilt)]];
+}
+/** El punto de la cruz: [N, E, altura del suelo, distancia] donde el eje de la torreta corta el terreno (o el agua), o null. */
+function puntoCruz() {
+  const [o, d] = ejeTorreta(), H = (N, E) => entorno.altura ? entorno.altura(N, E) : 0;
+  if (d[2] <= 0.002) return null;                                    // mirando al horizonte o hacia arriba
+  for (let s = 5, ant = 0; s < 20000; ant = s, s += Math.max(5, s * 0.02)) {
+    const p = [o[0] + s * d[0], o[1] + s * d[1], o[2] + s * d[2]];
+    if (-p[2] <= H(p[0], p[1])) {                                     // ya por debajo del suelo: afina entre el paso anterior y este
+      let a = ant, b = s;
+      for (let k = 0; k < 12; k++) { const m = (a + b) / 2, q = [o[0] + m * d[0], o[1] + m * d[1], o[2] + m * d[2]]; if (-q[2] <= H(q[0], q[1])) b = m; else a = m; }
+      return [o[0] + b * d[0], o[1] + b * d[1], H(o[0] + b * d[0], o[1] + b * d[1]), b];
+    }
+  }
+  return null;
+}
+/** Cada cuadro: mueve la torreta con las flechas, Q/E y el mando (mas despacio cuanto mas zoom) o la apunta al punto fijo. */
+function moverTorreta(dt) {
+  if (!modelo || !modelo.uav || !av.torreta || av.estado === "roto") return;
+  const tr = av.torreta, z = camDJI().zoom, k = TORRETA.vel / Math.pow(z, 0.7) * dt, fl = torretaConFlechas();
+  const dp = (fl ? (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0) : 0) + (MANDO.torreta ? MANDO.torreta[0] : 0);
+  const dtl = (fl ? (teclas["ArrowUp"] ? 1 : 0) - (teclas["ArrowDown"] ? 1 : 0) : 0) + (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) + (MANDO.torreta ? -MANDO.torreta[1] : 0) + (MANDO.gimbal || 0);
+  if (dp || dtl) { if (UAV.fijo) { UAV.fijo = null; toast("Torreta: punto suelto"); } tr.pan = PilotoUAV.envolver(tr.pan + dp * k); tr.tilt = Math.max(TORRETA.tiltMin, Math.min(TORRETA.tiltMax, tr.tilt + dtl * k)); }
+  else if (UAV.fijo) {                                                // apunta al punto fijo
+    const [o] = ejeTorreta(), dn = UAV.fijo[0] - o[0], de = UAV.fijo[1] - o[1], dz = -UAV.fijo[2] - o[2];
+    tr.pan = PilotoUAV.envolver(Math.atan2(de, dn) - Cuat.euler(av.q)[2]); tr.tilt = Math.max(TORRETA.tiltMin, Math.min(TORRETA.tiltMax, -Math.atan2(dz, Math.hypot(dn, de))));
+  }
+  UAV.cruz = puntoCruz();
+}
+/** K: fija la torreta en el punto de la cruz (o la suelta). */
+function uavFijar() {
+  if (!modelo.uav) return;
+  if (UAV.fijo) { UAV.fijo = null; toast("Torreta: punto suelto"); return; }
+  const c = puntoCruz(); if (!c) { toast("La cruz no apunta al suelo: baja la torreta"); return; }
+  UAV.fijo = [c[0], c[1], c[2]]; toast("Torreta fijada en " + coordTxt(c[0], c[1]));
+}
+/** Latitud y longitud (grados y minutos decimales, como las de un GPS) de un punto N, E del mapa. */
+function coordTxt(N, E) {
+  const M = entorno.mundo, lat = M.origen.lat + N / 110574, lon = M.origen.lon + E / (111320 * Math.cos(M.origen.lat * D2R));
+  const gm = (x, p, n) => `${Math.floor(Math.abs(x))}°${((Math.abs(x) % 1) * 60).toFixed(3).padStart(6, "0")}' ${x >= 0 ? p : n}`;
+  return `${gm(lat, "N", "S")} ${gm(lon, "E", "W")}`;
+}
+/** F: foto de la torreta (en un trabajo, lo que vale para el; si no, la foto con las coordenadas del punto de la cruz). */
+function uavFoto() {
+  if (!modelo.uav || av.estado !== "volando") return;
+  UAV.fotos++;
+  const cm = Object.assign(camDJI(), { pan: av.torreta.pan }), T = ev && ev.op ? ev.op.foto(av, av.torreta.tilt * R2D, cm) : [];
+  const c = UAV.cruz;
+  toast(T.length ? T.join(" · ") : `Foto ${UAV.fotos}` + (c && entorno.mundo ? ` · ${coordTxt(c[0], c[1])} · a ${c[3] < 1000 ? c[3].toFixed(0) + " m" : (c[3] / 1000).toFixed(1).replace(".", ",") + " km"}` : ""));
+}
 /** UAV: pone un modo del piloto automatico (con su aviso, o por que no se puede). */
 function uavPoner(modo, punto) {
   if (!piloto || av.estado !== "volando" || Repeticion.activa) { if (piloto && av.estado === "en mano") toast("Primero arranca el motor (L)"); return; }
   const t = piloto.poner(modo, av, punto);
-  if (t) { piloto.modoVisto = piloto.modo; toast("Piloto automático: " + t); return; }
+  if (t) { piloto.modoVisto = piloto.modo; toast("Piloto automático: " + t); if (modo === "DESPEGUE") aviso(""); return; }
   toast(modo === "DESPEGUE" ? "El despegue automático se pide parado en la pista" : modo === "ATERRIZAJE" ? (piloto.pista ? "En tierra no hay aterrizaje automático" : "Sin pista no hay aterrizaje automático")
         : "En tierra: manual o despegue automático (P)");
 }
@@ -2933,8 +3046,15 @@ function uavModo() {
   uavPoner(i < 0 ? "MANUAL" : ciclo[(i + 1) % 3]);
 }
 /** Avion de pista: el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan. */
-function quitarFrenoAparc() { if (av && av.frenoAparc) { av.frenoAparc = false; toast("Freno de aparcamiento quitado: espacio (o B) frena"); } }
+function quitarFrenoAparc() { if (av && av.frenoAparc) { av.frenoAparc = false; aviso(""); toast("Freno de aparcamiento quitado: espacio (o B) frena"); } }
+/** UAV con las flechas en la torreta: el avion no las ve (las mueve moverTorreta). */
 function leerTeclado(dt) {
+  if (!(modelo && modelo.uav && torretaConFlechas())) { const r = leerTecladoAvion(dt); moverTorreta(dt); return r; }
+  const fl = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], g = fl.map(k => teclas[k]);
+  fl.forEach(k => teclas[k] = false);
+  try { return leerTecladoAvion(dt); } finally { fl.forEach((k, i) => teclas[k] = g[i]); moverTorreta(dt); }
+}
+function leerTecladoAvion(dt) {
   if (modelo && modelo.tren && av) av.freno = av.frenoAparc || teclas["Space"] || MANDO.freno ? 1 : 0;
   const cuad = modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre);     // en el FPV W/S son el gas, como en los aviones; el bipode anda con W/S y A/D
   if (modelo && modelo.esBipode) { mando.disparo = !!teclas["Space"] || !!MANDO.disparo; mando.puno = !!teclas["KeyF"] || !!MANDO.puno; }
@@ -3012,6 +3132,9 @@ document.getElementById("djiCamModo").onclick = djiCamModo;
 document.getElementById("djiZoomMas").onclick = () => djiZoom(1);
 document.getElementById("djiZoomMenos").onclick = () => djiZoom(-1);
 document.getElementById("djiIR").onclick = djiTermica;
+for (const b of document.querySelectorAll("#gcsDer button[data-modo]")) b.onclick = () => b.dataset.modo === "AUTO" ? uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE") : uavPoner(b.dataset.modo);
+document.getElementById("gcsZoomMas").onclick = () => djiZoom(1); document.getElementById("gcsZoomMenos").onclick = () => djiZoom(-1);
+document.getElementById("gcsIR").onclick = djiTermica; document.getElementById("gcsFijar").onclick = () => uavFijar(); document.getElementById("gcsFoto").onclick = () => uavFoto();
 document.getElementById("djiDespegar").onclick = djiDespegar;
 document.getElementById("djiRTH").onclick = djiRTH;
 /** Briefing de los trabajos: la misma imagen de la orden de trabajo (la zona y el despegue, sin las soluciones), encima del vuelo. */
@@ -3366,7 +3489,7 @@ function hud() {
   const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E);
   const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento, suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
   // estado (arriba a la izquierda) y lecturas (abajo, en el centro): lo que importa en un vuelo RC
-  const estadoTxt = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" && modelo.esCuadricoptero ? "EN EL SUELO" : av.estado.toUpperCase();
+  const estadoTxt = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" && modelo.esCuadricoptero ? "EN EL SUELO" : av.estado === "en mano" && modelo.tren ? "MOTOR PARADO" : av.estado.toUpperCase();
   ponerHTML($h("estado"), `<span class="pill">${esc(estadoTxt)} · ${av.t.toFixed(0)} s</span>` +
     (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
     (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : ""));
@@ -3374,10 +3497,10 @@ function hud() {
   if (modelo.esBipode) { hudBip(dist, yaw); pintarGPS(yaw); return; }
   const bat = modelo.bateriaPct(av), vClase = AN.vs > 0 && av.V < 1.1 * AN.vs ? "rojo" : AN.vs > 0 && av.V < 1.3 * AN.vs ? "ambar" : "";
   ponerHTML($h("lecturas"), ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
-    `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
+    `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(-av.p[2] - suelo).toFixed(0)}</b><span>altura m</span></div>` +
     `<div class="lect"><b>${vs >= 0 ? "+" : ""}${vs.toFixed(1)}</b><span>asc. m/s</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
-    `<div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div><div class="lect ${bat < 20 ? "rojo" : ""}"><b>${bat.toFixed(0)}%</b><span>batería</span></div>` +
-    (av.perdida > 0.5 ? `<div class="lect rojo"><b>¡PÉRDIDA!</b><span>alfa ${av.alfa.toFixed(0)}°</span></div>` : ""));
+    `<div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div><div class="lect ${bat < 20 ? "rojo" : ""}"><b>${bat.toFixed(0)}%</b><span>${modelo.propulsion.combustible ? "combustible" : "batería"}</span></div>` +
+    (av.perdida > 0.5 && !av.enTierra ? `<div class="lect rojo"><b>¡PÉRDIDA!</b><span>alfa ${av.alfa.toFixed(0)}°</span></div>` : ""));
   // datos completos en texto (tecla H)
   ponerEstilo(el, "display", mostrarHud ? "block" : "none");
   if (mostrarHud) ponerHTML(el,
@@ -3397,10 +3520,44 @@ function hud() {
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
   if (modelo.esFPV) { hudFpv(h, vn); ponerEstilo($h("fpv"), "display", sinInstrumentos ? "none" : ""); }
   else if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); ponerEstilo($h("dji"), "display", sinInstrumentos ? "none" : ""); }
+  else if (modelo.uav) { hudUav(h, vn, vs, dist, yaw); ponerEstilo($h("gcs"), "display", sinInstrumentos ? "none" : ""); }
   if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) ponerEstilo($h(id), "display", "none");
   ponerEstilo($h("barra"), "display", sinInstrumentos ? "none" : "");       // sin instrumentos: tampoco gas ni palanca (como en el campo)
   ponerEstilo($h("punto"), "left", (50 + 45 * mando.yaw) + "%");
   ponerEstilo($h("punto"), "top", (50 + 45 * mando.pitch) + "%");
+}
+/** Estacion de control del UAV (#gcs): modo y estado, enlace y combustible, consignas del piloto automatico, botones y
+ *  la mira de la torreta (en la camara 3) con lo que ve: sensor, zoom, giro e inclinacion, el punto de la cruz y su
+ *  distancia; y la escala de temperaturas con la termica. */
+function hudUav(h, vn, vs, dist, yaw) {
+  const m = piloto ? piloto.modo : "MANUAL", auto = !["MANUAL", "ESTAB"].includes(m), pistaM = m === "DESPEGUE" || m === "ATERRIZAJE";
+  ponerTxt($h("gcsModo"), piloto ? PUAV_NOMBRE[m].toUpperCase() : "MANUAL"); ponerClase($h("gcsModo"), "modo" + (pistaM ? " pista" : auto ? " auto" : ""));
+  const suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0, agl = -av.p[2] - suelo;
+  const est = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" ? "MOTOR PARADO · L arranca" : av.estado === "volando" ? (av.enTierra ? (av.frenoAparc ? "EN TIERRA · FRENO DE APARCAMIENTO (espacio)" : "EN TIERRA") : "EN VUELO")
+            : av.estado.toUpperCase();
+  ponerTxt($h("gcsEstado"), `${est} · ${(av.V * 3.6).toFixed(0)} km/h · ${agl.toFixed(0)} m · rumbo ${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°` + (pausado ? " · PAUSA" : ""));
+  const comb = modelo.bateriaPct(av), P = modelo.propulsion, gm = av.gasMotor !== undefined ? av.gasMotor : av.gases;
+  const h_rest = comb / 100 * P.masa_bateria_Wh / Math.max(500, P.P_max_W * gm * gm * gm), dLink = dist / 1000;
+  ponerTxt($h("gcsEnlace"), `ENLACE ${dLink < 60 ? "▮▮▮▮" : dLink < 100 ? "▮▮▮" : "▮"} ${dLink.toFixed(1).replace(".", ",")} km`);
+  ponerTxt($h("gcsComb"), `COMB ${comb.toFixed(0)} %` + (av.estado === "volando" && gm > 0.05 ? ` · ${Math.floor(h_rest)}:${String(Math.floor((h_rest % 1) * 60)).padStart(2, "0")} h` : ""));
+  const c = piloto && piloto.c;
+  ponerHTML($h("gcsConsignas"), !piloto || !auto ? "" : pistaM ? `${PUAV_NOMBRE[m]} · fase ${piloto.fase}` :
+    `ALT ${(c.alt - suelo).toFixed(0)} m s/t · VEL ${(c.vel * 3.6).toFixed(0)} km/h` + (m === "CRUCERO" ? ` · RUMBO ${(((c.rumbo * R2D) % 360 + 360) % 360).toFixed(0).padStart(3, "0")}°` : ` · PUNTO a ${(Math.hypot(av.p[0] - c.punto[0], av.p[1] - c.punto[1]) / 1000).toFixed(1).replace(".", ",")} km`));
+  for (const b of document.querySelectorAll("#gcsDer button[data-modo]")) ponerClase(b, (b.dataset.modo === m || (b.dataset.modo === "AUTO" && pistaM)) ? "activo" : "");
+  ponerTxt(document.querySelector('#gcsDer button[data-modo="AUTO"]'), av.enTierra ? "ATO" : "ATL");
+  // torreta
+  const cm = camDJI(), cam3 = visor.camara === 3, tr = av.torreta || { pan: 0, tilt: 0 };
+  ponerTxt($h("gcsZoomTxt"), cm.zoom + "x"); ponerClase($h("gcsIR"), cm.termica ? "activo" : ""); ponerClase($h("gcsFijar"), UAV.fijo ? "activo" : "");
+  visor.zoomCam = cam3 ? cm.zoom : 1; visor.termica = cam3 && cm.termica;
+  ponerEstilo($h("gcsMira"), "display", cam3 ? "block" : "none"); ponerEstilo($h("gcsPaleta"), "display", cam3 && cm.termica ? "block" : "none");
+  ponerEstilo($h("gcsSensor"), "display", cam3 ? "block" : "none");
+  if (cam3) {
+    const X = UAV.cruz, L = ev && ev.op ? ev.op.lectura : null;
+    ponerHTML($h("gcsObj"), (UAV.fijo ? '<span class="fijo">FIJADO</span><br>' : "") +
+      (X && entorno.mundo ? `${coordTxt(X[0], X[1])}<br>${X[3] < 1000 ? X[3].toFixed(0) + " m" : (X[3] / 1000).toFixed(2).replace(".", ",") + " km"}` : "sin punto en el suelo") +
+      (cm.termica && L ? `<br><span class="temp">${L.T.toFixed(1).replace(".", ",")} °C</span>` : ""));
+    ponerHTML($h("gcsSensor"), `${cm.termica ? "IR" : "EO"} ${cm.zoom}×<br>AZ ${(((tr.pan * R2D) % 360 + 360) % 360).toFixed(0).padStart(3, "0")}° EL ${(tr.tilt * R2D).toFixed(0)}°<br>FOV ${visor.cam.fov.toFixed(1)}°`);
+  }
 }
 /** Lecturas del bipode (abajo): velocidad, rumbo, cintura, brazos, pendiente y distancia. */
 function hudBip(dist, yaw) {

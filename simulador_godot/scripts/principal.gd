@@ -92,6 +92,7 @@ var sonido: Sonido
 var ui: CanvasLayer
 var hud: HudVuelo
 var hud_dji: HudDji
+var hud_uav: HudUav                 # estacion de control del UAV (hud_uav.gd)
 var briefing: PanelContainer; var briefing_img: TextureRect
 var hud_fpv: HudFPV                 # OSD de Betaflight del dron FPV
 var pantallas := {}
@@ -355,6 +356,7 @@ func texto_viento_lanz() -> String:
 	var v: Dictionary = ent.viento; var desde := fposmod(v["rumbo"] * R2D + 180, 360)
 	return "%d m/s del %s" % [int(round(v["base"])), RUMBOS_TXT[int(round(desde / 45)) % 8]]
 func aviso_lanzamiento() -> String:
+	if con_tren(): return ""                 # avion de pista: no se lanza a mano
 	if es_dron(): return ""
 	var L := lanzamiento_actual()
 	if L["gmin"] == null and gas_sin_viento(L) != null:
@@ -446,6 +448,7 @@ func _construir_ui() -> void:
 	hud_dji = HudDji.new(self); raiz.add_child(hud_dji); hud_dji.visible = false; hud.dji = hud_dji
 	raiz.move_child(hud_dji, 0)
 	hud_fpv = HudFPV.new(self); raiz.add_child(hud_fpv); hud_fpv.visible = false; raiz.move_child(hud_fpv, 0)
+	hud_uav = HudUav.new(self); raiz.add_child(hud_uav); hud_uav.visible = false; raiz.move_child(hud_uav, 0); hud.uav = hud_uav
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
@@ -489,6 +492,7 @@ func mostrar(id: String) -> void:
 	hud.visible = en_vuelo
 	hud_dji.visible = en_vuelo and modelo != null and es_dron() and not es_fpv() and not sin_instrumentos
 	hud_fpv.visible = en_vuelo and modelo != null and es_fpv() and not sin_instrumentos
+	hud_uav.visible = en_vuelo and modelo != null and es_uav() and not sin_instrumentos
 	get_viewport().disable_3d = not en_vuelo                  # en las pantallas no se dibuja el mundo
 	if not en_vuelo: hud.ayuda.visible = false; poner_pausa(false); sonido.silenciar(true)
 	else: sonido.silenciar(not sonido.on); get_viewport().gui_release_focus()
@@ -957,6 +961,7 @@ func reiniciar() -> void:
 	av = modelo.estado_inicial(); colocar_en_base(av)
 	if es_uav():
 		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual(), [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
+		av["torreta"] = { "pan": 0.0, "tilt": -20 * D2R }; UAV["fijo"] = null; UAV["cruz"] = null; UAV["fotos"] = 0
 	else: piloto = null
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
 	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
@@ -967,6 +972,7 @@ func reiniciar() -> void:
 	ent.configurar_viento(float(vv["vel"]), float(vv["desde"]), bool(vv["rachas"]))
 	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false); ordenes_al_evaluador()
 	if mundo3d != null: mundo3d.poner_operacion(ev.op.d if ev.op != null else {}, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
+	if mundo3d != null: mundo3d.poner_pista(pista_actual())
 	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0; DJI["zoomI"] = 0; DJI["termica"] = false
 	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
 	_fov1 = -1.0; _acum = 0.0
@@ -1569,6 +1575,11 @@ func _unhandled_input(e: InputEvent) -> void:
 		if k == KEY_M: uav_modo()
 		if k == KEY_H: uav_poner("BASE")
 		if k == KEY_P: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
+		if k == KEY_Z: dji_zoom(1)
+		if k == KEY_X: dji_zoom(-1)
+		if k == KEY_C: dji_termica()
+		if k == KEY_K: uav_fijar()
+		if k == KEY_F: uav_foto()
 	elif k == KEY_H and not dron: mostrar_hud = not mostrar_hud
 	if k == KEY_G and libre: vto["rachas"] = not vto["rachas"]
 	var tecla: int = e.keycode
@@ -1587,6 +1598,8 @@ func _leer_mando(dt: float) -> bool:
 	if dev < 0: return false
 	var rx := _zona_muerta(M.eje(dev, "rx"), M.zona); var ry := _zona_muerta(M.eje(dev, "ry"), M.zona)
 	var ly := _zona_muerta(M.eje(dev, "ly"), M.zona); var lx := _zona_muerta(M.eje(dev, "lx"), M.zona)
+	_mando_torreta = []
+	if es_uav() and torreta_con_flechas(): _mando_torreta = [rx, ry]; rx = 0.0; ry = 0.0      # UAV con el automatico navegando: la palanca derecha mueve la torreta
 	var cuad := modelo != null and ((es_dron() and not es_fpv()) or es_bipode()); var fpv := modelo != null and es_fpv()   # el FPV lleva el gas como un avion; el bipode, la izquierda como el dron
 	var bip := modelo != null and es_bipode()
 	_mando_disparo = false; _mando_puno = false
@@ -1631,14 +1644,19 @@ func _leer_mando(dt: float) -> bool:
 			if bs[JOY_BUTTON_LEFT_SHOULDER]: uav_modo()
 			if bs[JOY_BUTTON_Y]: uav_poner("BASE")
 			if bs[JOY_BUTTON_DPAD_LEFT]: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
+			if bs[JOY_BUTTON_DPAD_UP]: dji_zoom(1)              # cruceta arriba y abajo zoom, derecha termica; X foto; gatillos: torreta arriba y abajo
+			if bs[JOY_BUTTON_DPAD_DOWN]: dji_zoom(-1)
+			if bs[JOY_BUTTON_DPAD_RIGHT]: dji_termica()
+			if bs[JOY_BUTTON_X]: uav_foto()
+			M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)
 		if con_tren():                     # avion de pista: B frena
 			_mando_freno = Input.is_joy_button_pressed(dev, JOY_BUTTON_B)
 			if bs[JOY_BUTTON_B]: quitar_freno_aparc()
 		elif bs[JOY_BUTTON_B]: av["gases"] = 0.0
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1     # el mismo boton que en el dron, el FPV y el bipode
-		if bs[JOY_BUTTON_X]: reiniciar()
-		if bs[JOY_BUTTON_DPAD_UP]: mando["trim"] = minf(6, mando["trim"] + 0.25)
-		if bs[JOY_BUTTON_DPAD_DOWN]: mando["trim"] = maxf(-6, mando["trim"] - 0.25)
+		if bs[JOY_BUTTON_X] and not es_uav(): reiniciar()
+		if bs[JOY_BUTTON_DPAD_UP] and not es_uav(): mando["trim"] = minf(6, mando["trim"] + 0.25)
+		if bs[JOY_BUTTON_DPAD_DOWN] and not es_uav(): mando["trim"] = maxf(-6, mando["trim"] - 0.25)
 	if pausado: return false
 	# palanca derecha: hacia ti = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
 	var moviendo := rx != 0 or ry != 0 or lx != 0 or (cuad and ly != 0)
@@ -1659,13 +1677,79 @@ func _leer_mando(dt: float) -> bool:
 	return moviendo or _mando_usado
 
 var _mando_disparo := false; var _mando_puno := false; var _mando_freno := false
+## ---- torreta EO/IR del UAV (como en la web): av.torreta {pan, tilt}, su punto fijo (K) y el punto de la cruz ----
+var UAV := { "fijo": null, "cruz": null, "fotos": 0 }
+var _mando_torreta := []
+const TORRETA_VEL := 45 * PI / 180
+## Las flechas mueven la torreta (y no el avion) con el piloto automatico navegando, o con Mayusculas.
+func torreta_con_flechas() -> bool:
+	return piloto != null and (Input.is_physical_key_pressed(KEY_SHIFT) or piloto.modo in ["PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"])
+## Donde esta la torreta (NED) y hacia donde mira (vector unitario NED).
+func eje_torreta() -> Array:
+	var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]
+	var c := Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"]) if modelo.datos["malla"].has("torreta") else [0.0, 0.0, 0.0]
+	return [[av["p"][0] + c[0], av["p"][1] + c[1], av["p"][2] + c[2]], [cos(yaw) * cos(tr["tilt"]), sin(yaw) * cos(tr["tilt"]), -sin(tr["tilt"])]]
+## El punto de la cruz: [N, E, altura del suelo, distancia] donde el eje de la torreta corta el terreno (o el agua), o null.
+func punto_cruz() -> Variant:
+	var et := eje_torreta(); var o: Array = et[0]; var d: Array = et[1]
+	if d[2] <= 0.002: return null
+	var H := func(N: float, E: float) -> float: return ent.altura(N, E) if en_mundo() else 0.0
+	var s := 5.0; var ant := 0.0
+	while s < 20000:
+		if -(o[2] + s * d[2]) <= H.call(o[0] + s * d[0], o[1] + s * d[1]):
+			var a := ant; var b := s
+			for k in 12:
+				var m := (a + b) / 2
+				if -(o[2] + m * d[2]) <= H.call(o[0] + m * d[0], o[1] + m * d[1]): b = m
+				else: a = m
+			return [o[0] + b * d[0], o[1] + b * d[1], H.call(o[0] + b * d[0], o[1] + b * d[1]), b]
+		ant = s; s += maxf(5, s * 0.02)
+	return null
+## Cada cuadro: mueve la torreta con las flechas, Q/E y el mando (mas despacio cuanto mas zoom) o la apunta al punto fijo.
+func mover_torreta(dt: float) -> void:
+	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto": return
+	var tr: Dictionary = av["torreta"]; var z: float = cam_dji()["zoom"]; var k := TORRETA_VEL / pow(z, 0.7) * dt; var fl := torreta_con_flechas()
+	var T := func(kk: int) -> float: return 1.0 if Input.is_physical_key_pressed(kk) else 0.0
+	var dp: float = ((T.call(KEY_RIGHT) - T.call(KEY_LEFT)) if fl else 0.0) + (_mando_torreta[0] if not _mando_torreta.is_empty() else 0.0)
+	var dtl: float = ((T.call(KEY_UP) - T.call(KEY_DOWN)) if fl else 0.0) + T.call(KEY_E) - T.call(KEY_Q) + (-_mando_torreta[1] if not _mando_torreta.is_empty() else 0.0) + mando_cfg.gimbal
+	if dp != 0 or dtl != 0:
+		if UAV["fijo"] != null: UAV["fijo"] = null; poner_toast("Torreta: punto suelto")
+		tr["pan"] = PilotoUAV.envolver(tr["pan"] + dp * k); tr["tilt"] = clampf(tr["tilt"] + dtl * k, -90 * D2R, 10 * D2R)
+	elif UAV["fijo"] != null:
+		var o: Array = eje_torreta()[0]; var dn: float = UAV["fijo"][0] - o[0]; var de: float = UAV["fijo"][1] - o[1]; var dz: float = -UAV["fijo"][2] - o[2]
+		tr["pan"] = PilotoUAV.envolver(atan2(de, dn) - Cuat.euler(av["q"])[2]); tr["tilt"] = clampf(-atan2(dz, Vector2(dn, de).length()), -90 * D2R, 10 * D2R)
+	UAV["cruz"] = punto_cruz()
+## K: fija la torreta en el punto de la cruz (o la suelta).
+func uav_fijar() -> void:
+	if not es_uav(): return
+	if UAV["fijo"] != null: UAV["fijo"] = null; poner_toast("Torreta: punto suelto"); return
+	var c: Variant = punto_cruz()
+	if c == null: poner_toast("La cruz no apunta al suelo: baja la torreta"); return
+	UAV["fijo"] = [c[0], c[1], c[2]]; poner_toast("Torreta fijada en " + coord_txt(c[0], c[1]))
+## Latitud y longitud (grados y minutos decimales, como las de un GPS) de un punto N, E del mapa.
+func coord_txt(N: float, E: float) -> String:
+	var O: Dictionary = mundo_datos["origen"]; var lat: float = O["lat"] + N / 110574.0; var lon: float = O["lon"] + E / (111320.0 * cos(float(O["lat"]) * D2R))
+	var gm := func(x: float, pos: String, neg: String) -> String: return "%d°%s' %s" % [int(floor(absf(x))), ("%.3f" % (fmod(absf(x), 1.0) * 60)).pad_zeros(2), pos if x >= 0 else neg]
+	return "%s %s" % [gm.call(lat, "N", "S"), gm.call(lon, "E", "W")]
+## F: foto de la torreta (en un trabajo, lo que vale para el; si no, la foto con las coordenadas del punto de la cruz).
+func uav_foto() -> void:
+	if not es_uav() or av["estado"] != "volando": return
+	UAV["fotos"] += 1
+	var cm := cam_dji(); cm["pan"] = av["torreta"]["pan"]
+	var Tt: Array = ev.op.foto(av, av["torreta"]["tilt"] * R2D, cm) if (ev != null and ev.op != null) else []
+	var c = UAV["cruz"]; var txt := "Foto %d" % UAV["fotos"]
+	if c != null and en_mundo(): txt += " · %s · a %s" % [coord_txt(c[0], c[1]), ("%d m" % int(round(c[3]))) if c[3] < 1000 else ("%s km" % ("%.1f" % (c[3] / 1000)).replace(".", ","))]
+	poner_toast(" · ".join(Tt) if not Tt.is_empty() else txt)
 ## UAV: pone un modo del piloto automatico (con su aviso, o por que no se puede).
 func uav_poner(m: String, punto = null) -> void:
 	if piloto == null or av.is_empty() or av["estado"] != "volando" or rep_activa:
 		if piloto != null and not av.is_empty() and av["estado"] == "en mano": poner_toast("Primero arranca el motor (L)")
 		return
 	var t := piloto.poner(m, av, punto)
-	if t != "": _piloto_visto = piloto.modo; poner_toast("Piloto automático: " + t); return
+	if t != "":
+		_piloto_visto = piloto.modo; poner_toast("Piloto automático: " + t)
+		if m == "DESPEGUE": hud.aviso.text = ""
+		return
 	if m == "DESPEGUE": poner_toast("El despegue automático se pide parado en la pista")
 	elif m == "ATERRIZAJE": poner_toast("En tierra no hay aterrizaje automático" if piloto.pista != null else "Sin pista no hay aterrizaje automático")
 	else: poner_toast("En tierra: manual o despegue automático (P)")
@@ -1677,10 +1761,11 @@ func uav_modo() -> void:
 ## Avion de pista (con tren): el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan.
 func con_tren() -> bool: return modelo is ModeloAvion and modelo.tren != null
 func quitar_freno_aparc() -> void:
-	if not av.is_empty() and av.get("frenoAparc", false): av["frenoAparc"] = false; poner_toast("Freno de aparcamiento quitado: espacio (o B) frena")
+	if not av.is_empty() and av.get("frenoAparc", false): av["frenoAparc"] = false; hud.aviso.text = ""; poner_toast("Freno de aparcamiento quitado: espacio (o B) frena")
 func _leer_teclado(dt: float) -> void:
 	if con_tren() and not av.is_empty(): av["freno"] = 1.0 if (av.get("frenoAparc", false) or Input.is_physical_key_pressed(KEY_SPACE) or _mando_freno) else 0.0
-	var cuad := (es_dron() and not es_fpv()) or es_bipode(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas; el bipode anda con W/S y A/D
+	var tor := es_uav() and torreta_con_flechas()      # UAV: con el automatico navegando (o con Mayusculas) las flechas mueven la torreta
+	var cuad := (es_dron() and not es_fpv()) or es_bipode(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k) and not (tor and k in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT])   # en el FPV W/S son el gas; el bipode anda con W/S y A/D
 	if es_bipode(): mando["disparo"] = T.call(KEY_SPACE) or _mando_disparo; mando["puno"] = T.call(KEY_F) or _mando_puno
 	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or ((cuad or es_fpv()) and (T.call(KEY_W) or T.call(KEY_S)))   # en el FPV, W/S tambien devuelven el gas al teclado
 	if tecla_palanca: _mando_usado = false            # si se tocan las flechas, vuelve a mandar el teclado
@@ -1722,7 +1807,7 @@ func _process(dt_real: float) -> void:
 	elif pausado: _leer_mando(dt)
 	else:
 		if _args.has("auto"): _piloto_auto()
-		else: _leer_teclado(dt)
+		else: _leer_teclado(dt); mover_torreta(dt)
 		_acum += dt
 		while _acum >= DT: paso(DT); _acum -= DT
 		_paso_juego_bip(dt)
@@ -1736,7 +1821,7 @@ func _process(dt_real: float) -> void:
 	if not sala.is_empty() or not _fantasmas.is_empty(): _poner_fantasmas()
 	vista.actualizar_manga(ent.viento["actual"])
 	_camara()
-	_termica(cam_dji()["termica"] and camara == 3 and es_dron() and not es_fpv())
+	_termica(cam_dji()["termica"] and camara == 3 and ((es_dron() and not es_fpv()) or es_uav()))
 	_hud()
 	if _args.has("auto") and _t_auto > 1.5: _us.append([t_fis, Time.get_ticks_usec() - t_us])
 	_auto(dt_real)
@@ -1750,6 +1835,18 @@ func _camara() -> void:
 	var t := Avion3D.ned(av["p"])
 	if _args.has("cenital"):          # pruebas: vista vertical del punto de lanzamiento desde la altura dada
 		cam.fov = 60; cam.global_position = vista.base + Vector3(0, float(_args["cenital"]), 0); cam.look_at(vista.base, Vector3.FORWARD); return
+	if es_uav() and camara != 2 and avion3d.torreta != null:
+		if camara == 1:              # camara de vuelo: fija en el morro, algo inclinada hacia abajo
+			var q: Array = av["q"]; var ti := -4 * D2R
+			var pos := t + Avion3D.ned(Cuat.rot(q, [1.1, 0.0, 0.05])); var fw := Avion3D.ned(Cuat.rot(q, [cos(ti), 0.0, -sin(ti)])); var up := Avion3D.ned(Cuat.rot(q, [-sin(ti), 0.0, -cos(ti)]))
+			cam.fov = 55; cam.global_position = pos; cam.look_at(pos + fw, up)
+		else:                        # la torreta EO/IR, estabilizada, con su giro e inclinacion; con zoom, el campo se cierra
+			var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]; var g: float = tr["tilt"]
+			var pos := t + Avion3D.ned(Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"])); var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
+			var zc: float = cam_dji()["zoom"]
+			cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zc)) if zc > 1 else 58.0; cam.global_position = pos
+			cam.look_at(pos + fw, Vector3.UP if absf(g) < 89.5 * D2R else Avion3D.ned([cos(yaw), sin(yaw), 0.0]))
+		return
 	if camara == 1:
 		# vista del piloto con ZOOM AUTOMATICO, como en el navegador: la envergadura ocupa la fraccion zoom_piloto del alto
 		# de la pantalla (10 % por defecto; 0 = sin zoom, como lo ve el ojo), entre 50 y 1,5 grados. Suavizado
@@ -1859,7 +1956,7 @@ func _hud() -> void:
 	var h := maxf(0, -av["p"][2]); var dist := Vector2(av["p"][0] - casa["N"], av["p"][1] - casa["E"]).length()
 	var vn := Cuat.rot(av["q"], av["v"]); var vs: float = -vn[2]; _vs = vs
 	var vto: Dictionary = ent.viento; var suelo := ent.altura(av["p"][0], av["p"][1]); var dron := es_dron()
-	var est := "REPETICIÓN" if rep_activa else ("EN EL SUELO" if (av["estado"] == "en mano" and dron) else String(av["estado"]).to_upper())
+	var est := "REPETICIÓN" if rep_activa else ("EN EL SUELO" if (av["estado"] == "en mano" and dron) else ("MOTOR PARADO" if (av["estado"] == "en mano" and con_tren()) else String(av["estado"]).to_upper()))
 	var partes := [["%s · %d s" % [est, int(av["t"])], false]]
 	if vuelo != null and av["estado"] == "volando": partes.append(["● REC", true])
 	if av["motorRoto"]: partes.append(["MOTOR PARADO", true])
@@ -1872,9 +1969,9 @@ func _hud() -> void:
 	var v_clase := "rojo" if (vel_perdida > 0 and av["V"] < 1.1 * vel_perdida) else ("ambar" if (vel_perdida > 0 and av["V"] < 1.3 * vel_perdida) else "")
 	var lect := []
 	if not ((av["estado"] == "en mano" and vuelo == null) or sin_instrumentos):
-		lect = [["%.1f" % av["V"], "vel. aire m/s", v_clase], ["%d" % int(round(h - suelo)), "altura m", ""], ["%s%.1f" % ["+" if vs >= 0 else "", vs], "asc. m/s", ""],
-				["%03d°" % int(round(fposmod(yaw + 360, 360))), "rumbo", ""], ["%d" % int(round(dist)), "dist. m", ""], ["%d%%" % int(round(bat)), "batería", "rojo" if bat < 20 else ""]]
-		if av["perdida"] > 0.5: lect.append(["¡PÉRDIDA!", "alfa %d°" % int(round(av["alfa"])), "rojo"])
+		lect = [["%.1f" % av["V"], "vel. aire m/s", v_clase], ["%d" % int(round(-av["p"][2] - suelo)), "altura m", ""], ["%s%.1f" % ["+" if vs >= 0 else "", vs], "asc. m/s", ""],
+				["%03d°" % int(round(fposmod(yaw + 360, 360))), "rumbo", ""], ["%d" % int(round(dist)), "dist. m", ""], ["%d%%" % int(round(bat)), "combustible" if modelo.propulsion.get("combustible", false) else "batería", "rojo" if bat < 20 else ""]]
+		if av["perdida"] > 0.5 and not av.get("enTierra", false): lect.append(["¡PÉRDIDA!", "alfa %d°" % int(round(av["alfa"])), "rojo"])
 	hud.pintar_lecturas(lect)
 	hud.hud_texto.visible = mostrar_hud and not dron
 	if hud.hud_texto.visible:
@@ -1896,6 +1993,8 @@ func _hud() -> void:
 	if dron and not es_fpv(): hud_dji.pintar(h, vn, vs, dist)
 	hud_fpv.visible = es_fpv() and not sin_instrumentos
 	if es_fpv(): hud_fpv.pintar(h, vn)
+	hud_uav.visible = es_uav() and not sin_instrumentos
+	if es_uav(): hud.estado.visible = false; hud_uav.pintar(vn, dist, yaw)
 
 ## Lecturas del bipode (hudBip de la web): velocidad, rumbo, cintura, brazos, pendiente y distancia; sin instrumentos de avion.
 func _hud_bip(dist: float, yaw: float) -> void:
