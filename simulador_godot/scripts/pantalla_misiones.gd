@@ -194,20 +194,24 @@ class Entrenamientos extends Control:
 		return t
 
 
-## Operaciones: los trabajos de operador de dron (escenarios.js, "operacion") en tarjetas; a la derecha la orden de
-## trabajo, las comprobaciones antes del vuelo (hay que marcarlas todas) y Volar (#pOperaciones de la web).
+## Operaciones: los trabajos (escenarios.js, "operacion") en una fila de tarjetas por vehiculo; a la derecha la orden de
+## trabajo y Volar, que abre la ventana de las comprobaciones antes del vuelo (hay que marcarlas todas cada vez para
+## despegar) (#pOperaciones y #checkOp de la web).
 const COMPROBACIONES_OP := ["Operador registrado en AESA y piloto con el certificado que pide el dron (A1/A3 o A2)", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
 	"Viento previsto por debajo de 8 m/s", "Baterías del dron y del mando cargadas; hélices sin daños", "Permiso del cliente y del propietario del terreno",
 	"Zona de despegue despejada y nadie debajo del vuelo"]
+const COMPROBACIONES_UAV := ["NOTAM publicado y vuelo coordinado con la torre de San Javier (espacio aéreo controlado)", "Tripulación de la estación de control con la habilitación del UAS",
+	"Combustible y aceite comprobados; hélice, tren y frenos sin daños", "Enlace de datos, GPS y estación de control probados; vuelta a base programada",
+	"Viento en pista dentro de los límites del avión", "Pista libre y autorización de despegue de la torre"]     # UAV de pista (espacio aereo controlado)
 const RUMBOS_VIENTO := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
 class Operaciones extends Control:
 	var p: Node; var d: Dictionary
-	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var checks: VBoxContainer; var b_volar: Button; var briefing: TextureRect
+	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var b_volar: Button; var briefing: TextureRect
 	var sel := ""
-	var marcas := {}
+	var check: Control; var check_sub: Label; var check_lista: VBoxContainer; var check_si: Button; var marcas := []
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
-		d = Tema.pantalla("Operaciones", "Trabajos de operador de dron en el mapa real de Cartagena, cada uno con el dron que pide"); add_child(d["raiz"])
+		d = Tema.pantalla("Operaciones", "Trabajos en el mapa real de Cartagena, en una fila por vehículo: cada trabajo se vuela con el suyo"); add_child(d["raiz"])
 		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
@@ -218,16 +222,43 @@ class Operaciones extends Control:
 		briefing = TextureRect.new(); briefing.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; briefing.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; briefing.custom_minimum_size = Vector2(0, 228)
 		(cf[1] as VBoxContainer).add_child(briefing)                       # el mapa del briefing (simulador/operaciones/<id>.jpg)
 		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
-		var cc := Tema.capa(4); der.add_child(cc[0])
-		checks = cc[1]
-		b_volar = Tema.boton("Volar →", "BotonPrimGrande", func(): p.volar_operacion(sel))
+		b_volar = Tema.boton("Volar →", "BotonPrimGrande", func(): pedir_comprobaciones())
 		b_volar.size_flags_horizontal = Control.SIZE_FILL; der.add_child(b_volar)
+		# la ventana de las comprobaciones (#checkOp)
+		check = Capas._velo(); add_child(check)
+		var cp := Tema.capa(8); var panel: PanelContainer = cp[0]; var caja: VBoxContainer = cp[1]
+		panel.custom_minimum_size.x = 520; check.get_node("Centro").add_child(panel)
+		caja.add_child(Tema.etiqueta("Antes de volar", 18, Tema.TEXTO, true))
+		check_sub = Tema.etiqueta("", 14, Tema.SUAVE); caja.add_child(check_sub)
+		check_lista = VBoxContainer.new(); check_lista.add_theme_constant_override("separation", 6); caja.add_child(check_lista)
+		var bb := HBoxContainer.new(); bb.add_theme_constant_override("separation", 10); bb.alignment = BoxContainer.ALIGNMENT_END
+		bb.add_child(Tema.boton("Cancelar", "", func(): check.visible = false))
+		check_si = Tema.boton("Despegar →", "BotonPrim", _despegar)
+		bb.add_child(check_si); caja.add_child(Tema.margen(bb, 0, 8, 0, 0))
 	func refrescar() -> void:
 		var E := Escenarios.datos(); var ids := Escenarios.operaciones()
 		if not sel in ids: sel = ids[0]
 		for x in lista.get_children(): x.queue_free()
-		var rejilla := Tema.rejilla(230, 12); lista.add_child(rejilla)
-		for id in ids: rejilla.add_child(_tarjeta(id, E[id]))
+		var filas := {}                                                 # una fila por vehiculo, en el orden en que salen
+		var cuenta := {}
+		for id in ids: var a0 := String(E[id]["operacion"].get("avion", "")); cuenta[a0] = int(cuenta.get(a0, 0)) + 1
+		var n_max: int = cuenta.values().max()                          # todas las filas con el ancho de la mas larga
+		for id in ids:
+			var av := String(E[id]["operacion"].get("avion", ""))
+			if not filas.has(av):
+				var Dv: Dictionary = DatosComunes.avion(av) if p.ids_aviones.has(av) else {}
+				var t := Tema.rico("[b]%s[/b]%s" % [String(Dv.get("nombre", av)).to_upper(), ("   [color=#9fb3c8]%s[/color]" % Dv["categoria"]) if Dv.has("categoria") else ""], 13)
+				t.add_theme_color_override("default_color", Tema.SUAVE)
+				lista.add_child(Tema.margen(t, 0, 10 if lista.get_child_count() else 0, 0, 2))
+				var fila := HBoxContainer.new(); fila.add_theme_constant_override("separation", 12)
+				var sf := ScrollContainer.new(); sf.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; sf.add_child(fila)
+				fila.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lista.add_child(sf); filas[av] = fila
+			var tj := _tarjeta(id, E[id]); tj.custom_minimum_size.x = 180; tj.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			(filas[av] as HBoxContainer).add_child(tj)
+		for av in filas:                                                # huecos hasta n_max tarjetas
+			for k in n_max - (filas[av] as HBoxContainer).get_child_count():
+				var h := Control.new(); h.custom_minimum_size.x = 180; h.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				(filas[av] as HBoxContainer).add_child(h)
 		var M: Dictionary = E[sel]; var O: Dictionary = M["operacion"]; var v: Dictionary = M["viento"]
 		var fila := func(a: String, b: String) -> String: return "[cell][color=#9fb3c8]%s[/color]   [/cell][cell]%s[/cell]" % [a, b]
 		var bb := "[font_size=15][color=#ffc83d][b]ORDEN DE TRABAJO[/b][/color][/font_size]\n[font_size=18][b]%s[/b][/font_size]\n[font_size=13][table=2]" % M["nombre"]
@@ -239,26 +270,31 @@ class Operaciones extends Control:
 		ficha_rt.text = bb
 		var img := Image.load_from_file(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) if FileAccess.file_exists(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) else null
 		briefing.texture = ImageTexture.create_from_image(img) if img != null else null
-		if not marcas.has(sel):
-			var a := []
-			for i in COMPROBACIONES_OP.size(): a.append(false)
-			marcas[sel] = a
-		for x in checks.get_children(): x.queue_free()
-		checks.add_child(Tema.rico("[font_size=15][color=#ffc83d][b]ANTES DE VOLAR[/b][/color][/font_size]", 15))
-		for i in COMPROBACIONES_OP.size():
-			var cb := CheckBox.new(); cb.text = COMPROBACIONES_OP[i]; cb.button_pressed = marcas[sel][i]; cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			cb.add_theme_font_size_override("font_size", 13); cb.focus_mode = Control.FOCUS_NONE
-			cb.toggled.connect(func(si: bool): marcas[sel][i] = si; _boton())
-			checks.add_child(cb)
-		_boton()
+	## Las comprobaciones antes de volar del trabajo id (las del UAV de pista o las del dron).
+	static func comprobaciones_de(id: String) -> Array:
+		return COMPROBACIONES_UAV if Escenarios.vehiculo_de(String(Escenarios.datos()[id]["operacion"].get("avion", ""))) == "uav" else COMPROBACIONES_OP
+	## Volar: la ventana de las comprobaciones, todas sin marcar; Despegar solo cuando estan todas.
+	func pedir_comprobaciones() -> void:
+		var L := comprobaciones_de(sel); marcas = []
+		for x in check_lista.get_children(): x.queue_free()
+		for i in L.size():
+			marcas.append(false)
+			var cb := CheckBox.new(); cb.text = L[i]; cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; cb.custom_minimum_size.x = 480
+			cb.add_theme_font_size_override("font_size", 14); cb.focus_mode = Control.FOCUS_NONE
+			cb.toggled.connect(func(si: bool): marcas[i] = si; _boton())
+			check_lista.add_child(cb)
+		check_sub.text = String(Escenarios.datos()[sel]["nombre"]); _boton(); check.visible = true
+	func _despegar() -> void:
+		if not marcas.all(func(x): return x): return
+		check.visible = false; p.volar_operacion(sel)
 	func _boton() -> void:
-		var ok: bool = (marcas[sel] as Array).all(func(x): return x)
-		b_volar.disabled = not ok; b_volar.text = "Volar →" if ok else "Marca las comprobaciones para volar"
+		var ok: bool = marcas.all(func(x): return x); var n := marcas.filter(func(x): return x).size()
+		check_si.disabled = not ok; check_si.text = "Despegar →" if ok else "Marca todas las comprobaciones (%d/%d)" % [n, marcas.size()]
 	func _tarjeta(id: String, M: Dictionary) -> Tarjeta:
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
 		v.add_child(PantallaMisiones.imagen(id, 110))
 		var tx := VBoxContainer.new(); tx.add_theme_constant_override("separation", 4)
-		tx.add_child(Tema.etiqueta(String(M["nombre"]), 15, Tema.TEXTO, true))
+		tx.add_child(Tema.etiqueta(String(M["nombre"]), 15, Tema.TEXTO, true, true))          # el titulo se parte, como en la web
 		var dsc := Tema.etiqueta(String(M["desc"]), 12, Tema.SUAVE, false, true); dsc.max_lines_visible = 2; dsc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		tx.add_child(dsc)
 		var dif := int(M.get("dificultad", 1))

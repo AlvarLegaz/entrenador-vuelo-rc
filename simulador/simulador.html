@@ -291,7 +291,15 @@
   .ordenTrabajo { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 8px; }
   .ordenTrabajo td { padding: 4px 0; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,.08); }
   .ordenTrabajo td:first-child { color: var(--suave); width: 92px; padding-right: 8px; }
-  #comprobacionesOp label { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
+  #checkOp .capa { max-width: 520px; margin: 16px; }
+  #checkOp h3 { margin: 0 0 4px; }
+  #checkOp label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 8px 0; cursor: pointer; }
+  #checkOp .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .grupoOp { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); margin: 14px 0 6px; }
+  .grupoOp:first-child { margin-top: 0; }
+  .grupoOp span { font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 8px; }
+  .filaOp { display: grid; grid-auto-flow: column; gap: 12px; overflow-x: auto; padding-bottom: 4px; }   /* columnas: irOperaciones */
+  #listaOperaciones { min-width: 0; }
   .misiones { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; color: var(--suave); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   .zonaTitulo:first-child { margin-top: 0; }
@@ -582,12 +590,11 @@
 
 <!-- ============ OPERACIONES (trabajos de operador de dron) ============ -->
 <div class="pantalla" id="pOperaciones">
-  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos de operador de dron en el mapa real de Cartagena, cada uno con el dron que pide</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
+  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos en el mapa real de Cartagena, en una fila por vehículo: cada trabajo se vuela con el suyo</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
   <div class="cuerpo"><div class="dos">
-    <div class="misiones" id="listaOperaciones"></div>
+    <div id="listaOperaciones"></div>
     <div>
       <div class="capa" id="fichaOperacion"></div>
-      <div class="capa" id="comprobacionesOp" style="margin-top:12px"></div>
       <button class="btn prim grande" id="btnOpVolar" style="width:100%;margin-top:12px">Volar →</button>
     </div>
   </div></div>
@@ -784,6 +791,8 @@
   <div class="fila"><label for="pausaSonido" style="min-width:0">Sonido</label><input type="checkbox" id="pausaSonido"><span class="sub" style="flex:1"></span><span class="sub" id="pausaInfo" style="font-size:12px"></span></div>
 </div></div>
 <div class="velo" id="carga"><h2 id="cargaTitulo">Preparando el vuelo…</h2><div class="progreso"><i id="cargaBarra" style="width:0"></i></div><p id="cargaTexto"></p></div>
+<div class="velo" id="checkOp"><div class="capa"><h3>Antes de volar</h3><p class="sub" id="checkOpSub" style="margin:0 0 8px"></p><div id="checkOpLista"></div>
+  <div class="botones"><button class="btn" id="checkOpNo">Cancelar</button><button class="btn prim" id="checkOpSi">Despegar →</button></div></div></div>
 <div class="velo" id="modal"><div class="capa"><h3 id="modTitulo"></h3><div id="modTexto"></div>
   <div class="botones"><button class="btn" id="modNo">Cancelar</button><button class="btn peligro" id="modSi">Sí</button></div></div></div>
 
@@ -2362,19 +2371,31 @@ function pintarOtrosGPS(g, X, Y, W) {
 const COMPROBACIONES_OP = ["Operador registrado en AESA y piloto con el certificado que pide el dron (A1/A3 o A2)", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
   "Viento previsto por debajo de 8 m/s", "Baterías del dron y del mando cargadas; hélices sin daños", "Permiso del cliente y del propietario del terreno",
   "Zona de despegue despejada y nadie debajo del vuelo"];
+const COMPROBACIONES_UAV = ["NOTAM publicado y vuelo coordinado con la torre de San Javier (espacio aéreo controlado)", "Tripulación de la estación de control con la habilitación del UAS",
+  "Combustible y aceite comprobados; hélice, tren y frenos sin daños", "Enlace de datos, GPS y estación de control probados; vuelta a base programada",
+  "Viento en pista dentro de los límites del avión", "Pista libre y autorización de despegue de la torre"];   // UAV de pista (espacio aereo controlado)
 const RUMBOS_VIENTO = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
-let opSel = null; const opMarcas = {};
+let opSel = null;
 function operacionesLista() { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].operacion); }
 function irOperaciones() {
   const lista = operacionesLista(), el = document.getElementById("listaOperaciones"); el.innerHTML = "";
   if (!lista.includes(opSel)) opSel = lista[0];
+  const filas = {};                                                   // una fila por vehiculo, en el orden en que salen
   for (const id of lista) {
+    const av = ESCENARIOS[id].operacion.avion || "";
+    if (!filas[av]) {
+      const D = Modelos.datos(av), h = document.createElement("div"); h.className = "grupoOp";
+      h.innerHTML = `${esc(D ? D.nombre : av)}${D && D.categoria ? `<span>${esc(D.categoria)}</span>` : ""}`;
+      filas[av] = document.createElement("div"); filas[av].className = "filaOp"; el.appendChild(h); el.appendChild(filas[av]);
+    }
+    const n = Math.max(...Object.values(lista.reduce((c, k) => (c[ESCENARIOS[k].operacion.avion || ""] = (c[ESCENARIOS[k].operacion.avion || ""] || 0) + 1, c), {})));
+    filas[av].style.gridAutoColumns = `minmax(180px, calc((100% - ${(n - 1) * 12}px) / ${n}))`;    // todas las filas con el ancho de la mas larga
     const E = ESCENARIOS[id], dif = E.dificultad || 1, d = document.createElement("div");
     d.className = "mision" + (id === opSel ? " sel" : "");
     const dron = Modelos.datos(E.operacion.avion);
     d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre)}</h3><p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span>${dron ? `<span>${esc(dron.nombre)}</span>` : ""}</div></div>`;
     d.onclick = () => { opSel = id; irOperaciones(); };
-    el.appendChild(d);
+    filas[av].appendChild(d);
   }
   const E = ESCENARIOS[opSel], O = E.operacion, v = E.viento, fila = (a, b) => `<tr><td>${a}</td><td>${esc(b)}</td></tr>`;
   document.getElementById("fichaOperacion").innerHTML = `<img src="operaciones/${opSel}.jpg" alt="" style="width:100%;border-radius:8px;margin:0 0 10px;display:block" onerror="this.remove()">
@@ -2382,12 +2403,22 @@ function irOperaciones() {
     <table class="ordenTrabajo">${fila("Cliente", O.cliente)}${fila("Lugar", O.lugar)}${fila("Trabajo", O.trabajo)}${fila("Entrega", O.entrega)}
     ${fila("Viento previsto", `${v.vel} m/s del ${RUMBOS_VIENTO[Math.round(v.desde / 45) % 8]}${v.rachas ? ", con rachas" : ""}`)}${fila("Dron", (D => D ? `${D.nombre} (${D.categoria})` : O.avion)(Modelos.datos(O.avion)))}</table>
     <b style="font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.08em">Se evalúa</b><ul>${E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("")}</ul>`;
-  const marcas = opMarcas[opSel] = opMarcas[opSel] || COMPROBACIONES_OP.map(() => false);
-  const cc = document.getElementById("comprobacionesOp");
-  cc.innerHTML = `<h2>Antes de volar</h2>` + COMPROBACIONES_OP.map((t, i) => `<label><input type="checkbox" data-i="${i}" ${marcas[i] ? "checked" : ""}> ${esc(t)}</label>`).join("");
-  const boton = () => { const ok = marcas.every(Boolean), b = document.getElementById("btnOpVolar"); b.disabled = !ok; b.textContent = ok ? "Volar →" : "Marca las comprobaciones para volar"; };
-  cc.querySelectorAll("input").forEach(x => x.onchange = () => { marcas[+x.dataset.i] = x.checked; boton(); });
-  boton(); mostrar("pOperaciones");
+  mostrar("pOperaciones");
+}
+/** Las comprobaciones antes de volar del trabajo id (las del UAV de pista o las del dron). */
+function comprobacionesDe(id) { return vehiculoDe(ESCENARIOS[id].operacion.avion || "") === "uav" ? COMPROBACIONES_UAV : COMPROBACIONES_OP; }
+/** Volar: la ventana de las comprobaciones, todas sin marcar; Despegar solo cuando estan todas. */
+function pedirComprobaciones(id) {
+  const L = comprobacionesDe(id), marcas = L.map(() => false), v = document.getElementById("checkOp"), si = document.getElementById("checkOpSi");
+  document.getElementById("checkOpSub").textContent = ESCENARIOS[id].nombre;
+  const caja = document.getElementById("checkOpLista");
+  caja.innerHTML = L.map((t, i) => `<label><input type="checkbox" data-i="${i}"> ${esc(t)}</label>`).join("");
+  const boton = () => { const ok = marcas.every(Boolean); si.disabled = !ok; si.textContent = ok ? "Despegar →" : `Marca todas las comprobaciones (${marcas.filter(Boolean).length}/${L.length})`; };
+  caja.querySelectorAll("input").forEach(x => x.onchange = () => { marcas[+x.dataset.i] = x.checked; boton(); });
+  const cerrar = () => { v.classList.remove("activa"); si.onclick = document.getElementById("checkOpNo").onclick = null; };
+  si.onclick = () => { if (!marcas.every(Boolean)) return; cerrar(); volarOperacion(id); };
+  document.getElementById("checkOpNo").onclick = cerrar;
+  boton(); v.classList.add("activa");
 }
 /** Empieza el trabajo elegido: con el dron que pide (operacion.avion), desde su punto de despegue. */
 function volarOperacion(id) {
@@ -2397,7 +2428,7 @@ function volarOperacion(id) {
   sesion.escenario = id; sesion.lanz = { mundo: E.mundo, N: S.n, E: S.e, rumbo: S.rumbo }; empezar();
 }
 document.getElementById("btnOpVolver").onclick = irInicio;
-document.getElementById("btnOpVolar").onclick = () => volarOperacion(opSel);
+document.getElementById("btnOpVolar").onclick = () => pedirComprobaciones(opSel);
 document.getElementById("btnEntrenarVolver").onclick = irInicio;
 document.getElementById("btnMisionVolar").onclick = () => { leerViento(); sesion.escenario = misionSel; empezar(); };
 /** Icono esquematico de cada mision (SVG). */
