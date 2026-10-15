@@ -2745,6 +2745,7 @@ window.ESCENARIOS = {
  },
  "libre_cartagena": {
   "vehiculos": ["avion", "dron", "fpv", "uav"],
+  "pista": {"nombre": "San Javier 05R/23L", "n": 17121.5, "e": 20133.2, "rumbo": 45.86, "largo": 2311, "ancho": 45},
   "nombre": "Vuelo libre · Campo de Cartagena (mapa real)",
   "mundo": "cartagena",
   "zona": 3,

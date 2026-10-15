@@ -34,7 +34,11 @@ func _init(tipo_: String, p_: Node) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP if tipo == "gps" else Control.MOUSE_FILTER_IGNORE
 	clip_contents = tipo == "gps"          # el lienzo de la web recorta lo que cae fuera del mapa
 
+var _vm := {}                    # GPS del mundo: centro y escala del ultimo dibujo (para el clic del UAV)
 func _gui_input(ev: InputEvent) -> void:
+	if tipo == "gps" and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and p.piloto != null and not _vm.is_empty():
+		var W: float = _vm["W"]; var x: float = ev.position.x * W / size.x; var y: float = ev.position.y * W / size.y   # UAV: clic en el mapa = ir a ese punto
+		p.uav_poner("PUNTO", [_vm["N"] - (y - W / 2) / _vm["k"], _vm["E"] + (x - W / 2) / _vm["k"]]); accept_event(); return
 	if tipo == "gps" and ev is InputEventMouseButton and ev.pressed:
 		if ev.button_index == MOUSE_BUTTON_WHEEL_UP: gps_zoom = maxf(0.12, gps_zoom * 0.8); accept_event()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN: gps_zoom = minf(8.0, gps_zoom * 1.25); accept_event()
@@ -324,6 +328,7 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 	draw_texture_rect_region(tex, Rect2(Vector2.ZERO, size), Rect2(sx, sy, 2 * semi * mpx, 2 * semi * mpx))
 	var X := func(e: float) -> float: return W / 2 + (e - E) * k
 	var Y := func(n: float) -> float: return W / 2 - (n - N) * k
+	_vm = { "N": N, "E": E, "k": k, "W": W }
 	if p.mundo3d != null:                              # dentro de las zonas de detalle, su ortofoto (0,25-0,5 m) encima, recortada al mapa
 		var vista := Rect2(Vector2.ZERO, Vector2(W, W))
 		for t in p.mundo3d.mapa_zonas:
@@ -339,6 +344,18 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			var n: float = PL["n0"] + i * PL["separacion"]
 			var r := Rect2(X.call(PL["e0"]), Y.call(n + fondo / 2), PL["largo"] * k, maxf(1, fondo * k)).intersection(Rect2(0, 0, W, W))
 			if r.size.x > 0 and r.size.y > 0: draw_rect(r, Color("#182c52"))
+	if p.piloto != null:                          # UAV: la pista y lo que pide el piloto automatico
+		var PS = p.piloto.pista
+		if PS != null:
+			var r: float = float(PS["rumbo"]) * PI / 180; var a: float = float(PS["ancho"]) / 2; var cs := PackedVector2Array()
+			for dt in [[0.0, -a], [float(PS["largo"]), -a], [float(PS["largo"]), a], [0.0, a]]:
+				cs.append(Vector2(X.call(PS["e"] + dt[0] * sin(r) + dt[1] * cos(r)), Y.call(PS["n"] + dt[0] * cos(r) - dt[1] * sin(r))))
+			draw_colored_polygon(cs, Color("#3a3f44")); var cc := cs.duplicate(); cc.append(cs[0]); draw_polyline(cc, Color.WHITE, 1)
+		if (p.piloto.modo == "PUNTO" or p.piloto.modo == "BASE") and p.piloto.c["punto"] != null:
+			var qp := Vector2(X.call(p.piloto.c["punto"][1]), Y.call(p.piloto.c["punto"][0])); var col := Color("#4dd0e1")
+			var rr := maxf(4, float(p.piloto.P["radio_orbita"]) * k); var nseg := 40
+			for s in range(0, nseg, 2): draw_arc(qp, rr, s * TAU / nseg, (s + 1) * TAU / nseg, 4, col, 2)
+			draw_line(qp - Vector2(5, 0), qp + Vector2(5, 0), col, 2); draw_line(qp - Vector2(0, 5), qp + Vector2(0, 5), col, 2)
 	var OPf = p.ev.op if (p.ev != null and p.ev.op != null and p.ev.op.d.has("racks")) else null
 	if OPf != null:                                     # fabrica: las pistas (racks con puntos calientes, unidad con la fuga y su ATEX, antorcha)
 		var U := PackedVector2Array()

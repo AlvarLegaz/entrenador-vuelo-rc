@@ -751,16 +751,17 @@
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
-<script src="js/modelos.js?v=22"></script>
+<script src="js/modelos.js?v=23"></script>
 <script src="js/entorno.js?v=25"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=6"></script>
+<script src="js/piloto_uav.js?v=1"></script>
 <script src="js/visor.js?v=35"></script>
 <script src="js/industria.js?v=4"></script>
 <script src="js/visor_real.js?v=36"></script>
 <script src="js/bipode.js?v=3"></script>
 <script src="mundos/cartagena.js?v=20"></script>
-<script src="escenarios.js?v=10"></script>
+<script src="escenarios.js?v=11"></script>
 <script src="singulares.js?v=3"></script>
 <script>
 "use strict";
@@ -1175,7 +1176,15 @@ const zonaDe = id => ESCENARIOS[id].zona || 1;
 const mundoDe = id => ESCENARIOS[id].mundo ? Mundos.datos(ESCENARIOS[id].mundo) : null;
 // ---- punto de lanzamiento en un mundo real: se elige en un mapa (textura del terreno + carreteras + pueblos) ----
 const LANZ_MAPA = { k: 1, x0: 0, y0: 0 };
-function casa() { return entorno.mundo && sesion.lanz ? sesion.lanz : { N: 0, E: 0 }; }
+function casa() {
+  if (modelo && modelo.uav) { const P = pistaActual(); if (P) { const r = P.rumbo * D2R; return { N: P.n + 60 * Math.cos(r), E: P.e + 60 * Math.sin(r), rumbo: P.rumbo }; } }   // UAV: en la cabecera de la pista
+  return entorno.mundo && sesion.lanz ? sesion.lanz : { N: 0, E: 0 };
+}
+/** La pista del escenario (escenarios.js "pista" o la de su trabajo), con la altura del suelo en el umbral, o null. */
+function pistaActual() {
+  const E = ESCENARIOS[sesion.escenario] || {}, P = E.pista || (E.operacion && E.operacion.pista);
+  return P && entorno.mundo && entorno.altura ? Object.assign({}, P, { h: entorno.altura(P.n, P.e) }) : null;
+}
 /** Rumbo de despegue (grados) mas despejado desde (N, E): el de 16 con menos terreno por delante en 1,5 km. */
 function rumboDespejado(N, E) {
   let mejor = 0, menos = Infinity;
@@ -1288,6 +1297,7 @@ function colocarEnBase(a, m = modelo) {
 }
 
 let ev = null;     // evaluador del vuelo en curso
+let piloto = null; // UAV: su piloto automatico (js/piloto_uav.js)
 function nuevoEvaluador() {
   ev = { obj: Object.fromEntries(ESCENARIOS[sesion.escenario].objetivos.map(([id, t]) => [id, { texto: t, estado: "pend" }])),
          contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
@@ -1599,6 +1609,7 @@ async function empezar() {
 function reiniciar() {
   MANDO.gasFpv = false; MULTI.caida = null;
   av = modelo.estadoInicial(); colocarEnBase(av);
+  piloto = modelo.uav ? (c => new PilotoUAV(modelo.piloto, pistaActual(), [c.N, c.E, entorno.altura ? entorno.altura(c.N, c.E) : 0]))(casa()) : null;
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
   orientarLanzamiento();
@@ -1619,7 +1630,8 @@ function orientarLanzamiento() {
   const mundo = mundoDe(sesion.escenario);
   if (zonaDe(sesion.escenario) !== 2 && !mundo) return;
   const [roll, pitch] = Cuat.euler(av.q);
-  av.q = Cuat.desdeEuler(roll, pitch, mundo ? (sesion.lanz ? sesion.lanz.rumbo : mundo.rumbo_despegue || 0) * D2R : Math.PI);
+  const c = casa();
+  av.q = Cuat.desdeEuler(roll, pitch, mundo ? (c.rumbo !== undefined ? c.rumbo : mundo.rumbo_despegue || 0) * D2R : Math.PI);
 }
 function lanzar() {
   if (modelo.esTerrestre && av.estado === "volando") {        // bipode en marcha: L lo aparca (si esta parado) y acaba
@@ -1642,7 +1654,14 @@ function lanzar() {
 function paso(dt) {
   aplicarRecorridos();
   let viento = entorno.actualizar(dt);
-  modelo.servos(av, mando, dt);
+  let gasPalanca = null;
+  if (piloto && av.estado === "volando" && piloto.modo !== "MANUAL") {      // UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
+    const o = piloto.paso(av, dt, mando, av.gases);
+    modelo.servos(av, Object.assign({}, mando, { pitch: o.pitch, yaw: o.yaw, guinada: o.guinada }), dt);
+    if (o.gas !== null) { gasPalanca = av.gases; av.gases = o.gas; }
+    if (o.freno !== null) av.freno = o.freno;
+    if (piloto.modo !== piloto.modoVisto) { if (piloto.modoVisto) toast("Piloto automático: " + PUAV_NOMBRE[piloto.modo]); piloto.modoVisto = piloto.modo; }
+  } else modelo.servos(av, mando, dt);
   av.agl = -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0);
   if (modelo.tren && entorno.altura) {          // avion de pista: el suelo bajo cada rueda (el terreno no es plano)
     const g0 = -av.p[2] - av.agl; av.dSuelo = modelo.tren.ruedas.map(r => { const rw = Cuat.rot(av.q, r.p); return entorno.altura(av.p[0] + rw[0], av.p[1] + rw[1]) - g0; });
@@ -1654,6 +1673,7 @@ function paso(dt) {
   const pAnt = av.p.slice();
   if (modelo.esTerrestre) { pasoTerrestre(dt, viento, pAnt); return; }
   const vn = modelo.paso(av, viento, dt);
+  if (gasPalanca !== null) { av.gasMotor = av.gases; av.gases = gasPalanca; } else av.gasMotor = av.gases;   // la palanca del gas no se mueve: en crucero elige la velocidad
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
   if (modelo.tren) {                           // avion de pista: lo que rompe el tren o las alas en tierra y el final de la carrera
     let ft = modelo.finTren(av);
@@ -2679,7 +2699,11 @@ window.addEventListener("keydown", e => {
   if (e.code === "KeyB") verBriefing();
   if (e.code === "Space") { if (modelo.tren) quitarFrenoAparc(); else av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
-  if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
+  if (modelo.uav) {                 // UAV: M modo del piloto automatico, H vuelta a base, P despegue o aterrizaje automatico
+    if (e.code === "KeyM") uavModo();
+    if (e.code === "KeyH") uavPoner("BASE");
+    if (e.code === "KeyP") uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE");
+  } else if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
   if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
   if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
@@ -2865,6 +2889,7 @@ function leerMando(dt) {
   } else if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
     if (modelo.tren) { MANDO.freno = !!(p.buttons[1] && p.buttons[1].pressed); if (pulsado(1)) quitarFrenoAparc(); }   // avion de pista: B frena
+    if (modelo.uav) { if (pulsado(4)) uavModo(); if (pulsado(3)) uavPoner("BASE"); if (pulsado(14)) uavPoner(av.enTierra ? "DESPEGUE" : "ATERRIZAJE"); }   // LB modo, Y base, cruceta izquierda: P
     else if (pulsado(1)) av.gases = 0;
     if (pulsado(5)) visor.camara = visor.camara % 3 + 1;        // RB: el mismo boton que en el dron, el FPV y el bipode
     if (pulsado(2)) reiniciar();
@@ -2893,6 +2918,20 @@ function leerMando(dt) {
   return moviendo || MANDO.usado;
 }
 
+/** UAV: pone un modo del piloto automatico (con su aviso, o por que no se puede). */
+function uavPoner(modo, punto) {
+  if (!piloto || av.estado !== "volando" || Repeticion.activa) { if (piloto && av.estado === "en mano") toast("Primero arranca el motor (L)"); return; }
+  const t = piloto.poner(modo, av, punto);
+  if (t) { piloto.modoVisto = piloto.modo; toast("Piloto automático: " + t); return; }
+  toast(modo === "DESPEGUE" ? "El despegue automático se pide parado en la pista" : modo === "ATERRIZAJE" ? (piloto.pista ? "En tierra no hay aterrizaje automático" : "Sin pista no hay aterrizaje automático")
+        : "En tierra: manual o despegue automático (P)");
+}
+/** UAV: M pasa de manual a estabilizado, a crucero y otra vez a manual. */
+function uavModo() {
+  if (!piloto) return;
+  const ciclo = ["MANUAL", "ESTAB", "CRUCERO"], i = ciclo.indexOf(piloto.modo);
+  uavPoner(i < 0 ? "MANUAL" : ciclo[(i + 1) % 3]);
+}
 /** Avion de pista: el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan. */
 function quitarFrenoAparc() { if (av && av.frenoAparc) { av.frenoAparc = false; toast("Freno de aparcamiento quitado: espacio (o B) frena"); } }
 function leerTeclado(dt) {
@@ -3160,6 +3199,11 @@ function pintarInstrumentos(V, vz) {
 // para que siempre se vean los dos (minimo +-150 m). Pista, pilones de colores, zona 2 (pista 2, diana y puerta),
 // el piloto (punto blanco), la estela del ultimo minuto y el avion (triangulo con su rumbo) ----
 const GPS = { estela: [], tUlt: -1, zoom: 1 };     // zoom: con la rueda del raton sobre el GPS (1 = escala automatica)
+document.getElementById("gps").addEventListener("click", e => {           // UAV: clic en el mapa = ir a ese punto
+  if (!piloto || !GPS.vm || !entorno.mundo) return;
+  const r = e.currentTarget.getBoundingClientRect(), V = GPS.vm, x = (e.clientX - r.left) * V.W / r.width, y = (e.clientY - r.top) * V.W / r.height;
+  uavPoner("PUNTO", [V.N - (y - V.W / 2) / V.k, V.E + (x - V.W / 2) / V.k]);
+});
 document.getElementById("gps").addEventListener("wheel", e => { e.preventDefault(); GPS.zoom = Math.max(0.12, Math.min(8, GPS.zoom * (e.deltaY > 0 ? 1.25 : 0.8))); }, { passive: false });
 /** Barra de escala: una longitud redonda de un tercio del semiancho del mapa. */
 function escalaRedonda(semi) { const c = [50, 100, 200, 500, 1000, 2000, 5000, 10000]; return c.reduce((a, b) => Math.abs(b - semi / 3) < Math.abs(a - semi / 3) ? b : a, c[0]); }
@@ -3235,6 +3279,7 @@ function pintarGPSMundo(cv, rumbo, N, E) {
   const sx = GPS.X(E) - semi * mpx, sy = GPS.Y(N) - semi * mpx, sw = 2 * semi * mpx;
   g.imageSmoothingEnabled = true; g.drawImage(GPS.mapa, sx, sy, sw, sw, 0, 0, W, W);
   const X = e => W / 2 + (e - E) * k, Y = n => W / 2 - (n - N) * k;
+  GPS.vm = { N, E, k, W };
   for (const t of visor.mapaZonas || []) {           // dentro de las zonas de detalle, su ortofoto (0,25-0,5 m) encima
     const img = t.tex.image;
     if (!img || !(img.naturalWidth || img.width) || t.E0 > E + semi || t.E0 + t.lado < E - semi || t.N0 > N + semi || t.N0 + t.lado < N - semi) continue;
@@ -3244,6 +3289,16 @@ function pintarGPSMundo(cv, rumbo, N, E) {
   if (PL && PL.rumbo === undefined) {                                  // con rumbo (SABIC) las filas ya estan en la ortofoto
     const fondo = PL.ancho * Math.cos(PL.inclinacion * D2R); g.fillStyle = "#182c52";
     for (let i = 0; i < PL.filas; i++) { const n = PL.n0 + i * PL.separacion; g.fillRect(X(PL.e0), Y(n + fondo / 2), PL.largo * k, Math.max(1, fondo * k)); }
+  }
+  if (piloto) {                                                       // UAV: la pista y lo que pide el piloto automatico
+    const P = piloto.pista;
+    if (P) { const r = P.rumbo * D2R, a = P.ancho / 2, c = [[0, -a], [P.largo, -a], [P.largo, a], [0, a]].map(([d, t]) => [P.n + d * Math.cos(r) - t * Math.sin(r), P.e + d * Math.sin(r) + t * Math.cos(r)]);
+             g.fillStyle = "#3a3f44"; g.strokeStyle = "#fff"; g.lineWidth = 1; g.beginPath(); c.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.closePath(); g.fill(); g.stroke(); }
+    if ((piloto.modo === "PUNTO" || piloto.modo === "BASE") && piloto.c.punto) {
+      const [pn, pe] = piloto.c.punto; g.strokeStyle = "#4dd0e1"; g.lineWidth = 2; g.setLineDash([5, 4]);
+      g.beginPath(); g.arc(X(pe), Y(pn), Math.max(4, piloto.P.radio_orbita * k), 0, 2 * Math.PI); g.stroke(); g.setLineDash([]);
+      g.beginPath(); g.moveTo(X(pe) - 5, Y(pn)); g.lineTo(X(pe) + 5, Y(pn)); g.moveTo(X(pe), Y(pn) - 5); g.lineTo(X(pe), Y(pn) + 5); g.stroke();
+    }
   }
   const OPf = ev && ev.op && ev.op.d.racks ? ev.op : null;
   if (OPf) {                                                          // fabrica: las pistas (racks con puntos calientes, unidad con la fuga y su ATEX, antorcha)

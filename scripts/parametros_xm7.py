@@ -83,7 +83,7 @@ RUD_HINGE = 0.62
 # ---------------- tren triciclo fijo ----------------
 TREN_MORRO_X = 380.0                # rueda de morro dirigible
 TREN_PPAL_X = 1780.0                # principales, ~20 cm detras del CG
-TREN_PPAL_Y = 650.0
+TREN_PPAL_Y = 850.0             # via de 1,7 m: con el CG a 0,9 m del suelo, que no vuelque al tocar con deriva
 TREN_Z = -FUS_H / 2 - 430.0         # eje de las ruedas
 R_RUEDA = 140.0
 

@@ -287,6 +287,15 @@ modelo = dict(
     I_helice=2.2 * D_prop ** 2 / 12, k_perfil=0.008, brazo_perdida=0.2,
     chorro=dict(prof=0.15, timon=0.15, deriva=0.0),            # helice propulsora: la cola en H queda por encima de la estela y no hay deriva central que la gire
     camara=dict(zoom=[1, 2, 4, 8, 15, 30], zoom_optico=30, termica=True, torreta=True),
+    # piloto automatico (js/piloto_uav.js): velocidades (m/s), angulos (grados), alturas (m) y ganancias de los lazos
+    piloto=dict(v_min=28.0, v_alarma=26.0, v_max=42.0, v_crucero=V_CRUCERO, v_aprox=31.0, v_rotacion=29.0, alfa_max=6.5, k_alfa=1.5,
+                alabeo_max=30.0, cabeceo_max=15.0, cabeceo_min=-10.0, cabeceo_crucero=2.0, cabeceo_rotacion=8.0,
+                cabeceo_subida=8.0, cabeceo_recogida=4.0, h_min=150.0, h_base=300.0, h_fin_despegue=60.0, vz_max=5.0,
+                final_m=3000.0, senda_grados=4.0, h_umbral=8.0, h_recogida=4.0, radio_orbita=400.0, k_orbita=150.0,
+                giro_consigna=15.0, subida_consigna=4.0,
+                k_alabeo=2.5, k_p=0.4, k_cabeceo=3.0, k_q=0.6, k_i_cabeceo=1.0, k_derrape=1.5, k_r=0.6,
+                k_rumbo=1.2, k_altura=0.15, k_vz=0.02, k_gas=0.08, k_gas_vz=0.06, k_i_gas=0.02, gas_crucero=0.55,
+                k_rumbo_tierra=2.0, k_eje=0.03, k_r_tierra=0.6, k_eje_aire=150.0),
     malla=malla, punto_neutro_mm=xnp, x_le_mm=P.X_LE,
     colores=dict(fuselaje=0x7c8288, ala=0x7c8288, estab=0x7c8288, moviles=0x6d7378),
     origen="Diseño propio de UxS Trainer (scripts/parametros_xm7.py): no es un avión real",

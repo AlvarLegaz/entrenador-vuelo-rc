@@ -49,6 +49,8 @@ var mando := { "pitch": 0.0, "yaw": 0.0, "pitchObj": 0.0, "yawObj": 0.0, "trim":
 var vuelo = null                    # registro del vuelo en curso (de L al final)
 var ultimo_vuelo = null
 var ev: Escenarios.Evaluador = null
+var piloto: PilotoUAV = null        # UAV: su piloto automatico (piloto_uav.gd)
+var _piloto_visto := ""
 var cn_contador := 0
 var casa := { "N": 0.0, "E": 0.0 }
 var vel_perdida := 8.0
@@ -379,7 +381,18 @@ func causa_lanzamiento_fallido(gas: float) -> Dictionary:
 func en_mundo() -> bool: return not ent.mundo.is_empty()
 func ent_campo() -> Entorno: return _ent_campo
 func _casa() -> Dictionary:
+	if es_uav():                          # UAV: en la cabecera de la pista
+		var P = pista_actual()
+		if P != null:
+			var r: float = float(P["rumbo"]) * D2R
+			return { "N": P["n"] + 60 * cos(r), "E": P["e"] + 60 * sin(r), "rumbo": float(P["rumbo"]) }
 	return { "N": float(sesion["lanz"]["N"]), "E": float(sesion["lanz"]["E"]) } if (en_mundo() and not sesion["lanz"].is_empty()) else { "N": 0.0, "E": 0.0 }
+## La pista del escenario (escenarios.js "pista" o la de su trabajo), con la altura del suelo en el umbral, o null.
+func pista_actual():
+	var E: Dictionary = Escenarios.datos().get(sesion["escenario"], {}); var P = E.get("pista", E.get("operacion", {}).get("pista"))
+	if P == null or not en_mundo(): return null
+	var r: Dictionary = (P as Dictionary).duplicate(); r["h"] = ent.altura(float(P["n"]), float(P["e"])); return r
+func es_uav() -> bool: return modelo is ModeloAvion and modelo.datos.get("uav", false)
 func rumbo_despejado(N: float, E: float) -> float:
 	var mejor := 0.0; var menos := INF; var r := 0.0
 	while r < 360:
@@ -942,6 +955,9 @@ func _texto_ayuda(A: Dictionary) -> void:
 func reiniciar() -> void:
 	_gas_fpv_mando = false; _caida = {}
 	av = modelo.estado_inicial(); colocar_en_base(av)
+	if es_uav():
+		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual(), [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
+	else: piloto = null
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
 	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
 		av["p"] = [float(F["salida"][0]), float(F["salida"][1]), -0.02]; modelo.modo = String(F["modo"])
@@ -981,7 +997,8 @@ func _orientar_lanzamiento() -> void:
 	var es_m := en_mundo()
 	if Escenarios.zona_de(sesion["escenario"]) != 2 and not es_m: return
 	var e := Cuat.euler(av["q"])
-	var rumbo: float = (float(sesion["lanz"].get("rumbo", 0)) * D2R if not sesion["lanz"].is_empty() else 0.0) if es_m else PI
+	var c := _casa()
+	var rumbo: float = (float(c["rumbo"]) * D2R if c.has("rumbo") else (float(sesion["lanz"].get("rumbo", 0)) * D2R if not sesion["lanz"].is_empty() else 0.0)) if es_m else PI
 	av["q"] = Cuat.desde_euler(e[0], e[1], rumbo)
 
 func lanzar() -> void:
@@ -1021,7 +1038,17 @@ func texto_fpv(s: String, bb: bool) -> String:
 func paso(dt: float) -> void:
 	aplicar_recorridos()
 	var viento := ent.actualizar(dt)
-	modelo.servos(av, mando, dt)
+	var gas_palanca = null
+	if piloto != null and av["estado"] == "volando" and piloto.modo != "MANUAL":      # UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
+		var o := piloto.paso(av, dt, mando, av["gases"])
+		var mm := mando.duplicate(); mm["pitch"] = o["pitch"]; mm["yaw"] = o["yaw"]; mm["guinada"] = o["guinada"]
+		modelo.servos(av, mm, dt)
+		if o["gas"] != null: gas_palanca = av["gases"]; av["gases"] = o["gas"]
+		if o["freno"] != null: av["freno"] = o["freno"]
+		if piloto.modo != _piloto_visto:
+			if _piloto_visto != "": poner_toast("Piloto automático: " + PilotoUAV.NOMBRE[piloto.modo])
+			_piloto_visto = piloto.modo
+	else: modelo.servos(av, mando, dt)
 	av["agl"] = -av["p"][2] - ent.altura(av["p"][0], av["p"][1])
 	if con_tren():                     # avion de pista: el suelo bajo cada rueda (el terreno no es plano)
 		var g0: float = -av["p"][2] - av["agl"]; var ds := []
@@ -1035,6 +1062,8 @@ func paso(dt: float) -> void:
 	var p_ant: Array = av["p"].duplicate()
 	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
 	var vn: Array = modelo.paso(av, viento, dt)
+	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
+	else: av["gasMotor"] = av["gases"]
 	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
 	var suelo_h := ent.altura(av["p"][0], av["p"][1])      # una vez: la usan hmax y el contacto con el suelo (misma posicion)
 	if vuelo != null:
@@ -1536,7 +1565,11 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_T: hud.ayuda.visible = not hud.ayuda.visible
 		KEY_BRACKETLEFT: mando["trim"] = maxf(-6, mando["trim"] - 0.25)
 		KEY_BRACKETRIGHT: mando["trim"] = minf(6, mando["trim"] + 0.25)
-	if k == KEY_H and not dron: mostrar_hud = not mostrar_hud
+	if es_uav():                          # UAV: M modo del piloto automatico, H vuelta a base, P despegue o aterrizaje automatico
+		if k == KEY_M: uav_modo()
+		if k == KEY_H: uav_poner("BASE")
+		if k == KEY_P: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
+	elif k == KEY_H and not dron: mostrar_hud = not mostrar_hud
 	if k == KEY_G and libre: vto["rachas"] = not vto["rachas"]
 	var tecla: int = e.keycode
 	if libre and (tecla == KEY_PLUS or tecla == KEY_KP_ADD or (e.unicode == 43)): vto["base"] = minf(10, vto["base"] + 1)
@@ -1562,7 +1595,7 @@ func _leer_mando(dt: float) -> bool:
 		return ahora and not antes
 	var b_start: bool = pulsado.call(JOY_BUTTON_START)
 	var bs := {}
-	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT]:
+	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_LEFT]:
 		bs[b] = pulsado.call(b)
 	if pantalla_actual == "" and b_start: poner_pausa(not pausado)
 	M.gimbal = 0.0
@@ -1594,6 +1627,10 @@ func _leer_mando(dt: float) -> bool:
 		if _t_csc > 0.5 and av.get("estado", "") == "en mano": _t_csc = -1e9; lanzar(); poner_toast("Motores en marcha (CSC): sube la palanca izquierda para despegar")
 	elif pantalla_actual == "" and not pausado:
 		if bs[JOY_BUTTON_A]: lanzar()
+		if es_uav():                       # UAV: LB modo, Y base, cruceta izquierda: despegue o aterrizaje automatico
+			if bs[JOY_BUTTON_LEFT_SHOULDER]: uav_modo()
+			if bs[JOY_BUTTON_Y]: uav_poner("BASE")
+			if bs[JOY_BUTTON_DPAD_LEFT]: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
 		if con_tren():                     # avion de pista: B frena
 			_mando_freno = Input.is_joy_button_pressed(dev, JOY_BUTTON_B)
 			if bs[JOY_BUTTON_B]: quitar_freno_aparc()
@@ -1622,6 +1659,21 @@ func _leer_mando(dt: float) -> bool:
 	return moviendo or _mando_usado
 
 var _mando_disparo := false; var _mando_puno := false; var _mando_freno := false
+## UAV: pone un modo del piloto automatico (con su aviso, o por que no se puede).
+func uav_poner(m: String, punto = null) -> void:
+	if piloto == null or av.is_empty() or av["estado"] != "volando" or rep_activa:
+		if piloto != null and not av.is_empty() and av["estado"] == "en mano": poner_toast("Primero arranca el motor (L)")
+		return
+	var t := piloto.poner(m, av, punto)
+	if t != "": _piloto_visto = piloto.modo; poner_toast("Piloto automático: " + t); return
+	if m == "DESPEGUE": poner_toast("El despegue automático se pide parado en la pista")
+	elif m == "ATERRIZAJE": poner_toast("En tierra no hay aterrizaje automático" if piloto.pista != null else "Sin pista no hay aterrizaje automático")
+	else: poner_toast("En tierra: manual o despegue automático (P)")
+## UAV: M pasa de manual a estabilizado, a crucero y otra vez a manual.
+func uav_modo() -> void:
+	if piloto == null: return
+	var ciclo := ["MANUAL", "ESTAB", "CRUCERO"]; var i := ciclo.find(piloto.modo)
+	uav_poner("MANUAL" if i < 0 else ciclo[(i + 1) % 3])
 ## Avion de pista (con tren): el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan.
 func con_tren() -> bool: return modelo is ModeloAvion and modelo.tren != null
 func quitar_freno_aparc() -> void:
