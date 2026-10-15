@@ -582,7 +582,7 @@ func salir_sala() -> void:
 	reiniciar_ordenes(); _pintar_ordenes(); _poner_exclusiones()
 	aula.api("POST", "salas/%s/salir" % s["codigo"], { "id": multi_id() })
 func reiniciar_ordenes() -> void:
-	ordenes = { "n": 0, "viento": null, "notam": [], "aterrizar": 0.0, "en_aire": false, "zonas": [], "persona": null, "t_aviso": 0.0 }
+	ordenes = { "n": 0, "viento": null, "notam": [], "aterrizar": 0.0, "en_aire": false, "zonas": [], "persona": null, "fuga": null, "t_aviso": 0.0 }
 
 func aplicar_ordenes(lista: Array) -> void:
 	if ordenes.is_empty(): reiniciar_ordenes()
@@ -611,6 +611,9 @@ func aplicar_ordenes(lista: Array) -> void:
 			"senderista":
 				ordenes["persona"] = [float(o.get("N", 0)), float(o.get("E", 0))]
 				if mover_desaparecido() and nueva: poner_toast("Nueva posición del desaparecido: búscalo")
+			"fuga":
+				ordenes["fuga"] = [float(o.get("N", 0)), float(o.get("E", 0))]
+				if mover_fuga_profesor() and nueva: poner_toast("La fuga de gas ahora está en otra unidad: localízala de nuevo")
 	if cambio: ordenes_al_evaluador(); _poner_exclusiones()
 	_pintar_ordenes()
 
@@ -623,6 +626,14 @@ func mover_desaparecido() -> bool:
 	if mundo3d != null: mundo3d.poner_operacion(op.d, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
 	return true
 
+## La fuga de gas de SABIC en la unidad mas cercana a donde la ha puesto el profesor: hay que volver a localizarla.
+func mover_fuga_profesor() -> bool:
+	if ordenes.get("fuga") == null or ev == null or ev.op == null or not ev.op.d.has("racks"): return false
+	ev.op.mover_fuga(ordenes["fuga"][0], ordenes["fuga"][1]); ev.set_meta("fuga_profesor", true)
+	if ev.obj.has("fuga") and ev.obj["fuga"]["estado"] != "mal": ev.obj["fuga"]["estado"] = "pend"
+	if mundo3d != null: mundo3d.poner_operacion(ev.op.d, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
+	return true
+
 ## Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion.
 func ordenes_al_evaluador() -> void:
 	if sala.is_empty() or ev == null or ordenes.is_empty(): return
@@ -633,6 +644,7 @@ func ordenes_al_evaluador() -> void:
 		ent.configurar_viento(float(V["vel"]), float(V["desde"]), bool(V.get("rachas", false))); ev.set_meta("viento_profesor", true)
 	var P = ordenes["persona"]
 	if P != null and ev.op != null and ev.op.d.has("zona") and (float(ev.op.d["persona"][0]) != P[0] or float(ev.op.d["persona"][1]) != P[1]): mover_desaparecido()
+	if ordenes.get("fuga") != null and ev.op != null and ev.op.d.has("racks") and not ev.get_meta("fuga_profesor", false): mover_fuga_profesor()
 	if not (ordenes["zonas"] as Array).is_empty() and not ev.obj.has("exclusion"):
 		ev.obj["exclusion"] = { "texto": EXCLUSION_TXT, "estado": "curso" }; ev.orden.append("exclusion")
 

@@ -50,6 +50,11 @@ def briefing(id_):
         ne = lambda l, t: (P["n0"] + l * math.cos(r) + t * math.sin(r), P["e0"] + l * math.sin(r) - t * math.cos(r))
         t1 = (P["filas"] - 1) * P["separacion"] + fondo
         zona = [ne(0, -fondo), ne(P["largo"], -fondo), ne(P["largo"], t1), ne(0, t1)]
+    elif "unidades" in O:                                # SABIC: las unidades de proceso, los racks y la antorcha
+        q = [tuple(p) for U in O["unidades"] for p in U["poligono"]] + [(R[a], R[b]) for R in O["racks"] for a, b in (("n0", "e0"), ("n1", "e1"))]
+        q.append((O["antorcha"]["n"], O["antorcha"]["e"]))
+        n0, n1 = min(p[0] for p in q) - 20, max(p[0] for p in q) + 20; e0, e1 = min(p[1] for p in q) - 20, max(p[1] for p in q) + 20
+        zona = [(n0, e0), (n0, e1), (n1, e1), (n1, e0)]
     else: zona = None
     if "faro" in O:
         Fr = O["faro"]; r0, r1 = O["orbita"]; pts += [(Fr["n"] - r1, Fr["e"] - r1), (Fr["n"] + r1, Fr["e"] + r1)]
@@ -82,6 +87,11 @@ def briefing(id_):
         for r, a in ((O["orbita"][1], 45), (O["orbita"][0], 0)):
             c = (X(Fr["e"]), Y(Fr["n"])); d.ellipse([c[0] - r * k, c[1] - r * k, c[0] + r * k, c[1] + r * k], outline=AMARILLO, width=4)
         d.text((X(Fr["e"]) + O["orbita"][1] * k + 8, Y(Fr["n"]) - 10), "órbita %d–%d m" % tuple(O["orbita"]), fill=AMARILLO, font=F(20))
+    if "antorcha" in O:                                           # SABIC: la antorcha (la placa y el piloto)
+        A = (X(O["antorcha"]["e"]), Y(O["antorcha"]["n"]))
+        d.ellipse([A[0] - 13, A[1] - 13, A[0] + 13, A[1] + 13], fill=(255, 179, 0), outline=(0, 0, 0), width=2)
+        d.text(A, "A", fill=(0, 0, 0), font=F(18), anchor="mm")
+        d.text((A[0] + 18, A[1] - 10), "Antorcha", fill=(255, 255, 255), font=F(18), stroke_width=3, stroke_fill=(0, 0, 0))
     h = (X(S["e"]), Y(S["n"]))                                    # punto de despegue
     d.ellipse([h[0] - 16, h[1] - 16, h[0] + 16, h[1] + 16], fill=(255, 109, 0), outline=(0, 0, 0), width=2)
     d.text((h[0], h[1]), "H", fill=(255, 255, 255), font=F(20), anchor="mm")

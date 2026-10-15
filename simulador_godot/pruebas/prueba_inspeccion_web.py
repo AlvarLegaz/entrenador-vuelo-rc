@@ -123,6 +123,15 @@ def main():
         r = pg.evaluate(APUNTAR, [A, 60, 10, 0.1, 2, True, True]); ok("piloto con la termica", r["piloto"] == "ok", str(r["T"]))
         if salida: pg.evaluate(FOTO, 3); pg.screenshot(path=str(salida / "sabic_antorcha_termica.png"))
         r = pg.evaluate(APUNTAR, [V, 5, 2, 0.2, 1, True, False]); ok("entrar en la zona ATEX se marca", r["atex"] == "mal", str(r["atex"]))
+        # orden del profesor: la fuga pasa a la unidad mas cercana al clic y hay que volver a localizarla
+        r = pg.evaluate("""() => {
+          const U = ev.op.d.unidades.find(u => u !== ev.op.unidadFuga), c = U.poligono.reduce((s, q) => [s[0] + q[0] / U.poligono.length, s[1] + q[1] / U.poligono.length], [0, 0]);
+          ORDENES.reiniciar(); aplicarOrdenes([{ n: 1, tipo: "fuga", N: c[0], E: c[1], edad: 0 }]);
+          return [U.nombre, ev.op.unidadFuga.nombre, ev.obj.fuga.estado, ev.op.termicos.filter(o => o.tipo === "fuga").length];
+        }""")
+        ok("orden del profesor: la fuga pasa a otra unidad y hay que localizarla de nuevo", r[0] == r[1] and r[2] == "pend" and r[3] == 1, str(r))
+        for op_id, dron in [("op_inspeccion", "DJI_MINI"), ("op_sabic", "HQ3T"), ("op_fotogrametria", "DJI_MINI"), ("op_paneles", "HQ3T"), ("op_busqueda", "DJI_MINI"), ("op_agricultura", "DJI_MINI")]:
+            r = pg.evaluate(PREP, op_id); ok("%s (despues de otro trabajo) sale con %s" % (op_id, dron), r["avion"] == dron, str(r))
         ok("sin errores en la pagina", not errs, errs[:3])
         nav.close()
     srv.shutdown()

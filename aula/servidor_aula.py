@@ -49,9 +49,9 @@ SESIONES = {}            # token -> caduca (epoch)
 # segundo y recibe el de los demas de su sala; el panel del profesor las ve en directo ----
 SALAS = {}               # codigo -> dict(codigo, nombre, escenario, lanz, viento, creada, ultimo, jugadores={id: estado})
 CERROJO_SALAS = threading.Lock()
-# ordenes del profesor a una sala (panel del profesor, con PIN): viento, NOTAM, aterrizaje, zonas de exclusion y el
-# desaparecido de la busqueda. Cada orden lleva su numero (n) y los simuladores aplican las que no han visto.
-ORDENES_SALA = ("viento", "notam", "quitar_notam", "aterrizar", "exclusion", "quitar_exclusion", "senderista")
+# ordenes del profesor a una sala (panel del profesor, con PIN): viento, NOTAM, aterrizaje, zonas de exclusion, el
+# desaparecido de la busqueda y la fuga de gas de la inspeccion de SABIC. Cada orden lleva su numero (n) y los simuladores aplican las que no han visto.
+ORDENES_SALA = ("viento", "notam", "quitar_notam", "aterrizar", "exclusion", "quitar_exclusion", "senderista", "fuga")
 JUGADOR_CADUCA = 6       # s sin noticias: el jugador sale de la sala
 SALA_CADUCA = 3 * 3600   # s sin nadie: la sala se cierra sola
 FALLOS = {}              # ip (o (ip, alumno)) -> (n intentos seguidos, bloqueado hasta); se cuenta ANTES de comprobar, bajo cerrojo

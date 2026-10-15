@@ -9,7 +9,7 @@
 // (function: no deja nada global salvo lo que registra)
 (function () {
   const DATOS = {
-    "id": "HQ3T", "nombre": "Inspector HQ-3T", "tipo": "cuadricoptero",
+    "id": "HQ3T", "nombre": "Inspector HQ-3T", "tipo": "cuadricoptero", "categoria": "920 g, categoría abierta A2 (certificado A2)",
     "descripcion": "Dron de inspección industrial de 920 g con cámara triple: gran angular, teleobjetivo con zoom hasta 56x y cámara térmica. El de los trabajos que piden ver puntos calientes, fugas o leer una placa desde lejos.",
     "ayuda": "Mandos como el Mini Dron HQ (palanca izquierda sube, baja y gira; derecha adelante, atrás y laterales). Cámara: Z acerca y X aleja el zoom (cruceta arriba y abajo del mando), C cambia a la cámara térmica (cruceta a la derecha); en la térmica, la cruz del centro mide la temperatura.",
     "caracteristicas": [["Masa en vuelo", "920 g"], ["Tamaño", "347 × 283 × 108 mm desplegado, 380 mm de diagonal, hélices de 9,4 pulgadas"],

@@ -132,11 +132,22 @@ func _initialize() -> void:
 	r = _apuntar(A, 60, 10, 0.1, 2, true, true); _ok("piloto con la termica", r["piloto"] == "ok", _texto(r))
 	await _captura("sabic_antorcha_termica")
 	r = _apuntar(V, 5, 2, 0.2, 1, true, false); _ok("entrar en la zona ATEX se marca", r["atex"] == "mal", str(r["atex"]))
+	# orden del profesor: la fuga pasa a la unidad mas cercana al clic y hay que volver a localizarla
+	var U2: Dictionary = {}
+	for u in op.d["unidades"]:
+		if u["nombre"] != op.unidad_fuga["nombre"]: U2 = u; break
+	var cn := 0.0; var ce := 0.0
+	for q in U2["poligono"]: cn += q[0] / float(U2["poligono"].size()); ce += q[1] / float(U2["poligono"].size())
+	p.reiniciar_ordenes(); p.aplicar_ordenes([{ "n": 1, "tipo": "fuga", "N": cn, "E": ce, "edad": 0 }])
+	var nf := op.termicos.filter(func(o): return o["tipo"] == "fuga").size()
+	_ok("orden del profesor: la fuga pasa a otra unidad y hay que localizarla de nuevo", op.unidad_fuga["nombre"] == U2["nombre"] and p.ev.obj["fuga"]["estado"] == "pend" and nf == 1, "%s %s %s" % [U2["nombre"], op.unidad_fuga["nombre"], p.ev.obj["fuga"]["estado"]])
 	# teclas: Z / X el zoom, C la termica
 	p.pantalla_actual = ""; p.pausado = false; p.DJI["zoomI"] = 0; p.DJI["termica"] = false
 	for k in [KEY_Z, KEY_Z, KEY_X, KEY_C]:
 		var e := InputEventKey.new(); e.keycode = k; e.physical_keycode = k; e.pressed = true; Input.parse_input_event(e); await process_frame
 		e = e.duplicate(); e.pressed = false; Input.parse_input_event(e); await process_frame
 	_ok("Z, Z, X dejan el zoom en 2x y C pone la termica", p.cam_dji()["zoom"] == 2.0 and p.cam_dji()["termica"], str(p.cam_dji()))
+	for par in [["op_inspeccion", "DJI_MINI"], ["op_sabic", "HQ3T"], ["op_fotogrametria", "DJI_MINI"], ["op_paneles", "HQ3T"], ["op_busqueda", "DJI_MINI"], ["op_agricultura", "DJI_MINI"]]:
+		await _preparar(par[0]); _ok("%s (despues de otro trabajo) sale con %s" % par, p.sesion["avion"] == par[1], p.sesion["avion"])
 	print("RESULTADO: ", "todo bien" if fallos == 0 else "%d fallos" % fallos)
 	quit(1 if fallos else 0)

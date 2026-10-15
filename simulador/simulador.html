@@ -562,7 +562,7 @@
 
 <!-- ============ OPERACIONES (trabajos de operador de dron) ============ -->
 <div class="pantalla" id="pOperaciones">
-  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos de operador de dron con el Mini Dron HQ en el mapa real de Cartagena</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
+  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos de operador de dron en el mapa real de Cartagena, cada uno con el dron que pide</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
   <div class="cuerpo"><div class="dos">
     <div class="misiones" id="listaOperaciones"></div>
     <div>
@@ -760,7 +760,7 @@
 <script src="js/visor_real.js?v=36"></script>
 <script src="js/bipode.js?v=3"></script>
 <script src="mundos/cartagena.js?v=20"></script>
-<script src="escenarios.js?v=9"></script>
+<script src="escenarios.js?v=10"></script>
 <script src="singulares.js?v=3"></script>
 <script>
 "use strict";
@@ -2191,9 +2191,9 @@ function pintarSalaInfo() {
   el.innerHTML = `<b>Sala ${MULTI.sala.codigo}</b> · ${esc(MULTI.sala.nombre)}` + ([...MULTI.otros.values()].map(fila).join("") || "<div>Todavía no hay nadie más</div>");
 }
 // ---- ordenes del profesor a la sala (panel del profesor, POST /api/salas/<cod>/orden): viento, NOTAM, aterrizaje
-// inmediato, zonas de exclusion y el desaparecido de la busqueda. Las mismas en simulador_godot (principal.gd).
+// inmediato, zonas de exclusion, el desaparecido de la busqueda y la fuga de SABIC. Las mismas en simulador_godot (principal.gd).
 const ORDENES = {
-  reiniciar() { this.n = 0; this.viento = null; this.notam = []; this.aterrizar = false; this.zonas = []; this.persona = null; this.tAviso = 0; },
+  reiniciar() { this.n = 0; this.viento = null; this.notam = []; this.aterrizar = false; this.zonas = []; this.persona = null; this.fuga = null; this.tAviso = 0; },
 };
 ORDENES.reiniciar();
 const EXCLUSION_TXT = "Respetar las zonas de exclusión que marca el profesor";
@@ -2214,6 +2214,7 @@ function aplicarOrdenes(lista) {
     if (o.tipo === "exclusion") { ORDENES.zonas.push({ id: o.n, N: o.N, E: o.E, r: o.r }); if (nueva) toast("Nueva zona de exclusión: mírala en el mapa"); }
     if (o.tipo === "quitar_exclusion") ORDENES.zonas = ORDENES.zonas.filter(z => z.id !== o.id);
     if (o.tipo === "senderista") { ORDENES.persona = [o.N, o.E]; if (moverDesaparecido() && nueva) toast("Nueva posición del desaparecido: búscalo"); }
+    if (o.tipo === "fuga") { ORDENES.fuga = [o.N, o.E]; if (moverFugaProfesor() && nueva) toast("La fuga de gas ahora está en otra unidad: localízala de nuevo"); }
   }
   if (cambio) { ordenesAlEvaluador(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones(ORDENES.zonas); }
   pintarOrdenes();
@@ -2226,6 +2227,14 @@ function moverDesaparecido() {
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(op.d, [c.N, c.E]); }
   return true;
 }
+/** La fuga de gas de SABIC en la unidad mas cercana a donde la ha puesto el profesor: hay que volver a localizarla. */
+function moverFugaProfesor() {
+  if (!ORDENES.fuga || !ev || !ev.op || !ev.op.d.racks) return false;
+  ev.op.moverFuga(ORDENES.fuga[0], ORDENES.fuga[1]); ev.fugaProfesor = true;
+  if (ev.obj.fuga && ev.obj.fuga.estado !== "mal") ev.obj.fuga.estado = "pend";
+  if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op.d, [c.N, c.E]); }
+  return true;
+}
 /** Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion. */
 function ordenesAlEvaluador() {
   if (!MULTI.sala || !ev) return;
@@ -2233,6 +2242,7 @@ function ordenesAlEvaluador() {
   const V = ORDENES.viento || MULTI.sala.viento;                  // el viento de la sala (o el que haya mandado el profesor despues)
   if (V && !ev.vientoProfesor) { entorno.configurarViento(V); ev.vientoProfesor = true; }
   if (ORDENES.persona && ev.op && ev.op.d.zona && (ev.op.d.persona[0] !== ORDENES.persona[0] || ev.op.d.persona[1] !== ORDENES.persona[1])) moverDesaparecido();
+  if (ORDENES.fuga && ev.op && ev.op.d.racks && !ev.fugaProfesor) moverFugaProfesor();
   if (ORDENES.zonas.length && !ev.obj.exclusion) ev.obj.exclusion = { texto: EXCLUSION_TXT, estado: "curso" };
 }
 /** En cada paso en vuelo: dentro de una zona de exclusion, aviso y objetivo suspendido. */
@@ -2274,7 +2284,7 @@ function pintarOtrosGPS(g, X, Y, W) {
 
 // ---- operaciones: trabajos de operador de dron (escenarios.js, "operacion"); la orden de trabajo y las comprobaciones
 // antes del vuelo, que hay que marcar todas para poder volar ----
-const COMPROBACIONES_OP = ["Operador registrado en AESA y piloto con el certificado A1/A3", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
+const COMPROBACIONES_OP = ["Operador registrado en AESA y piloto con el certificado que pide el dron (A1/A3 o A2)", "Zona consultada en el mapa de ENAIRE Drones: no es zona prohibida ni restringida",
   "Viento previsto por debajo de 8 m/s", "Baterías del dron y del mando cargadas; hélices sin daños", "Permiso del cliente y del propietario del terreno",
   "Zona de despegue despejada y nadie debajo del vuelo"];
 const RUMBOS_VIENTO = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
@@ -2286,7 +2296,8 @@ function irOperaciones() {
   for (const id of lista) {
     const E = ESCENARIOS[id], dif = E.dificultad || 1, d = document.createElement("div");
     d.className = "mision" + (id === opSel ? " sel" : "");
-    d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre)}</h3><p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span></div></div>`;
+    const dron = Modelos.datos(E.operacion.avion);
+    d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre)}</h3><p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span>${dron ? `<span>${esc(dron.nombre)}</span>` : ""}</div></div>`;
     d.onclick = () => { opSel = id; irOperaciones(); };
     el.appendChild(d);
   }
@@ -2294,7 +2305,7 @@ function irOperaciones() {
   document.getElementById("fichaOperacion").innerHTML = `<img src="operaciones/${opSel}.jpg" alt="" style="width:100%;border-radius:8px;margin:0 0 10px;display:block" onerror="this.remove()">
     <h2>Orden de trabajo</h2><h3 style="margin:0 0 8px;font-size:18px">${esc(E.nombre)}</h3>
     <table class="ordenTrabajo">${fila("Cliente", O.cliente)}${fila("Lugar", O.lugar)}${fila("Trabajo", O.trabajo)}${fila("Entrega", O.entrega)}
-    ${fila("Viento previsto", `${v.vel} m/s del ${RUMBOS_VIENTO[Math.round(v.desde / 45) % 8]}${v.rachas ? ", con rachas" : ""}`)}${fila("Dron", "Mini Dron HQ (249 g, categoría abierta A1)")}</table>
+    ${fila("Viento previsto", `${v.vel} m/s del ${RUMBOS_VIENTO[Math.round(v.desde / 45) % 8]}${v.rachas ? ", con rachas" : ""}`)}${fila("Dron", (D => D ? `${D.nombre} (${D.categoria})` : O.avion)(Modelos.datos(O.avion)))}</table>
     <b style="font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.08em">Se evalúa</b><ul>${E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("")}</ul>`;
   const marcas = opMarcas[opSel] = opMarcas[opSel] || COMPROBACIONES_OP.map(() => false);
   const cc = document.getElementById("comprobacionesOp");
@@ -2303,7 +2314,7 @@ function irOperaciones() {
   cc.querySelectorAll("input").forEach(x => x.onchange = () => { marcas[+x.dataset.i] = x.checked; boton(); });
   boton(); mostrar("pOperaciones");
 }
-/** Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue. */
+/** Empieza el trabajo elegido: con el dron que pide (operacion.avion), desde su punto de despegue. */
 function volarOperacion(id) {
   const E = ESCENARIOS[id], S = E.operacion.salida;
   if (E.operacion.avion && Modelos.datos(E.operacion.avion)) elegirAvion(E.operacion.avion);       // el dron que pide el trabajo
@@ -2348,6 +2359,7 @@ function iconoMision(id) {
     case "op_busqueda": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M0 100L40 60L70 80L110 40L150 75L200 50V110H0z" fill="#5d4f3a"/><circle cx="128" cy="68" r="3.5" fill="#e53935"/><circle cx="128" cy="66" r="16" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M140 78L152 90" stroke="#fff" stroke-width="4" stroke-linecap="round"/><g transform="translate(60 22) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
     case "op_agricultura": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M15 50H185" stroke="#43a047" stroke-width="5"/><path d="M15 59H185" stroke="#43a047" stroke-width="5"/><path d="M15 68H185" stroke="#43a047" stroke-width="5"/><path d="M15 77H185" stroke="#43a047" stroke-width="5"/><path d="M15 86H185" stroke="#43a047" stroke-width="5"/><path d="M15 95H185" stroke="#43a047" stroke-width="5"/><ellipse cx="70" cy="68" rx="16" ry="9" fill="#d4c13a" fill-opacity="0.9"/><ellipse cx="140" cy="85" rx="12" ry="7" fill="#d4c13a" fill-opacity="0.9"/><path d="M110 18L52 66L90 70z" fill="#4fc3f7" fill-opacity="0.25" stroke="#4fc3f7" stroke-width="1"/><g transform="translate(110 18) rotate(0) scale(1)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
     case "op_paneles": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M20 48H180L172 58H28z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M42 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M58 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M74 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M90 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M106 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M122 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M138 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M154 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M170 48l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M28 63H172L164 73H36z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M50 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M66 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M82 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M98 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M114 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M130 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M146 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M162 63l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M36 78H164L156 88H44z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M58 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M74 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M90 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M106 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M122 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M138 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M154 78l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M44 93H156L148 103H52z" fill="#1d3f73" stroke="#9fb3c8" stroke-width="1"/><path d="M66 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M82 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M98 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M114 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M130 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M146 93l-4 10" stroke="#9fb3c8" stroke-width="0.6"/><path d="M84 64l8 8M92 64l-8 8M120 79l8 8M128 79l-8 8" stroke="#ff5252" stroke-width="2.4"/><g transform="translate(100 22)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g><path d="M100 30L84 64H116z" fill="#4fc3f7" fill-opacity="0.2" stroke="#4fc3f7" stroke-width="1"/></svg>';
+    case "op_sabic": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M8 78H192M8 84H192" stroke="#b0bec5" stroke-width="2.5"/><path d="M20 84V104M60 84V104M100 84V104M140 84V104M180 84V104" stroke="#78909c" stroke-width="2"/><rect x="22" y="52" width="40" height="26" fill="#546e7a"/><rect x="70" y="40" width="11" height="38" rx="2" fill="#90a4ae"/><rect x="86" y="32" width="11" height="46" rx="2" fill="#90a4ae"/><circle cx="84" cy="58" r="27" fill="none" stroke="#ff5252" stroke-width="1.6" stroke-dasharray="4 3"/><path d="M156 104V24H164V104z" fill="#eceff1"/><path d="M156 24H164V34H156zM156 44H164V54H156z" fill="#e53935"/><path d="M160 24C153 16 158 10 160 4C163 10 167 16 160 24z" fill="#ff9800"/><path d="M160 22C157 18 159 14 160 11C161 14 163 18 160 22z" fill="#ffeb3b"/><path d="M122 30L110 76H134z" fill="#ff9800" fill-opacity="0.22" stroke="#ff9800" stroke-width="1"/><circle cx="122" cy="78" r="4.5" fill="#ffeb3b" stroke="#ff5722" stroke-width="2"/><g transform="translate(122 22)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
     case "op_video": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><path d="M94 100L97 30H103L106 100z" fill="#cfd8dc"/><rect x="95" y="22" width="10" height="9" fill="#ffd54f"/><path d="M93 22H107L100 14z" fill="#b71c1c"/><ellipse cx="100" cy="60" rx="70" ry="22" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M168 64l4 -8 4 8" fill="none" stroke="#ffc83d" stroke-width="2"/><circle cx="45" cy="74" r="4" fill="#e53935"/><g transform="translate(45 74) rotate(0) scale(0.8)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><rect x="-3" y="-3" width="6" height="6" fill="#9e9e9e"/></g></svg>';
     case "fpv_estacionario": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="91" y="91" width="18" height="10" fill="#2b2b2b" stroke="#ff6d00" stroke-width="1.5"/><path d="M96 93V99M104 93V99M96 96H104" stroke="#fff" stroke-width="1.2"/><g fill="none" stroke="#4fc3f7" stroke-width="1.6"><ellipse cx="100" cy="30" rx="34" ry="8"/><ellipse cx="100" cy="74" rx="34" ry="8"/><path d="M66 30V74M134 30V74"/></g><g transform="translate(100 52) rotate(0)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g><path d="M150 80V24" stroke="#ffc83d" stroke-width="1.5"/><path d="M146 28L150 22 154 28M146 76L150 82 154 76" fill="none" stroke="#ffc83d" stroke-width="1.5"/><text x="156" y="56" fill="#fff" font-size="10">20 s</text></svg>';
     case "fpv_caja": return '<svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"><rect x="55" y="25" width="90" height="60" fill="none" stroke="#ffc83d" stroke-width="2" stroke-dasharray="6 4"/><path d="M55 19L60 31H50z" fill="#4caf50" stroke="#000" stroke-width="0.8"/><path d="M55 79L60 91H50z" fill="#ffeb3b" stroke="#000" stroke-width="0.8"/><path d="M145 79L150 91H140z" fill="#f44336" stroke="#000" stroke-width="0.8"/><path d="M145 19L150 31H140z" fill="#42a5f5" stroke="#000" stroke-width="0.8"/><g transform="translate(100 55) rotate(180)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#fff" stroke-width="2.4"/><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-8" cy="-8" r="4.5"/><circle cx="8" cy="-8" r="4.5"/><circle cx="-8" cy="8" r="4.5"/><circle cx="8" cy="8" r="4.5"/></g><path d="M0 -4L3 1H-3z" fill="#ffc83d"/></g></svg>';

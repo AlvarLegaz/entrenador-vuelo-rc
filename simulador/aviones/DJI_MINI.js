@@ -170,7 +170,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
 // izquierda (parpadeo lento) y un estrobo blanco (0xffffff) en la cola, para verlo desde el puesto del piloto.
 (function () {
   const DATOS = {
-    "id": "DJI_MINI", "nombre": "Mini Dron HQ", "tipo": "cuadricoptero",
+    "id": "DJI_MINI", "nombre": "Mini Dron HQ", "tipo": "cuadricoptero", "categoria": "249 g, categoría abierta A1",
     "descripcion": "Dron de 249 g con controlador de vuelo estabilizado y retención de posición, como los drones comerciales de menos de 250 g: suelta las palancas y se queda quieto. Para practicar los mandos del dron comercial (modo 2) antes de volar el de verdad.",
     "ayuda": "Palanca izquierda: arriba y abajo sube y baja; izquierda y derecha gira sobre sí mismo. Palanca derecha: adelante, atrás y laterales. Con las palancas en el centro frena y se queda quieto. Conmutador C/N/S (tecla M) cambia el modo de vuelo; rueda del gimbal (Q/E) inclina la cámara. Botones de la app: despegar, volver a casa (H), foto y vídeo. Para aterrizar, pósalo despacio y mantén la palanca abajo (S) hasta que se paren los motores.",
     "caracteristicas": [["Masa en vuelo", "249 g"], ["Tamaño", "249 × 290 × 60 mm desplegado, hélices de 3 pulgadas"], ["Empuje máximo", "≈ 2 veces el peso (4,9 N)"],

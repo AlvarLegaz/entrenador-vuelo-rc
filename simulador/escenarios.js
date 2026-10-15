@@ -804,6 +804,7 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
+   "avion": "DJI_MINI",
    "cliente": "CIFP Politécnico de Cartagena · departamento de mantenimiento",
    "lugar": "Calle Grecia, 56, Cartagena. Despegue desde el aparcamiento interior.",
    "trabajo": "Inspección visual de cubiertas y fachadas: una foto nítida de cada punto marcado con una placa naranja numerada.",
@@ -1090,6 +1091,7 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
+   "avion": "DJI_MINI",
    "cliente": "Topografía Campo de Cartagena",
    "lugar": "El Jimenado (Torre-Pacheco). Despegue desde la pista del club Los Halcones de la Rambla.",
    "trabajo": "Vuelo fotogramétrico: pasadas paralelas a 40–60 m con el gimbal a −89° (mirando abajo) y una foto cada 20–25 m. La parcela está marcada con jalones rojos y blancos en las esquinas.",
@@ -1167,6 +1169,7 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
+   "avion": "DJI_MINI",
    "cliente": "Emergencias 112 Región de Murcia",
    "lugar": "Monte al sur de Fuente Álamo. Despegue desde el camino de tierra.",
    "trabajo": "Búsqueda de una persona: chaqueta roja y mochila naranja. Barre la zona con la cámara inclinada y, al verla, hazle una foto con ella en el centro de la imagen: la posición se calcula con el centro de la foto.",
@@ -1235,6 +1238,7 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
+   "avion": "DJI_MINI",
    "cliente": "Explotación agrícola de El Jimenado",
    "lugar": "El bancal de brócoli entero (unas 5 ha) al sur de la pista de Los Halcones de la Rambla; los jalones verdes marcan sus esquinas.",
    "trabajo": "Localizar los rodales con plaga (manchas amarillas en el cultivo) y fotografiarlos para el técnico: una foto vertical de cada uno.",
@@ -1463,6 +1467,7 @@ window.ESCENARIOS = {
    ]
   ],
   "operacion": {
+   "avion": "DJI_MINI",
    "cliente": "Productora audiovisual",
    "lugar": "Faro de Cabo de Palos (Cartagena). Despegue desde la explanada del faro.",
    "trabajo": "Órbita alrededor del faro: palanca derecha de lado y guiñada a la vez, para dar la vuelta mirándolo siempre. Graba con el botón de vídeo (V).",

@@ -139,6 +139,8 @@
             <button id="oExcl">Marcarla en el mapa…</button><span id="oZonas" class="sub"></span></div>
           <div class="fila" id="oFilaSend"><b style="min-width:150px">Desaparecido</b>
             <button id="oSend">Moverlo: clic en el mapa…</button><span class="sub">en la búsqueda y rescate; los alumnos lo tendrán que buscar en el sitio nuevo</span></div>
+          <div class="fila" id="oFilaFuga"><b style="min-width:150px">Fuga de gas</b>
+            <button id="oFuga">Moverla: clic en el mapa…</button><span class="sub">en la inspección de SABIC: pasa a la unidad de proceso más cercana al clic y los alumnos la tienen que localizar de nuevo</span></div>
           <p class="sub" id="oMsg" style="margin:8px 0 0"></p>
         </div>
           </div>
@@ -473,13 +475,14 @@ async function orden(d, msg) {
 }
 /** Lo vigente de las ordenes de una sala: zonas de exclusion activas y la ultima posicion del desaparecido. */
 function estadoOrdenes(O) {
-  const zonas = [], quitadas = new Set(O.filter(o => o.tipo === "quitar_exclusion").map(o => o.id)); let persona = null, notam = 0;
+  const zonas = [], quitadas = new Set(O.filter(o => o.tipo === "quitar_exclusion").map(o => o.id)); let persona = null, fuga = null, notam = 0;
   for (const o of O) {
     if (o.tipo === "exclusion" && !quitadas.has(o.n)) zonas.push(o);
     if (o.tipo === "senderista") persona = [o.N, o.E];
+    if (o.tipo === "fuga") fuga = [o.N, o.E];
     if (o.tipo === "notam") notam++; if (o.tipo === "quitar_notam") notam = 0;
   }
-  return { zonas, persona, notam };
+  return { zonas, persona, fuga, notam };
 }
 $("oViento").onclick = () => { const vel = Math.max(0, Math.min(12, +$("oVel").value || 0)), desde = +$("oDir").value;
   orden({ tipo: "viento", vel, desde, rachas: $("oRachas").checked }, `Viento enviado: ${vel} m/s del ${RUMBOS[desde / 45]}${$("oRachas").checked ? ", con rachas" : ""}.`); };
@@ -488,12 +491,14 @@ $("oNotamQ").onclick = () => orden({ tipo: "quitar_notam" }, "NOTAM quitados.");
 $("oAterrizar").onclick = () => orden({ tipo: "aterrizar", para: $("oPara").value }, `Orden de aterrizaje enviada a ${$("oPara").value === "*" ? "todos" : $("oPara").selectedOptions[0].textContent}.`);
 $("oExcl").onclick = () => { MP.clic = MP.clic === "exclusion" ? null : "exclusion"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa en el centro de la zona de exclusión." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
 $("oSend").onclick = () => { MP.clic = MP.clic === "senderista" ? null : "senderista"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa donde quieres poner al desaparecido." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
+$("oFuga").onclick = () => { MP.clic = MP.clic === "fuga" ? null : "fuga"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa junto a la unidad de proceso donde quieres la fuga." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
 $("mMapa").onclick = ev => {
   if (!MP.clic || !MP.vista) return;
   const r = $("mMapa").getBoundingClientRect(), V = MP.vista, x = (ev.clientX - r.left) * V.W / r.width, y = (ev.clientY - r.top) * V.W / r.height;
   const N = V.c0[0] - (y - V.W / 2) / V.k, E = V.c0[1] + (x - V.W / 2) / V.k, tipo = MP.clic;
   MP.clic = null; $("mMapa").style.cursor = "";
   if (tipo === "exclusion") orden({ tipo: "exclusion", N, E, r: Math.max(10, Math.min(500, +$("oRadio").value || 60)) }, "Zona de exclusión marcada.");
+  else if (tipo === "fuga") orden({ tipo: "fuga", N, E }, "Fuga movida a la unidad más cercana: los alumnos la tienen que localizar de nuevo.");
   else orden({ tipo: "senderista", N, E }, "Desaparecido movido: los alumnos lo tienen que buscar en el sitio nuevo.");
 };
 /** Distancia del piloto al punto de despegue y hacia donde esta de el: "120 m al nordeste". */
@@ -529,6 +534,7 @@ function zonaTrabajo(O) {
     G.push([ne(0, -f), ne(P.largo, -f), ne(P.largo, t1), ne(0, t1)]);
   }
   if (O.faro) for (const r of O.orbita) A.push([O.faro.n, O.faro.e, r]);
+  if (O.unidades) for (const U of O.unidades) G.push(U.poligono);          // SABIC: las unidades de proceso (donde puede estar la fuga)
   return { R, A, G };
 }
 const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
@@ -562,6 +568,7 @@ async function pintarSalas() {
   const firma = s.codigo + "|" + ver + "|" + pilotos.map(x => x.join(":")).join(",") + "|" + J.map(j => j.id).join(",");
   const EO = estadoOrdenes(s.ordenes || []), Es0 = (window.ESCENARIOS || {})[s.escenario] || {};
   $("oFilaSend").style.display = Es0.operacion && Es0.operacion.zona ? "" : "none";
+  $("oFilaFuga").style.display = Es0.operacion && Es0.operacion.unidades ? "" : "none";
   $("oZonas").innerHTML = EO.zonas.map(z => ` <button data-z="${z.n}" title="Quitar esta zona">✕ zona ${z.n} (${z.r} m)</button>`).join("");
   $("oZonas").querySelectorAll("button").forEach(b => b.onclick = () => orden({ tipo: "quitar_exclusion", id: +b.dataset.z }, "Zona de exclusión quitada."));
   if (firma !== MP.firma) {                        // los desplegables solo se rehacen si cambian (si no, se cerrarian solos)
@@ -591,7 +598,7 @@ async function pintarSalas() {
   const cv = $("mMapa"), g = cv.getContext("2d"), W = cv.width, c0 = s.lanz ? [s.lanz.N, s.lanz.E] : O ? [O.salida.n, O.salida.e] : [0, 0];
   const ZT = O ? zonaTrabajo(O) : { R: [], A: [], G: [] };                // que se vean los pilotos y toda la zona de trabajo
   const vistas = Object.entries(rutas).filter(([id]) => ver === "*" || ver === id);
-  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(EO.zonas.flatMap(z => [[z.N - z.r, z.E - z.r], [z.N + z.r, z.E + z.r]]), EO.persona ? [EO.persona] : [], vistas.flatMap(([, r]) => r.puntos.filter(Boolean).map(q => [q[0], q[1]])), ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.G.flat(), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
+  const puntos = J.map(j => [j.p[0], j.p[1]]).concat(EO.zonas.flatMap(z => [[z.N - z.r, z.E - z.r], [z.N + z.r, z.E + z.r]]), EO.persona ? [EO.persona] : [], EO.fuga ? [EO.fuga] : [], vistas.flatMap(([, r]) => r.puntos.filter(Boolean).map(q => [q[0], q[1]])), ZT.R.flatMap(([n0, e0, n1, e1]) => [[n0, e0], [n1, e1]]), ZT.G.flat(), ZT.A.flatMap(([n, e, r]) => [[n - r, e - r], [n + r, e + r]]));
   const lejos = Math.max(60, ...puntos.map(([n, e]) => Math.max(Math.abs(n - c0[0]), Math.abs(e - c0[1])))) * 1.15, k = W / 2 / lejos;
   const X = e => W / 2 + (e - c0[1]) * k, Y = n => W / 2 - (n - c0[0]) * k;
   MP.vista = { c0, k, W };
@@ -629,6 +636,11 @@ async function pintarSalas() {
     for (let d = -2 * z.r * k; d < 2 * z.r * k; d += 8) { g.beginPath(); g.moveTo(X(z.E) + d - z.r * k, Y(z.N) - z.r * k); g.lineTo(X(z.E) + d + z.r * k, Y(z.N) + z.r * k); g.stroke(); }
     g.restore(); g.strokeStyle = "#e53935"; g.lineWidth = 2.5; g.beginPath(); g.arc(X(z.E), Y(z.N), z.r * k, 0, 7); g.stroke();
     g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.fillText(`Zona ${z.n}`, X(z.E), Y(z.N) + 4);
+  }
+  if (EO.fuga && O && O.unidades) {                // donde ha mandado el profesor la fuga (la unidad mas cercana)
+    const x = X(EO.fuga[1]), y = Y(EO.fuga[0]);
+    g.fillStyle = "#e53935"; g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "left"; g.fillText("Fuga", x + 9, y + 4);
   }
   if (EO.persona && O && O.zona) {                 // donde ha puesto el profesor al desaparecido
     const x = X(EO.persona[1]), y = Y(EO.persona[0]);
