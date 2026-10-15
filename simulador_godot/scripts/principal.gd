@@ -230,23 +230,18 @@ func es_dron() -> bool: return modelo is ModeloCuadricoptero or modelo is Modelo
 func es_fpv() -> bool: return modelo is ModeloFPV
 func es_bipode() -> bool: return modelo is ModeloBipode
 
-# ---- vehiculo secreto (idsHangar y la combinacion del hangar de la web) ----
-func secreto_visible() -> bool:
-	var cf := ConfigFile.new()
-	return cf.load("user://secreto.cfg") == OK and bool(cf.get_value("secreto", "visible", false))
-## Los vehiculos del hangar: los ocultos (datos.oculto) solo con el secreto desvelado.
+# ---- el robot (vehiculo oculto, datos.oculto): solo para el piloto con los tres logros del perfil (robotDesbloqueado de la web) ----
+func robot_desbloqueado() -> bool:
+	var al = sesion["alumno"]
+	return al != null and al.get("progreso") is Dictionary and bool(al["progreso"].get("robot", false))
+## Los vehiculos del hangar: el robot, solo con los logros.
 func ids_hangar() -> Array:
-	var v := secreto_visible()
+	var v := robot_desbloqueado()
 	return ids_aviones.filter(func(id): return v or not DatosComunes.avion(id).get("oculto", false))
-func alternar_secreto() -> void:
-	var ver := not secreto_visible()
-	var cf := ConfigFile.new(); cf.set_value("secreto", "visible", ver); cf.save("user://secreto.cfg")
-	var oculto := ""
-	for id in ids_aviones:
-		if DatosComunes.avion(id).get("oculto", false): oculto = id
-	if ver and oculto != "": elegir_avion(oculto)
-	elif not ver and DatosComunes.avion(sesion["avion"]).get("oculto", false): elegir_avion("DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_hangar()[0])
-	poner_toast_menu("Vehículo secreto desbloqueado" if ver else "Vehículo secreto oculto")
+## Si el vehiculo elegido es el robot y este piloto no lo tiene, vuelve al dron comercial.
+func vehiculo_permitido() -> void:
+	if ids_aviones.has(sesion["avion"]) and DatosComunes.avion(sesion["avion"]).get("oculto", false) and not robot_desbloqueado():
+		elegir_avion("DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_hangar()[0])
 func poner_toast_menu(txt: String) -> void:
 	var l := Tema.etiqueta(txt, 22, Tema.ACENTO, true); l.set_anchors_preset(Control.PRESET_CENTER_TOP); l.position.y = 90
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85)); l.add_theme_constant_override("shadow_outline_size", 6)
@@ -546,7 +541,7 @@ func ir_inicio() -> void:
 func elegir_avion(id: String) -> void:
 	sesion["avion"] = id; _guardar()
 func ir_hangar() -> void:
-	pantallas["pHangar"].refrescar(); mostrar("pHangar")
+	vehiculo_permitido(); pantallas["pHangar"].refrescar(); mostrar("pHangar")
 func ir_entrenamientos() -> void:
 	mostrar("pEntrenamientos"); pantallas["pEntrenamientos"].refrescar()
 # =====================================================================
@@ -824,6 +819,7 @@ func volar_operacion(id: String) -> void:
 	sesion["escenario"] = id; sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(S["n"]), "E": float(S["e"]), "rumbo": float(S["rumbo"]) }
 	guardar_sesion(); empezar()
 func ir_volar() -> void:
+	vehiculo_permitido()
 	if Escenarios.libre(sesion["escenario"]): sitio_sel = sesion["escenario"]
 	mostrar("pVolar"); pantallas["pVolar"].refrescar()
 func ir_ajustes(seccion := "") -> void:
@@ -1307,7 +1303,9 @@ func mostrar_resultado(v: Dictionary) -> void:
 	match String(g["estado"]):
 		"ok":
 			R.guardado.text = "✓ Guardado en el registro del aula."
-			sesion["alumno"]["progreso"] = g.get("progreso", {})
+			var antes = sesion["alumno"].get("progreso"); sesion["alumno"]["progreso"] = g.get("progreso", {})
+			var nuevos := PantallaResultado.logros_nuevos(antes, sesion["alumno"]["progreso"])
+			if not nuevos.is_empty(): R.guardado.text += " " + " · ".join(nuevos); poner_toast_menu(nuevos[-1])
 		"cola": R.guardado.text = "Sin conexión con el aula: se guardará solo en cuanto vuelva (no se perderá)."
 		_: R.guardado.text = "No se pudo guardar: " + String(g.get("msg", ""))
 

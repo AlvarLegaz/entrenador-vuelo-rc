@@ -1,5 +1,5 @@
 extends SceneTree
-## Prueba del bipode secreto: lo desbloquea (la combinacion del hangar), lo arranca en el vuelo libre, anda, gira la
+## Prueba del bipode secreto: lo desbloquea (con los tres logros del perfil), lo arranca en el vuelo libre, anda, gira la
 ## cintura, dispara a un dron diana y guarda capturas (persecucion y puesto de tiro). Escribe en user://simulador.cfg
 ## (el secreto y el vehiculo): copiar ese fichero antes y restaurarlo despues.
 ## Uso (necesita ventana):
@@ -21,16 +21,14 @@ func _initialize() -> void:
 		var kv := a.trim_prefix("--").split("=", true, 1); args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 	p = load("res://escenas/principal.tscn").instantiate(); root.add_child(p)
 	while p.aula == null or p.pantallas.is_empty() or not p.pantallas["pAlumno"].visible: await create_timer(0.2).timeout
-	var antes: bool = p.ids_hangar().has("BIPODE")
-	if p.secreto_visible(): p.alternar_secreto()
-	_ok("oculto en el hangar", not p.ids_hangar().has("BIPODE"), "(antes: %s)" % antes)
 	p.salir_del_aula(); p.ir_hangar(); await create_timer(0.3).timeout
-	for k in [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_B, KEY_A]:
-		var e := InputEventKey.new(); e.physical_keycode = k; e.keycode = k; e.pressed = true; Input.parse_input_event(e)
-		await process_frame
-		var u := InputEventKey.new(); u.physical_keycode = k; u.keycode = k; u.pressed = false; Input.parse_input_event(u)
-		await process_frame
-	_ok("la combinacion lo desbloquea", p.ids_hangar().has("BIPODE") and p.sesion["avion"] == "BIPODE", str(p.sesion["avion"]))
+	_ok("oculto en el hangar sin conexion", not p.ids_hangar().has("BIPODE"))
+	p.sesion["alumno"] = { "id": "x", "nombre": "Prueba", "progreso": { "robot": false } }          # un piloto sin los tres logros
+	p.elegir_avion("BIPODE"); p.ir_hangar(); await create_timer(0.3).timeout
+	_ok("sin los tres logros, oculto (y el hangar vuelve al dron)", not p.ids_hangar().has("BIPODE") and p.sesion["avion"] == "DJI_MINI", str(p.sesion["avion"]))
+	p.sesion["alumno"]["progreso"]["robot"] = true                                                    # con los tres
+	p.ir_hangar(); await create_timer(0.3).timeout; p.elegir_avion("BIPODE")
+	_ok("con los tres logros, en el hangar", p.ids_hangar().has("BIPODE") and p.sesion["avion"] == "BIPODE", str(p.sesion["avion"]))
 	await create_timer(1.0).timeout
 	if args.has("foto"): root.get_viewport().get_texture().get_image().save_png(args["foto"] + "_hangar.png")
 	p.sesion["escenario"] = "libre"; p.empezar()

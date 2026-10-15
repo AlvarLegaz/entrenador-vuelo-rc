@@ -113,16 +113,6 @@ func _construir_ajustes() -> void:
 	c_lanz.toggled.connect(func(_x): _leer_cfg())
 	e_empuje.text_changed.connect(func(_x): _leer_cfg())
 
-# ---- vehiculo secreto: ↑ ↑ ↓ ↓ ← → ← → B A en el hangar lo muestra (y la misma combinacion lo vuelve a ocultar) ----
-const SECRETO := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_B, KEY_A]
-var _secreto := 0
-func _input(e: InputEvent) -> void:
-	if not is_visible_in_tree() or not (e is InputEventKey and e.pressed and not e.echo): return
-	var k: int = e.physical_keycode
-	_secreto = _secreto + 1 if k == SECRETO[_secreto] else (1 if k == SECRETO[0] else 0)
-	if _secreto < SECRETO.size(): return
-	_secreto = 0; p.alternar_secreto(); refrescar()
-
 # =====================================================================
 func refrescar() -> void:
 	var al = p.sesion["alumno"]

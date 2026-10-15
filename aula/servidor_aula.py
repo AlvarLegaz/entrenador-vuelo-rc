@@ -198,6 +198,64 @@ def certificado(con):
                 pruebas=[str(x)[:40] for x in c.get("pruebas", []) if re.fullmatch(r"[a-z0-9_]{1,40}", str(x))])
 
 
+# ======================= logros (las insignias del perfil) =======================
+# Tres retos por piloto, con lo que ya guarda cada vuelo (vehiculo, entrenamiento, tiempo y APTO): 2 h de vuelo en ala fija
+# y todos sus entrenamientos; 2 h de vuelo con drones y todos los entrenamientos del dron; y todas las operaciones. Con
+# los tres se desbloquea el robot (el bipode HQ-07, datos.oculto) en el hangar de los dos simuladores. Que vehiculo es de
+# que clase y que misiones hay salen de los mismos ficheros que usan los simuladores (aviones/*.js y escenarios.js).
+HORAS_LOGRO = 2.0
+_CATALOGO = {"marca": None}
+
+
+def catalogo_logros():
+    """{clase: {aviones, entrenos}, operaciones}: ala fija = aviones de pista o de mano (y el UAV), dron = cuadricopteros
+    y FPV (el bipode no cuenta). Se relee si cambian los ficheros."""
+    dir_av = os.path.join(DIR_SIM, "aviones"); f_esc = os.path.join(DIR_SIM, "escenarios.js")
+    try: ficheros = sorted(f for f in os.listdir(dir_av) if f.endswith(".js") and f != "indice.js")
+    except OSError: ficheros = []
+    marca = tuple((f, os.path.getmtime(os.path.join(dir_av, f))) for f in ficheros) + ((os.path.getmtime(f_esc),) if os.path.isfile(f_esc) else ())
+    if _CATALOGO["marca"] == marca: return _CATALOGO["datos"]
+    clase = {}
+    for f in ficheros:
+        try: t = open(os.path.join(dir_av, f), encoding="utf-8").read()
+        except OSError: continue
+        m = re.search(r'"id"\s*:\s*"([A-Za-z0-9_]+)"', t)
+        if not m: continue
+        tipo = re.search(r'"tipo"\s*:\s*"([a-z]+)"', t); tipo = tipo.group(1) if tipo else "avion"
+        clase[m.group(1)] = "dron" if tipo in ("cuadricoptero", "fpv") else None if tipo == "bipode" else "ala"
+    esc = {}
+    try:
+        t = open(f_esc, encoding="utf-8").read(); m = re.search(r"(?m)^window[.]ESCENARIOS = ", t)
+        esc = json.loads(t[m.end():t.rindex("}") + 1]) if m else {}
+    except (OSError, ValueError): esc = {}
+    entreno = lambda veh: [k for k, e in esc.items() if e.get("objetivos") and not e.get("operacion") and veh in (e.get("vehiculos") or ["avion"])]
+    datos = dict(clase=clase, ala=entreno("avion"), dron=entreno("dron"), operaciones=[k for k, e in esc.items() if e.get("operacion")])
+    _CATALOGO.update(marca=marca, datos=datos)
+    return datos
+
+
+def logros(con, alumno_id):
+    """Los tres logros del piloto y si el robot esta desbloqueado. Un entrenamiento cuenta para la clase del vehiculo con
+    el que se supero (primer_vuelo es del avion y del dron: con el avion no vale para el logro del dron)."""
+    K = catalogo_logros(); horas = {"ala": 0.0, "dron": 0.0}; ap = {"ala": set(), "dron": set(), "todas": set()}
+    clase = lambda av: K["clase"].get(av, "ala")             # aviones de antes que ya no estan (E1, E2): eran de ala fija
+    for r in con.execute("SELECT avion, COALESCE(SUM(tiempo_vuelo_s), 0) t FROM vuelos WHERE alumno_id = ? GROUP BY avion", (alumno_id,)):
+        if clase(r["avion"]): horas[clase(r["avion"])] += r["t"] / 3600.0
+    for r in con.execute("SELECT DISTINCT avion, escenario FROM vuelos WHERE alumno_id = ? AND resultado = 'APTO'", (alumno_id,)):
+        ap["todas"].add(r["escenario"])
+        if clase(r["avion"]): ap[clase(r["avion"])].add(r["escenario"])
+    def reto(id_, nombre, desc, misiones, h=None, sup=ap["todas"]):
+        hechas = [k for k in misiones if k in sup]
+        ok = len(hechas) == len(misiones) and len(misiones) > 0 and (h is None or h >= HORAS_LOGRO)
+        d = dict(id=id_, nombre=nombre, desc=desc, hechas=len(hechas), total=len(misiones), pendientes=[k for k in misiones if k not in sup], ok=ok)
+        if h is not None: d.update(horas=round(h, 3), horas_meta=HORAS_LOGRO)
+        return d
+    L = [reto("ala_fija", "Piloto de ala fija", "2 h de vuelo con aviones y todos sus entrenamientos", K["ala"], horas["ala"], ap["ala"]),
+         reto("dron", "Piloto de dron", "2 h de vuelo con drones y todos los entrenamientos del dron", K["dron"], horas["dron"], ap["dron"]),
+         reto("operaciones", "Operador profesional", "Todas las operaciones superadas", K["operaciones"])]
+    return L, all(x["ok"] for x in L)
+
+
 def progreso(con, alumno_id, C=None):
     C = C or certificado(con); PR, HM = C["pruebas"], C["horas"]
     r = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(tiempo_vuelo_s), 0) t, COALESCE(SUM(accidentes), 0) acc,
@@ -209,10 +267,11 @@ def progreso(con, alumno_id, C=None):
         "SELECT escenario, COUNT(*) n FROM vuelos WHERE alumno_id = ? GROUP BY escenario", (alumno_id,))}
     horas = r["t"] / 3600.0
     req = horas >= HM and all(e in sup for e in PR)
+    L, robot = logros(con, alumno_id)
     return dict(vuelos=r["n"], horas=round(horas, 3), accidentes=r["acc"], aterrizajes=r["att"], ultimo_vuelo=r["ultimo"],
                 escenarios={e: dict(superado=e in sup, intentos=intentos.get(e, 0)) for e in PR},
                 escenarios_superados=sum(e in sup for e in PR), escenarios_total=len(PR), horas_minimas=HM,
-                certificado=C["nombre"], requisitos_cumplidos=req)
+                certificado=C["nombre"], requisitos_cumplidos=req, logros=L, robot=robot)
 
 
 def alumno_dict(con, row, con_progreso=True, privado=False):

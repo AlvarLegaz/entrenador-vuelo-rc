@@ -1,0 +1,158 @@
+{
+ "insignias": {
+  "ala_fija_si": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#1565c0\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#1565c0\"/><circle cx=\"60\" cy=\"50\" r=\"42\" fill=\"#1e88e5\" stroke=\"#ffd54f\" stroke-width=\"5\"/><circle cx=\"60\" cy=\"50\" r=\"33\" fill=\"none\" stroke=\"#ffd54f\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><path d=\"M60 22L64 40L86 48V54L64 50L63 66L71 72V76L60 73L49 76V72L57 66L56 50L34 54V48L56 40z\" fill=\"#ffffff\"/></svg>",
+  "ala_fija_no": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#29313a\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#29313a\"/><circle cx=\"60\" cy=\"50\" r=\"42\" fill=\"#38424d\" stroke=\"#5d6875\" stroke-width=\"5\"/><circle cx=\"60\" cy=\"50\" r=\"33\" fill=\"none\" stroke=\"#5d6875\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><path d=\"M60 22L64 40L86 48V54L64 50L63 66L71 72V76L60 73L49 76V72L57 66L56 50L34 54V48L56 40z\" fill=\"#8a96a3\"/></svg>",
+  "dron_si": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#2e7d32\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#2e7d32\"/><path d=\"M60 6L98 28L98 72L60 94L22 72L22 28z\" fill=\"#43a047\" stroke=\"#ffd54f\" stroke-width=\"5\"/><path d=\"M60 16L89 33L89 67L60 84L31 67L31 33z\" fill=\"none\" stroke=\"#ffd54f\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><path d=\"M44 34L76 66M76 34L44 66\" stroke=\"#ffffff\" stroke-width=\"4\" stroke-linecap=\"round\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-width=\"3\"><circle cx=\"44\" cy=\"34\" r=\"9\"/><circle cx=\"76\" cy=\"34\" r=\"9\"/><circle cx=\"44\" cy=\"66\" r=\"9\"/><circle cx=\"76\" cy=\"66\" r=\"9\"/></g><rect x=\"53\" y=\"43\" width=\"14\" height=\"14\" rx=\"3\" fill=\"#ffffff\"/></svg>",
+  "dron_no": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#29313a\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#29313a\"/><path d=\"M60 6L98 28L98 72L60 94L22 72L22 28z\" fill=\"#38424d\" stroke=\"#5d6875\" stroke-width=\"5\"/><path d=\"M60 16L89 33L89 67L60 84L31 67L31 33z\" fill=\"none\" stroke=\"#5d6875\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><path d=\"M44 34L76 66M76 34L44 66\" stroke=\"#8a96a3\" stroke-width=\"4\" stroke-linecap=\"round\"/><g fill=\"none\" stroke=\"#8a96a3\" stroke-width=\"3\"><circle cx=\"44\" cy=\"34\" r=\"9\"/><circle cx=\"76\" cy=\"34\" r=\"9\"/><circle cx=\"44\" cy=\"66\" r=\"9\"/><circle cx=\"76\" cy=\"66\" r=\"9\"/></g><rect x=\"53\" y=\"43\" width=\"14\" height=\"14\" rx=\"3\" fill=\"#8a96a3\"/></svg>",
+  "operaciones_si": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#bf360c\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#bf360c\"/><path d=\"M60 6L98 18V48C98 72 81 88 60 96C39 88 22 72 22 48V18z\" fill=\"#ef6c00\" stroke=\"#ffd54f\" stroke-width=\"5\"/><path d=\"M60 15L90 25V48C90 67 77 80 60 87C43 80 30 67 30 48V25z\" fill=\"none\" stroke=\"#ffd54f\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><circle cx=\"60\" cy=\"48\" r=\"17\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"4\"/><path d=\"M60 22V36M60 60V74M34 48H48M72 48H86\" stroke=\"#ffffff\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"60\" cy=\"48\" r=\"5\" fill=\"#ffffff\"/></svg>",
+  "operaciones_no": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#29313a\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#29313a\"/><path d=\"M60 6L98 18V48C98 72 81 88 60 96C39 88 22 72 22 48V18z\" fill=\"#38424d\" stroke=\"#5d6875\" stroke-width=\"5\"/><path d=\"M60 15L90 25V48C90 67 77 80 60 87C43 80 30 67 30 48V25z\" fill=\"none\" stroke=\"#5d6875\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><circle cx=\"60\" cy=\"48\" r=\"17\" fill=\"none\" stroke=\"#8a96a3\" stroke-width=\"4\"/><path d=\"M60 22V36M60 60V74M34 48H48M72 48H86\" stroke=\"#8a96a3\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"60\" cy=\"48\" r=\"5\" fill=\"#8a96a3\"/></svg>",
+  "robot_si": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#5e35b1\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#5e35b1\"/><path d=\"M60 4L68 19L84 13L82 30L98 34L87 46L98 58L82 62L84 79L68 73L60 88L52 73L36 79L38 62L22 58L33 46L22 34L38 30L36 13L52 19z\" fill=\"#8e24aa\" stroke=\"#ffd54f\" stroke-width=\"4\" stroke-linejoin=\"round\"/><circle cx=\"60\" cy=\"46\" r=\"28\" fill=\"none\" stroke=\"#ffd54f\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><rect x=\"45\" y=\"27\" width=\"30\" height=\"19\" rx=\"4\" fill=\"#ffffff\"/><rect x=\"62\" y=\"32\" width=\"9\" height=\"5\" fill=\"#8e24aa\"/><path d=\"M45 33H36\" stroke=\"#ffffff\" stroke-width=\"4\" stroke-linecap=\"round\"/><path d=\"M52 46L46 57L51 68M68 46L74 57L69 68\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M45 68H56M64 68H75\" stroke=\"#ffffff\" stroke-width=\"4\" stroke-linecap=\"round\"/></svg>",
+  "robot_no": "<svg viewBox=\"0 0 120 120\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M40 74L30 114L45 106L53 118L60 84z\" fill=\"#29313a\"/><path d=\"M80 74L90 114L75 106L67 118L60 84z\" fill=\"#29313a\"/><path d=\"M60 4L68 19L84 13L82 30L98 34L87 46L98 58L82 62L84 79L68 73L60 88L52 73L36 79L38 62L22 58L33 46L22 34L38 30L36 13L52 19z\" fill=\"#38424d\" stroke=\"#5d6875\" stroke-width=\"4\" stroke-linejoin=\"round\"/><circle cx=\"60\" cy=\"46\" r=\"28\" fill=\"none\" stroke=\"#5d6875\" stroke-opacity=\"0.6\" stroke-width=\"1.5\"/><path d=\"M50 36C50 26 70 26 70 36C70 44 60 44 60 52V55\" fill=\"none\" stroke=\"#8a96a3\" stroke-width=\"6\" stroke-linecap=\"round\"/><circle cx=\"60\" cy=\"66\" r=\"4\" fill=\"#8a96a3\"/><g transform=\"translate(86 84)\"><path d=\"M-6 -6V-11A6 6 0 0 1 6 -11V-6\" fill=\"none\" stroke=\"#ffd54f\" stroke-width=\"3.5\"/><rect x=\"-11\" y=\"-6\" width=\"22\" height=\"18\" rx=\"3\" fill=\"#ffd54f\"/><circle cx=\"0\" cy=\"3\" r=\"3\" fill=\"#29313a\"/></g></svg>"
+ },
+ "nuevos": [
+  "🏅 ¡Logro conseguido: Piloto de dron!",
+  "🏅 ¡Logro conseguido: Operador profesional!",
+  "🔓 ¡Vehículo secreto desbloqueado! Te espera en el Hangar"
+ ],
+ "antes": {
+  "vuelos": 12,
+  "horas": 2.6,
+  "accidentes": 0,
+  "aterrizajes": 0,
+  "ultimo_vuelo": "2026-10-15T08:12:00",
+  "escenarios": {
+   "primer_vuelo": {
+    "superado": true,
+    "intentos": 2
+   },
+   "orientacion": {
+    "superado": true,
+    "intentos": 2
+   },
+   "viento_cruzado": {
+    "superado": true,
+    "intentos": 1
+   },
+   "emergencia": {
+    "superado": true,
+    "intentos": 1
+   }
+  },
+  "escenarios_superados": 4,
+  "escenarios_total": 4,
+  "horas_minimas": 10,
+  "certificado": "Certificado de pilotaje",
+  "requisitos_cumplidos": false,
+  "logros": [
+   {
+    "id": "ala_fija",
+    "nombre": "Piloto de ala fija",
+    "desc": "2 h de vuelo con aviones y todos sus entrenamientos",
+    "hechas": 9,
+    "total": 9,
+    "pendientes": [],
+    "ok": true,
+    "horas": 2.1,
+    "horas_meta": 2
+   },
+   {
+    "id": "dron",
+    "nombre": "Piloto de dron",
+    "desc": "2 h de vuelo con drones y todos los entrenamientos del dron",
+    "hechas": 3,
+    "total": 6,
+    "pendientes": [
+     "pasada_baja",
+     "diana",
+     "recorrido"
+    ],
+    "ok": false,
+    "horas": 0.5,
+    "horas_meta": 2
+   },
+   {
+    "id": "operaciones",
+    "nombre": "Operador profesional",
+    "desc": "Todas las operaciones superadas",
+    "hechas": 0,
+    "total": 8,
+    "pendientes": [
+     "op_inspeccion",
+     "op_fotogrametria",
+     "op_busqueda",
+     "op_agricultura",
+     "op_paneles",
+     "op_video",
+     "op_sabic",
+     "op_patrulla"
+    ],
+    "ok": false
+   }
+  ],
+  "robot": false
+ },
+ "progreso": {
+  "vuelos": 24,
+  "horas": 4.733,
+  "accidentes": 0,
+  "aterrizajes": 0,
+  "ultimo_vuelo": "2026-10-15T08:24:00",
+  "escenarios": {
+   "primer_vuelo": {
+    "superado": true,
+    "intentos": 2
+   },
+   "orientacion": {
+    "superado": true,
+    "intentos": 2
+   },
+   "viento_cruzado": {
+    "superado": true,
+    "intentos": 1
+   },
+   "emergencia": {
+    "superado": true,
+    "intentos": 1
+   }
+  },
+  "escenarios_superados": 4,
+  "escenarios_total": 4,
+  "horas_minimas": 10,
+  "certificado": "Certificado de pilotaje",
+  "requisitos_cumplidos": false,
+  "logros": [
+   {
+    "id": "ala_fija",
+    "nombre": "Piloto de ala fija",
+    "desc": "2 h de vuelo con aviones y todos sus entrenamientos",
+    "hechas": 9,
+    "total": 9,
+    "pendientes": [],
+    "ok": true,
+    "horas": 2.1,
+    "horas_meta": 2
+   },
+   {
+    "id": "dron",
+    "nombre": "Piloto de dron",
+    "desc": "2 h de vuelo con drones y todos los entrenamientos del dron",
+    "hechas": 6,
+    "total": 6,
+    "pendientes": [],
+    "ok": true,
+    "horas": 2.633,
+    "horas_meta": 2
+   },
+   {
+    "id": "operaciones",
+    "nombre": "Operador profesional",
+    "desc": "Todas las operaciones superadas",
+    "hechas": 8,
+    "total": 8,
+    "pendientes": [],
+    "ok": true
+   }
+  ],
+  "robot": true
+ }
+}

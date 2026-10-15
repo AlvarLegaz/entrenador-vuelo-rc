@@ -4,6 +4,80 @@ extends RefCounted
 
 static func fmt_min(s: float) -> String: return "%d:%02d" % [int(s / 60), int(round(fmod(s, 60)))]
 
+## Insignia de un logro (ala_fija, dron, operaciones o robot), en color si esta conseguido y en gris si no; el robot
+## bloqueado lleva un candado. El mismo SVG que insigniaSvg de la web.
+static func insignia(id: String, ok: bool) -> String:
+	var COL := { "ala_fija": ["#1e88e5", "#1565c0"], "dron": ["#43a047", "#2e7d32"], "operaciones": ["#ef6c00", "#bf360c"], "robot": ["#8e24aa", "#5e35b1"] }
+	var c1: String = COL[id][0] if ok else "#38424d"; var c2: String = COL[id][1] if ok else "#29313a"
+	var b := "#ffd54f" if ok else "#5d6875"; var s := "#ffffff" if ok else "#8a96a3"
+	var forma: String = {
+		"ala_fija": '<circle cx="60" cy="50" r="42" fill="%s" stroke="%s" stroke-width="5"/><circle cx="60" cy="50" r="33" fill="none" stroke="%s" stroke-opacity="0.6" stroke-width="1.5"/>' % [c1, b, b],
+		"dron": '<path d="M60 6L98 28L98 72L60 94L22 72L22 28z" fill="%s" stroke="%s" stroke-width="5"/><path d="M60 16L89 33L89 67L60 84L31 67L31 33z" fill="none" stroke="%s" stroke-opacity="0.6" stroke-width="1.5"/>' % [c1, b, b],
+		"operaciones": '<path d="M60 6L98 18V48C98 72 81 88 60 96C39 88 22 72 22 48V18z" fill="%s" stroke="%s" stroke-width="5"/><path d="M60 15L90 25V48C90 67 77 80 60 87C43 80 30 67 30 48V25z" fill="none" stroke="%s" stroke-opacity="0.6" stroke-width="1.5"/>' % [c1, b, b],
+		"robot": '<path d="M60 4L68 19L84 13L82 30L98 34L87 46L98 58L82 62L84 79L68 73L60 88L52 73L36 79L38 62L22 58L33 46L22 34L38 30L36 13L52 19z" fill="%s" stroke="%s" stroke-width="4" stroke-linejoin="round"/><circle cx="60" cy="46" r="28" fill="none" stroke="%s" stroke-opacity="0.6" stroke-width="1.5"/>' % [c1, b, b],
+	}[id]
+	var simbolo: String = {
+		"ala_fija": '<path d="M60 22L64 40L86 48V54L64 50L63 66L71 72V76L60 73L49 76V72L57 66L56 50L34 54V48L56 40z" fill="%s"/>' % s,
+		"dron": '<path d="M44 34L76 66M76 34L44 66" stroke="%s" stroke-width="4" stroke-linecap="round"/><g fill="none" stroke="%s" stroke-width="3"><circle cx="44" cy="34" r="9"/><circle cx="76" cy="34" r="9"/><circle cx="44" cy="66" r="9"/><circle cx="76" cy="66" r="9"/></g><rect x="53" y="43" width="14" height="14" rx="3" fill="%s"/>' % [s, s, s],
+		"operaciones": '<circle cx="60" cy="48" r="17" fill="none" stroke="%s" stroke-width="4"/><path d="M60 22V36M60 60V74M34 48H48M72 48H86" stroke="%s" stroke-width="4" stroke-linecap="round"/><circle cx="60" cy="48" r="5" fill="%s"/>' % [s, s, s],
+		"robot": ('<rect x="45" y="27" width="30" height="19" rx="4" fill="%s"/><rect x="62" y="32" width="9" height="5" fill="%s"/><path d="M45 33H36" stroke="%s" stroke-width="4" stroke-linecap="round"/><path d="M52 46L46 57L51 68M68 46L74 57L69 68" fill="none" stroke="%s" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M45 68H56M64 68H75" stroke="%s" stroke-width="4" stroke-linecap="round"/>' % [s, c1, s, s, s]) if ok
+			else '<path d="M50 36C50 26 70 26 70 36C70 44 60 44 60 52V55" fill="none" stroke="%s" stroke-width="6" stroke-linecap="round"/><circle cx="60" cy="66" r="4" fill="%s"/>' % [s, s],     # bloqueado: un misterio
+	}[id]
+	var cintas := '<path d="M40 74L30 114L45 106L53 118L60 84z" fill="%s"/><path d="M80 74L90 114L75 106L67 118L60 84z" fill="%s"/>' % [c2, c2]
+	var candado := '<g transform="translate(86 84)"><path d="M-6 -6V-11A6 6 0 0 1 6 -11V-6" fill="none" stroke="#ffd54f" stroke-width="3.5"/><rect x="-11" y="-6" width="22" height="18" rx="3" fill="#ffd54f"/><circle cx="0" cy="3" r="3" fill="#29313a"/></g>' if (id == "robot" and not ok) else ""
+	return '<svg viewBox="0 0 120 120" width="120" height="120" xmlns="http://www.w3.org/2000/svg">' + cintas + forma + simbolo + candado + '</svg>'
+
+## Los avisos de lo conseguido con el ultimo vuelo (logrosNuevos de la web).
+static func logros_nuevos(antes, ahora) -> Array:
+	var ya := []; var T := []
+	if antes is Dictionary:
+		for x in antes.get("logros", []): if x.get("ok", false): ya.append(x["id"])
+	if ahora is Dictionary:
+		for x in ahora.get("logros", []): if x.get("ok", false) and not ya.has(x["id"]): T.append("🏅 ¡Logro conseguido: %s!" % x["nombre"])
+		if ahora.get("robot", false) and not (antes is Dictionary and antes.get("robot", false)): T.append("🔓 ¡Vehículo secreto desbloqueado! Te espera en el Hangar")
+	return T
+
+## Nombre corto de un escenario (sin el "1 · " de los entrenamientos del certificado).
+static func nombre_corto(k: String) -> String:
+	var nm := String(Escenarios.datos().get(k, { "nombre": k })["nombre"])
+	return nm.substr(4) if (nm.length() > 4 and nm.substr(1, 3) == " · " and nm.substr(0, 1).is_valid_int()) else nm
+
+## Las tarjetas de los tres logros y la del robot (htmlLogros de la web).
+static func logros(g: Dictionary, p: Node) -> GridAdaptable:
+	var rej := Tema.rejilla(230, 12); var L: Array = g.get("logros", [])
+	var barra := func(a: float, b: float) -> Panel:
+		var fondo := Panel.new(); fondo.custom_minimum_size.y = 8; fondo.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.4), Tema.BORDE, 4))
+		var r := ColorRect.new(); r.color = Tema.ACENTO; r.anchor_bottom = 1; r.anchor_right = clampf(a / b, 0, 1) if b > 0 else 0.0; r.offset_left = 1; r.offset_top = 1; r.offset_bottom = -1
+		fondo.add_child(r); return fondo
+	var linea := func(a: String, b: String) -> HBoxContainer:
+		var h := HBoxContainer.new(); var l := Tema.etiqueta(a, 12); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l); h.add_child(Tema.etiqueta(b, 12, Tema.TEXTO, true)); return h
+	var tarjeta := func(id: String, ok: bool, nombre: String, desc: String) -> VBoxContainer:
+		var pc := PanelContainer.new(); pc.add_theme_stylebox_override("panel", Tema.caja(Color(1, 1, 1, 0.05), Color("#ffd54f8c") if ok else Color(1, 1, 1, 0.12), 14, 1, 14, 14))
+		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 6); pc.add_child(v)
+		var ic := TextureRect.new(); ic.texture = Tema.svg(insignia(id, ok), 2.0); ic.custom_minimum_size = Vector2(104, 104)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; v.add_child(ic)
+		var t := Tema.etiqueta(nombre, 16, Tema.TEXTO, true, true); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(t)
+		var d := Tema.etiqueta(desc, 13, Tema.SUAVE, false, true); d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(d)
+		rej.add_child(pc); return v
+	for x in L:
+		var v: VBoxContainer = tarjeta.call(String(x["id"]), bool(x["ok"]), String(x["nombre"]), String(x["desc"]))
+		if x.has("horas_meta"):
+			v.add_child(linea.call("Horas de vuelo", "%s de %s h" % [PantallaPilotos.fmt_horas(minf(float(x["horas"]), float(x["horas_meta"]))), str(int(x["horas_meta"]))]))
+			v.add_child(barra.call(float(x["horas"]), float(x["horas_meta"])))
+		v.add_child(linea.call("Operaciones" if x["id"] == "operaciones" else "Entrenamientos", "%d de %d" % [int(x["hechas"]), int(x["total"])]))
+		v.add_child(barra.call(float(x["hechas"]), float(x["total"])))
+		if x["ok"]:
+			var e := Tema.etiqueta("✓ Conseguido", 13, Color("#ffd54f"), true); e.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(e)
+		elif not (x["pendientes"] as Array).is_empty():
+			v.add_child(Tema.etiqueta("Te falta: " + ", ".join((x["pendientes"] as Array).map(func(k): return nombre_corto(String(k)))), 12, Tema.SUAVE, false, true))
+	var n := L.filter(func(x): return x["ok"]).size(); var rb := bool(g.get("robot", false))
+	var v: VBoxContainer = tarjeta.call("robot", rb, "Vehículo secreto",                # sin decir que es: un misterio hasta desbloquearlo
+		"Desbloqueado: te espera en el Hangar." if rb else "¿Qué se esconde en el Hangar? Consigue los tres logros para descubrirlo.")
+	v.add_child(linea.call("Logros", "%d de %d" % [n, L.size()])); v.add_child(barra.call(n, L.size()))
+	if rb:
+		var e := Tema.etiqueta("✓ Desbloqueado", 13, Color("#ffd54f"), true); e.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(e)
+	return rej
+
 ## Estadisticas (.estadisticas): rejilla de cajas con cifra grande y nombre.
 static func estadisticas(cajas: Array) -> GridAdaptable:
 	var g := Tema.rejilla(150, 10)
@@ -158,6 +232,8 @@ class Progreso extends Control:
 		if not pend.is_empty(): faltan.append("superar " + ", ".join(pend))
 		cont.add_child(PantallaResultado.estadisticas([[PantallaPilotos.fmt_horas(g["horas"]), "horas de vuelo"], [str(int(g["vuelos"])), "vuelos"], [str(int(g["aterrizajes"])), "aterrizajes"],
 			[str(int(g["accidentes"])), "accidentes"], ["%d/%d" % [int(g["escenarios_superados"]), total], "pruebas superadas"]]))
+		cont.add_child(Tema.etiqueta("Logros", 20, Tema.TEXTO, true))
+		cont.add_child(PantallaResultado.logros(g, p))
 		cont.add_child(Tema.etiqueta("Camino al certificado: " + cert, 20, Tema.TEXTO, true))
 		var c := Tema.capa(10); cont.add_child(c[0]); var cv: VBoxContainer = c[1]
 		cv.add_child(Tema.etiqueta("%s de %d h mínimas" % [PantallaPilotos.fmt_horas(g["horas"]), int(g["horas_minimas"])], 14, Tema.TEXTO, true))
