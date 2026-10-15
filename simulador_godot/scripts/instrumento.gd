@@ -344,6 +344,14 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			var n: float = PL["n0"] + i * PL["separacion"]
 			var r := Rect2(X.call(PL["e0"]), Y.call(n + fondo / 2), PL["largo"] * k, maxf(1, fondo * k)).intersection(Rect2(0, 0, W, W))
 			if r.size.x > 0 and r.size.y > 0: draw_rect(r, Color("#182c52"))
+	var OPv = p.ev.op if (p.ev != null and p.ev.op != null and p.ev.op.d.get("vertidos") is Array) else null
+	if OPv != null:                               # patrulla: los sectores del aviso (verdes los ya fotografiados)
+		var SS: Array = OPv.d["sectores"]
+		for i in SS.size():
+			var col := Color("#66bb6a") if OPv.hechos[i] else Color("#ff9800"); var qs := Vector2(X.call(SS[i][1]), Y.call(SS[i][0]))
+			var rr := maxf(6, float(OPv.d["radio_sector"]) * k); var nseg := 48
+			for s in range(0, nseg, 2): draw_arc(qs, rr, s * TAU / nseg, (s + 1) * TAU / nseg, 4, col, 2)
+			_txt(qs + Vector2(0, 4), str(i + 1), 11 * k0, col, true)
 	if p.piloto != null:                          # UAV: la pista y lo que pide el piloto automatico
 		var PS = p.piloto.pista
 		if PS != null:

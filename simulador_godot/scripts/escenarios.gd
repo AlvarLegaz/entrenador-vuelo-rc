@@ -118,7 +118,7 @@ class Evaluador extends RefCounted:
 		if not E.has("mundo"):
 			contador = ent.contador_vueltas(int(E.get("sentido", 0)))
 			pasada = ent.pasada_baja()
-		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades"]:
+		for k in ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades", "altura"]:
 			if obj.has(k): obj[k]["estado"] = "curso"
 		if E.has("operacion") and not ent.mundo.is_empty():    # el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
 			var dd: Dictionary = Operacion.sortear(Operacion.ajustar(E["operacion"], p.sala.get("ajustes")))
@@ -236,7 +236,7 @@ class Evaluador extends RefCounted:
 				marcar("diana10", "ok" if toma["d"] <= 10 else "mal")
 				marcar("dianaR", "ok" if (toma["d"] <= 10 and obj.has("puertaR") and obj["puertaR"]["estado"] == "ok") else "mal")
 		if fpv != null: fpv.final(final, av)
-		if op != null: op.final(final, av, { "bateria": p.modelo.bateria_pct(av) })
+		if op != null: op.final(final, av, { "bateria": p.modelo.bateria_pct(av), "automatico": p.piloto != null and p.piloto.automatico })
 		for k in orden:
 			if obj[k]["estado"] == "curso": obj[k]["estado"] = "ok" if ok else "mal"
 		for k in orden:

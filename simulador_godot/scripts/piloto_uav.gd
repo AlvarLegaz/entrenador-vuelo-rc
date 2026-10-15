@@ -140,8 +140,9 @@ func paso(av: Dictionary, dt: float, pal: Dictionary, gas_palanca: float) -> Dic
 		_actitud(_rumbo(envolver(rp - atan(tEje / P["k_eje_aire"]))), _altura(hs, P["vz_max"], h, vz)); out["gas"] = _velocidad(P["v_crucero"] if -dEje > P["final_m"] else P["v_aprox"], vz)
 		if agl < P["h_recogida"]: fase = "recogida"
 		return out
-	if fase == "recogida":            # cerca del suelo: gas fuera, morro arriba, alas niveladas y el morro con la pista (sin deriva)
-		_actitud(0.0, P["cabeceo_recogida"] * D2R); out["gas"] = 0.0
+	if fase == "recogida":            # cerca del suelo: gas fuera, alas niveladas, el morro con la pista (sin deriva) y
+		var vzr: float = -(P["vz_toma"] + P["k_recogida"] * agl); _vzc = vzr     # bajando cada vez mas despacio (sin flotar con el efecto suelo)
+		_actitud(0.0, lim(atan2(vzr, _V) + P["k_vz"] * (vzr - vz) + P["cabeceo_crucero"] * D2R, 0, P["cabeceo_recogida"] * D2R)); out["gas"] = 0.0
 		out["guinada"] = lim(P["k_rumbo_tierra"] * envolver(rp - e[2]) - P["k_r_tierra"] * av["w"][2], -1, 1)
 		if av.get("enTierra", false): fase = "rodadura"
 		return out

@@ -14,14 +14,17 @@ ESC = json.loads(t[m.end():t.rindex("}") + 1])
 DT = 0.1
 suelo = lambda N, E: 3 * math.sin(N * 0.01) + 2 * math.cos(E * 0.013)      # el mismo suelo de prueba en los dos lados
 
-def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, calientes=None):
-    """piezas: lista de (N, E, altura sobre el suelo, rumbo, gimbal, grabando, foto, posado[, termica, zoom]). Estados: [N, E,
-    arriba, rumbo, posado, gimbal, grabando, foto, t, termica, zoom]. calientes: los modulos con el diodo averiado (paneles)."""
+def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, calientes=None, vertidos=None, automatico=False):
+    """piezas: lista de (N, E, altura sobre el suelo, rumbo, gimbal, grabando, foto, posado[, termica, zoom[, pan]]). Estados:
+    [N, E, arriba, rumbo, posado, gimbal, grabando, foto, t, termica, zoom, pan]. calientes: los modulos con el diodo averiado
+    (paneles); vertidos: (vertidos, sectores) de la patrulla; pan: el giro de la torreta del UAV (rad); automatico: el UAV
+    aterriza con el piloto automatico."""
     est = []
     for k, pz in enumerate(piezas):
-        N, E, h, y, g, rec, foto, pos = pz[:8]; ter, zoom = pz[8:10] if len(pz) > 8 else (0, 1)
-        est.append([round(N, 3), round(E, 3), round(suelo(N, E) + h, 3), round(y, 3), int(pos), round(g, 3), int(rec), int(foto), round(k * DT, 2), int(ter), zoom])
-    return {"nombre": nombre, "mision": mision, "estados": est, "final": final, "bateria": bateria, "persona": persona, "calientes": calientes}
+        N, E, h, y, g, rec, foto, pos = pz[:8]; ter, zoom = pz[8:10] if len(pz) > 8 else (0, 1); pan = pz[10] if len(pz) > 10 else 0
+        est.append([round(N, 3), round(E, 3), round(suelo(N, E) + h, 3), round(y, 3), int(pos), round(g, 3), int(rec), int(foto), round(k * DT, 2), int(ter), zoom, round(pan, 4)])
+    return {"nombre": nombre, "mision": mision, "estados": est, "final": final, "bateria": bateria, "persona": persona, "calientes": calientes,
+            "vertidos": vertidos[0] if vertidos else None, "sectores": vertidos[1] if vertidos else None, "automatico": automatico}
 
 def tramo(a, b, v=8.0, y=None, g=-10, rec=0):
     """de a a b (N, E, h) a v m/s; y None = mirando hacia donde va."""
@@ -145,20 +148,42 @@ V.append(vuelo("choca con el faro", "op_video", despegue(C) + tramo((C[0], C[1],
 # ---- normas ----
 O = ESC["op_inspeccion"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"])
 V.append(vuelo("normas: alto y lejos", "op_inspeccion", despegue(C) + tramo((C[0], C[1], 5), (C[0], C[1], 130), v=6) + tramo((C[0], C[1], 130), (C[0] + 600, C[1], 100)) + aterrizaje((C[0] + 600, C[1], 100), C)))
+# ---- patrulla del Mar Menor (UAV): la torreta girada (pan), vertidos fijos, pista, altura minima y aterrizaje a mano ----
+O = ESC["op_patrulla"]["operacion"]; P = O["pista"]; RP = math.radians(P["rumbo"])
+def en_pista(l, t=0.0): return (P["n"] + l * math.cos(RP) - t * math.sin(RP), P["e"] + l * math.sin(RP) + t * math.cos(RP))
+CV = O["candidatos_vertido"]; VERT = [[CV[i][0], CV[i][1], 150, 60, 30 + 50 * k, 7 + k] for k, i in enumerate((0, 25, 50))]
+SECT = [[v[0] + 300, v[1] - 200] for v in VERT]
+def junto(v, dist, h, pan, zoom, ter, desvio=0.0):
+    """el avion a "dist" m del vertido v (al suroeste) y "h" m sobre el, la torreta girada "pan" grados mirando al vertido
+    (+ desvio m al norte): quieto 1 s y una foto."""
+    a = 1.0; p = (v[0] - dist * math.cos(a), v[1] - dist * math.sin(a), h); y, g = apuntar(p, (v[0] + desvio, v[1], 0))
+    q = (p[0], p[1], p[2] - suelo(p[0], p[1]) + suelo(v[0], v[1]))         # misma altura sobre el agua (el suelo de prueba no es plano)
+    return [(q[0], q[1], q[2], y - pan, g, 0, 0, False, ter, zoom, math.radians(pan))] * 10 + [(q[0], q[1], q[2], y - pan, g, 0, 1, False, ter, zoom, math.radians(pan)), (q[0], q[1], q[2], y - pan, g, 0, 0, False, ter, zoom, math.radians(pan))]
+def pista_despegue(t=0.0):
+    a = en_pista(60, t); b = en_pista(1500, t)
+    return [(a[0], a[1], 0, P["rumbo"], -10, 0, 0, True)] * 3 + tramo((a[0], a[1], 0.1), (b[0], b[1], 60), v=30)
+def pista_toma(l=600, t=0.0):
+    a = en_pista(-3000, t); b = en_pista(l - 300, t); c = en_pista(l, t)
+    return tramo((a[0], a[1], 200), (b[0], b[1], 0.5), v=30) + tramo((b[0], b[1], 0.5), (c[0], c[1], 0.1), v=10) + [(c[0], c[1], 0, P["rumbo"], -10, 0, 0, True)] * 5
+pz = (pista_despegue() + junto(VERT[0], 700, 300, 90, 4, 0) + junto(VERT[1], 1600, 300, 0, 1, 0) + junto(VERT[1], 700, 300, -60, 4, 1)
+      + junto(VERT[2], 700, 300, 0, 4, 0, desvio=130) + junto(VERT[2], 700, 300, 30, 8, 1) + pista_toma())
+V.append(vuelo("patrulla ok, a mano", "op_patrulla", pz, vertidos=(VERT, SECT)))
+pz = pista_despegue(t=120) + junto(VERT[0], 700, 100, 0, 4, 0) + junto(VERT[1], 600, 300, 180, 4, 1) + pista_toma(t=90)
+V.append(vuelo("patrulla baja, fuera de pista y con el automatico", "op_patrulla", pz, vertidos=(VERT, SECT), automatico=True))
 
 JS = r"""V => V.map(v => {
-  const E = ESCENARIOS[v.mision], obj = {}, CURSO = ["techo", "vlos", "zona", "baja", "distancia", "suave"];
+  const E = ESCENARIOS[v.mision], obj = {}, CURSO = ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura"];
   for (const [id, t] of E.objetivos) obj[id] = { texto: t, estado: CURSO.includes(id) ? "curso" : "pend" };
   const marcar = (k, e) => { if (obj[k] && obj[k].estado !== "mal") obj[k].estado = e; };
   const anotar = (k, t) => { if (obj[k]) obj[k].texto += ` (${t})`; };
-  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona; if (v.calientes) d.calientes = v.calientes;
+  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona; if (v.calientes) d.calientes = v.calientes; if (v.vertidos) { d.vertidos = v.vertidos; d.sectores = v.sectores; }
   const suelo = (N, E) => 3 * Math.sin(N * 0.01) + 2 * Math.cos(E * 0.013);
   const op = new Operacion(d, marcar, anotar, { casa: [E.operacion.salida.n, E.operacion.salida.e], suelo, h0: 0 });
   const avisos = [], ahora = []; let pAnt = null, av = null, choque = null;
   v.estados.forEach((s, i) => {
     av = { p: [s[0], s[1], -s[2]], q: Cuat.desdeEuler(0, 0, s[3] * D2R), estado: "volando", posado: !!s[4], t: s[8] };
     if (choque) return;
-    const cam = { termica: !!s[9], zoom: s[10] };
+    const cam = { termica: !!s[9], zoom: s[10], pan: s[11] || 0 };
     if (pAnt) for (const t of op.paso(pAnt, av, 0.1, Object.assign({ gimbal: s[5], grabando: !!s[6] }, cam))) avisos.push(s[8].toFixed(1) + " " + t);
     if (op.choque) { choque = op.choque; return; }
     if (s[7]) for (const t of op.foto(av, s[5], cam)) avisos.push(s[8].toFixed(1) + " foto: " + t);
@@ -166,7 +191,7 @@ JS = r"""V => V.map(v => {
     pAnt = av.p;
   });
   const fin = choque ? "roto" : v.final;
-  op.final(fin, av, { bateria: v.bateria });
+  op.final(fin, av, { bateria: v.bateria, automatico: !!v.automatico });
   if (fin === "aterrizado") marcar("aterrizar", "ok");
   for (const o of Object.values(obj)) if (o.estado === "curso") o.estado = fin === "aterrizado" ? "ok" : "mal";
   for (const o of Object.values(obj)) if (o.estado === "pend") o.estado = "mal";
@@ -184,7 +209,8 @@ with sync_playwright() as p:
       const d = Operacion.sortear(ESCENARIOS[k].operacion, rnd);
       return { semilla: s, mision: k, puntos: d.puntos || null, defectos: d.defectos || null, manchas: d.manchas || null, persona: d.persona || null,
                calientes: Array.isArray(d.calientes) ? d.calientes : null, puntosCalientes: d.puntosCalientes || null, fuga: d.fuga || null,
-               placaTxt: d.placaTxt || null, piloto: d.piloto === undefined ? null : d.piloto };
+               placaTxt: d.placaTxt || null, piloto: d.piloto === undefined ? null : d.piloto,
+               vertidos: Array.isArray(d.vertidos) ? d.vertidos : null, sectores: d.sectores || null };
     }))""", SEMILLAS); b.close()
 assert not err, err
 # lo sorteado tiene que estar dentro de su zona y sin repetirse
@@ -195,6 +221,10 @@ for x in S:
     if x["manchas"]:
         P = O["parcela"]; assert all(P["n0"] + r <= n <= P["n1"] - r and P["e0"] + r <= e <= P["e1"] - r for n, e, r in x["manchas"]), x
     if x["persona"]: Z = O["zona"]; assert Z["n0"] < x["persona"][0] < Z["n1"] and Z["e0"] < x["persona"][1] < Z["e1"], x
+    if x["vertidos"]:                                      # patrulla: en sitios posibles, separados y cada uno dentro de su sector
+        Vs = x["vertidos"]; assert len(Vs) == O["vertidos"] and all([v[0], v[1]] in O["candidatos_vertido"] for v in Vs), x
+        assert all(math.dist(a[:2], b[:2]) >= O["separacion"] for i, a in enumerate(Vs) for b in Vs[i + 1:]), x
+        assert all(math.dist(v[:2], s) <= O["radio_sector"] for v, s in zip(Vs, x["sectores"])), x
 json.dump(S, open(RAIZ / "simulador_godot" / "pruebas" / "referencia_sorteos_js.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print(len(S), "sorteos; inspeccion con la semilla 1:", [q["nombre"] for q in S[0]["puntos"]] if S[0]["puntos"] else S[0])
 for v, x in zip(V, r): v["web"] = x

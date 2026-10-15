@@ -1194,7 +1194,7 @@ void main() {
       // (av.torreta.pan) y su inclinacion (tilt); con zoom, el campo se cierra
       const tr = av.torreta || { pan: 0, tilt: 0 }, yaw = Cuat.euler(av.q)[2] + tr.pan, g = tr.tilt;
       const pos = ned2three(Cuat.rot(av.q, this.avion.centroTorreta)), fw = ned2three([Math.cos(yaw) * Math.cos(g), Math.sin(yaw) * Math.cos(g), -Math.sin(g)]);
-      cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]);
+      cam.position.set(t[0] + pos[0] + 0.22 * fw[0], t[1] + pos[1] + 0.22 * fw[1], t[2] + pos[2] + 0.22 * fw[2]);   // en la ventana, fuera de la bola (15 cm de radio)
       cam.fov = this.zoomCam > 1 ? 2 * Math.atan(Math.tan(29 * Math.PI / 180) / this.zoomCam) * 180 / Math.PI : 58;
       cam.up.set(0, 1, 0); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else if (this.camara === 2) {

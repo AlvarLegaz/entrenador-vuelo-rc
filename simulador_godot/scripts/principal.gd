@@ -1091,7 +1091,8 @@ func paso(dt: float) -> void:
 		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
 		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
 	if ev.op != null:                         # operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-		for t in ev.op.paso(p_ant, av, dt, { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }.merged(cam_dji())): poner_toast(t)
+		var cam_op := { "gimbal": av["torreta"]["tilt"] * R2D, "pan": av["torreta"]["pan"], "grabando": false } if (es_uav() and av.has("torreta")) else { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }   # UAV: la torreta
+		for t in ev.op.paso(p_ant, av, dt, cam_op.merged(cam_dji())): poner_toast(t)
 		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
 	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
 	var su = ev.contador.actualizar(p_ant, av["p"], av["t"]) if (ev.zona == 1 and ev.contador != null) else {}
@@ -1842,7 +1843,8 @@ func _camara() -> void:
 			cam.fov = 55; cam.global_position = pos; cam.look_at(pos + fw, up)
 		else:                        # la torreta EO/IR, estabilizada, con su giro e inclinacion; con zoom, el campo se cierra
 			var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]; var g: float = tr["tilt"]
-			var pos := t + Avion3D.ned(Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"])); var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
+			var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
+			var pos := t + Avion3D.ned(Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"])) + 0.22 * fw     # en la ventana, fuera de la bola (15 cm de radio)
 			var zc: float = cam_dji()["zoom"]
 			cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zc)) if zc > 1 else 58.0; cam.global_position = pos
 			cam.look_at(pos + fw, Vector3.UP if absf(g) < 89.5 * D2R else Avion3D.ned([cos(yaw), sin(yaw), 0.0]))

@@ -115,6 +115,11 @@ class Operacion {
       d.manchas = r;
     }
     if (O.zona) d.persona = [O.zona.n0 + 20 + rnd() * (O.zona.n1 - O.zona.n0 - 40), O.zona.e0 + 20 + rnd() * (O.zona.e1 - O.zona.e0 - 40)];   // busqueda
+    if (O.candidatos_vertido) {                       // patrulla: los vertidos en sitios separados y su sector (el aviso), desplazado al azar
+      const C = O.candidatos_vertido.map(([n, e]) => ({ n, e })), V = tomar(C, O.vertidos, O.separacion), R = O.radio_sector;
+      d.vertidos = V.map(q => { const L = Math.round(90 + 110 * rnd()); return [q.n, q.e, L, Math.round(L * (0.35 + 0.25 * rnd())), Math.round(360 * rnd()), azar(1000)]; });
+      d.sectores = V.map(q => { const a = 2 * Math.PI * rnd(), r = 0.6 * R * Math.sqrt(rnd()); return [Math.round(q.n + r * Math.cos(a)), Math.round(q.e + r * Math.sin(a))]; });
+    }
     return d;
   }
 
@@ -156,6 +161,7 @@ class Operacion {
     this.termicos = []; this.lectura = null; this.medida = null; this.hechosC = [];   // termica: objetos, lo que mide y los puntos calientes medidos
     if (d.planta) this._planta();
     if (d.racks) this._fabrica();
+    if (Array.isArray(d.vertidos)) this._patrulla();
     this.encontrado = false; this.error = null;                                 // busqueda
     this.orb = null; this.yawAnt = null; this.giro = 0;                         // video
   }
@@ -165,8 +171,8 @@ class Operacion {
 
   /** Un punto P (N, E, arriba) en la camara del dron (gimbal en grados): x hacia delante, y a la derecha, z hacia abajo
    *  de la imagen, d distancia. */
-  static camara(av, gimbal, P) {
-    const y = Cuat.euler(av.q)[2], g = gimbal * D2R, cy = Math.cos(y), sy = Math.sin(y), cg = Math.cos(g), sg = Math.sin(g);
+  static camara(av, gimbal, P, pan = 0) {
+    const y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R, cy = Math.cos(y), sy = Math.sin(y), cg = Math.cos(g), sg = Math.sin(g);
     const v = [P[0] - av.p[0], P[1] - av.p[1], -(P[2] + av.p[2])];
     return { x: v[0] * cy * cg + v[1] * sy * cg - v[2] * sg, y: -v[0] * sy + v[1] * cy, z: v[0] * cy * sg + v[1] * sy * sg + v[2] * cg, d: Math.hypot(v[0], v[1], v[2]) };
   }
@@ -175,8 +181,8 @@ class Operacion {
 
   /** Distancia del rayo que sale del dron por el centro de la camara (rumbo y gimbal) a un segmento P0-P1 (N, E, arriba):
    *  {t: distancia a lo largo del rayo, d: distancia del rayo al segmento}. */
-  static rayoSegmento(av, gimbal, P0, P1) {
-    const y = Cuat.euler(av.q)[2], g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
+  static rayoSegmento(av, gimbal, P0, P1, pan = 0) {
+    const y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
     const O = [av.p[0], av.p[1], -av.p[2]], v = [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]], w0 = [O[0] - P0[0], O[1] - P0[1], O[2] - P0[2]];
     const b = u[0] * v[0] + u[1] * v[1] + u[2] * v[2], c = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
     const dd = u[0] * w0[0] + u[1] * w0[1] + u[2] * w0[2], e = v[0] * w0[0] + v[1] * w0[1] + v[2] * w0[2];
@@ -188,19 +194,19 @@ class Operacion {
     return { t, d: Math.hypot(q[0], q[1], q[2]) };
   }
   /** Lo que mide el medidor puntual de la termica: el objeto termico mas cercano que cae dentro de la cruz del centro, o null. */
-  medir(av, gimbal, zoom) {
+  medir(av, gimbal, zoom, pan = 0) {
     let mejor = null;
     for (const o of this.termicos) {
-      const r = Operacion.rayoSegmento(av, gimbal, o.P0, o.P1);
+      const r = Operacion.rayoSegmento(av, gimbal, o.P0, o.P1, pan);
       if (r.t > 0.5 && r.d <= o.r + r.t * Math.tan(OPS.RETICULA * D2R) / zoom && (!mejor || r.t < mejor.t)) mejor = { o, t: r.t };
     }
-    if (mejor && this.solido && this._tapado(av, gimbal, mejor.t)) return null;
+    if (mejor && this.solido && this._tapado(av, gimbal, mejor.t, pan)) return null;
     return mejor ? { T: mejor.o.T, tipo: mejor.o.tipo, nombre: mejor.o.nombre, i: mejor.o.i, dist: mejor.t } : null;
   }
   /** Si un edificio o una instalacion tapa el rayo del centro de la camara antes de llegar a t m (los ultimos 6 m no
    *  cuentan: el objeto esta dentro del solido de su rack o de su unidad). Muestras cada 2,5 m. */
-  _tapado(av, gimbal, t) {
-    const y = Cuat.euler(av.q)[2], g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
+  _tapado(av, gimbal, t, pan = 0) {
+    const y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R, u = [Math.cos(y) * Math.cos(g), Math.sin(y) * Math.cos(g), Math.sin(g)];
     for (let s = 2.5; s < t - 6; s += 2.5) if (this.solido(av.p[0] + s * u[0], av.p[1] + s * u[1], -av.p[2] + s * u[2])) return true;
     return false;
   }
@@ -295,7 +301,10 @@ class Operacion {
   paso(pAnt, av, dt, info) {
     const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), t = av.t, m = this.marcar;
     if (av.estado !== "volando") return T;
-    if (this.t0 === null && !av.posado) this.t0 = t;                           // despegue: empieza a contar el tiempo
+    if (this.t0 === null && !av.posado && !av.enTierra) {                       // despegue: empieza a contar el tiempo
+      this.t0 = t;
+      if (d.pista) { const [dd, tt] = this.ejePista(N, E), ok = dd > -30 && dd < d.pista.largo + 30 && Math.abs(tt) < d.pista.ancho / 2 + 15; m("despegue", ok ? "ok" : "mal"); if (!ok) this._aviso("despegue", "No has despegado de la pista", T); }
+    }
     // ---- choques: paneles de la planta, faro ----
     if (d.planta && !av.posado) {                    // solo las mesas de la fila mas cercana y sus vecinas
       const [l, tt] = this.lt(N, E), i0 = Math.round(tt / d.planta.separacion);
@@ -307,10 +316,18 @@ class Operacion {
       if (Math.hypot(N - F.n, E - F.e) < F.radio + 0.3 && up - this.suelo(F.n, F.e) < F.alto) this.choque = "choque con el faro";
     }
     if (this.choque) return T;
-    // ---- normas del operador ----
+    // ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas) ----
+    if (Array.isArray(d.vertidos)) {
+      if (this.t0 !== null && !av.enTierra && !av.posado) {
+        const lejos = Math.hypot(N - this.centroPista()[0], E - this.centroPista()[1]) > d.radio_pista;
+        if (lejos && agl < d.h_min) { m("altura", "mal"); this._aviso("altura", `¡Por debajo de ${d.h_min} m lejos de la pista! Sube`, T); }
+        if (agl > d.techo) { m("techo", "mal"); this._aviso("techo", `¡Por encima de ${d.techo} m! Baja`, T); }
+      }
+    } else {
     if (agl > OPS.TECHO) { m("techo", "mal"); this._aviso("techo", "¡Por encima de 120 m de altura! Baja", T); }
     if (Math.hypot(N - this.casa[0], E - this.casa[1]) > OPS.VLOS) { m("vlos", "mal"); this._aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T); }
     if (Math.hypot(N - OPS.ARP.n, E - OPS.ARP.e) < OPS.ARP.r) { m("zona", "mal"); this._aviso("zona", `¡Dentro de la zona del ${OPS.ARP.nombre}!`, T); }
+    }
     // ---- agricultura: nunca a menos de 5 m sobre el cultivo ----
     if (d.manchas) {
       const P = d.parcela;
@@ -326,7 +343,7 @@ class Operacion {
     }
     // ---- termica: lo que mide el medidor puntual (y, sostenido sobre un punto caliente o la fuga, se da por medido) ----
     const zoom = info.zoom || 1;
-    this.lectura = info.termica && this.termicos.length ? this.medir(av, info.gimbal, zoom) : null;
+    this.lectura = info.termica && this.termicos.length ? this.medir(av, info.gimbal, zoom, info.pan || 0) : null;
     const L = this.lectura;
     if (L && (L.tipo === "caliente" || L.tipo === "fuga") && !(L.tipo === "fuga" ? this.hechoFuga : this.hechosC[L.i])) {
       const lim = L.tipo === "fuga" ? d.dist_fuga : d.dist_caliente, clave = L.tipo + L.i;
@@ -388,6 +405,25 @@ class Operacion {
     const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), m = this.marcar, zoom = cam.zoom || 1, ter = !!cam.termica;
     this.fotos++;
     if (av.estado !== "volando" || av.posado) return T;
+    if (Array.isArray(d.vertidos)) {                   // patrulla: la cruz de la torreta sobre la mancha, no demasiado lejos para su zoom
+      const pan = cam.pan || 0, y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R;
+      let motivo = null;
+      d.vertidos.forEach(([vn, ve, L, A, rv], i) => {
+        if (this.hechos[i]) return;
+        const h = this.suelo(vn, ve), c = Operacion.camara(av, gimbal, [vn, ve, h], pan);
+        if (!Operacion.enFoto(c, 1, zoom)) return;
+        if (c.d / zoom > d.dist_foto) { motivo = motivo || `el vertido ${i + 1} está demasiado lejos para identificarlo (${(c.d / 1000).toFixed(1).replace(".", ",")} km): acércate o usa más zoom`; return; }
+        if (Math.sin(g) > -0.01) { motivo = motivo || "la cruz no apunta al agua: baja la torreta"; return; }
+        const s = (up - h) / -Math.sin(g), hn = N + s * Math.cos(g) * Math.cos(y), he = E + s * Math.cos(g) * Math.sin(y);    // la cruz en el agua
+        const r = rv * D2R, dn = hn - vn, de = he - ve, a = dn * Math.cos(r) + de * Math.sin(r), b = -dn * Math.sin(r) + de * Math.cos(r);
+        if ((a / (L / 2)) ** 2 + (b / (A / 2)) ** 2 > 1.4) { motivo = motivo || `el vertido ${i + 1} sale en la foto, pero la cruz no está sobre la mancha: céntrala`; return; }
+        this.hechos[i] = true; const k = this.hechos.filter(Boolean).length, err = Math.hypot(dn, de); this.errores[i] = err;
+        T.push(`Vertido ${i + 1} ✓ (${k}/${d.vertidos.length}) · posición enviada, a ${err.toFixed(0)} m del centro de la mancha`);
+        if (k === d.vertidos.length) { m("vertidos", "ok"); this._todo(av.t); T.push("¡Los tres vertidos localizados! Vuelve a San Javier"); }
+      });
+      if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ningún vertido");
+      return T;
+    }
     if (d.puntos) {                                    // inspeccion: cada punto bien encuadrado, cerca, de frente o desde arriba
       let motivo = null;
       d.puntos.forEach((q, i) => {
@@ -522,11 +558,32 @@ class Operacion {
       a("calientes", `${this.hechosC.filter(Boolean).length} de ${d.puntosCalientes.length}`);
       if (this.tTodo) { this.marcar("tiempo", "ok"); a("tiempo", opMMSS(this.tTodo - this.t0)); }
     }
+    if (Array.isArray(d.vertidos)) {
+      a("vertidos", `${n} de ${d.vertidos.length}`);
+      if (this.tTodo) { this.marcar("tiempo", "ok"); a("tiempo", opMMSS(this.tTodo - this.t0)); }
+      if (final === "aterrizado") {
+        const [dd, tt] = this.ejePista(av.p[0], av.p[1]), ok = dd >= 0 && dd <= d.pista.largo && Math.abs(tt) <= d.pista.ancho / 2;
+        this.marcar("pista", ok ? "ok" : "mal"); a("pista", ok ? `a ${Math.abs(tt).toFixed(1)} m del eje` : "fuera de la pista");
+        this.marcar("a_mano", info.automatico ? "mal" : "ok"); if (info.automatico) a("a_mano", "con el automático");
+      }
+    }
   }
+  /** Patrulla: los vertidos (manchas en el agua) y lo que se ve de ellos en la termica (el hidrocarburo calentado por el sol). */
+  _patrulla() {
+    const d = this.d; this.hechos = d.vertidos.map(() => false); this.errores = d.vertidos.map(() => null);
+    d.vertidos.forEach(([n, e, L], i) => {
+      const P = [n, e, this.suelo(n, e)];
+      this.termicos.push({ tipo: "vertido", i, nombre: `vertido ${i + 1}`, T: 41, P0: P, P1: P.slice(), r: L / 2 });
+    });
+  }
+  /** La pista del trabajo: (d, t) a lo largo de su eje desde el umbral y a su derecha; y su centro (N, E). */
+  ejePista(N, E) { const p = this.d.pista, r = p.rumbo * D2R, dn = N - p.n, de = E - p.e; return [dn * Math.cos(r) + de * Math.sin(r), -dn * Math.sin(r) + de * Math.cos(r)]; }
+  centroPista() { const p = this.d.pista, r = p.rumbo * D2R; return [p.n + p.largo / 2 * Math.cos(r), p.e + p.largo / 2 * Math.sin(r)]; }
   /** Fabrica: cuando estan las tres tareas (con el tiempo, si no se ha pasado), apunta cuando se acabaron. */
   _todo(t) {
     const d = this.d;
-    if (!d.racks || this.tTodo) return;
+    if ((!d.racks && !Array.isArray(d.vertidos)) || this.tTodo) return;
+    if (Array.isArray(d.vertidos)) { if (this.hechos.every(Boolean) && this.t0 !== null && t - this.t0 <= d.limite_s) this.tTodo = t; return; }
     if (this.hechosC.filter(Boolean).length === d.puntosCalientes.length && this.hechoFuga && this.hechoPlaca && this.hechoPiloto && this.t0 !== null && t - this.t0 <= d.limite_s) this.tTodo = t;
   }
 
@@ -534,6 +591,13 @@ class Operacion {
   ahora(obj, av) {
     const d = this.d, hecho = k => obj[k] && obj[k].estado === "ok", N = av.p[0], E = av.p[1], n = this.hechos.filter(Boolean).length;
     const volver = `Ahora: <b>vuelve al punto de despegue y aterriza</b> (a ${Math.hypot(N - this.casa[0], E - this.casa[1]).toFixed(0)} m)`;
+    if (Array.isArray(d.vertidos)) {
+      if (this.t0 === null) return "Ahora: <b>despega de la pista 05R</b> (L arranca el motor, espacio quita el freno; P despegue automático)";
+      const [cn, ce] = this.centroPista(), i = d.vertidos.findIndex((_, k) => !this.hechos[k]);
+      if (i < 0) return `Ahora: <b>vuelve a San Javier y aterriza en la pista</b> (a ${(Math.hypot(N - cn, E - ce) / 1000).toFixed(1).replace(".", ",")} km)`;
+      const [sn, se] = d.sectores[i], rumbo = ((Math.atan2(se - E, sn - N) * R2D) + 360) % 360;
+      return `Tiempo: <b>${opMMSS(Math.max(0, d.limite_s - (av.t - this.t0)))}</b> · vertidos <b>${n} de ${d.vertidos.length}</b> · siguiente: sector ${i + 1} a ${(Math.hypot(N - sn, E - se) / 1000).toFixed(1).replace(".", ",")} km, rumbo ${String(Math.round(rumbo) % 360).padStart(3, "0")}°`;
+    }
     if (this.t0 === null) return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo";
     if (d.puntos) {
       const i = d.puntos.findIndex((_, k) => !this.hechos[k]);

@@ -3,9 +3,12 @@ detalle con la zona de trabajo (discontinua amarilla) y el punto de despegue (H)
 atribucion del PNOA. Sin las soluciones: ni los puntos que fotografiar, ni las manchas, ni el senderista, ni los modulos
 danados. Las leen las dos versiones del simulador (la orden de trabajo de la pantalla de Operaciones).
 
-    python analisis/mundo_cartagena/briefing_operaciones.py      (necesita las zonas de detalle en simulador/zonas)
+    python analisis/mundo_cartagena/briefing_operaciones.py [id ...]     (necesita las zonas de detalle en simulador/zonas)
+
+Un trabajo mas grande que las zonas de detalle (la patrulla del Mar Menor) sale sobre la ortofoto de toda la region
+(simulador/mundos/cartagena_orto.jpg, 12 m/px).
 """
-import json, math, os, re
+import json, math, os, re, sys
 from PIL import Image, ImageDraw, ImageFont
 
 RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
@@ -23,9 +26,23 @@ def zona_de(n, e):
         if z["N0"] <= n <= z["N0"] + z["lado_m"] and z["E0"] <= e <= z["E0"] + z["lado_m"]: return z
     raise SystemExit("sin zona de detalle en N %.0f E %.0f" % (n, e))
 
+def zona_que_cubre(n0, n1, e0, e1):
+    for z in ZONAS:
+        if z["N0"] <= n0 and n1 <= z["N0"] + z["lado_m"] and z["E0"] <= e0 and e1 <= z["E0"] + z["lado_m"]: return z
+    return None
+
+def recorte_region(n0, n1, e0, e1):
+    """Lo mismo sobre la ortofoto de la region (fila 0 = borde norte de la malla del mundo)."""
+    s = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s[s.index("Mundos.registrar(") + 17: s.rindex(");")])["terreno"]
+    Image.MAX_IMAGE_PIXELS = None; big = Image.open(os.path.join(SIM, "mundos", "cartagena_orto.jpg")).convert("RGB")
+    k = big.size[0] / ((T["nE"] - 1) * T["paso"]); Nn = T["N0"] + (T["nN"] - 1) * T["paso"]
+    return big.crop((int((e0 - T["E0"]) * k), int((Nn - n1) * k), int((e1 - T["E0"]) * k), int((Nn - n0) * k))), k
+
 def recorte(n0, n1, e0, e1):
     """Ortofoto de la zona entre n0..n1, e0..e1 (m), con la misma escala en los dos ejes; devuelve (imagen, m->px)."""
-    z = zona_de((n0 + n1) / 2, (e0 + e1) / 2); meta = json.load(open(os.path.join(SIM, "zonas", z["id"], "zona.json"), encoding="utf-8"))
+    z = zona_que_cubre(n0, n1, e0, e1)
+    if z is None and (n1 - n0) > 3000: return recorte_region(n0, n1, e0, e1)
+    z = z or zona_de((n0 + n1) / 2, (e0 + e1) / 2); meta = json.load(open(os.path.join(SIM, "zonas", z["id"], "zona.json"), encoding="utf-8"))
     O = meta["orto"]; nt, tm = O["teselas"], O["tesela_m"]; px = Image.open(os.path.join(SIM, "zonas", z["id"], O["archivo"].format(i=0, j=0))).size[0]
     k = px / tm; big = Image.new("RGB", (nt * px, nt * px))
     for i in range(nt):
@@ -55,6 +72,18 @@ def briefing(id_):
         q.append((O["antorcha"]["n"], O["antorcha"]["e"]))
         n0, n1 = min(p[0] for p in q) - 20, max(p[0] for p in q) + 20; e0, e1 = min(p[1] for p in q) - 20, max(p[1] for p in q) + 20
         zona = [(n0, e0), (n0, e1), (n1, e1), (n1, e0)]
+    elif "candidatos_vertido" in O:                      # patrulla: donde puede haber manchas, con el radio del sector
+        R = O["radio_sector"]; q = sorted(set((round(n), round(e)) for n, e in O["candidatos_vertido"]))
+        q = [(n + R * math.cos(a * math.pi / 8), e + R * math.sin(a * math.pi / 8)) for n, e in q for a in range(16)]
+        def giro(o, a, b): return (a[1] - o[1]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[1] - o[1])
+        q.sort(key=lambda p: (p[1], p[0])); abajo, arriba = [], []      # envolvente convexa (cadena monotona, en E, N)
+        for p in q:
+            while len(abajo) >= 2 and giro(abajo[-2], abajo[-1], p) <= 0: abajo.pop()
+            abajo.append(p)
+        for p in reversed(q):
+            while len(arriba) >= 2 and giro(arriba[-2], arriba[-1], p) <= 0: arriba.pop()
+            arriba.append(p)
+        zona = abajo[:-1] + arriba[:-1]
     else: zona = None
     if "faro" in O:
         Fr = O["faro"]; r0, r1 = O["orbita"]; pts += [(Fr["n"] - r1, Fr["e"] - r1), (Fr["n"] + r1, Fr["e"] + r1)]
@@ -62,6 +91,9 @@ def briefing(id_):
     ns = [p[0] for p in pts]; es = [p[1] for p in pts]
     cn, ce = (min(ns) + max(ns)) / 2, (min(es) + max(es)) / 2
     lado_e = max(max(es) - min(es), (max(ns) - min(ns)) * W / H) * 1.3 + 40; lado_n = lado_e * H / W
+    if "candidatos_vertido" in O:                                 # sobre la ortofoto de la region: sin salirse de su borde norte
+        s_ = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s_[s_.index("Mundos.registrar(") + 17: s_.rindex(");")])["terreno"]
+        cn = min(cn, T["N0"] + (T["nN"] - 1) * T["paso"] - lado_n / 2 - 10)
     img, k0 = recorte(cn - lado_n / 2, cn + lado_n / 2, ce - lado_e / 2, ce + lado_e / 2)
     img = img.resize((W, H), Image.LANCZOS); k = W / lado_e
     X = lambda e: (e - (ce - lado_e / 2)) * k; Y = lambda n: ((cn + lado_n / 2) - n) * k
@@ -87,6 +119,11 @@ def briefing(id_):
         for r, a in ((O["orbita"][1], 45), (O["orbita"][0], 0)):
             c = (X(Fr["e"]), Y(Fr["n"])); d.ellipse([c[0] - r * k, c[1] - r * k, c[0] + r * k, c[1] + r * k], outline=AMARILLO, width=4)
         d.text((X(Fr["e"]) + O["orbita"][1] * k + 8, Y(Fr["n"]) - 10), "órbita %d–%d m" % tuple(O["orbita"]), fill=AMARILLO, font=F(20))
+    if "pista" in O:                                              # UAV: la pista de despegue y aterrizaje
+        P = O["pista"]; r = math.radians(P["rumbo"]); ne = lambda l, t: (P["n"] + l * math.cos(r) - t * math.sin(r), P["e"] + l * math.sin(r) + t * math.cos(r))
+        esq = [ne(0, -P["ancho"] / 2), ne(P["largo"], -P["ancho"] / 2), ne(P["largo"], P["ancho"] / 2), ne(0, P["ancho"] / 2)]
+        d.polygon([(X(e), Y(n)) for n, e in esq], fill=(40, 40, 40), outline=(255, 255, 255))
+        c = ne(P["largo"], 0); d.text((X(c[1]) + 14, Y(c[0]) - 12), P["nombre"], fill=(255, 255, 255), font=F(18), stroke_width=3, stroke_fill=(0, 0, 0))
     if "antorcha" in O:                                           # SABIC: la antorcha (la placa y el piloto)
         A = (X(O["antorcha"]["e"]), Y(O["antorcha"]["n"]))
         d.ellipse([A[0] - 13, A[1] - 13, A[0] + 13, A[1] + 13], fill=(255, 179, 0), outline=(0, 0, 0), width=2)
@@ -96,18 +133,20 @@ def briefing(id_):
     d.ellipse([h[0] - 16, h[1] - 16, h[0] + 16, h[1] + 16], fill=(255, 109, 0), outline=(0, 0, 0), width=2)
     d.text((h[0], h[1]), "H", fill=(255, 255, 255), font=F(20), anchor="mm")
     d.text((h[0] + 22, h[1] - 10), "Despegue", fill=(255, 255, 255), font=F(18), stroke_width=3, stroke_fill=(0, 0, 0))
-    if zona: d.text((poli[3][0] + 8, poli[3][1] + 6), "Zona de trabajo", fill=AMARILLO, font=F(20), stroke_width=3, stroke_fill=(0, 0, 0))
+    if zona and "candidatos_vertido" in O:
+        cy = max(poli, key=lambda p: p[1]); d.text((cy[0], cy[1] + 10), "Zona de patrulla", fill=AMARILLO, font=F(20), anchor="mt", stroke_width=3, stroke_fill=(0, 0, 0))
+    elif zona: d.text((poli[3][0] + 8, poli[3][1] + 6), "Zona de trabajo", fill=AMARILLO, font=F(20), stroke_width=3, stroke_fill=(0, 0, 0))
     # titulo, norte, escala y atribucion
     d.rectangle([0, 0, W, 56], fill=(11, 15, 20, 200)); d.text((18, 28), E["nombre"], fill=(255, 255, 255), font=F(28), anchor="lm")
     d.text((W - 18, 28), "Orden de trabajo · briefing", fill=(159, 179, 200), font=F(18), anchor="rm")
     nx, ny = W - 50, 110; d.polygon([(nx, ny - 30), (nx - 13, ny + 8), (nx, ny), (nx + 13, ny + 8)], fill=(255, 255, 255), outline=(0, 0, 0))
     d.text((nx, ny + 24), "N", fill=(255, 255, 255), font=F(22), anchor="mm", stroke_width=3, stroke_fill=(0, 0, 0))
-    esc = next(v for v in (500, 200, 100, 50, 20, 10) if v * k < W / 4)
+    esc = next(v for v in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10) if v * k < W / 4)
     d.rectangle([18, H - 64, 18 + esc * k, H - 56], fill=(255, 255, 255), outline=(0, 0, 0))
-    d.text((18, H - 76), "%d m" % esc, fill=(255, 255, 255), font=F(18), stroke_width=3, stroke_fill=(0, 0, 0))
+    d.text((18, H - 76), "%d km" % (esc // 1000) if esc >= 1000 else "%d m" % esc, fill=(255, 255, 255), font=F(18), stroke_width=3, stroke_fill=(0, 0, 0))
     d.text((W - 12, H - 12), "Ortofoto: PNOA © Instituto Geográfico Nacional (CC BY 4.0)", fill=(255, 255, 255), font=F(14), anchor="rs", stroke_width=2, stroke_fill=(0, 0, 0))
     os.makedirs(os.path.join(SIM, "operaciones"), exist_ok=True)
     salida = os.path.join(SIM, "operaciones", id_ + ".jpg"); img.save(salida, quality=84)
     print(id_, "->", salida, "(%d KB)" % (os.path.getsize(salida) // 1024))
 
-for id_ in [k for k, v in ESC.items() if "operacion" in v]: briefing(id_)
+for id_ in sys.argv[1:] or [k for k, v in ESC.items() if "operacion" in v]: briefing(id_)

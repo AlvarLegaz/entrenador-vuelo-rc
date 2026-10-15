@@ -8,6 +8,18 @@
 //  Los datos se generan con analisis/mundo_cartagena/zona.py y orto_region.py.
 // =====================================================================
 const arbolesSinteticos = Visor.prototype._arbolesMundo;      // sin la ortofoto de la region, los arboles de antes
+/** La mancha de un vertido [n, e, largo, ancho, rumbo, semilla]: un abanico de 32 puntos con el borde irregular (la
+ *  semilla), a escala "esc", a dy m sobre el agua. La misma forma que mancha_vertido de mundo_3d.gd. */
+function manchaVertido(V, esc, alt, dy) {
+  const [n, e, L, A, rv, s] = V, r = rv * Math.PI / 180, y0 = alt(n, e) + dy, v = [e, y0, -n], ix = [];
+  for (let k = 0; k < 32; k++) {
+    const t = 2 * Math.PI * k / 32, rr = esc * (1 + 0.16 * Math.sin(3 * t + s * 0.37) + 0.1 * Math.sin(5 * t + s * 0.71) + 0.06 * Math.sin(7 * t + s * 1.13));
+    const x = L / 2 * rr * Math.cos(t), y = A / 2 * rr * Math.sin(t);
+    v.push(e + x * Math.sin(r) + y * Math.cos(r), y0, -(n + x * Math.cos(r) - y * Math.sin(r)));
+    ix.push(0, 1 + (k + 1) % 32, 1 + k);                              // hacia arriba (antihorario visto desde arriba)
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); g.setIndex(ix); g.computeVertexNormals(); return g;
+}
 Object.assign(Visor.prototype, {
 
   /** Tras construir la escena de un mundo real: guarda su terreno lejano (para hundirlo bajo la zona) y carga la
@@ -133,14 +145,18 @@ Object.assign(Visor.prototype, {
     if (!P || !this.mundo) return;
     const G = new THREE.Group(), r = P.rumbo * D2R, cr = Math.cos(r), sr = Math.sin(r), alt = this.entorno.altura;
     const pt = (d, t, dz) => { const n = P.n + d * cr - t * sr, e = P.e + d * sr + t * cr; return [e, alt(n, e) + dz, -n]; };
-    const malla = (quads, dz) => {          // quads [[d0, d1, t0, t1], ...] -> una malla (cada esquina a la altura del suelo + dz)
-      const v = [], ix = [];
-      for (const [d0, d1, t0, t1] of quads) { const b = v.length / 3; for (const [d, t] of [[d0, t0], [d1, t0], [d1, t1], [d0, t1]]) v.push(...pt(d, t, dz)); ix.push(b, b + 2, b + 1, b, b + 3, b + 2); }
+    const malla = (quads, dz) => {          // quads [[d0, d1, t0, t1], ...] -> una malla en celdas de 5 m como mucho, cada vertice a la
+      const v = [], ix = [];                 // altura del suelo + dz (sigue el MDT de 5 m de la zona de detalle sin que el terreno asome)
+      for (const [d0, d1, t0, t1] of quads) {
+        const nd = Math.max(1, Math.ceil((d1 - d0) / 5)), nt = Math.max(1, Math.ceil((t1 - t0) / 5)), b = v.length / 3;
+        for (let i = 0; i <= nd; i++) for (let j = 0; j <= nt; j++) v.push(...pt(d0 + (d1 - d0) * i / nd, t0 + (t1 - t0) * j / nt, dz));
+        for (let i = 0; i < nd; i++) for (let j = 0; j < nt; j++) { const p = b + i * (nt + 1) + j, q = p + nt + 1; ix.push(p, q + 1, q, p, p + 1, q + 1); }
+      }
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); g.setIndex(ix); g.computeVertexNormals(); return g;
     };
     const a = P.ancho / 2, asf = [];
     for (let d = 0; d < P.largo; d += 20) asf.push([d, Math.min(P.largo, d + 20), -a - 3, a + 3]);
-    const mAsf = new THREE.Mesh(malla(asf, 0.10), new THREE.MeshStandardMaterial({ color: 0x45484b, roughness: 0.95, side: THREE.DoubleSide })); mAsf.receiveShadow = true; G.add(mAsf);
+    const mAsf = new THREE.Mesh(malla(asf, 0.15), new THREE.MeshStandardMaterial({ color: 0x45484b, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); mAsf.receiveShadow = true; G.add(mAsf);
     const marcas = [];
     for (let d = 0; d < P.largo; d += 50) for (const s of [-1, 1]) marcas.push([d, Math.min(P.largo, d + 50), s * a - (s > 0 ? 0.9 : 0), s * a + (s < 0 ? 0.9 : 0)]);   // bordes
     for (let d = 200; d + 30 < P.largo - 200; d += 50) marcas.push([d, d + 30, -0.45, 0.45]);                                      // eje
@@ -148,14 +164,14 @@ Object.assign(Visor.prototype, {
       for (let k = 0; k < 8; k++) for (const s of [-1, 1]) { const t0 = s * (1.8 + k * 3.6), t1 = t0 + s * 1.8; marcas.push([Math.min(d0, d0 + sgn * 30), Math.max(d0, d0 + sgn * 30), Math.min(t0, t1), Math.max(t0, t1)]); }   // umbral
       const dv = sgn > 0 ? 400 : P.largo - 400; for (const s of [-1, 1]) marcas.push([dv - 22.5, dv + 22.5, s * 6 - 3, s * 6 + 3]);                    // puntos de visada
     }
-    G.add(new THREE.Mesh(malla(marcas, 0.13), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, side: THREE.DoubleSide })));
+    G.add(new THREE.Mesh(malla(marcas, 0.20), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })));
     const [n1, n2] = (P.nombre || "").split(" ").pop().split("/");                 // "San Javier 05R/23L" -> 05R y 23L
     for (const [txt, d, giro] of [[n1, 60, 0], [n2, P.largo - 60, Math.PI]]) {
       if (!txt) continue;
       const [c, g] = lienzo(128, 256); g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.font = "bold 110px sans-serif";
       g.fillText(txt.slice(0, 2), 64, 70); g.fillText(txt.slice(2), 64, 195);
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(14, 28), new THREE.MeshStandardMaterial({ map: texSRGB(c), transparent: true, roughness: 0.8 }));
-      const q = pt(d + (giro ? -14 : 14), 0, 0.14); m.position.set(q[0], q[1], q[2]); m.rotation.order = "YXZ"; m.rotation.set(-Math.PI / 2, -r - giro, 0); G.add(m);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(14, 28), new THREE.MeshStandardMaterial({ map: texSRGB(c), transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+      const q = pt(d + (giro ? -14 : 14), 0, 0.45); m.position.set(q[0], q[1], q[2]); m.rotation.order = "YXZ"; m.rotation.set(-Math.PI / 2, -r - giro, 0); G.add(m);
     }
     this.pista = G; this.escena.add(G);
   },
@@ -240,7 +256,13 @@ Object.assign(Visor.prototype, {
       });
     }
     G.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    if (d.racks || d.calientes) this._termicos(G, new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), d);
+    if (Array.isArray(d.vertidos)) for (const V of d.vertidos) {      // patrulla: cada vertido, una irisacion parda grande y un nucleo oscuro
+      for (const [esc, col, op, dy] of [[1, 0x8a7a5a, 0.5, 0.35], [0.55, 0x1e1a14, 0.85, 0.4]]) {
+        const m = new THREE.Mesh(manchaVertido(V, esc, alt, dy), new THREE.MeshStandardMaterial({ color: col, transparent: true, opacity: op, roughness: 0.12, metalness: 0.35, depthWrite: false }));
+        m.renderOrder = 2; G.add(m);
+      }
+    }
+    if (d.racks || d.calientes || Array.isArray(d.vertidos)) this._termicos(G, new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), d);
     this.operacion = G; this.escena.add(G);
   },
 
@@ -253,6 +275,7 @@ Object.assign(Visor.prototype, {
     const mat = T => new THREE.MeshBasicMaterial({ color: clave(T), toneMapped: false, fog: false });
     const capa1 = o => { o.layers.set(1); o.castShadow = false; o.receiveShadow = false; G.add(o); return o; };
     for (const o of op.termicos) {
+      if (o.tipo === "vertido") { const m = mat(o.T); m.transparent = true; m.opacity = 1; capa1(new THREE.Mesh(manchaVertido(d.vertidos[o.i], 1, this.entorno.altura, 2), m)).renderOrder = 10; continue; }   // tras el agua y la mancha (transparentes), sin mezclarse    // plano a 2 m sobre el agua: de lejos, con menos no se separa de la mancha visible (bufer de profundidad)
       const [n0, e0, y0] = o.P0, [n1, e1, y1] = o.P1, L = Math.hypot(n1 - n0, e1 - e0, y1 - y0);
       if (L < 0.01) { const s = capa1(new THREE.Mesh(new THREE.SphereGeometry(o.r, 12, 8), mat(o.T))); s.position.set(e0, y0, -n0); continue; }
       const c = capa1(new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r, L, 12), mat(o.T)));

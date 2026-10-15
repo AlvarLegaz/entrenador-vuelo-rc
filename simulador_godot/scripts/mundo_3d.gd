@@ -774,16 +774,21 @@ func poner_pista(P) -> void:
 	var pt := func(d: float, t: float, dz: float) -> Vector3:
 		var n: float = P["n"] + d * cr - t * sr; var e: float = P["e"] + d * sr + t * cr
 		return Vector3(e, ent.altura(n, e) + dz, -n)
-	var malla := func(quads: Array, dz: float) -> ArrayMesh:
+	var malla := func(quads: Array, dz: float) -> ArrayMesh:     # en celdas de 5 m como mucho (sigue el MDT de la zona de detalle)
 		var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		for q in quads:
-			var c: Array = [pt.call(q[0], q[2], dz), pt.call(q[1], q[2], dz), pt.call(q[1], q[3], dz), pt.call(q[0], q[3], dz)]
-			for k in [0, 1, 2, 0, 2, 3]: st.add_vertex(c[k])
+			var d0: float = q[0]; var d1: float = q[1]; var t0: float = q[2]; var t1: float = q[3]
+			var nd := maxi(1, ceili((d1 - d0) / 5)); var nt := maxi(1, ceili((t1 - t0) / 5))
+			for i in nd:
+				for j in nt:
+					var da := d0 + (d1 - d0) * i / nd; var db := d0 + (d1 - d0) * (i + 1) / nd; var ta := t0 + (t1 - t0) * j / nt; var tb := t0 + (t1 - t0) * (j + 1) / nt
+					var c: Array = [pt.call(da, ta, dz), pt.call(db, ta, dz), pt.call(db, tb, dz), pt.call(da, tb, dz)]
+					for k in [0, 1, 2, 0, 2, 3]: st.add_vertex(c[k])
 		st.generate_normals(); return st.commit()
 	var asf := []; var d := 0.0
 	while d < largo: asf.append([d, minf(largo, d + 20), -a - 3, a + 3]); d += 20
 	var m_asf := StandardMaterial3D.new(); m_asf.albedo_color = Color.hex(0x45484bff); m_asf.roughness = 0.95; m_asf.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var mi := MeshInstance3D.new(); mi.mesh = malla.call(asf, 0.10); mi.material_override = m_asf; G.add_child(mi)
+	var mi := MeshInstance3D.new(); mi.mesh = malla.call(asf, 0.15); mi.material_override = m_asf; G.add_child(mi)
 	var marcas := []; d = 0.0
 	while d < largo:
 		for s in [-1.0, 1.0]: marcas.append([d, minf(largo, d + 50), s * a - (0.9 if s > 0 else 0.0), s * a + (0.9 if s < 0 else 0.0)])
@@ -799,12 +804,12 @@ func poner_pista(P) -> void:
 		var dv: float = 400.0 if sgn > 0 else largo - 400
 		for s in [-1.0, 1.0]: marcas.append([dv - 22.5, dv + 22.5, s * 6 - 3, s * 6 + 3])
 	var m_mar := StandardMaterial3D.new(); m_mar.albedo_color = Color.hex(0xeeeeeeff); m_mar.roughness = 0.8; m_mar.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var mm := MeshInstance3D.new(); mm.mesh = malla.call(marcas, 0.13); mm.material_override = m_mar; G.add_child(mm)
+	var mm := MeshInstance3D.new(); mm.mesh = malla.call(marcas, 0.20); mm.material_override = m_mar; G.add_child(mm)
 	var nom: PackedStringArray = String(P.get("nombre", "")).split(" ")[-1].split("/")
 	for q in [[nom[0] if nom.size() > 0 else "", 60.0, 0.0], [nom[1] if nom.size() > 1 else "", largo - 60, PI]]:
 		var txt: String = q[0]
 		if txt == "": continue
-		var c: Vector3 = pt.call(q[1] + (-14.0 if q[2] != 0 else 14.0), 0.0, 0.14)
+		var c: Vector3 = pt.call(q[1] + (-14.0 if q[2] != 0 else 14.0), 0.0, 0.45)      # plano de 28 m: por encima de los altibajos del asfalto
 		var l := Label3D.new(); l.text = txt.substr(0, 2) + "\n" + txt.substr(2); l.font = Tema.negrita; l.font_size = 110; l.pixel_size = 28.0 / 256.0
 		l.outline_size = 0; l.modulate = Color.WHITE; l.double_sided = true; l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
 		l.position = c; l.rotation = Vector3(-PI / 2, -r - float(q[2]), 0); l.rotation_order = EULER_ORDER_YXZ; G.add_child(l)
@@ -937,7 +942,13 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
 			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
 			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))
-	if d.has("racks") or d.has("calientes"): _termicos(G, Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 }), d)
+	if d.get("vertidos") is Array:                                    # patrulla: cada vertido, una irisacion parda grande y un nucleo oscuro
+		for V in d["vertidos"]:
+			for q in [[1.0, Color.hex(0x8a7a5aff), 0.5, 0.35], [0.55, Color.hex(0x1e1a14ff), 0.85, 0.4]]:
+				var mt := StandardMaterial3D.new(); mt.albedo_color = Color(q[1], q[2]); mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.roughness = 0.12; mt.metallic = 0.35
+				mt.cull_mode = BaseMaterial3D.CULL_DISABLED; mt.render_priority = 2
+				var mi := MeshInstance3D.new(); mi.mesh = mancha_vertido(V, q[0], q[3]); mi.material_override = mt; G.add_child(mi)
+	if d.has("racks") or d.has("calientes") or d.get("vertidos") is Array: _termicos(G, Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 }), d)
 
 ## Lo que solo se ve con la camara termica (capa 2: la camara normal no la dibuja) en colores clave para el sombreador
 ## de la termica (principal.gd, _termica): caliente en rojo puro con el calor en el azul, frio en verde puro. Y lo que se
@@ -952,6 +963,7 @@ func _termicos(G: Node3D, op: Operacion, d: Dictionary) -> void:
 	var esfera := func(r: float, seg: int) -> SphereMesh:
 		var s := SphereMesh.new(); s.radius = r; s.height = 2 * r; s.radial_segments = seg; s.rings = 8; return s
 	for o in op.termicos:
+		if o["tipo"] == "vertido": capa2.call(mancha_vertido(d["vertidos"][o["i"]], 1.0, 2.0), mat.call(float(o["T"]))); continue    # plano a 2 m sobre el agua: de lejos, con menos no se separa de la mancha visible (bufer de profundidad)
 		var P0: Array = o["P0"]; var P1: Array = o["P1"]
 		var a := Vector3(P0[1], P0[2], -P0[0]); var b := Vector3(P1[1], P1[2], -P1[0]); var L := a.distance_to(b)
 		if L < 0.01: (capa2.call(esfera.call(float(o["r"]), 12), mat.call(float(o["T"]))) as MeshInstance3D).position = a; continue
@@ -979,6 +991,20 @@ func _termicos(G: Node3D, op: Operacion, d: Dictionary) -> void:
 			var cn := CylinderMesh.new(); cn.top_radius = 0.0; cn.bottom_radius = f[0]; cn.height = f[1]; cn.radial_segments = 12; cn.rings = 0
 			var mf := StandardMaterial3D.new(); mf.albedo_color = Color(f[2], 0.85); mf.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mf.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			var mi := MeshInstance3D.new(); mi.mesh = cn; mi.material_override = mf; mi.position = Vector3(B[1], B[2] + f[1] / 2, -B[0]); G.add_child(mi)
+
+## La mancha de un vertido [n, e, largo, ancho, rumbo, semilla]: un abanico de 32 puntos con el borde irregular (la
+## semilla), a escala esc, a dy m sobre el agua (manchaVertido de visor_real.js).
+func mancha_vertido(V: Array, esc: float, dy: float) -> ArrayMesh:
+	var n: float = V[0]; var e: float = V[1]; var L: float = V[2]; var A: float = V[3]; var r: float = float(V[4]) * PI / 180; var s: float = V[5]
+	var y0 := ent.altura(n, e) + dy; var c := Vector3(e, y0, -n); var pts := []
+	for k in 32:
+		var t := TAU * k / 32.0; var rr := esc * (1 + 0.16 * sin(3 * t + s * 0.37) + 0.1 * sin(5 * t + s * 0.71) + 0.06 * sin(7 * t + s * 1.13))
+		var x := L / 2 * rr * cos(t); var y := A / 2 * rr * sin(t)
+		pts.append(Vector3(e + x * sin(r) + y * cos(r), y0, -(n + x * cos(r) - y * sin(r))))
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 32:
+		for q in [c, pts[k], pts[(k + 1) % 32]]: st.set_normal(Vector3.UP); st.add_vertex(q)
+	return st.commit()
 
 var _sing: Node3D
 func _singulares() -> void:

@@ -337,11 +337,12 @@ margen = (xnp - x_cg) / P.C * 100
 modelo = dict(
     id=ID, nombre=P.NOMBRE, descripcion=P.DESCRIPCION, uav=True,
     categoria="150 kg, UAS militar clase I (táctico ligero)",
-    ayuda=("Despega en pista: suelta el freno de aparcamiento (espacio), gas a tope y ve recto con los timones (A / D, "
-           "que mueven la rueda de morro); a 30 m/s (108 km/h) tira suavemente. En el aire, el piloto automático: "
-           "1 estabilizado, 2 crucero (mantiene altura, rumbo y velocidad), 3 ir a punto (clic en el mapa), 4 vuelta a "
-           "base y 0 manual; P despega o aterriza solo. Con el automático puesto, las flechas mueven la torreta EO/IR "
-           "(Z / X zoom, C térmica, F foto)."),
+    ayuda=("Despega en pista: arranca (L), suelta el freno de aparcamiento (espacio), gas a tope y ve recto con los timones "
+           "(A / D, que mueven la rueda de morro); a 29 m/s (104 km/h) tira suavemente. Piloto automático: M pasa de manual "
+           "a estabilizado y a crucero (mantiene altura, rumbo y velocidad), un clic en el mapa va a ese punto y da vueltas "
+           "sobre él, H vuelve a la base y P despega o aterriza solo. Torreta EO/IR (cámara 3; la 1 es la de vuelo, en el "
+           "morro): las flechas con Mayúsculas (o solas con el automático navegando), Q / E la inclinan, K la fija en un "
+           "punto, Z / X zoom, C térmica y F foto."),
     perfil="NACA %d%d%02d" % (round(P.PERFIL[0] * 100), round(P.PERFIL[1] * 10), round(P.PERFIL[2] * 100)),
     caracteristicas=[["Envergadura", "%.1f m" % (P.B / 1e3)], ["Longitud", "%.1f m" % ((P.BOOM_X1 + 60) / 1e3)],
                      ["Superficie alar", "%.2f m²" % S], ["Peso al despegue", "%.0f kg" % m_kg],
@@ -367,7 +368,7 @@ modelo = dict(
     piloto=dict(v_min=28.0, v_alarma=26.0, v_max=42.0, v_crucero=V_CRUCERO, v_aprox=31.0, v_rotacion=29.0, alfa_max=6.5, k_alfa=1.5,
                 alabeo_max=30.0, cabeceo_max=15.0, cabeceo_min=-10.0, cabeceo_crucero=2.0, cabeceo_rotacion=8.0,
                 cabeceo_subida=8.0, cabeceo_recogida=4.0, h_min=150.0, h_base=300.0, h_fin_despegue=60.0, vz_max=5.0,
-                final_m=3000.0, senda_grados=4.0, h_umbral=8.0, h_recogida=4.0, radio_orbita=400.0, k_orbita=150.0,
+                final_m=3000.0, senda_grados=4.0, h_umbral=8.0, h_recogida=4.0, vz_toma=0.4, k_recogida=0.3, radio_orbita=400.0, k_orbita=150.0,
                 giro_consigna=15.0, subida_consigna=4.0,
                 k_alabeo=2.5, k_p=0.4, k_cabeceo=3.0, k_q=0.6, k_i_cabeceo=1.0, k_derrape=1.5, k_r=0.6,
                 k_rumbo=1.2, k_altura=0.15, k_vz=0.02, k_gas=0.08, k_gas_vz=0.06, k_i_gas=0.02, gas_crucero=0.55,

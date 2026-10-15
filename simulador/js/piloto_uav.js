@@ -127,8 +127,9 @@ class PilotoUAV {
       if (agl < P.h_recogida) this.fase = "recogida";
       return out;
     }
-    if (this.fase === "recogida") {                      // cerca del suelo: gas fuera, morro arriba, alas niveladas y el morro con la pista (sin deriva)
-      actitud(0, P.cabeceo_recogida * D2R); out.gas = 0;
+    if (this.fase === "recogida") {                      // cerca del suelo: gas fuera, alas niveladas, el morro con la pista (sin deriva) y
+      const vzc = -(P.vz_toma + P.k_recogida * agl); this.vzc = vzc;     // bajando cada vez mas despacio (sin flotar con el efecto suelo)
+      actitud(0, L(Math.atan2(vzc, V) + P.k_vz * (vzc - vz) + P.cabeceo_crucero * D2R, 0, P.cabeceo_recogida * D2R)); out.gas = 0;
       out.guinada = L(P.k_rumbo_tierra * W(rp - e[2]) - P.k_r_tierra * av.w[2], -1, 1);
       if (av.enTierra) this.fase = "rodadura";
       return out;

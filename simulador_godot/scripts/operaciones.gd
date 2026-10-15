@@ -53,6 +53,7 @@ var lectura = null                  # lo que mide el medidor puntual
 var medida = null
 var hechos_c := []                  # puntos calientes medidos (fabrica) o fotografiados (paneles)
 var modulos_c := []
+var errores := []                   # patrulla: a cuantos metros del centro de cada mancha estaba la cruz en su foto
 var racks_pista := []
 var boca := []
 var placa := []
@@ -192,6 +193,14 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 		var Z: Dictionary = O["zona"]
 		var pn: float = Z["n0"] + 20 + rnd.call() * (Z["n1"] - Z["n0"] - 40); var pe: float = Z["e0"] + 20 + rnd.call() * (Z["e1"] - Z["e0"] - 40)
 		dd["persona"] = [pn, pe]
+	if O.has("candidatos_vertido"):                   # patrulla: los vertidos en sitios separados y su sector (el aviso), desplazado al azar
+		var C: Array = (O["candidatos_vertido"] as Array).map(func(q): return { "n": float(q[0]), "e": float(q[1]) })
+		var V := _tomar(C, int(O["vertidos"]), rnd, float(O["separacion"])); var R: float = O["radio_sector"]; var vs := []; var ss := []
+		for q in V:
+			var L := roundf(90 + 110 * rnd.call()); vs.append([q["n"], q["e"], L, roundf(L * (0.35 + 0.25 * rnd.call())), roundf(360 * rnd.call()), int(floor(rnd.call() * 1000))])
+		for q in V:
+			var a: float = TAU * rnd.call(); var r: float = 0.6 * R * sqrt(rnd.call()); ss.append([roundf(q["n"] + r * cos(a)), roundf(q["e"] + r * sin(a))])
+		dd["vertidos"] = vs; dd["sectores"] = ss
 	return dd
 static func _n(x) -> String: return PasadaBaja._num(float(x))
 static func mmss(s: float) -> String: return "%d:%02d" % [int(floor(s / 60)), int(floor(fmod(s, 60)))]
@@ -212,14 +221,15 @@ func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dicti
 			n += 5
 	if d.has("planta"): _planta()
 	if d.has("racks"): _fabrica()
+	if d.get("vertidos") is Array: _patrulla()
 
 ## Punto de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo).
 func z(n: float, e: float, q: Dictionary) -> float:
 	return q["cota"] - h0 if q.has("cota") else suelo.call(n, e) + float(q.get("h", 0.0))
 
 ## Un punto P (N, E, arriba) en la camara del dron (gimbal en grados): x delante, y derecha, z abajo de la imagen, d distancia.
-static func camara(av: Dictionary, gimbal: float, P: Array) -> Dictionary:
-	var y: float = Cuat.euler(av["q"])[2]; var g := gimbal * D2R; var cy := cos(y); var sy := sin(y); var cg := cos(g); var sg := sin(g)
+static func camara(av: Dictionary, gimbal: float, P: Array, pan := 0.0) -> Dictionary:
+	var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R; var cy := cos(y); var sy := sin(y); var cg := cos(g); var sg := sin(g)
 	var v := [P[0] - av["p"][0], P[1] - av["p"][1], -(P[2] + av["p"][2])]
 	return { "x": v[0] * cy * cg + v[1] * sy * cg - v[2] * sg, "y": -v[0] * sy + v[1] * cy, "z": v[0] * cy * sg + v[1] * sy * sg + v[2] * cg,
 			 "d": sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) }
@@ -227,8 +237,8 @@ static func en_foto(c: Dictionary, k: float, zoom := 1.0) -> bool:
 	return c["x"] > 0 and absf(c["y"]) <= k * tan(CAM_H * D2R) / zoom * c["x"] and absf(c["z"]) <= k * tan(CAM_V * D2R) / zoom * c["x"]
 
 ## Distancia del rayo del centro de la camara (rumbo y gimbal) a un segmento P0-P1 (N, E, arriba): {t, d} (rayoSegmento).
-static func rayo_segmento(av: Dictionary, gimbal: float, P0: Array, P1: Array) -> Dictionary:
-	var y: float = Cuat.euler(av["q"])[2]; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
+static func rayo_segmento(av: Dictionary, gimbal: float, P0: Array, P1: Array, pan := 0.0) -> Dictionary:
+	var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
 	var O := [av["p"][0], av["p"][1], -av["p"][2]]; var v := [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]]; var w0 := [O[0] - P0[0], O[1] - P0[1], O[2] - P0[2]]
 	var b: float = u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; var c: float = v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
 	var dd: float = u[0] * w0[0] + u[1] * w0[1] + u[2] * w0[2]; var e: float = v[0] * w0[0] + v[1] * w0[1] + v[2] * w0[2]
@@ -240,16 +250,16 @@ static func rayo_segmento(av: Dictionary, gimbal: float, P0: Array, P1: Array) -
 	var q := [w0[0] + t * u[0] - s * v[0], w0[1] + t * u[1] - s * v[1], w0[2] + t * u[2] - s * v[2]]
 	return { "t": t, "d": sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]) }
 ## Lo que mide el medidor puntual de la termica: el objeto termico mas cercano dentro de la cruz del centro, o null.
-func medir(av: Dictionary, gimbal: float, zoom: float):
+func medir(av: Dictionary, gimbal: float, zoom: float, pan := 0.0):
 	var mejor = null; var tm := 0.0
 	for o in termicos:
-		var r := rayo_segmento(av, gimbal, o["P0"], o["P1"])
+		var r := rayo_segmento(av, gimbal, o["P0"], o["P1"], pan)
 		if r["t"] > 0.5 and r["d"] <= o["r"] + r["t"] * tan(RETICULA * D2R) / zoom and (mejor == null or r["t"] < tm): mejor = o; tm = r["t"]
-	if mejor != null and solido.is_valid() and _tapado(av, gimbal, tm): return null
+	if mejor != null and solido.is_valid() and _tapado(av, gimbal, tm, pan): return null
 	return { "T": mejor["T"], "tipo": mejor["tipo"], "nombre": mejor["nombre"], "i": mejor["i"], "dist": tm } if mejor != null else null
 ## Si un edificio o una instalacion tapa el rayo del centro antes de llegar a t m (los ultimos 6 m no cuentan) (_tapado).
-func _tapado(av: Dictionary, gimbal: float, t: float) -> bool:
-	var y: float = Cuat.euler(av["q"])[2]; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
+func _tapado(av: Dictionary, gimbal: float, t: float, pan := 0.0) -> bool:
+	var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R; var u := [cos(y) * cos(g), sin(y) * cos(g), sin(g)]
 	var s := 2.5
 	while s < t - 6:
 		if solido.call(av["p"][0] + s * u[0], av["p"][1] + s * u[1], -av["p"][2] + s * u[2]): return true
@@ -357,7 +367,12 @@ func mover_fuga(N: float, E: float) -> bool:
 func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 	var T := []; var N: float = av["p"][0]; var E: float = av["p"][1]; var up: float = -av["p"][2]; var agl: float = up - suelo.call(N, E); var t: float = av["t"]; var m := marcar
 	if av["estado"] != "volando": return T
-	if t0 == null and not av.get("posado", false): t0 = t                   # despegue: empieza a contar el tiempo
+	if t0 == null and not av.get("posado", false) and not av.get("enTierra", false):      # despegue: empieza a contar el tiempo
+		t0 = t
+		if d.has("pista"):
+			var ep := eje_pista(N, E); var ok: bool = ep[0] > -30 and ep[0] < d["pista"]["largo"] + 30 and absf(ep[1]) < d["pista"]["ancho"] / 2.0 + 15
+			m.call("despegue", "ok" if ok else "mal")
+			if not ok: _aviso("despegue", "No has despegado de la pista", T)
 	# ---- choques: paneles de la planta, faro ----
 	if d.has("planta") and not av.get("posado", false):          # solo las mesas de la fila mas cercana y sus vecinas
 		var q := lt(N, E); var i0 := int(round(q[1] / d["planta"]["separacion"]))
@@ -369,10 +384,16 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 		var F: Dictionary = d["faro"]
 		if Vector2(N - F["n"], E - F["e"]).length() < F["radio"] + 0.3 and up - suelo.call(F["n"], F["e"]) < F["alto"]: choque = "choque con el faro"
 	if choque != "": return T
-	# ---- normas del operador ----
-	if agl > TECHO: m.call("techo", "mal"); _aviso("techo", "¡Por encima de 120 m de altura! Baja", T)
-	if Vector2(N - casa[0], E - casa[1]).length() > VLOS: m.call("vlos", "mal"); _aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T)
-	if Vector2(N - ARP["n"], E - ARP["e"]).length() < ARP["r"]: m.call("zona", "mal"); _aviso("zona", "¡Dentro de la zona del %s!" % ARP["nombre"], T)
+	# ---- normas del operador (el dron; el UAV de la patrulla lleva las suyas) ----
+	if d.get("vertidos") is Array:
+		if t0 != null and not av.get("enTierra", false) and not av.get("posado", false):
+			var cp := centro_pista(); var lejos: bool = Vector2(N - cp[0], E - cp[1]).length() > d["radio_pista"]
+			if lejos and agl < d["h_min"]: m.call("altura", "mal"); _aviso("altura", "¡Por debajo de %s m lejos de la pista! Sube" % _n(d["h_min"]), T)
+			if agl > d["techo"]: m.call("techo", "mal"); _aviso("techo", "¡Por encima de %s m! Baja" % _n(d["techo"]), T)
+	else:
+		if agl > TECHO: m.call("techo", "mal"); _aviso("techo", "¡Por encima de 120 m de altura! Baja", T)
+		if Vector2(N - casa[0], E - casa[1]).length() > VLOS: m.call("vlos", "mal"); _aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T)
+		if Vector2(N - ARP["n"], E - ARP["e"]).length() < ARP["r"]: m.call("zona", "mal"); _aviso("zona", "¡Dentro de la zona del %s!" % ARP["nombre"], T)
 	# ---- agricultura: nunca a menos de 5 m sobre el cultivo ----
 	if d.has("manchas"):
 		var P: Dictionary = d["parcela"]
@@ -386,7 +407,7 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 			m.call("baja", "mal"); _aviso("baja", "¡A menos de %s m de los paneles! Sube" % _n(d["minima"]), T)
 	# ---- termica: lo que mide el medidor puntual (y, sostenido sobre un punto caliente o la fuga, se da por medido) ----
 	var zoom: float = float(info.get("zoom", 1.0))
-	lectura = medir(av, info["gimbal"], zoom) if info.get("termica", false) and not termicos.is_empty() else null
+	lectura = medir(av, info["gimbal"], zoom, float(info.get("pan", 0.0))) if info.get("termica", false) and not termicos.is_empty() else null
 	var L = lectura
 	if L != null and (L["tipo"] == "caliente" or L["tipo"] == "fuga") and not (hecho_fuga if L["tipo"] == "fuga" else hechos_c[L["i"]]):
 		var lim: float = d["dist_fuga"] if L["tipo"] == "fuga" else d["dist_caliente"]; var clave := "%s%d" % [L["tipo"], L["i"]]
@@ -444,6 +465,30 @@ func foto(av: Dictionary, gimbal: float, cam := {}) -> Array:
 	var zoom: float = float(cam.get("zoom", 1.0)); var ter: bool = bool(cam.get("termica", false))
 	fotos += 1
 	if av["estado"] != "volando" or av.get("posado", false): return T
+	if d.get("vertidos") is Array:                     # patrulla: la cruz de la torreta sobre la mancha, no demasiado lejos para su zoom
+		var pan: float = float(cam.get("pan", 0.0)); var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R
+		var motivo := ""; var VV: Array = d["vertidos"]
+		for i in VV.size():
+			if hechos[i]: continue
+			var vn: float = VV[i][0]; var ve: float = VV[i][1]; var L: float = VV[i][2]; var A: float = VV[i][3]; var rv: float = VV[i][4]
+			var h: float = suelo.call(vn, ve); var c := camara(av, gimbal, [vn, ve, h], pan)
+			if not en_foto(c, 1, zoom): continue
+			if c["d"] / zoom > d["dist_foto"]:
+				if motivo == "": motivo = "el vertido %d está demasiado lejos para identificarlo (%s km): acércate o usa más zoom" % [i + 1, ("%.1f" % (c["d"] / 1000)).replace(".", ",")]
+				continue
+			if sin(g) > -0.01:
+				if motivo == "": motivo = "la cruz no apunta al agua: baja la torreta"
+				continue
+			var s: float = (up - h) / -sin(g); var hn: float = N + s * cos(g) * cos(y); var he: float = E + s * cos(g) * sin(y)
+			var r := rv * D2R; var dn := hn - vn; var de := he - ve; var a := dn * cos(r) + de * sin(r); var b := -dn * sin(r) + de * cos(r)
+			if pow(a / (L / 2), 2) + pow(b / (A / 2), 2) > 1.4:
+				if motivo == "": motivo = "el vertido %d sale en la foto, pero la cruz no está sobre la mancha: céntrala" % (i + 1)
+				continue
+			hechos[i] = true; var k := _cuenta(); var err := Vector2(dn, de).length(); errores[i] = err
+			T.append("Vertido %d ✓ (%d/%d) · posición enviada, a %d m del centro de la mancha" % [i + 1, k, VV.size(), int(round(err))])
+			if k == VV.size(): m.call("vertidos", "ok"); _todo(av["t"]); T.append("¡Los tres vertidos localizados! Vuelve a San Javier")
+		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ningún vertido")
+		return T
 	if d.has("puntos"):                                # inspeccion: cada punto bien encuadrado, cerca, de frente o desde arriba
 		var motivo := ""; var P_: Array = d["puntos"]
 		for i in P_.size():
@@ -575,10 +620,36 @@ func final(fin: String, av: Dictionary, info: Dictionary) -> void:
 	if d.has("racks"):
 		a.call("calientes", "%d de %d" % [hechos_c.filter(func(x): return x).size(), (d["puntosCalientes"] as Array).size()])
 		if t_todo != null: marcar.call("tiempo", "ok"); a.call("tiempo", mmss(t_todo - t0))
+	if d.get("vertidos") is Array:
+		a.call("vertidos", "%d de %d" % [n, (d["vertidos"] as Array).size()])
+		if t_todo != null: marcar.call("tiempo", "ok"); a.call("tiempo", mmss(t_todo - t0))
+		if fin == "aterrizado":
+			var ep := eje_pista(av["p"][0], av["p"][1]); var ok: bool = ep[0] >= 0 and ep[0] <= d["pista"]["largo"] and absf(ep[1]) <= d["pista"]["ancho"] / 2.0
+			marcar.call("pista", "ok" if ok else "mal"); a.call("pista", ("a %.1f m del eje" % absf(ep[1])) if ok else "fuera de la pista")
+			marcar.call("a_mano", "mal" if info.get("automatico", false) else "ok")
+			if info.get("automatico", false): a.call("a_mano", "con el automático")
+
+## Patrulla: los vertidos (manchas en el agua) y lo que se ve de ellos en la termica (el hidrocarburo calentado por el sol).
+func _patrulla() -> void:
+	var VV: Array = d["vertidos"]; hechos = []; errores = []
+	for i in VV.size():
+		hechos.append(false); errores.append(null)
+		var P := [float(VV[i][0]), float(VV[i][1]), suelo.call(VV[i][0], VV[i][1])]
+		termicos.append({ "tipo": "vertido", "i": i, "nombre": "vertido %d" % (i + 1), "T": 41, "P0": P, "P1": P.duplicate(), "r": float(VV[i][2]) / 2 })
+## La pista del trabajo: [d, t] a lo largo de su eje desde el umbral y a su derecha; y su centro [N, E].
+func eje_pista(N: float, E: float) -> Array:
+	var p: Dictionary = d["pista"]; var r: float = float(p["rumbo"]) * D2R; var dn: float = N - p["n"]; var de: float = E - p["e"]
+	return [dn * cos(r) + de * sin(r), -dn * sin(r) + de * cos(r)]
+func centro_pista() -> Array:
+	var p: Dictionary = d["pista"]; var r: float = float(p["rumbo"]) * D2R
+	return [p["n"] + p["largo"] / 2.0 * cos(r), p["e"] + p["largo"] / 2.0 * sin(r)]
 
 ## Fabrica: cuando estan las tres tareas (sin pasarse del tiempo), apunta cuando se acabaron (_todo).
 func _todo(t: float) -> void:
-	if not d.has("racks") or t_todo != null: return
+	if (not d.has("racks") and not (d.get("vertidos") is Array)) or t_todo != null: return
+	if d.get("vertidos") is Array:
+		if hechos.all(func(x): return x) and t0 != null and t - t0 <= d["limite_s"]: t_todo = t
+		return
 	if hechos_c.filter(func(x): return x).size() == (d["puntosCalientes"] as Array).size() and hecho_fuga and hecho_placa and hecho_piloto and t0 != null and t - t0 <= d["limite_s"]: t_todo = t
 
 ## Lo que toca ahora (texto del panel, con <b>).
@@ -586,6 +657,13 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 	var hecho := func(k: String) -> bool: return obj.has(k) and obj[k]["estado"] == "ok"
 	var N: float = av["p"][0]; var E: float = av["p"][1]; var n := _cuenta()
 	var volver := "Ahora: <b>vuelve al punto de despegue y aterriza</b> (a %d m)" % int(round(Vector2(N - casa[0], E - casa[1]).length()))
+	if d.get("vertidos") is Array:
+		if t0 == null: return "Ahora: <b>despega de la pista 05R</b> (L arranca el motor, espacio quita el freno; P despegue automático)"
+		var cp := centro_pista(); var iv := hechos.find(false)
+		if iv < 0: return "Ahora: <b>vuelve a San Javier y aterriza en la pista</b> (a %s km)" % ("%.1f" % (Vector2(N - cp[0], E - cp[1]).length() / 1000)).replace(".", ",")
+		var sn: float = d["sectores"][iv][0]; var se: float = d["sectores"][iv][1]; var rumbo := fposmod(atan2(se - E, sn - N) * R2D + 360, 360)
+		return "Tiempo: <b>%s</b> · vertidos <b>%d de %d</b> · siguiente: sector %d a %s km, rumbo %03d°" % [mmss(maxf(0, d["limite_s"] - (av["t"] - t0))), n, (d["vertidos"] as Array).size(), iv + 1,
+			("%.1f" % (Vector2(N - sn, E - se).length() / 1000)).replace(".", ","), int(round(rumbo)) % 360]
 	if t0 == null: return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo"
 	if d.has("puntos"):
 		var i := hechos.find(false)
