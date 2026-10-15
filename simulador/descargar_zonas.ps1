@@ -10,14 +10,14 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"            # sin la barra de progreso, Invoke-WebRequest va mucho mas rapido
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$TAG     = "zonas-2026-10-14b"
-$ZIP     = "zonas_detalle_2026-10-14b.zip"
-$SHA256  = "0d2d62d95861c87b7c26b9c4ba05f9e7f10edb4e3e95ca8592ea99812839ad50"
+$TAG     = "zonas-2026-10-15"
+$ZIP     = "zonas_detalle_2026-10-15.zip"
+$SHA256  = "61d4b8ffa2f1d0498e0858c93591cbb3df3a48e423f983417fc98a65e7ea487c"
 $URL     = "https://github.com/AlvarLegaz/entrenador-vuelo-rc/releases/download/$TAG/$ZIP"
 $SIM     = $PSScriptRoot                            # carpeta simulador
-$MARCA   = Join-Path $SIM "zonas\fotovoltaica\zona.json"     # la ultima zona del zip: si esta, ya se descargo (si no, se baja el zip nuevo)
+$MARCA   = Join-Path $SIM "zonas\version_zonas.txt"          # la version de las zonas descargadas: si no es $TAG, se baja el zip nuevo
 
-if ((Test-Path $MARCA) -and -not ($args -contains "-forzar")) { Write-Host "Las zonas de detalle ya estan en $SIM\zonas"; exit 0 }
+if ((Test-Path $MARCA) -and ((Get-Content $MARCA -Raw).Trim() -eq $TAG) -and -not ($args -contains "-forzar")) { Write-Host "Las zonas de detalle ya estan en $SIM\zonas"; exit 0 }
 $zipLocal = Join-Path $env:TEMP $ZIP
 try {
     Write-Host "Descargando las zonas de detalle (unos 340 MB, solo la primera vez) de $URL ..."
@@ -28,7 +28,7 @@ try {
     Write-Host "Huella correcta. Descomprimiendo en $SIM\zonas ..."
     Expand-Archive -Path $zipLocal -DestinationPath $SIM -Force
     Remove-Item $zipLocal -Force
-    if (-not (Test-Path $MARCA)) { throw "El zip no traia las zonas esperadas" }
+    if (-not (Test-Path $MARCA) -or (Get-Content $MARCA -Raw).Trim() -ne $TAG) { throw "El zip no traia las zonas esperadas" }
     Write-Host "Zonas de detalle listas."
 }
 catch {
