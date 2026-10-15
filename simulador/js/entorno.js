@@ -180,24 +180,28 @@ class Entorno {
         if (i < 0 || j < 0 || i > n - 1 || j > n - 1) return null;
         i = Math.min(n - 1.001, i); j = Math.min(n - 1.001, j);
         const i0 = Math.floor(i), j0 = Math.floor(j), fi = i - i0, fj = j - j0, k = i0 * n + j0;
-        let h = 0, a = 0;
-        for (const [kk, w] of [[k, (1 - fi) * (1 - fj)], [k + n, fi * (1 - fj)], [k + 1, (1 - fi) * fj], [k + n + 1, fi * fj]]) {
-          const v = D[kk]; if (v === -32768) a += w; else h += w * v / 10;
-        }
+        // las cuatro esquinas, en este orden y con estas mismas operaciones (los resultados no cambian ni en el ultimo bit)
+        const w0 = (1 - fi) * (1 - fj), w1 = fi * (1 - fj), w2 = (1 - fi) * fj, w3 = fi * fj;
+        let h = 0, a = 0, v;
+        v = D[k]; if (v === -32768) a += w0; else h += w0 * v / 10;
+        v = D[k + n]; if (v === -32768) a += w1; else h += w1 * v / 10;
+        v = D[k + 1]; if (v === -32768) a += w2; else h += w2 * v / 10;
+        v = D[k + n + 1]; if (v === -32768) a += w3; else h += w3 * v / 10;
         return [a < 1 ? h / (1 - a) : 0, a];
       };
       const borde = (N, E) => Math.min(libre[0] ? N - Z.N0 : Infinity, libre[1] ? Z.N0 + lado - N : Infinity,
                                        libre[2] ? E - Z.E0 : Infinity, libre[3] ? Z.E0 + lado - E : Infinity);   // distancia al borde libre (m)
       return { muestra, borde };
     });
-    const buscar = (N, E) => { for (const q of Zs) { const m = q.muestra(N, E); if (m) return [m, q]; } return null; };
-    this.muestraZona = (N, E) => { const r = buscar(N, E); return r ? r[0] : null; };
+    let ultima = null;                           // la muestra de la ultima busqueda (sin reservar un par por llamada)
+    const buscar = (N, E) => { for (const q of Zs) { const m = q.muestra(N, E); if (m) { ultima = m; return q; } } return null; };
+    this.muestraZona = (N, E) => buscar(N, E) ? ultima : null;
     this.altura = (N, E) => {
-      const r = buscar(N, E); if (!r) return this.alturaMundo(N, E);
-      const m = r[0], q = r[1], hz = (m[1] > 0.7 ? 0 : Math.max(0, m[0])) - h0, d = q.borde(N, E);
+      const q = buscar(N, E); if (!q) return this.alturaMundo(N, E);
+      const m = ultima, hz = (m[1] > 0.7 ? 0 : Math.max(0, m[0])) - h0, d = q.borde(N, E);
       return d >= 100 ? hz : hz * d / 100 + this.alturaMundo(N, E) * (1 - d / 100);
     };
-    this.enMar = (N, E) => { const r = buscar(N, E); return r ? r[0][1] > 0.7 : this.enMarMundo(N, E); };
+    this.enMar = (N, E) => buscar(N, E) ? ultima[1] > 0.7 : this.enMarMundo(N, E);
   }
 
   /** Arboles solidos (los que se dibujan): listas [E, N, radio, y0, y1] (y0 y1: pie y copa, m hacia arriba como -p[2])
@@ -267,8 +271,11 @@ class Entorno {
     if (this.mundo) return false;
     const h = -p[2], P = this.pilon;
     if (h > P.alto + 0.3) return false;
-    const r = P.r0 + (P.r1 - P.r0) * Math.max(0, h) / P.alto;
-    return this.pilones().concat(this.pilonesPuerta()).some(s => Math.hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8);
+    const r = P.r0 + (P.r1 - P.r0) * Math.max(0, h) / P.alto, lim = r + semi * 0.8;
+    if (this._pilonesDe !== this.circuito) { this._pilonesDe = this.circuito; this._pilonesTodos = this.pilones().concat(this.pilonesPuerta()); }   // la misma lista en cada paso
+    const T = this._pilonesTodos;
+    for (let i = 0; i < T.length; i++) if (Math.hypot(p[0] - T[i][0], p[1] - T[i][1]) < lim) return true;
+    return false;
   }
 
   /** Cuenta vueltas al circuito: un objeto por vuelo, con actualizar(pAnt, p, t) en cada paso. sentido: +1 (verde,

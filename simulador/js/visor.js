@@ -11,6 +11,23 @@ function ned2three(p) { return [p[1], -p[2], -p[0]]; }
 function texSRGB(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
 /** Grupo Three con el avion en ejes cuerpo NED (metros, origen en el CG) y sus partes moviles. */
+/** Libera de la GPU las geometrias, materiales y texturas de un objeto que ya no esta en ninguna escena (three.js no
+ *  lo hace solo: lo que se quita con remove() sigue ocupando memoria de la tarjeta). Lo compartido entre modelos (la
+ *  textura de las luces, el mapa de reflejos, las mallas cacheadas de un tipo) three lo vuelve a subir cuando haga
+ *  falta: no cambia nada de lo que se ve. */
+function liberar(obj) {
+  if (!obj) return;
+  obj.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of ms) {
+      for (const k of ["map", "alphaMap", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "envMap"]) if (m[k] && m[k].dispose) m[k].dispose();
+      m.dispose();
+    }
+    if (o.isInstancedMesh) o.dispose();
+  });
+}
+
 function construirAvion(datos) {
   if (datos.tipo === "fpv" && window.ModeloFPV && ModeloFPV.construir3D) return ModeloFPV.construir3D(datos);     // dron FPV: su modelo, en aviones/FPV.js
   if (datos.tipo === "bipode" && window.ModeloBipode && ModeloBipode.construir3D) return ModeloBipode.construir3D(datos);   // bipode secreto: aviones/BIPODE.js
@@ -698,7 +715,7 @@ class Visor {
    *  quitarla: plataforma de salida, cilindro del estacionario, conos de colores, postes del slalom y del ocho, puertas
    *  numeradas con su flecha en el suelo, puerta alta y torre. Va en la isla, en la zona despejada de detras del piloto. */
   ponerPistaFpv(d) {
-    if (this.pistaFpv) { this.escenaIsla.remove(this.pistaFpv); this.pistaFpv = null; }
+    if (this.pistaFpv) { this.escenaIsla.remove(this.pistaFpv); liberar(this.pistaFpv); this.pistaFpv = null; }
     if (!d) return;
     const G = new THREE.Group(), P = FPV_PISTA, col = this.entorno.circuito.colores, lam = c => new THREE.MeshLambertMaterial({ color: c });
     const en = (o, N, E, y = 0) => { o.position.set(E, y, -N); G.add(o); return o; };
@@ -767,7 +784,7 @@ class Visor {
       vivos.add(f.id);
       let g = this.fantasmas.get(f.id);
       if (!g || g.avion !== f.avion || g.nombre !== f.nombre) {
-        if (g) g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo);
+        if (g) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); liberar(g.obj.grupo); liberar(g.et); }   // tambien su etiqueta: se quedaba en la escena
         const datos = Modelos.datos(f.avion); if (!datos) continue;
         const obj = construirAvion(datos); obj.grupo.matrixAutoUpdate = false;
         const [c, x] = lienzo(256, 48); x.font = "bold 26px sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
@@ -788,12 +805,12 @@ class Visor {
         g.obj.animar({ cintura: f.bip[0], brazos: f.bip[1], fase: f.bip[2], amp: f.bip[3], angCanones: f.bip[4], disparos: f.bip[5], puno: f.bip[6] }, 0.016, this);
       g.et.position.set(t[0], t[1] + (g.obj.bipode ? 4.2 : 1.2), t[2]);
     }
-    for (const [id, g] of [...this.fantasmas]) if (!vivos.has(id)) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); this.fantasmas.delete(id); }
+    for (const [id, g] of [...this.fantasmas]) if (!vivos.has(id)) { g.obj.grupo.parent && g.obj.grupo.parent.remove(g.obj.grupo); g.et.parent && g.et.parent.remove(g.et); liberar(g.obj.grupo); liberar(g.et); this.fantasmas.delete(id); }
   }
 
   /** Multijugador: zonas de exclusion que marca el profesor ([{N, E, r}]): cilindros rojos translucidos del suelo a 120 m. */
   ponerExclusiones(zonas) {
-    if (this.exclusiones) { this.exclusiones.parent && this.exclusiones.parent.remove(this.exclusiones); this.exclusiones = null; }
+    if (this.exclusiones) { this.exclusiones.parent && this.exclusiones.parent.remove(this.exclusiones); liberar(this.exclusiones); this.exclusiones = null; }
     if (!zonas || !zonas.length) return;
     const G = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xe53935, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
     const borde = new THREE.MeshBasicMaterial({ color: 0xe53935, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false });
@@ -1040,7 +1057,7 @@ class Visor {
 
   /** Pone en la escena el avion de un modelo (quita el anterior). */
   ponerAvion(datos) {
-    if (this.avion) this.escena.remove(this.avion.grupo);
+    if (this.avion) { this.escena.remove(this.avion.grupo); liberar(this.avion.grupo); }
     this.avion = construirAvion(datos);
     this.avion.envergadura = datos.b_m || 1;           // para el zoom de la camara del piloto
     this.avion.grupo.matrixAutoUpdate = false;
@@ -1159,7 +1176,7 @@ class VistaPrevia {
 
   /** factor: distancia de la camara respecto a la envergadura (1 = la pantalla de eleccion antigua; mas = avion mas pequeno). */
   mostrar(datos, factor = 1) {
-    if (this.actual) this.escena.remove(this.actual.base);
+    if (this.actual) { this.escena.remove(this.actual.base); liberar(this.actual.base); }
     const av = construirAvion(datos), base = new THREE.Group();
     av.grupo.matrixAutoUpdate = false;
     av.grupo.matrix.set(0, 1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0, 1);     // cuerpo NED -> Three (morro hacia -z)

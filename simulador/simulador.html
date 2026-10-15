@@ -740,13 +740,13 @@
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
 <script src="js/modelos.js?v=21"></script>
-<script src="js/entorno.js?v=24"></script>
+<script src="js/entorno.js?v=25"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=3"></script>
-<script src="js/visor.js?v=33"></script>
+<script src="js/visor.js?v=34"></script>
 <script src="js/industria.js?v=3"></script>
-<script src="js/visor_real.js?v=33"></script>
-<script src="js/bipode.js?v=2"></script>
+<script src="js/visor_real.js?v=34"></script>
+<script src="js/bipode.js?v=3"></script>
 <script src="mundos/cartagena.js?v=20"></script>
 <script src="escenarios.js?v=7"></script>
 <script src="singulares.js?v=3"></script>
@@ -1537,7 +1537,13 @@ async function ponerZonaDeLanzamiento(mundo) {
     for (const meta of zonasCerca(mundo.id, c.N, c.E))
       try { zs.push(await cargarZona(meta)); } catch (e) { console.warn("No se pudo cargar la zona " + meta.id, e); }
   }
-  entorno.ponerZonas(zs); if (mundo) visor.ponerZonas(zs);
+  entorno.ponerZonas(zs);
+  if (!mundo) return;
+  // las mismas zonas ya construidas en la escena de este mundo y desde el mismo punto de salida (sus arboles se
+  // despejan alrededor): se reutilizan tal cual; empezar() las volvia a crear en cada vuelo (mallas, 36 ortofotos por zona)
+  const c = casa(), clave = mundo.id + "|" + zs.map(z => z.meta.id).join(",") + "|" + Math.round(c.N) + "," + Math.round(c.E);
+  if (visor.zonasClave === clave && visor.mundoId === mundo.id && (visor.escena.userData.zonaGrupos || []).length === zs.length) return true;
+  visor.ponerZonas(zs); visor.zonasClave = clave; return false;
 }
 
 async function empezar() {
@@ -1568,7 +1574,8 @@ async function empezar() {
   if (mundo) {
     await mostrarCarga(mundo.nombre, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6);
     const c = casa(); visor.baseNE = [c.N, c.E];                 // antes de la zona: sus arboles se detallan alrededor del punto de salida
-    await ponerZonaDeLanzamiento(mundo); visor.ponerBase([c.N, c.E], true);
+    const mismas = await ponerZonaDeLanzamiento(mundo);     // zonas reutilizadas y mismo punto de salida: los arboles de la region son los mismos (misma semilla), no se rehacen
+    visor.ponerBase([c.N, c.E], !(mismas && visor.arbolesNE && visor.arbolesNE[0] === c.N && visor.arbolesNE[1] === c.E));
     await mostrarCarga(mundo.nombre, "Listo", 1);
   }
   ocultarCarga();
@@ -1585,7 +1592,7 @@ function reiniciar() {
   nuevoEvaluador(); vuelo = null; ponerPausa(false); ordenesAlEvaluador();
   if (visor.ponerOperacion) { const c = casa(); visor.ponerOperacion(ev.op ? ev.op.d : null, [c.N, c.E]); }
   DJI.grabando = false; DJI.tRec = 0; DJI.tAnt = 0; mando.gimbal = 0;
-  document.getElementById("guia").innerHTML = ""; document.getElementById("lejos").textContent = "";
+  document.getElementById("guia").innerHTML = ""; ponerTxt($h("lejos"), "");
   iniciarJuegoBip();
   if (ESCENARIOS[sesion.escenario].enVuelo && !modelo.esTerrestre) { empezarEnVuelo(); return; }
   if (modelo.esBipode) { aviso("Pulsa L (o el botón A) para arrancar el bípode"); return; }
@@ -1735,7 +1742,7 @@ function terminarVuelo(final, vn) {
   aviso(vuelo.lanzamiento ? "LANZAMIENTO FALLIDO: " + vuelo.lanzamiento.corto
         : final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
         : final === "fuera de límites" ? "FUERA DE LÍMITES: el avión se ha perdido de vista" : "");
-  document.getElementById("lejos").textContent = "";
+  ponerTxt($h("lejos"), "");
   ultimoVuelo = vuelo;
   document.getElementById("cnUltimo").disabled = false;
   if (document.getElementById("cnAuto").checked) descargarVuelo(vuelo);
@@ -2913,8 +2920,8 @@ document.getElementById("briefing").onclick = () => verBriefing(false);
 const fmtTiempo = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 /** Pantalla de la app: barra de arriba (modo, estado, GPS, señal, batería), mapa, D/H/HS/VS, gimbal y botones. */
 function hudDji(h, vn, vs, dist) {
-  const $ = id => document.getElementById(id), M = modelo.modo || "N", me = $("djiModo");
-  me.textContent = M; me.className = "modo " + M;
+  const $ = $h, M = modelo.modo || "N", me = $("djiModo");
+  ponerTxt(me, M); ponerClase(me, "modo " + M);
   let est, cl = "";
   if (Repeticion.activa) est = "REPETICIÓN";
   else if (av.estado === "en mano") { est = "Motores parados · pulsa despegar o L"; cl = "aviso"; }
@@ -2925,28 +2932,29 @@ function hudDji(h, vn, vs, dist) {
     else est = M === "S" ? "En vuelo · modo Sport" : "En vuelo (GPS)";
   } else { est = av.estado.toUpperCase(); cl = av.estado === "aterrizado" ? "" : "rojo"; }
   if (pausado) est += " · PAUSA";
-  $("djiEstado").textContent = est; $("djiEstado").className = "estado " + cl;
+  ponerTxt($("djiEstado"), est); ponerClase($("djiEstado"), "estado " + cl);
   // grabacion y bateria (tiempo restante con el consumo medio del vuelo)
   if (DJI.grabando && !pausado) DJI.tRec += Math.max(0, av.t - DJI.tAnt);
   DJI.tAnt = av.t;
-  $("djiRec").textContent = DJI.grabando ? `● REC ${fmtTiempo(DJI.tRec)}` : "";
+  ponerTxt($("djiRec"), DJI.grabando ? `● REC ${fmtTiempo(DJI.tRec)}` : "");
   const bat = modelo.bateriaPct(av), restWh = modelo.propulsion.masa_bateria_Wh * bat / 100, P = av.t > 5 && av.Wh > 0 ? av.Wh / av.t * 3600 : 35;
-  const be = $("djiBat"); be.className = "bat" + (bat < 20 ? " rojo" : ""); be.querySelector("i").style.setProperty("--w", (22 * bat / 100).toFixed(1) + "px");
-  be.lastChild.textContent = `${bat.toFixed(0)} % · ${fmtTiempo(Math.min(5999, restWh / P * 3600))}`;
+  const be = $("djiBat"); ponerClase(be, "bat" + (bat < 20 ? " rojo" : "")); const bi = be._i || (be._i = be.querySelector("i")), bw = (22 * bat / 100).toFixed(1) + "px";
+  if (bi._w !== bw) { bi._w = bw; bi.style.setProperty("--w", bw); }
+  ponerTxt(be.lastChild, `${bat.toFixed(0)} % · ${fmtTiempo(Math.min(5999, restWh / P * 3600))}`);
   // telemetria como la app: distancia y altura respecto al punto de despegue, velocidad horizontal y vertical
   const c = casa(), hCasa = entorno.altura ? entorno.altura(c.N, c.E) : 0, f1 = x => (Math.abs(x) < 0.05 ? 0 : x).toFixed(1).replace(".", ",");
-  $("djiD").textContent = dist >= 1000 ? f1(dist / 1000) + " km" : dist.toFixed(0) + " m";
-  $("djiH").textContent = Math.max(0, -av.p[2] - hCasa).toFixed(0) + " m";      // sobre el punto de despegue (h viene recortado a 0)
-  $("djiHS").textContent = f1(Math.hypot(vn[0], vn[1])) + " m/s"; $("djiVS").textContent = f1(vs) + " m/s";
+  ponerTxt($("djiD"), dist >= 1000 ? f1(dist / 1000) + " km" : dist.toFixed(0) + " m");
+  ponerTxt($("djiH"), Math.max(0, -av.p[2] - hCasa).toFixed(0) + " m");      // sobre el punto de despegue (h viene recortado a 0)
+  ponerTxt($("djiHS"), f1(Math.hypot(vn[0], vn[1])) + " m/s"); ponerTxt($("djiVS"), f1(vs) + " m/s");
   // gimbal (+10 arriba, -90 abajo), botones
   const g = av.gimbal === undefined ? -10 : av.gimbal;
-  $("djiGimbalMarca").style.top = $("djiGimbalTxt").style.top = ((10 - g) / 100 * 130).toFixed(0) + "px";
-  $("djiGimbalTxt").textContent = (g < 0 ? "−" : "") + Math.abs(Math.round(g)) + "°";
-  $("djiDespegar").textContent = av.estado === "volando" && !av.posado ? "⇩" : "⇧";
-  $("djiDespegar").title = av.estado === "volando" && !av.posado ? "Aterrizar aquí (botón A del mando)" : "Despegar: arma y sube a 1,2 m (botón A del mando)";
+  const gt = ((10 - g) / 100 * 130).toFixed(0) + "px"; ponerEstilo($("djiGimbalMarca"), "top", gt); ponerEstilo($("djiGimbalTxt"), "top", gt);
+  ponerTxt($("djiGimbalTxt"), (g < 0 ? "−" : "") + Math.abs(Math.round(g)) + "°");
+  ponerTxt($("djiDespegar"), av.estado === "volando" && !av.posado ? "⇩" : "⇧");
+  ponerAttr($("djiDespegar"), "title", av.estado === "volando" && !av.posado ? "Aterrizar aquí (botón A del mando)" : "Despegar: arma y sube a 1,2 m (botón A del mando)");
   $("djiRTH").classList.toggle("activo", !!(av.rth && av.rth.fase !== "bajar"));
   const d = $("djiDisparo"); d.classList.toggle("video", DJI.video); d.classList.toggle("rec", DJI.grabando);
-  $("djiCamTxt").textContent = DJI.video ? "VÍDEO" : "FOTO";
+  ponerTxt($("djiCamTxt"), DJI.video ? "VÍDEO" : "FOTO");
   const mapa = $("djiMapa"), gps = $("gps"); if (gps.parentNode !== mapa) mapa.appendChild(gps);
 }
 // =====================================================================
@@ -2984,21 +2992,21 @@ function fpvModo(m) {
 /** OSD de Betaflight: modo, tiempo armado, gas, altura, velocidad, bateria (total y por celda), corriente y mAh, ARMED /
  *  DISARMED y avisos (bateria baja, aterriza ya, desarma para terminar). Las cifras como las de Betaflight (punto decimal). */
 function hudFpv(h, vn) {
-  const $ = id => document.getElementById(id), F = modelo.fc, celda = av.Vbat / modelo.propulsion.celdas;
+  const $ = $h, F = modelo.fc, celda = av.Vbat / modelo.propulsion.celdas;
   const c = casa(), hCasa = entorno.altura ? entorno.altura(c.N, c.E) : 0, V = Math.sqrt(vn[0] * vn[0] + vn[1] * vn[1] + vn[2] * vn[2]);
-  $("fpvMira").style.display = visor.camara === 3 ? "" : "none";          // la mira, solo en las gafas
-  $("fpvModo").textContent = NOMBRES_FPV[modelo.modo] || modelo.modo;
-  $("fpvTiempo").textContent = "TIME " + fmtTiempo(av.tArmado || 0);
-  $("fpvGas").textContent = "THR " + Math.round(av.gases * 100);
-  $("fpvAlt").textContent = `ALT ${(-av.p[2] - hCasa).toFixed(1)}m`;      // sobre el punto de despegue, como Betaflight (h viene recortado a 0)
-  $("fpvVel").textContent = `${Math.round(V * 3.6)}km/h`;
-  const be = $("fpvBat"); be.textContent = `${av.Vbat.toFixed(1)}V ${celda.toFixed(2)}V`;
-  be.className = "osd" + (celda < F.critico_celda_V ? " rojo" : celda < F.aviso_celda_V ? " ambar" : "");
-  $("fpvAmp").textContent = `${av.I.toFixed(1)}A ${Math.round(av.mAh)}mAh`;
+  ponerEstilo($("fpvMira"), "display", visor.camara === 3 ? "" : "none");          // la mira, solo en las gafas
+  ponerTxt($("fpvModo"), NOMBRES_FPV[modelo.modo] || modelo.modo);
+  ponerTxt($("fpvTiempo"), "TIME " + fmtTiempo(av.tArmado || 0));
+  ponerTxt($("fpvGas"), "THR " + Math.round(av.gases * 100));
+  ponerTxt($("fpvAlt"), `ALT ${(-av.p[2] - hCasa).toFixed(1)}m`);      // sobre el punto de despegue, como Betaflight (h viene recortado a 0)
+  ponerTxt($("fpvVel"), `${Math.round(V * 3.6)}km/h`);
+  const be = $("fpvBat"); ponerTxt(be, `${av.Vbat.toFixed(1)}V ${celda.toFixed(2)}V`);
+  ponerClase(be, "osd" + (celda < F.critico_celda_V ? " rojo" : celda < F.aviso_celda_V ? " ambar" : ""));
+  ponerTxt($("fpvAmp"), `${av.I.toFixed(1)}A ${Math.round(av.mAh)}mAh`);
   const armado = av.estado === "volando" && av.armado, parpadeo = (performance.now() / 1000) % 1 < 0.6;
   const ae = $("fpvArm");
-  ae.textContent = Repeticion.activa ? "REPETICIÓN" : armado ? (av.tArmado < 1.5 ? "ARMED" : "") : av.estado === "volando" || av.estado === "en mano" ? "DISARMED" : av.estado.toUpperCase();
-  ae.className = "osd c" + (armado ? "" : " rojo");
+  ponerTxt(ae, Repeticion.activa ? "REPETICIÓN" : armado ? (av.tArmado < 1.5 ? "ARMED" : "") : av.estado === "volando" || av.estado === "en mano" ? "DISARMED" : av.estado.toUpperCase());
+  ponerClase(ae, "osd c" + (armado ? "" : " rojo"));
   let avs = "", cl = "rojo";
   if (armado) {
     if (celda < F.critico_celda_V) avs = parpadeo ? "¡ATERRIZA YA!" : "";
@@ -3006,7 +3014,7 @@ function hudFpv(h, vn) {
     else if (av.posado && av.despegado) { avs = "DESARMA (L) PARA TERMINAR"; cl = ""; }
   }
   if (pausado) { avs = "PAUSA"; cl = ""; }
-  const ve = $("fpvAviso"); ve.textContent = avs; ve.className = "osd c grande" + (cl ? " " + cl : "");
+  const ve = $("fpvAviso"); ponerTxt(ve, avs); ponerClase(ve, "osd c grande" + (cl ? " " + cl : ""));
 }
 // =====================================================================
 //  HUD Y BUCLE
@@ -3067,11 +3075,11 @@ function construirAnemometro(vs) {
 }
 function pintarInstrumentos(V, vz) {
   const [xa, ya] = anPt(V, 55);
-  const ag = document.getElementById("anAguja"); ag.setAttribute("x2", xa); ag.setAttribute("y2", ya);
-  const t = document.getElementById("anTxt"); t.textContent = V.toFixed(1); t.setAttribute("fill", V < 1.1 * AN.vs ? "#ff5252" : V < 1.3 * AN.vs ? "#ffb300" : "#e6edf3");
+  const ag = $h("anAguja"); ponerAttr(ag, "x2", xa); ponerAttr(ag, "y2", ya);
+  const t = $h("anTxt"); ponerTxt(t, V.toFixed(1)); ponerAttr(t, "fill", V < 1.1 * AN.vs ? "#ff5252" : V < 1.3 * AN.vs ? "#ffb300" : "#e6edf3");
   const [xv, yv] = vaPt(vz, 55);
-  const vg = document.getElementById("vaAguja"); vg.setAttribute("x2", xv); vg.setAttribute("y2", yv);
-  document.getElementById("vaTxt").textContent = (vz >= 0 ? "+" : "") + vz.toFixed(1);
+  const vg = $h("vaAguja"); ponerAttr(vg, "x2", xv); ponerAttr(vg, "y2", yv);
+  ponerTxt($h("vaTxt"), (vz >= 0 ? "+" : "") + vz.toFixed(1));
 }
 // ---- GPS: mapa del campo visto desde arriba, norte arriba, centrado entre el piloto y el avion; la escala se abre
 // para que siempre se vean los dos (minimo +-150 m). Pista, pilones de colores, zona 2 (pista 2, diana y puerta),
@@ -3181,76 +3189,86 @@ function pintarGPSMundo(cv, rumbo, N, E) {
   const esc = escalaRedonda(semi); g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); g.moveTo(8, W - 10); g.lineTo(8 + esc * k, W - 10); g.stroke();
   g.font = "10px sans-serif"; g.fillText(esc >= 1000 ? esc / 1000 + " km" : esc + " m", 10, W - 14); g.fillText(`casa ${d >= 1000 ? (d / 1000).toFixed(1) + " km" : d.toFixed(0) + " m"}`, W - 62, W - 14);
 }
+// ---- escrituras al HUD solo cuando cambia lo escrito: asignar innerHTML, textContent, className o un atributo rehace
+// nodos y maquetacion aunque sea lo mismo, y el HUD se repinta en cada cuadro. Los elementos se buscan una sola vez.
+// Todo lo que escribe en estos elementos pasa por aqui (si no, la copia guardada se quedaria vieja).
+const HUD_EL = {};
+const $h = id => HUD_EL[id] || (HUD_EL[id] = document.getElementById(id));
+function ponerHTML(el, s) { if (el._html !== s) { el._html = s; el.innerHTML = s; } }
+function ponerTxt(el, s) { if (el._txt !== s) { el._txt = s; el.textContent = s; } }
+function ponerClase(el, s) { if (el._clase !== s) { el._clase = s; el.className = s; } }
+function ponerAttr(el, k, s) { if (el["_a_" + k] !== s) { el["_a_" + k] = s; el.setAttribute(k, s); } }
+function ponerEstilo(el, k, s) { if (el["_s_" + k] !== s) { el["_s_" + k] = s; el.style[k] = s; } }
 function pintarHorizonte(roll, pitch, rumbo) {
-  const el = document.getElementById("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
-  el.style.display = ver ? "block" : "none";
+  const el = $h("horizonte"), ver = visor.camara === 2 || visor.camara === 3;
+  ponerEstilo(el, "display", ver ? "block" : "none");
   document.body.classList.toggle("cam1", !ver);
   // relojes solo en las camaras 2 y 3: en la del piloto su sitio lo ocupa el GPS (en el campo no hay relojes, pero si movil con mapa)
-  for (const id of ["anemometro", "variometro"]) document.getElementById(id).style.display = (av.estado === "en mano" && !vuelo) || !ver ? "none" : "block";
+  for (const id of ["anemometro", "variometro"]) ponerEstilo($h(id), "display", (av.estado === "en mano" && !vuelo) || !ver ? "none" : "block");
   if (!ver) return;
-  document.getElementById("hzRosa").setAttribute("transform", `rotate(${-rumbo} 150 150)`);
+  ponerAttr($h("hzRosa"), "transform", `rotate(${-rumbo} 150 150)`);
   // marcas sobre la rosa (giran con ella): casa = hacia el piloto, pista = eje de la pista, viento = de donde viene
   const casa = Math.atan2(-av.p[1], -av.p[0]) * R2D, vto = entorno.viento, desde = (vto.rumbo * R2D + 180) % 360;
-  document.getElementById("hzCasa").setAttribute("transform", `rotate(${casa - rumbo} 150 150)`);
-  document.getElementById("hzPista").setAttribute("transform", `rotate(${(ev && ev.zona === 2 ? 180 : 0) - rumbo} 150 150)`);
-  document.getElementById("hzViento").setAttribute("transform", `rotate(${desde - rumbo} 150 150)`);
-  document.getElementById("hzViento").style.display = vto.base > 0.3 ? "" : "none";
-  document.getElementById("hzActitud").setAttribute("transform", `rotate(${-roll} 150 150) translate(0 ${pitch * HZ_PX_GRADO})`);
-  document.getElementById("hzRumbo").textContent = `${String(Math.round((rumbo + 360) % 360) % 360).padStart(3, "0")}°`;
+  ponerAttr($h("hzCasa"), "transform", `rotate(${casa - rumbo} 150 150)`);
+  ponerAttr($h("hzPista"), "transform", `rotate(${(ev && ev.zona === 2 ? 180 : 0) - rumbo} 150 150)`);
+  ponerAttr($h("hzViento"), "transform", `rotate(${desde - rumbo} 150 150)`);
+  ponerEstilo($h("hzViento"), "display", vto.base > 0.3 ? "" : "none");
+  ponerAttr($h("hzActitud"), "transform", `rotate(${-roll} 150 150) translate(0 ${pitch * HZ_PX_GRADO})`);
+  ponerTxt($h("hzRumbo"), `${String(Math.round((rumbo + 360) % 360) % 360).padStart(3, "0")}°`);
 }
 function aviso(txt) { document.getElementById("aviso").textContent = txt; }
 function toast(txt) { const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
 function hud() {
-  const el = document.getElementById("hud");
+  const el = $h("hud");
   const [roll, pitch, yaw] = Cuat.euler(av.q).map(a => a * R2D), h = Math.max(0, -av.p[2]), dist = Math.hypot(av.p[0] - casa().N, av.p[1] - casa().E);
   const vn = Cuat.rot(av.q, av.v), vs = -vn[2], vto = entorno.viento, suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0;
   // estado (arriba a la izquierda) y lecturas (abajo, en el centro): lo que importa en un vuelo RC
   const estadoTxt = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" && modelo.esCuadricoptero ? "EN EL SUELO" : av.estado.toUpperCase();
-  document.getElementById("estado").innerHTML = `<span class="pill">${esc(estadoTxt)} · ${av.t.toFixed(0)} s</span>` +
+  ponerHTML($h("estado"), `<span class="pill">${esc(estadoTxt)} · ${av.t.toFixed(0)} s</span>` +
     (vuelo && av.estado === "volando" ? '<span class="pill rec">● REC</span>' : "") + (av.motorRoto ? '<span class="pill rec">MOTOR PARADO</span>' : "") +
-    (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : "");
+    (modelo.facil ? '<span class="pill">física fácil</span>' : "") + (pausado ? '<span class="pill">PAUSA</span>' : ""));
   if (modelo.esCuadricoptero && av.estado === "volando" && !av.posado && document.getElementById("aviso").textContent.startsWith("Sube el gas")) aviso("");
   if (modelo.esBipode) { hudBip(dist, yaw); pintarGPS(yaw); return; }
   const bat = modelo.bateriaPct(av), vClase = AN.vs > 0 && av.V < 1.1 * AN.vs ? "rojo" : AN.vs > 0 && av.V < 1.3 * AN.vs ? "ambar" : "";
-  document.getElementById("lecturas").innerHTML = ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
+  ponerHTML($h("lecturas"), ((av.estado === "en mano" && !vuelo) || sinInstrumentos) ? "" :
     `<div class="lect ${vClase}"><b>${av.V.toFixed(1)}</b><span>vel. aire m/s</span></div><div class="lect"><b>${(h - suelo).toFixed(0)}</b><span>altura m</span></div>` +
     `<div class="lect"><b>${vs >= 0 ? "+" : ""}${vs.toFixed(1)}</b><span>asc. m/s</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
     `<div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div><div class="lect ${bat < 20 ? "rojo" : ""}"><b>${bat.toFixed(0)}%</b><span>batería</span></div>` +
-    (av.perdida > 0.5 ? `<div class="lect rojo"><b>¡PÉRDIDA!</b><span>alfa ${av.alfa.toFixed(0)}°</span></div>` : "");
+    (av.perdida > 0.5 ? `<div class="lect rojo"><b>¡PÉRDIDA!</b><span>alfa ${av.alfa.toFixed(0)}°</span></div>` : ""));
   // datos completos en texto (tecla H)
-  el.style.display = mostrarHud ? "block" : "none";
-  if (mostrarHud) el.innerHTML =
+  ponerEstilo(el, "display", mostrarHud ? "block" : "none");
+  if (mostrarHud) ponerHTML(el,
     `vel. aire <b>${av.V.toFixed(1)}</b> m/s · suelo ${Math.hypot(vn[0], vn[1]).toFixed(1)} m/s · asc. ${vs >= 0 ? "+" : ""}${vs.toFixed(1)} m/s<br>` +
     `altura <b>${h.toFixed(1)}</b> m${entorno.altura ? ` (sobre el terreno ${(h - entorno.altura(av.p[0], av.p[1])).toFixed(0)} m)` : ""} · distancia ${dist.toFixed(0)} m<br>` +
     `alabeo ${roll.toFixed(0)}° · cabeceo ${pitch.toFixed(0)}° · rumbo ${((yaw + 360) % 360).toFixed(0)}°<br>` +
     `alfa ${av.alfa.toFixed(1)}° ${av.perdida > 0.5 ? "<b>¡PÉRDIDA!</b>" : ""} · carga ${av.g_carga.toFixed(1)} g<br>` +
     `gases <b>${(av.gases * 100).toFixed(0)} %</b> · batería ${modelo.bateriaPct(av).toFixed(0)} %<br>` +
     `viento ${vto.base.toFixed(0)} m/s${vto.rachas ? " con rachas" : ""} · compensador ${mando.trim.toFixed(2)}° · cámara ${visor.camara}` +
-    (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`);
-  const L = entorno.limites, lejos = document.getElementById("lejos");
+    (cmEsDiseno(sesion.avion) ? "" : `<br><b style="color:#ffb74d">${textoCM()}</b>`));
+  const L = entorno.limites, lejos = $h("lejos");
   if (av.estado === "volando" && !entorno.mundo && dist > L.aviso_m) {
     const haciaCasa = ((Math.atan2(-av.p[1], -av.p[0]) * R2D + 360) % 360).toFixed(0);
-    lejos.textContent = `¡Demasiado lejos! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión.`;
-  } else lejos.textContent = av.estado === "en mano" ? avisoLanzamiento() : "";
-  document.getElementById("gasesBarra").style.height = (av.gases * 100) + "%";
+    ponerTxt(lejos, `¡Demasiado lejos! (${dist.toFixed(0)} m) Da la vuelta: el campo está al rumbo ${haciaCasa}°. A ${L.distancia_m} m se pierde el avión.`);
+  } else ponerTxt(lejos, av.estado === "en mano" ? avisoLanzamiento() : "");
+  ponerEstilo($h("gasesBarra"), "height", (av.gases * 100) + "%");
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
-  if (modelo.esFPV) { hudFpv(h, vn); document.getElementById("fpv").style.display = sinInstrumentos ? "none" : ""; }
-  else if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); document.getElementById("dji").style.display = sinInstrumentos ? "none" : ""; }
-  if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) document.getElementById(id).style.display = "none";
-  document.getElementById("barra").style.display = sinInstrumentos ? "none" : "";       // sin instrumentos: tampoco gas ni palanca (como en el campo)
-  document.getElementById("punto").style.left = (50 + 45 * mando.yaw) + "%";
-  document.getElementById("punto").style.top = (50 + 45 * mando.pitch) + "%";
+  if (modelo.esFPV) { hudFpv(h, vn); ponerEstilo($h("fpv"), "display", sinInstrumentos ? "none" : ""); }
+  else if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); ponerEstilo($h("dji"), "display", sinInstrumentos ? "none" : ""); }
+  if (sinInstrumentos) for (const id of ["horizonte", "gps", "anemometro", "variometro"]) ponerEstilo($h(id), "display", "none");
+  ponerEstilo($h("barra"), "display", sinInstrumentos ? "none" : "");       // sin instrumentos: tampoco gas ni palanca (como en el campo)
+  ponerEstilo($h("punto"), "left", (50 + 45 * mando.yaw) + "%");
+  ponerEstilo($h("punto"), "top", (50 + 45 * mando.pitch) + "%");
 }
 /** Lecturas del bipode (abajo): velocidad, rumbo, cintura, brazos, pendiente y distancia. */
 function hudBip(dist, yaw) {
   const pend = av.pendiente ? (av.pendiente[0] * Math.cos(av.rumbo) + av.pendiente[1] * Math.sin(av.rumbo)) * 100 : 0;
   const cint = ((av.cintura * R2D + 180) % 360 + 360) % 360 - 180;
-  document.getElementById("lecturas").innerHTML = (av.estado === "en mano" && !vuelo) || sinInstrumentos ? "" :
+  ponerHTML($h("lecturas"), (av.estado === "en mano" && !vuelo) || sinInstrumentos ? "" :
     `<div class="lect"><b>${(av.vel * 3.6).toFixed(1)}</b><span>km/h</span></div><div class="lect"><b>${((yaw + 360) % 360).toFixed(0).padStart(3, "0")}°</b><span>rumbo</span></div>` +
     `<div class="lect"><b>${cint >= 0 ? "+" : ""}${cint.toFixed(0)}°</b><span>cintura</span></div><div class="lect"><b>${(av.brazos * R2D).toFixed(0)}°</b><span>brazos</span></div>` +
-    `<div class="lect ${Math.abs(pend) > 45 ? "ambar" : ""}"><b>${pend >= 0 ? "+" : ""}${pend.toFixed(0)} %</b><span>pendiente</span></div><div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div>`;
-  document.getElementById("estado").innerHTML = `<span class="pill">${Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" ? "PARADO" : "EN MARCHA"} · ${av.t.toFixed(0)} s</span>` + (pausado ? '<span class="pill">PAUSA</span>' : "");
-  document.getElementById("lejos").textContent = av.estado === "en mano" ? "" : document.getElementById("lejos").textContent;
+    `<div class="lect ${Math.abs(pend) > 45 ? "ambar" : ""}"><b>${pend >= 0 ? "+" : ""}${pend.toFixed(0)} %</b><span>pendiente</span></div><div class="lect"><b>${dist.toFixed(0)}</b><span>dist. m</span></div>`);
+  ponerHTML($h("estado"), `<span class="pill">${Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" ? "PARADO" : "EN MARCHA"} · ${av.t.toFixed(0)} s</span>` + (pausado ? '<span class="pill">PAUSA</span>' : ""));
+  if (av.estado === "en mano") ponerTxt($h("lejos"), "");
 }
 let tAnterior = performance.now(), acumulado = 0, tObj = 0;
 function bucle(ahora) {

@@ -126,7 +126,7 @@ Object.assign(Visor.prototype, {
    *  o null para quitarlo: la plataforma de despegue, las placas numeradas de la inspeccion, los jalones de la parcela o
    *  de la zona de busqueda, el senderista, las manchas de plaga y las torres y cables de la linea. casa: [N, E]. */
   ponerOperacion(d, casa) {
-    if (this.operacion) { this.operacion.parent && this.operacion.parent.remove(this.operacion); this.operacion = null; }
+    if (this.operacion) { this.operacion.parent && this.operacion.parent.remove(this.operacion); liberar(this.operacion); this.operacion = null; }
     if (!d || !this.mundo) return;
     const G = new THREE.Group(), alt = this.entorno.altura, h0 = this.mundo.terreno.h0, std = (c, extra) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8 }, extra || {}));
     const en = (o, N, E, y) => { o.position.set(E, y, -N); G.add(o); return o; };
@@ -207,7 +207,7 @@ Object.assign(Visor.prototype, {
 
   /** Elementos singulares del mundo (simulador/singulares.js, comun con Godot): la entrada del CIFP Politecnico... */
   _singulares(esc, m) {
-    if (esc.userData.singulares) { esc.userData.singulares.traverse(o => { if (o.geometry) o.geometry.dispose(); }); esc.remove(esc.userData.singulares); }
+    if (esc.userData.singulares) { esc.remove(esc.userData.singulares); liberar(esc.userData.singulares); }
     const g = new THREE.Group(); esc.add(g); esc.userData.singulares = g;
     const alt = this.entorno.altura, T = Visor.texturaSingular;
     const mat = (tex, rep, extra) => { const t = tex.clone(); t.needsUpdate = true; if (rep) t.repeat.set(rep[0], rep[1]); return new THREE.MeshStandardMaterial(Object.assign({ map: t, roughness: 0.9, metalness: 0 }, extra || {})); };

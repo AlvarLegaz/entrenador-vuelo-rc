@@ -236,8 +236,10 @@ window.JuegoBipode = window.JuegoBipode || class JuegoBipode {
     }
     return (mallas.geo = geo);
   }
+  const texturas = {};                                    // calcas ya cargadas: se comparten entre bipodes (el propio, los fantasmas, el hangar)
   function material(K) {
-    const tex = new THREE.TextureLoader().load("aviones/" + K.calcas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.flipY = false;
+    let tex = texturas[K.calcas];
+    if (!tex) { tex = texturas[K.calcas] = new THREE.TextureLoader().load("aviones/" + K.calcas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.flipY = false; tex.userData.compartida = true; }
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 1 });
     m.userData.u = { uCalcas: { value: tex } };
     m.onBeforeCompile = sh => {
@@ -389,7 +391,7 @@ window.JuegoBipode = window.JuegoBipode || class JuegoBipode {
         for (const d of g.userData.discos) d.visible = dr.estado === "vuela";
         if (dr.estado === "roto") g.traverse(o => { if (o.material && o.material.color && !o.userData.quemado) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.25); o.userData.quemado = true; } });
       }
-      for (const [id, g] of dronesG) if (!vistos.has(id)) { raiz.remove(g); dronesG.delete(id); }
+      for (const [id, g] of dronesG) if (!vistos.has(id)) { raiz.remove(g); if (window.liberar) liberar(g); dronesG.delete(id); }
       // humo de los que caen y de los rotos (los primeros segundos)
       tHumo += dt;
       if (tHumo > 0.06) {
@@ -421,7 +423,7 @@ window.JuegoBipode = window.JuegoBipode || class JuegoBipode {
       }
       if (parts.length > 600) { const sobran = parts.splice(0, parts.length - 600); for (const q of sobran) { raiz.remove(q.s); q.s.material.dispose(); } }
     }
-    function quitar() { quitarParticulas(); escena.remove(raiz); }
+    function quitar() { quitarParticulas(); escena.remove(raiz); if (window.liberar) liberar(raiz); }
     return { pintar, quitar };
   };
 })();
