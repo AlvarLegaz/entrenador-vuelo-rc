@@ -2744,7 +2744,7 @@ window.ESCENARIOS = {
   }
  },
  "libre_cartagena": {
-  "vehiculos": ["avion", "dron", "fpv"],
+  "vehiculos": ["avion", "dron", "fpv", "uav"],
   "nombre": "Vuelo libre · Campo de Cartagena (mapa real)",
   "mundo": "cartagena",
   "zona": 3,

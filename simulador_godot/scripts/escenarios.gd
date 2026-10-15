@@ -26,7 +26,8 @@ static func datos() -> Dictionary:
 
 ## Tipo de vehiculo de un avion: "avion", "dron" (el dron comercial) o "fpv" (escenarios.js: "vehiculos"; vehiculoDe de la web).
 static func vehiculo_de(id: String) -> String:
-	var t := String(DatosComunes.avion(id).get("tipo", ""))
+	var D := DatosComunes.avion(id); var t := String(D.get("tipo", ""))
+	if D.get("uav", false): return "uav"
 	return "fpv" if t == "fpv" else ("dron" if t == "cuadricoptero" else ("bipode" if t == "bipode" else "avion"))
 ## Los entrenamientos (con objetivos) de un vehiculo, en el orden de escenarios.js (misionesDe).
 static func misiones_de(veh: String) -> Array:

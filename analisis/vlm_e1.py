@@ -122,8 +122,12 @@ def construir(g):
                      hinge=al["bisagra"] if al else None, hinge_y=(al["y0"], al["y1"]) if al else None, mando="aleron"),
         superficie_h("estab", g["HT_XLE"], g["HT_Z"], g["HT_C"], g["HT_B"] / 2, g["HT_INC"], 0.0, (0, 0.4, 0.08),
                      hinge=g["ELEV_HINGE"], ns=10, nc=5),
-        superficie_v(g["FIN_XLE"], P.fus_lomo(g["FIN_XLE"] + 0.5 * g["FIN_C"]), g["FIN_C"], g["FIN_H"], g["RUD_HINGE"]),
     ]
+    if "FIN_Y" in g:                     # doble viga de cola (XM-7): una deriva con su timon al final de cada viga
+        for lado in (+1, -1):
+            partes.append(superficie_v(g["FIN_XLE"], g["FIN_Z0"], g["FIN_C"], g["FIN_H"], g["RUD_HINGE"], y=lado * g["FIN_Y"]))
+    else:
+        partes.append(superficie_v(g["FIN_XLE"], P.fus_lomo(g["FIN_XLE"] + 0.5 * g["FIN_C"]), g["FIN_C"], g["FIN_H"], g["RUD_HINGE"]))
     A, Bv, Cp, info = [], [], [], []
     for a, b, c, i in partes:
         A += a; Bv += b; Cp += c; info += i

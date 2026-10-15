@@ -30,6 +30,25 @@ func _traza(id: String, conf: Dictionary, ent: Entorno, facil := false) -> Array
 	ent.facil = false
 	return out
 
+## Avion de pista (XM-7): lo mismo que pista() de generar_referencia_fisica.py
+func _pista(id: String, ent: Entorno) -> Array:
+	var m := ModeloAvion.new(DatosComunes.avion(id)); var a := m.estado_inicial(); var out := []
+	m.lanzar(a); a["asim"] = 0.37
+	var mm := { "pitch": 0.0, "yaw": 0.0, "guinada": 0.0, "trim": m.compensador_grados }
+	for i in int(24 / DT) + 1:
+		var t := i * DT
+		a["gases"] = 0.1 if t < 1 else 1.0; a["freno"] = 1.0 if t < 2 else 0.0
+		mm["pitch"] = 0.4 if (t >= 12 and t < 14) else (0.12 if t >= 14 else 0.0); mm["guinada"] = 0.15 * sin(0.6 * t); mm["yaw"] = 0.3 * sin(0.8 * t) if t > 15 else 0.0
+		if i % 500 == 0:
+			out.append({ "t": t, "p": a["p"].duplicate(), "v": a["v"].duplicate(), "w": a["w"].duplicate(), "q": a["q"].duplicate(),
+						 "de": a["de"], "da": a["da"], "dr": a["dr"], "Wh": a["Wh"], "T": a["T"], "tierra": 1 if a["enTierra"] else 0 })
+		m.servos(a, mm, DT)
+		a["agl"] = -a["p"][2] - 0.02 * sin(0.05 * a["p"][0]); a["pg"] = 0.0
+		m.paso(a, ent.viento_a([3.0, 1.0, 0.0], a["agl"]), DT)
+		var f := m.fin_tren(a)
+		if f != "": out.append({ "fin": f, "t": t }); break
+	return out
+
 func _e(x: float) -> String:
 	if x == 0: return "0"
 	var ex := floori(log(x) / log(10.0))
@@ -64,6 +83,18 @@ func _init() -> void:
 			print("  %s %-6s %s  p %s  v %s  w %s  q %s  mandos %s  Wh %s  T %s%s" % [id, nombre, "OK " if ok else "MAL",
 				_e(dmax["p"]), _e(dmax["v"]), _e(dmax["w"]), _e(dmax["q"]), _e(maxf(dmax["de"], maxf(dmax["da"], dmax["dr"]))), _e(dmax["Wh"]), _e(dmax["T"]),
 				"" if t_primer < 0 else "  (primera diferencia > 1e-6 en t=%.0f s)" % t_primer])
+	print("Avion de pista (XM-7): parado, carrera de despegue con la rueda de morro, rotacion y subida")
+	var gp := _pista("XM7", ent); var rp: Array = ref["aviones"]["XM7"]["pista"]
+	var dpm := 0.0; var dqm := 0.0; var dtierra := 0
+	for k in mini(gp.size(), rp.size()):
+		if rp[k].has("fin") or gp[k].has("fin"):
+			if String(rp[k].get("fin", "")) != String(gp[k].get("fin", "")): dtierra += 1
+			continue
+		dpm = maxf(dpm, _dif(gp[k]["p"], rp[k]["p"])); dqm = maxf(dqm, _dif(gp[k]["q"], rp[k]["q"]))
+		if int(gp[k]["tierra"]) != int(rp[k]["tierra"]): dtierra += 1
+	var okp := gp.size() == rp.size() and dpm < 1e-3 and dqm < 1e-6 and dtierra == 0
+	if not okp: fallos += 1
+	print("  XM7 pista %s  p %s  q %s  (%d muestras, en tierra distinto en %d)" % ["OK " if okp else "MAL", _e(dpm), _e(dqm), gp.size(), dtierra])
 	print("Entorno (mundo de Cartagena):")
 	ent.poner_mundo(DatosComunes.mundo("cartagena"))
 	for caso in ["sinZona", "conZona"]:

@@ -1280,6 +1280,9 @@ function colocarEnBase(a, m = modelo) {
     if (!entorno.mundo) { a.p = [10, 0, 0]; return; }
     const c = casa(); a.p = [c.N, c.E, -entorno.altura(c.N, c.E)]; return;
   }
+  if (m && m.tren) {                   // avion de pista: sobre sus ruedas
+    const c = entorno.mundo ? casa() : { N: 0, E: 0 }; a.p = [c.N, c.E, -((entorno.mundo ? entorno.altura(c.N, c.E) : 0) + m.alturaEnTierra())]; return;
+  }
   if (!entorno.mundo) return;
   const c = casa(); a.p = [c.N, c.E, -(entorno.altura(c.N, c.E) + (m && m.esCuadricoptero ? 0.02 : 1.6))];   // en la mano (avion) o en el suelo (dron)
 }
@@ -1608,6 +1611,7 @@ function reiniciar() {
   iniciarJuegoBip();
   if (ESCENARIOS[sesion.escenario].enVuelo && !modelo.esTerrestre) { empezarEnVuelo(); return; }
   if (modelo.esBipode) { aviso("Pulsa L (o el botón A) para arrancar el bípode"); return; }
+  if (modelo.tren) { av.frenoAparc = true; aviso("Pulsa L (o el botón A) para arrancar el motor"); return; }
   aviso(modelo.esFPV ? "Gas abajo del todo y L (o botón A) para armar" : modelo.esCuadricoptero ? "Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" : "Pulsa L para lanzar");
 }
 // en la zona 2 el piloto se da la vuelta: se lanza hacia el sur (la velocidad va en ejes cuerpo y no cambia)
@@ -1624,10 +1628,10 @@ function lanzar() {
   }
   if (av.estado !== "en mano") return;
   modelo.lanzar(av); orientarLanzamiento(); if (modelo.esTerrestre) av.rumbo = ((Cuat.euler(av.q)[2] % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : modelo.esBipode ? "" : "");
+  aviso(modelo.esCuadricoptero ? "Sube el gas (W o palanca izquierda arriba) para despegar" : modelo.tren ? "Motor en marcha: quita el freno (espacio) y acelera (W)" : "");
   if (modelo.esFPV) toast("ARMADO");
   if (modelo.esCuadricoptero) setTimeout(() => { if (av.estado === "volando" && av.posado) aviso(""); }, 3000);
-  if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero && !modelo.esTerrestre) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
+  if (sesion.lanzReal && !modelo.facil && !modelo.esCuadricoptero && !modelo.esTerrestre && !modelo.tren) {          // un lanzamiento a mano nunca es perfecto: velocidad, cabeceo y alabeo al azar
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.5;    // ~N(0,1), acotada
     const [r, p, y] = Cuat.euler(av.q);
     av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
@@ -1640,6 +1644,9 @@ function paso(dt) {
   let viento = entorno.actualizar(dt);
   modelo.servos(av, mando, dt);
   av.agl = -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0);
+  if (modelo.tren && entorno.altura) {          // avion de pista: el suelo bajo cada rueda (el terreno no es plano)
+    const g0 = -av.p[2] - av.agl; av.dSuelo = modelo.tren.ruedas.map(r => { const rw = Cuat.rot(av.q, r.p); return entorno.altura(av.p[0] + rw[0], av.p[1] + rw[1]) - g0; });
+  }
   viento = entorno.vientoA(viento, av.agl);
   av.pg = entorno.rafagaAlabeo(modelo.b_m, av.agl);
   if (av.estado !== "volando") return;
@@ -1648,6 +1655,11 @@ function paso(dt) {
   if (modelo.esTerrestre) { pasoTerrestre(dt, viento, pAnt); return; }
   const vn = modelo.paso(av, viento, dt);
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
+  if (modelo.tren) {                           // avion de pista: lo que rompe el tren o las alas en tierra y el final de la carrera
+    let ft = modelo.finTren(av);
+    if (!ft && av.enTierra && entorno.enMar && entorno.enMar(av.p[0], av.p[1])) ft = "roto (ha caído al mar)";
+    if (ft) { terminarVuelo(ft, vn); return; }
+  }
   // un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app (camara 3)
   if (vuelo && !vuelo.otraCamara && !camaraValida() && ESCENARIOS[sesion.escenario].objetivos.length) { vuelo.otraCamara = true; toast(conGafas() ? "Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" : "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)"); }
   if (++cnContador % CN_CADA === 0) { grabarMuestra(); evaluar(CN_CADA * DT); }
@@ -1741,7 +1753,7 @@ function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;
   // lanzamiento fallido: acaba en el suelo antes de LANZ.fallo_s sin haber subido de LANZ.fallo_h. No cuenta como
   // aterrizaje; si se ha roto, si como accidente
-  if (vuelo && !modelo.esCuadricoptero && !modelo.esTerrestre && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
+  if (vuelo && !modelo.esCuadricoptero && !modelo.esTerrestre && !modelo.tren && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
     vuelo.lanzamiento = causaLanzamientoFallido(vuelo.gasLanz);
     final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
   }
@@ -1991,7 +2003,7 @@ function montarCondiciones(slotId, E) {
 let misionSel = null;
 
 /** Tipo de vehiculo de un avion de la carpeta aviones/: "avion", "dron" (el dron comercial) o "fpv" (escenarios.js: "vehiculos"). */
-function vehiculoDe(id) { const t = (Modelos.datos(id) || {}).tipo; return t === "fpv" ? "fpv" : t === "cuadricoptero" ? "dron" : t === "bipode" ? "bipode" : "avion"; }
+function vehiculoDe(id) { const D = Modelos.datos(id) || {}, t = D.tipo; return D.uav ? "uav" : t === "fpv" ? "fpv" : t === "cuadricoptero" ? "dron" : t === "bipode" ? "bipode" : "avion"; }
 /** Los entrenamientos (con objetivos) de un vehiculo, en el orden de escenarios.js. */
 function misionesDe(veh) { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].objetivos.length && !ESCENARIOS[id].operacion && (ESCENARIOS[id].vehiculos || ["avion"]).includes(veh)); }
 function irEntrenamientos() {
@@ -2665,7 +2677,7 @@ window.addEventListener("keydown", e => {
   if (e.code === "KeyL" && !modelo.esFPV) lanzar();
   if (e.code === "KeyR") reiniciar();
   if (e.code === "KeyB") verBriefing();
-  if (e.code === "Space") { av.gases = 0; e.preventDefault(); }
+  if (e.code === "Space") { if (modelo.tren) quitarFrenoAparc(); else av.gases = 0; e.preventDefault(); }
   if (e.code === "Digit1") visor.camara = 1; if (e.code === "Digit2") visor.camara = 2; if (e.code === "Digit3") visor.camara = 3;
   if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
   if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
@@ -2852,7 +2864,8 @@ function leerMando(dt) {
     if (MANDO.tCsc > 0.5 && av.estado === "en mano") { MANDO.tCsc = -1e9; lanzar(); toast("Motores en marcha (CSC): sube la palanca izquierda para despegar"); }
   } else if (pantallaActual === null && !pausado) {
     if (pulsado(0)) lanzar();
-    if (pulsado(1)) av.gases = 0;
+    if (modelo.tren) { MANDO.freno = !!(p.buttons[1] && p.buttons[1].pressed); if (pulsado(1)) quitarFrenoAparc(); }   // avion de pista: B frena
+    else if (pulsado(1)) av.gases = 0;
     if (pulsado(5)) visor.camara = visor.camara % 3 + 1;        // RB: el mismo boton que en el dron, el FPV y el bipode
     if (pulsado(2)) reiniciar();
     if (pulsado(12)) mando.trim = Math.min(6, mando.trim + 0.25);
@@ -2880,7 +2893,10 @@ function leerMando(dt) {
   return moviendo || MANDO.usado;
 }
 
+/** Avion de pista: el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan. */
+function quitarFrenoAparc() { if (av && av.frenoAparc) { av.frenoAparc = false; toast("Freno de aparcamiento quitado: espacio (o B) frena"); } }
 function leerTeclado(dt) {
+  if (modelo && modelo.tren && av) av.freno = av.frenoAparc || teclas["Space"] || MANDO.freno ? 1 : 0;
   const cuad = modelo && ((modelo.esCuadricoptero && !modelo.esFPV) || modelo.esTerrestre);     // en el FPV W/S son el gas, como en los aviones; el bipode anda con W/S y A/D
   if (modelo && modelo.esBipode) { mando.disparo = !!teclas["Space"] || !!MANDO.disparo; mando.puno = !!teclas["KeyF"] || !!MANDO.puno; }
   const teclaPalanca = teclas["ArrowDown"] || teclas["ArrowUp"] || teclas["ArrowRight"] || teclas["ArrowLeft"] || teclas["KeyA"] || teclas["KeyD"] || ((cuad || (modelo && modelo.esFPV)) && (teclas["KeyW"] || teclas["KeyS"]));   // en el FPV, W/S tambien devuelven el gas al teclado

@@ -24,6 +24,7 @@ var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0
 var Qmax: float; var Ihelice: float; var CD_helice_parada: float; var k_perfil: float
 var chorro := {}; var brazoDeriva: float; var brazoPerdida: float
 var CD_helice_parada_datos := 0.0
+var tren = null                 # aviones de pista: ruedas, muelles, rodadura y frenos (datos.tren)
 ## DIFICULTAD: con facil = true, paso() es la fisica de antes de las mejoras de realismo (sin par del motor, estela, efecto
 ## P ni giroscopico, sin perdida por semiala, efecto suelo ni resistencia de perfil, densidad estandar y sin calibracion),
 ## como ModeloAvion.facil en modelos.js. El Entorno, con su propio facil, quita el viento junto al suelo y la turbulencia
@@ -59,6 +60,7 @@ func _init(d: Dictionary) -> void:
 		for i in range(0, fv.size(), 3): xmin = minf(xmin, fv[i])
 	brazoDeriva = maxf(0.1, -xmin - 0.06)
 	brazoPerdida = d.get("brazo_perdida", 0.2)
+	tren = d.get("tren")
 
 static func interp(xs: Array, ys: Array, x: float) -> float:
 	if x <= xs[0]: return ys[0]
@@ -92,9 +94,19 @@ func estado_inicial() -> Dictionary:
 				"asim": (-1.0 if randf() < 0.5 else 1.0) * (0.2 + 0.4 * randf()),
 				"estado": "en mano", "t": 0.0, "alfa": 0.0, "beta": 0.0, "V": 0.0, "g_carga": 1.0, "perdida": 0.0, "T": 0.0, "Q": 0.0,
 				"rpm": 0.0, "motorRoto": false, "elevon_izq": 0.0, "elevon_der": 0.0, "perdidaLados": [0.0, 0.0] }
+	if tren != null:
+		av["p"] = [0.0, 0.0, -altura_en_tierra()]; av["q"] = Cuat.desde_euler(0, 0, 0); av["freno"] = 1.0; av["enTierra"] = true; av["despegado"] = false; av["trenComp"] = 0.0
 	return av
 
+## Altura del CG sobre el suelo con el avion parado sobre sus ruedas (tren: con los amortiguadores con su carga).
+func altura_en_tierra() -> float:
+	var zmax := -INF
+	for r in tren["ruedas"]: zmax = maxf(zmax, float(r["p"][2]))
+	return zmax - masa_kg * G0 / (float(tren["k"]) * (tren["ruedas"] as Array).size())
+
 func lanzar(av: Dictionary) -> void:
+	if tren != null:                  # de pista: arranca el motor, sin lanzarlo
+		av["estado"] = "volando"; av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; return
 	av["q"] = Cuat.desde_euler(0, lanzamiento["cabeceo_grados"] * D2R, 0)
 	av["v"] = [float(lanzamiento["vel_ms"]), 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]
 	av["estado"] = "volando"
@@ -181,7 +193,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var M := mandos_coef(av, aD, kman)
 	# motor y helice
 	if av["motorRoto"]: av["gases"] = 0.0
-	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1.0 if fac else 1 - 0.10 * (1 - bat))
+	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1.0 if (fac or pr.get("combustible", false)) else 1 - 0.10 * (1 - bat))
 	var T := 0.0; var Q := 0.0; var J := 0.0
 	if g > 0.02:
 		J = V / (n * pr["D_m"])
@@ -223,6 +235,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx
 	var gb := Cuat.rot_inv(q, GVEC); var m := masa_kg
 	var F := [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]]
+	if tren != null: fuerzas_tren(av, F, Ma)
 	var dv := [F[0] / m - (w[1] * v[2] - w[2] * v[1]), F[1] / m - (w[2] * v[0] - w[0] * v[2]), F[2] / m - (w[0] * v[1] - w[1] * v[0])]
 	var I := inercia; var Ixx: float = I["Ixx"]; var Iyy: float = I["Iyy"]; var Izz: float = I["Izz"]; var Ixz: float = I["Ixz"]
 	var Iw := [Ixx * w[0] - Ixz * w[2], Iyy * w[1], Izz * w[2] - Ixz * w[0]]
@@ -242,3 +255,58 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 
 func bateria_pct(av: Dictionary) -> float:
 	return maxf(0, 100 * (1 - av["Wh"] / propulsion["masa_bateria_Wh"]))
+
+static func _sg(x: float, e: float) -> float: return x / sqrt(x * x + e * e)      # signo suave: sin saltos al pararse
+
+## Tren de aterrizaje (fuerzasTren de modelos.js): cada rueda es un muelle con amortiguador vertical, con rodadura (y
+## freno en las principales) y agarre lateral; la de morro gira con los timones. Suma fuerzas y momentos a F y Ma.
+func fuerzas_tren(av: Dictionary, F: Array, Ma: Array) -> void:
+	var q: Array = av["q"]; var v: Array = av["v"]; var w: Array = av["w"]; var agl: float = av.get("agl", 1e9)
+	var vn := Cuat.rot(q, v); var fx := Cuat.rot(q, [1.0, 0.0, 0.0]); var hx := Vector2(fx[0], fx[1]).length(); var qi := Cuat.inv(q)
+	if hx == 0: hx = 1.0
+	var n := 0; var comp := 0.0; var ds = av.get("dSuelo")     # cuanto mas alto esta el suelo bajo cada rueda que bajo el CG
+	for k in (tren["ruedas"] as Array).size():
+		var r: Dictionary = tren["ruedas"][k]; var rp: Array = r["p"]; var rw := Cuat.rot(q, rp); var pen: float = rw[2] - agl + (float(ds[k]) if ds != null else 0.0)
+		if pen <= 0: continue
+		n += 1; comp = maxf(comp, pen)
+		var wn := Cuat.rot(q, [w[1] * rp[2] - w[2] * rp[1], w[2] * rp[0] - w[0] * rp[2], w[0] * rp[1] - w[1] * rp[0]])
+		var vp := [vn[0] + wn[0], vn[1] + wn[1], vn[2] + wn[2]]
+		var N := maxf(0, float(tren["k"]) * pen + float(tren["c"]) * vp[2])
+		var ux: float = fx[0] / hx; var uy: float = fx[1] / hx
+		if r.get("morro", false):         # rueda de morro: gira con los timones, menos cuanto mas deprisa
+			var vh := Vector2(vn[0], vn[1]).length(); var g: float = av.get("dr", 0.0) / (float(mandos["timon_max_grados"]) * D2R) * float(tren["giro_morro_grados"]) * D2R / (1 + (vh / 8) * (vh / 8))
+			var c := cos(g); var s := sin(g)
+			var x := ux * c - uy * s; uy = ux * s + uy * c; ux = x
+		var vl: float = vp[0] * ux + vp[1] * uy; var vt: float = -vp[0] * uy + vp[1] * ux
+		var mu: float = float(tren["mu_rodadura"]) + (0.0 if r.get("morro", false) else float(av.get("freno", 0.0)) * float(tren["mu_freno"]))
+		var Fl := -mu * N * _sg(vl, 0.2); var Ft := -float(tren["mu_lateral"]) * N * _sg(vt, 0.3)
+		var Fb := Cuat.rot(qi, [Fl * ux - Ft * uy, Fl * uy + Ft * ux, -N])
+		for i in 3: F[i] += Fb[i]
+		Ma[0] += rp[1] * Fb[2] - rp[2] * Fb[1]; Ma[1] += rp[2] * Fb[0] - rp[0] * Fb[2]; Ma[2] += rp[0] * Fb[1] - rp[1] * Fb[0]
+	if n > 0 and not av.get("enTierra", false): av["vzToma"] = vn[2]
+	av["enTierra"] = n > 0; av["trenComp"] = comp
+
+## Con tren, despues de cada paso (finTren de modelos.js): "" si no pasa nada, "roto (...)" si se rompe en tierra y
+## "aterrizado" cuando, despues de haber volado, se para sobre sus ruedas.
+func fin_tren(av: Dictionary) -> String:
+	if not av.get("enTierra", false):
+		if av.get("agl", 0.0) > 3: av["despegado"] = true
+		return ""
+	var e := Cuat.euler(av["q"]); var ds = av.get("dSuelo")
+	if ds != null:                # alabeo y cabeceo respecto al suelo bajo las ruedas (el terreno puede estar inclinado)
+		var R: Array = tren["ruedas"]; var iz := -1; var de := -1; var mo := -1
+		for k in R.size():
+			if R[k].get("morro", false): mo = k if mo < 0 else mo
+			elif float(R[k]["p"][1]) < 0: iz = k if iz < 0 else iz
+			else: de = k if de < 0 else de
+		e[0] -= atan2(float(ds[iz]) - float(ds[de]), float(R[de]["p"][1]) - float(R[iz]["p"][1]))
+		e[1] -= atan2(float(ds[mo]) - 0.5 * (float(ds[iz]) + float(ds[de])), float(R[mo]["p"][0]) - float(R[iz]["p"][0]))
+	if av.has("vzToma"):
+		var vz: float = av["vzToma"]; av.erase("vzToma")
+		if vz > float(tren["v_toma_max_ms"]): return "roto (toma demasiado dura)"
+	if av["trenComp"] > 0.25: return "roto (tren roto)"
+	if absf(e[0]) > 20 * D2R: return "roto (punta del ala en el suelo)"
+	if e[1] > 16 * D2R: return "roto (cola en el suelo)"
+	if e[1] < -8 * D2R: return "roto (morro en el suelo)"
+	if av.get("despegado", false) and Vector2(av["v"][0], av["v"][1]).length() < 0.5: return "aterrizado"
+	return ""

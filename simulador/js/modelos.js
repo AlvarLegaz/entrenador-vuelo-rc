@@ -100,14 +100,21 @@ class ModeloAvion {
 
   deriv(nombre, alfa) { return this.DER[nombre] ? interp(this.DA, this.DER[nombre], alfa) : 0; }
 
-  /** Estado inicial: en la mano del piloto, a 1,6 m del suelo. */
+  /** Estado inicial: en la mano del piloto, a 1,6 m del suelo. Un avion de pista (con tren): parado sobre sus ruedas,
+   *  nivelado, con el motor parado y el freno de aparcamiento puesto. */
   estadoInicial() {
-    return { p: [0, 0, -1.6], q: Cuat.desdeEuler(0, 2 * D2R, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0,
-             asim: (Math.random() < 0.5 ? -1 : 1) * (0.2 + 0.4 * Math.random()),   // grados: ninguna ala es perfecta
-             estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false };
+    const av = { p: [0, 0, -1.6], q: Cuat.desdeEuler(0, 2 * D2R, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0,
+                 asim: (Math.random() < 0.5 ? -1 : 1) * (0.2 + 0.4 * Math.random()),   // grados: ninguna ala es perfecta
+                 estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false };
+    if (this.tren) { av.p = [0, 0, -this.alturaEnTierra()]; av.q = Cuat.desdeEuler(0, 0, 0); av.freno = 1; av.enTierra = true; av.despegado = false; av.trenComp = 0; }
+    return av;
   }
 
+  /** Altura del CG sobre el suelo con el avion parado sobre sus ruedas (tren: con los amortiguadores con su carga). */
+  alturaEnTierra() { const T = this.tren; return Math.max(...T.ruedas.map(r => r.p[2])) - this.masa_kg * G0 / (T.k * T.ruedas.length); }
+
   lanzar(av) {
+    if (this.tren) { av.estado = "volando"; av.v = [0, 0, 0]; av.w = [0, 0, 0]; return; }     // de pista: arranca el motor, sin lanzarlo
     av.q = Cuat.desdeEuler(0, this.lanzamiento.cabeceo_grados * D2R, 0);
     av.v = [this.lanzamiento.vel_ms, 0, 0]; av.w = [0, 0, 0];
     av.estado = "volando";
@@ -173,7 +180,7 @@ class ModeloAvion {
     const d = (n) => this.deriv(n, aD), M = this.mandosCoef(av, d, kman);
     // ---- motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gas * tension (la bateria cae ~10 % al vaciarse) ----
     if (av.motorRoto) av.gases = 0;
-    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (FAC ? 1 : 1 - 0.10 * (1 - bat));
+    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (FAC || pr.combustible ? 1 : 1 - 0.10 * (1 - bat));   // un motor de combustion no pierde vueltas al gastar
     let T = 0, Q = 0, J = 0;
     if (g > 0.02) {
       J = V / (n * pr.D_m);
@@ -221,6 +228,7 @@ class ModeloAvion {
     Ma[1] += -w[2] * Hx; Ma[2] += w[1] * Hx;
     const gb = Cuat.rot(Cuat.inv(q), [0, 0, G0]), m = this.masa_kg;
     const F = [Fa[0] + Tx + m * gb[0], Fa[1] + m * gb[1], Fa[2] + Tz + m * gb[2]];
+    if (this.tren) this.fuerzasTren(av, F, Ma);
     // ecuaciones de Euler: m(dv + w x v) = F ; I dw + w x (I w) = M
     const dv = [F[0] / m - (w[1] * v[2] - w[2] * v[1]), F[1] / m - (w[2] * v[0] - w[0] * v[2]), F[2] / m - (w[0] * v[1] - w[1] * v[0])];
     const I = this.inercia, Ixx = I.Ixx, Iyy = I.Iyy, Izz = I.Izz, Ixz = I.Ixz;
@@ -239,6 +247,58 @@ class ModeloAvion {
   }
 
   bateriaPct(av) { return Math.max(0, 100 * (1 - av.Wh / this.propulsion.masa_bateria_Wh)); }
+
+  /** Tren de aterrizaje (aviones de pista, datos.tren): cada rueda es un muelle con amortiguador vertical (av.agl: altura
+   *  del CG sobre el suelo; av.dSuelo, si esta: cuanto mas alto esta el suelo bajo cada rueda que bajo el CG), con rodadura (y freno, av.freno 0..1, en las principales)
+   *  y agarre lateral; la rueda de morro gira con los timones. Suma sus fuerzas y momentos (ejes cuerpo) a F y Ma y
+   *  apunta en av: enTierra, la compresion mayor (trenComp, m) y la velocidad vertical al tocar (vzToma, + hacia abajo). */
+  fuerzasTren(av, F, Ma) {
+    const T = this.tren, q = av.q, v = av.v, w = av.w, agl = av.agl === undefined ? 1e9 : av.agl;
+    const vn = Cuat.rot(q, v), fx = Cuat.rot(q, [1, 0, 0]), hx = Math.hypot(fx[0], fx[1]) || 1, qi = Cuat.inv(q);
+    const sg = (x, e) => x / Math.sqrt(x * x + e * e);                // signo suave: sin saltos al pararse
+    let n = 0, comp = 0;
+    for (let k = 0; k < T.ruedas.length; k++) {
+      const r = T.ruedas[k], rp = r.p, rw = Cuat.rot(q, rp), pen = rw[2] - agl + (av.dSuelo ? av.dSuelo[k] : 0);
+      if (pen <= 0) continue;
+      n++; comp = Math.max(comp, pen);
+      const wn = Cuat.rot(q, [w[1] * rp[2] - w[2] * rp[1], w[2] * rp[0] - w[0] * rp[2], w[0] * rp[1] - w[1] * rp[0]]);
+      const vp = [vn[0] + wn[0], vn[1] + wn[1], vn[2] + wn[2]];
+      const N = Math.max(0, T.k * pen + T.c * vp[2]);
+      let ux = fx[0] / hx, uy = fx[1] / hx;
+      if (r.morro) {                                                  // rueda de morro: gira con los timones, menos cuanto mas deprisa
+        const vh = Math.hypot(vn[0], vn[1]), g = (av.dr || 0) / (this.mandos.timon_max_grados * D2R) * T.giro_morro_grados * D2R / (1 + (vh / 8) * (vh / 8));
+        const c = Math.cos(g), s = Math.sin(g);
+        const x = ux * c - uy * s; uy = ux * s + uy * c; ux = x;
+      }
+      const vl = vp[0] * ux + vp[1] * uy, vt = -vp[0] * uy + vp[1] * ux;
+      const mu = T.mu_rodadura + (r.morro ? 0 : (av.freno || 0) * T.mu_freno);
+      const Fl = -mu * N * sg(vl, 0.2), Ft = -T.mu_lateral * N * sg(vt, 0.3);
+      const Fb = Cuat.rot(qi, [Fl * ux - Ft * uy, Fl * uy + Ft * ux, -N]);
+      for (let i = 0; i < 3; i++) F[i] += Fb[i];
+      Ma[0] += rp[1] * Fb[2] - rp[2] * Fb[1]; Ma[1] += rp[2] * Fb[0] - rp[0] * Fb[2]; Ma[2] += rp[0] * Fb[1] - rp[1] * Fb[0];
+    }
+    if (n && !av.enTierra) av.vzToma = vn[2];
+    av.enTierra = n > 0; av.trenComp = comp;
+  }
+
+  /** Con tren, despues de cada paso: null si no pasa nada; "roto (...)" si se rompe en tierra (toma dura, tren aplastado,
+   *  punta del ala, cola o morro en el suelo) y "aterrizado" cuando, despues de haber volado, se para sobre sus ruedas. */
+  finTren(av) {
+    if (!av.enTierra) { if (av.agl > 3) av.despegado = true; return null; }
+    const T = this.tren, e = Cuat.euler(av.q), ds = av.dSuelo;
+    if (ds) {                     // alabeo y cabeceo respecto al suelo bajo las ruedas (el terreno puede estar inclinado)
+      const R = T.ruedas, iz = R.findIndex(r => !r.morro && r.p[1] < 0), de = R.findIndex(r => !r.morro && r.p[1] > 0), mo = R.findIndex(r => r.morro);
+      e[0] -= Math.atan2(ds[iz] - ds[de], R[de].p[1] - R[iz].p[1]);
+      e[1] -= Math.atan2(ds[mo] - 0.5 * (ds[iz] + ds[de]), R[mo].p[0] - R[iz].p[0]);
+    }
+    if (av.vzToma !== undefined) { const vz = av.vzToma; delete av.vzToma; if (vz > T.v_toma_max_ms) return "roto (toma demasiado dura)"; }
+    if (av.trenComp > 0.25) return "roto (tren roto)";
+    if (Math.abs(e[0]) > 20 * D2R) return "roto (punta del ala en el suelo)";
+    if (e[1] > 16 * D2R) return "roto (cola en el suelo)";
+    if (e[1] < -8 * D2R) return "roto (morro en el suelo)";
+    if (av.despegado && Math.hypot(av.v[0], av.v[1]) < 0.5) return "aterrizado";
+    return null;
+  }
 }
 
 class Modelos {

@@ -415,6 +415,9 @@ func colocar_en_base(a: Dictionary, m = null) -> void:
 	if m is ModeloBipode:                 # el bipode, de pie en el suelo, delante del piloto (en el campo, 10 m al norte)
 		if not en_mundo(): a["p"] = [10.0, 0.0, 0.0]; return
 		var c0 := _casa(); a["p"] = [c0["N"], c0["E"], -ent.altura(c0["N"], c0["E"])]; return
+	if m is ModeloAvion and m.tren != null:      # avion de pista: sobre sus ruedas
+		var ct := _casa() if en_mundo() else { "N": 0.0, "E": 0.0 }
+		a["p"] = [ct["N"], ct["E"], -((ent.altura(ct["N"], ct["E"]) if en_mundo() else 0.0) + m.altura_en_tierra())]; return
 	if not en_mundo(): return
 	var c := _casa()
 	a["p"] = [c["N"], c["E"], -(ent.altura(c["N"], c["E"]) + (0.02 if (m is ModeloCuadricoptero or m is ModeloFPV) else 1.6))]   # en la mano (avion) o en el suelo (dron)
@@ -954,6 +957,7 @@ func reiniciar() -> void:
 	_iniciar_juego_bip()
 	if es_bipode(): hud.aviso.text = "Pulsa L (o el botón A) para arrancar el bípode"; return
 	if E.has("enVuelo"): _empezar_en_vuelo(); return
+	if con_tren(): av["frenoAparc"] = true; hud.aviso.text = "Pulsa L (o el botón A) para arrancar el motor"; return
 	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" if es_dron() else "Pulsa L para lanzar")
 
 func _nuevo_vuelo(h0: float) -> void:
@@ -987,11 +991,11 @@ func lanzar() -> void:
 	if av.get("estado", "") != "en mano": return
 	modelo.lanzar(av); _orientar_lanzamiento()
 	if es_bipode(): av["rumbo"] = fposmod(Cuat.euler(av["q"])[2], TAU)
-	hud.aviso.text = "Sube el gas (W o palanca izquierda arriba) para despegar" if es_dron() else ""
+	hud.aviso.text = "Sube el gas (W o palanca izquierda arriba) para despegar" if es_dron() else ("Motor en marcha: quita el freno (espacio) y acelera (W)" if con_tren() else "")
 	if es_fpv(): poner_toast("ARMADO")
 	if es_dron():
 		get_tree().create_timer(3.0).timeout.connect(func(): if av.get("estado") == "volando" and av.get("posado", false): hud.aviso.text = "")
-	if sesion["lanz_real"] and not modelo.facil and not es_dron() and not es_bipode():     # un lanzamiento a mano nunca es perfecto
+	if sesion["lanz_real"] and not modelo.facil and not es_dron() and not es_bipode() and not con_tren():     # un lanzamiento a mano nunca es perfecto
 		var gauss := func() -> float: return (randf() + randf() + randf() - 1.5) / 0.5
 		var e := Cuat.euler(av["q"])
 		av["v"][0] *= 1 + 0.08 * gauss.call()
@@ -1019,6 +1023,11 @@ func paso(dt: float) -> void:
 	var viento := ent.actualizar(dt)
 	modelo.servos(av, mando, dt)
 	av["agl"] = -av["p"][2] - ent.altura(av["p"][0], av["p"][1])
+	if con_tren():                     # avion de pista: el suelo bajo cada rueda (el terreno no es plano)
+		var g0: float = -av["p"][2] - av["agl"]; var ds := []
+		for r in modelo.tren["ruedas"]:
+			var rw := Cuat.rot(av["q"], r["p"]); ds.append(ent.altura(av["p"][0] + rw[0], av["p"][1] + rw[1]) - g0)
+		av["dSuelo"] = ds
 	viento = ent.viento_a(viento, av["agl"])
 	av["pg"] = ent.rafaga_alabeo(modelo.b_m, av["agl"])
 	if av["estado"] != "volando": return
@@ -1030,6 +1039,10 @@ func paso(dt: float) -> void:
 	var suelo_h := ent.altura(av["p"][0], av["p"][1])      # una vez: la usan hmax y el contacto con el suelo (misma posicion)
 	if vuelo != null:
 		vuelo["tVuelo"] += dt; vuelo["hmax"] = maxf(vuelo["hmax"], -av["p"][2] - suelo_h)
+	if con_tren():                           # avion de pista: lo que rompe el tren o las alas en tierra y el final de la carrera
+		var ft: String = modelo.fin_tren(av)
+		if ft == "" and av["enTierra"] and ent.en_mar(av["p"][0], av["p"][1]): ft = "roto (ha caído al mar)"
+		if ft != "": terminar_vuelo(ft, vn); return
 		# un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app
 		if not vuelo["otraCamara"] and not camara_valida() and not (E["objetivos"] as Array).is_empty():
 			vuelo["otraCamara"] = true; poner_toast("Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" if con_gafas() else "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
@@ -1201,7 +1214,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	if av["estado"] != "volando": return
 	if vn == null: vn = [0.0, 0.0, 0.0]
 	# lanzamiento fallido: en el suelo antes de 6 s sin pasar de 5 m. No cuenta como aterrizaje; si se ha roto, como accidente
-	if vuelo != null and not es_dron() and not es_bipode() and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
+	if vuelo != null and not es_dron() and not es_bipode() and not con_tren() and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
 		vuelo["lanzamiento"] = causa_lanzamiento_fallido(vuelo["gasLanz"])
 		var roto := final.begins_with("roto")
 		final = ("roto (" if roto else "") + "lanzamiento fallido: " + String(vuelo["lanzamiento"]["corto"]) + (")" if roto else "")
@@ -1511,7 +1524,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			if not es_fpv(): lanzar()
 		KEY_R: reiniciar()
 		KEY_B: ver_briefing()
-		KEY_SPACE: av["gases"] = 0.0
+		KEY_SPACE:
+			if con_tren(): quitar_freno_aparc()
+			else: av["gases"] = 0.0
 		KEY_1: camara = 1
 		KEY_2: camara = 2
 		KEY_3: camara = 3
@@ -1579,7 +1594,10 @@ func _leer_mando(dt: float) -> bool:
 		if _t_csc > 0.5 and av.get("estado", "") == "en mano": _t_csc = -1e9; lanzar(); poner_toast("Motores en marcha (CSC): sube la palanca izquierda para despegar")
 	elif pantalla_actual == "" and not pausado:
 		if bs[JOY_BUTTON_A]: lanzar()
-		if bs[JOY_BUTTON_B]: av["gases"] = 0.0
+		if con_tren():                     # avion de pista: B frena
+			_mando_freno = Input.is_joy_button_pressed(dev, JOY_BUTTON_B)
+			if bs[JOY_BUTTON_B]: quitar_freno_aparc()
+		elif bs[JOY_BUTTON_B]: av["gases"] = 0.0
 		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1     # el mismo boton que en el dron, el FPV y el bipode
 		if bs[JOY_BUTTON_X]: reiniciar()
 		if bs[JOY_BUTTON_DPAD_UP]: mando["trim"] = minf(6, mando["trim"] + 0.25)
@@ -1603,8 +1621,13 @@ func _leer_mando(dt: float) -> bool:
 		elif ly != 0: av["gases"] = clampf(av["gases"] - ly * 0.7 * dt, 0, 1)
 	return moviendo or _mando_usado
 
-var _mando_disparo := false; var _mando_puno := false
+var _mando_disparo := false; var _mando_puno := false; var _mando_freno := false
+## Avion de pista (con tren): el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan.
+func con_tren() -> bool: return modelo is ModeloAvion and modelo.tren != null
+func quitar_freno_aparc() -> void:
+	if not av.is_empty() and av.get("frenoAparc", false): av["frenoAparc"] = false; poner_toast("Freno de aparcamiento quitado: espacio (o B) frena")
 func _leer_teclado(dt: float) -> void:
+	if con_tren() and not av.is_empty(): av["freno"] = 1.0 if (av.get("frenoAparc", false) or Input.is_physical_key_pressed(KEY_SPACE) or _mando_freno) else 0.0
 	var cuad := (es_dron() and not es_fpv()) or es_bipode(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k)   # en el FPV W/S son el gas; el bipode anda con W/S y A/D
 	if es_bipode(): mando["disparo"] = T.call(KEY_SPACE) or _mando_disparo; mando["puno"] = T.call(KEY_F) or _mando_puno
 	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or ((cuad or es_fpv()) and (T.call(KEY_W) or T.call(KEY_S)))   # en el FPV, W/S tambien devuelven el gas al teclado

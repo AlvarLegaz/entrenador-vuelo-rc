@@ -44,7 +44,27 @@ GUION = r"""
     ent.facil = false;
     return out;
   }
+  // avion de pista (XM-7): parado con freno, gas, suelta el freno, carrera con la rueda de morro, rotacion y subida
+  function pista(id) {
+    const m = Modelos.crear(id), a = m.estadoInicial(), out = [];
+    m.lanzar(a); a.asim = 0.37;
+    const mm = { pitch: 0, yaw: 0, guinada: 0, trim: m.compensador_grados };
+    for (let i = 0; i < Math.trunc(24 / DT) + 1; i++) {
+      const t = i * DT;
+      a.gases = t < 1 ? 0.1 : 1; a.freno = t < 2 ? 1 : 0;
+      mm.pitch = t >= 12 && t < 14 ? 0.4 : (t >= 14 ? 0.12 : 0); mm.guinada = 0.15 * Math.sin(0.6 * t); mm.yaw = t > 15 ? 0.3 * Math.sin(0.8 * t) : 0;
+      if (i % 500 === 0)
+        out.push({ t, p: a.p.slice(), v: a.v.slice(), w: a.w.slice(), q: a.q.slice(), de: a.de, da: a.da, dr: a.dr, Wh: a.Wh, T: a.T, tierra: a.enTierra ? 1 : 0 });
+      m.servos(a, mm, DT);
+      a.agl = -a.p[2] - 0.02 * Math.sin(0.05 * a.p[0]); a.pg = 0;
+      m.paso(a, ent.vientoA([3, 1, 0], a.agl), DT);
+      const f = m.finTren(a);
+      if (f) { out.push({ fin: f, t }); break; }
+    }
+    return out;
+  }
   const res = {};
+  res.XM7 = { pista: pista("XM7") };
   for (const id of AVIONES_JSON) {
     const A = Modelos.datos(id);
     const cf = { masa_kg: A.masa_kg * 1.1, cg_mm: A.cg_mm[0] + 5, temperatura: 30, empuje_gf: 800, resistencia: 1.2 };
@@ -63,7 +83,7 @@ async def main():
         errores = []
         pg.on("pageerror", lambda e: errores.append(str(e)))
         await pg.goto(URL)
-        await pg.wait_for_function("typeof Modelos !== 'undefined' && %s.every(id => !!Modelos.datos(id))" % json.dumps(AVIONES),
+        await pg.wait_for_function("typeof Modelos !== 'undefined' && %s.every(id => !!Modelos.datos(id))" % json.dumps(AVIONES + ["XM7"]),
                                    timeout=30000)
         nuevas = json.loads(await pg.evaluate(GUION))
         await b.close()
@@ -73,7 +93,7 @@ async def main():
     for id_ in AVIONES:   # diferencia con la referencia anterior (los aviones que no se han tocado deben dar 0)
         d = 0.0
         for nombre, tr in nuevas[id_].items():
-            for a, b_ in zip(tr, ref["aviones"][id_][nombre]):
+            for a, b_ in zip(tr, ref["aviones"].get(id_, {}).get(nombre, [])):
                 d = max(d, max(abs(x - y) for x, y in zip(a["p"], b_["p"])))
         print("%s: diferencia maxima de posicion con la referencia anterior %.3g m" % (id_, d))
     ref["aviones"] = nuevas
