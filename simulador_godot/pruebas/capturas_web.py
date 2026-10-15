@@ -11,8 +11,8 @@ from playwright.sync_api import sync_playwright
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SIM = REPO / "simulador"
 VISTAS = [  # nombre, avion, escenario, destacado, camara, pasos de fisica antes de la foto
-    ("e1_campo_cam1", "E1", "libre", None, 1, 1500), ("e1_campo_cam2", "E1", "libre", None, 2, 1500),
-    ("e2_primer_vuelo_cam1", "E2", "primer_vuelo", None, 1, 1200), ("fpv_circuito_cam3", "FPV", "fpv_circuito", None, 3, 2000),
+    ("e3_campo_cam1", "E3", "libre", None, 1, 1500), ("e3_campo_cam2", "E3", "libre", None, 2, 1500),
+    ("t1_primer_vuelo_cam1", "T1", "primer_vuelo", None, 1, 1200), ("fpv_circuito_cam3", "FPV", "fpv_circuito", None, 3, 2000),
     ("dron_sabic_cam3", "DJI_MINI", "libre_cartagena", "SABIC", 3, 3000), ("dron_sabic_cam2", "DJI_MINI", "libre_cartagena", "SABIC", 2, 3000),
     ("dron_paneles_cam3", "DJI_MINI", "op_paneles", None, 3, 2500), ("bipode_sabic_cam2", "BIPODE", "libre_cartagena", "SABIC", 2, 2000),
 ]

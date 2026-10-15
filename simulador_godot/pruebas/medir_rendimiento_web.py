@@ -1,6 +1,6 @@
 """Medidas de rendimiento del simulador del navegador, para comparar antes y despues de un cambio (mismo PC, misma
 version de Chrome; se repite cada medida varias veces y se da la mediana):
-  - paso():   tiempo de 5.000 pasos de fisica (10 s de vuelo) del E1 en el campo y del dron comercial en SABIC (con zonas)
+  - paso():   tiempo de 5.000 pasos de fisica (10 s de vuelo) del E3 en el campo y del dron comercial en SABIC (con zonas)
   - hud():    tiempo de 2.000 llamadas al HUD en vuelo (lo que escribe en la pagina cada cuadro)
   - dibujar:  tiempo de 60 cuadros de visor.dibujar + hud (con SwiftShader, solo sirve como comparacion relativa)
   - memoria:  geometrias y texturas vivas en la GPU (renderer.info.memory) tras 12 cambios de vehiculo, 12 vistas previas
@@ -85,8 +85,8 @@ def main():
         pg.wait_for_timeout(1500)
         R["carga_js_kB"] = {k: round(v / 1024) for k, v in sorted(bytes_js.items(), key=lambda kv: -kv[1])[:8]}
         R["carga_js_total_kB"] = round(sum(bytes_js.values()) / 1024)
-        # E1 en el campo
-        pg.evaluate(PREP, ["E1", "libre", None])
+        # E3 en el campo
+        pg.evaluate(PREP, ["E3", "libre", None])
         R["paso_e1_campo_ms"] = round(mediana(lambda: pg.evaluate(MEDIR_PASO, 5000)["ms"]), 1)
         R["heap_e1_5000pasos_MB"] = round(pg.evaluate(MEDIR_PASO, 5000)["heapMB"], 2)
         R["hud_e1_2000_ms"] = round(mediana(lambda: pg.evaluate(MEDIR_HUD, 2000)), 1)

@@ -44,10 +44,10 @@ def main():
         nav = p.chromium.launch(channel="chrome", headless=True, args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
         pg = nav.new_page(viewport={"width": 1280, "height": 720}); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto("http://127.0.0.1:%d/simulador.html" % srv.server_address[1]); pg.wait_for_function("typeof visor !== 'undefined' && visor && Modelos.ids().length > 0")
-        for avion, esc, c0 in [("E1", "libre", 1), ("DJI_MINI", "libre", 3), ("FPV", "libre", 3), ("BIPODE", "libre", 2)]:
+        for avion, esc, c0 in [("E3", "libre", 1), ("DJI_MINI", "libre", 3), ("FPV", "libre", 3), ("BIPODE", "libre", 2)]:
             r = pg.evaluate(GUION, [avion, esc])
             ok("%s: RB cambia de camara (%d -> %d -> %d)" % (avion, r["c0"], r["c1"], r["c2"]), r["c1"] == r["c0"] % 3 + 1 and r["c2"] == r["c1"] % 3 + 1)
-            if avion == "E1": ok("E1: Y ya no cambia de camara", r["cY"] == r["c2"])
+            if avion == "E3": ok("E3: Y ya no cambia de camara", r["cY"] == r["c2"])
             ok("%s: A arranca (%s -> %s)" % (avion, r["estado0"], r["estadoA"]), r["estadoA"] == "volando")
             ok("%s: Start pausa y sigue" % avion, r["pausa"] is True and r["pausa2"] is False)
         ok("sin errores en la pagina", not errs, errs[:2])

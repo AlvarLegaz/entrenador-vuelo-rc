@@ -1,6 +1,6 @@
 extends SceneTree
 ## Prueba del multijugador contra un servidor del aula en marcha (aula/servidor_aula.py): crea una sala de vuelo libre,
-## entra con el E1, lo lanza y, durante 20 s, escribe a quien ve en la sala (lineas "OTROS ..."). Sirve para probarlo con
+## entra con el E3, lo lanza y, durante 20 s, escribe a quien ve en la sala (lineas "OTROS ..."). Sirve para probarlo con
 ## otro simulador (la web o este mismo) que entre en la sala que anuncia ("SALA <codigo>"). Al final guarda una captura
 ## con la camara de persecucion y sale de la sala.
 ## Uso (necesita ventana):
@@ -20,7 +20,7 @@ func _initialize() -> void:
 	if not r["ok"]: print("MAL no se pudo entrar en el aula: ", r["error"]); quit(1); return
 	p.aula.activo = true; p.aula.pase = String(r["datos"]["pase"]); p.aula.pase_id = String(r["datos"]["alumno"]["id"]); p.dentro_del_aula(r["datos"]["alumno"])
 	print("AULA ", p.aula.activo, " ", p.aula.url, " ", p.multi_posible())
-	p.sesion["avion"] = "E1"
+	p.sesion["avion"] = "E3"
 	# las salas las crea el profesor (con su PIN): la prueba entra como profesor para crearla
 	var tok: Dictionary = await p.aula.api("POST", "profesor/entrar", { "pin": args.get("pin", "1234") })
 	if not tok["ok"]: print("MAL no se pudo entrar como profesor: ", tok["error"]); quit(1); return

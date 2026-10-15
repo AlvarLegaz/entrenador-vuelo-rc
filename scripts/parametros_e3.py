@@ -9,7 +9,7 @@ Se genera con la variable de entorno ENTRENADOR=E3 (ver avion.py).
 """
 from parametros_e2 import *          # noqa: F401,F403
 
-NOMBRE = "Entrenador E3"
+NOMBRE = "Entrenador 1"            # en el simulador (su id sigue siendo E3)
 DESCRIPCION = ("Entrenador de ala alta con alerones y profundidad (2 canales), deriva fija y ala totalmente plana, "
                "sin diedro. Impreso en LW-PLA. No nivela las alas solo: hay que llevarlo con los alerones.")
 DIEDRO = 0.0            # ala plana (el quiebro de la pieza ALA_Q queda a 0 grados)

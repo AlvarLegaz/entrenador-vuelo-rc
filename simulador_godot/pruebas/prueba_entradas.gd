@@ -1,6 +1,6 @@
 extends SceneTree
 ## Teclado y mando de verdad (sin el piloto automatico de --auto): inyecta teclas, botones y palancas en un vuelo con el
-## E1 (con mando de consola y con una emisora AETR, y el asistente), otro con el Poli-1 (timon de 4 canales), otro con
+## E3 (con mando de consola y con una emisora AETR, y el asistente), otro con el Poli-1 (timon de 4 canales), otro con
 ## el dron comercial y otro con el dron FPV (armar, gas, modo, camara) y comprueba que el simulador responde. Necesita ventana
 ## (no --headless). El mando se simula en el
 ## dispositivo 0 aunque no haya ninguno conectado (Input acepta los eventos igual).
@@ -33,7 +33,7 @@ func _ejes_a_cero() -> void:
 ## es el gas, sin muelle, y la derecha profundidad y alerones; el orden y el invertir se guardan en user://mando.cfg; el
 ## asistente asigna las palancas moviendolas. Al final vuelve al mando de consola.
 func _emisora() -> void:
-	print("Avion (E1), emisora AETR por USB:")
+	print("Avion (E3), emisora AETR por USB:")
 	var M: MandoCfg = p.mando_cfg
 	M.poner_perfil("aetr"); p._mando_usado = false
 	_ok("AETR pone el gas sin muelle", M.gas == "absoluto")
@@ -79,8 +79,8 @@ func _initialize() -> void:
 	p = load("res://escenas/principal.tscn").instantiate(); root.add_child(p)
 	p.mando_cfg.poner_perfil("consola")
 	await create_timer(1.0).timeout
-	print("Avion (E1), teclado:")
-	await _volar("E1")
+	print("Avion (E3), teclado:")
+	await _volar("E3")
 	_tecla(KEY_W, true); await create_timer(1.0).timeout; _tecla(KEY_W, false)
 	_ok("W sube el gas", p.av["gases"] > 0.5, "(%.2f)" % p.av["gases"])
 	await _pulsa(KEY_L); await create_timer(0.3).timeout
@@ -96,7 +96,9 @@ func _initialize() -> void:
 	await _pulsa(KEY_T); _ok("T abre los controles", p.hud.ayuda.visible)
 	await _pulsa(KEY_ESCAPE); _ok("Esc cierra los controles sin pausar", not p.hud.ayuda.visible and not p.pausado)
 	await _pulsa(KEY_SPACE); _ok("Espacio corta el gas", p.av["gases"] == 0.0)
-	print("Avion (E1), mando:")
+	print("Avion (E3), mando:")
+	await _pulsa(KEY_R); _tecla(KEY_W, true); await create_timer(1.0).timeout; _tecla(KEY_W, false)     # un vuelo nuevo (el anterior puede acabar en el suelo)
+	await _pulsa(KEY_L); await create_timer(0.3).timeout
 	await _boton(JOY_BUTTON_RIGHT_SHOULDER); _ok("RB cambia la camara", p.camara == 3, "(camara %d)" % p.camara)
 	_eje(JOY_AXIS_RIGHT_Y, 0.8); await create_timer(0.4).timeout
 	_ok("palanca derecha hacia ti tira", p.mando["pitch"] > 0.5 and p._mando_usado, "(%.2f)" % p.mando["pitch"])
@@ -105,7 +107,7 @@ func _initialize() -> void:
 	await _boton(JOY_BUTTON_START); _ok("Start pausa", p.pausado)
 	await _boton(JOY_BUTTON_START); _ok("Start quita la pausa", not p.pausado)
 	_tecla(KEY_UP, true); await create_timer(0.3).timeout
-	_ok("el teclado vuelve a mandar al tocarlo", not p._mando_usado and p.mando["pitch"] < -0.5, "(%.2f)" % p.mando["pitch"]); _tecla(KEY_UP, false)
+	_ok("el teclado vuelve a mandar al tocarlo", not p._mando_usado and p.mando["pitch"] < -0.5, "(%.2f, %s, pantalla '%s')" % [p.mando["pitch"], p.av.get("estado", ""), p.pantalla_actual]); _tecla(KEY_UP, false)
 	await _pulsa(KEY_R); _ok("R empieza de nuevo", p.av["estado"] == "en mano")
 	await _emisora()
 	print("Poli-1 (4 canales), timon con A / D y la palanca izquierda de lado:")

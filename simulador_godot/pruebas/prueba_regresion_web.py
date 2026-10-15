@@ -3,7 +3,7 @@
 reiniciar, lanzar) y se repite un guion de mandos con la funcion paso() del simulador, con Math.random sustituido por un
 generador con semilla. Se apuntan el estado del vehiculo cada 0,5 s y como acaba el vuelo (choque, aterrizaje...).
 
-Seis vuelos: E1 en el campo (contacto con el suelo), E2 en "primer vuelo" (evaluador y objetivos), FPV en el circuito
+Seis vuelos: el Entrenador 1 (E3) en el campo (contacto con el suelo), el mismo en "primer vuelo" (evaluador y objetivos), FPV en el circuito
 (pista_fpv), el dron comercial desde SABIC contra la fabrica (zonas de detalle, altura del terreno y choque con las
 instalaciones), el dron en la operacion de paneles (operaciones.js) y el bipode andando por SABIC (pasoTerrestre).
 
@@ -20,8 +20,8 @@ SIM = REPO / "simulador"
 
 VUELOS = [
     # id, avion, escenario, lanz (destacado del mapa real o null), guion de mandos (JS: t -> {pitch, yaw, guinada, vz, gases}), duracion s
-    ("e1_campo", "E1", "libre", None, "t => ({ pitch: t < 2 ? 0 : 0.35 * Math.sin(0.7 * t), yaw: 0.5 * Math.sin(1.1 * t), gases: t < 8 ? 1 : t < 14 ? 0.5 : 0 })", 30),
-    ("e2_primer_vuelo", "E2", "primer_vuelo", None, "t => ({ pitch: t < 3 ? -0.1 : 0.25 * Math.sin(0.5 * t), yaw: 0.6 * Math.sin(0.8 * t), gases: t < 12 ? 1 : 0.6 })", 30),
+    ("e3_campo", "E3", "libre", None, "t => ({ pitch: t < 2 ? 0 : 0.35 * Math.sin(0.7 * t), yaw: 0.5 * Math.sin(1.1 * t), gases: t < 8 ? 1 : t < 14 ? 0.5 : 0 })", 30),
+    ("e3_primer_vuelo", "E3", "primer_vuelo", None, "t => ({ pitch: t < 3 ? -0.1 : 0.25 * Math.sin(0.5 * t), yaw: 0.6 * Math.sin(0.8 * t), gases: t < 12 ? 1 : 0.6 })", 30),
     ("fpv_circuito", "FPV", "fpv_circuito", None, "t => ({ pitch: t < 1 ? 0 : -0.4 * Math.sin(0.9 * t), yaw: 0.3 * Math.sin(1.3 * t), guinada: 0.2 * Math.sin(0.4 * t), gases: t < 1 ? 0 : 0.55 + 0.1 * Math.sin(2 * t) })", 25),
     ("dron_sabic", "DJI_MINI", "libre_cartagena", "SABIC", "t => ({ vz: t < 4 ? 1 : 0, pitch: t > 4 ? -1 : 0, yaw: 0, guinada: t > 4 && t < 7 ? -0.5 : 0 })", 90),
     ("dron_paneles", "DJI_MINI", "op_paneles", None, "t => ({ vz: t < 3 ? 1 : 0, pitch: t > 3 ? -0.6 : 0, yaw: 0.2 * Math.sin(0.3 * t), guinada: 0 })", 40),

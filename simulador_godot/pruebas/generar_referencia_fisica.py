@@ -1,6 +1,6 @@
 """Regenera la parte "aviones" de pruebas/referencia_js.json: trazas del simulador del navegador (ModeloAvion de
 simulador/js/modelos.js, las clases de simulador/aviones/*.js y Entorno.vientoA de simulador/js/entorno.js) en el
-mismo vuelo de 16 s que _traza() de pruebas/prueba_fisica.gd, para E1, E2, E3 y T1 con sus datos de diseno, con una
+mismo vuelo de 16 s que _traza() de pruebas/prueba_fisica.gd, para el E3 (Entrenador 1) y el T1 con sus datos de diseno, con una
 configuracion distinta y en la dificultad facil. Si se cambia el vuelo aqui, hay que cambiarlo igual alli.
 
 La parte "entorno" (terreno, viento junto al suelo, turbulencia) no depende de los aviones: se deja como esta.
@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 AQUI = pathlib.Path(__file__).resolve().parent
 URL = sys.argv[1] if len(sys.argv) > 1 else (AQUI.parent.parent / "simulador" / "simulador.html").as_uri()
 REF = AQUI / "referencia_js.json"
-AVIONES = ["E1", "E2", "E3", "T1"]
+AVIONES = ["E3", "T1"]
 
 # _traza() de prueba_fisica.gd, linea a linea
 GUION = r"""

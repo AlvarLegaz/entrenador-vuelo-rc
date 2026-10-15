@@ -1,5 +1,5 @@
 """Multijugador cruzado web <-> Godot contra un servidor del aula de prueba (lo levanta este script, con su propia carpeta
-de datos y PIN 1234): Godot (pruebas/prueba_multijugador.gd) crea una sala y vuela 20 s con el E1; el simulador web
+de datos y PIN 1234): Godot (pruebas/prueba_multijugador.gd) crea una sala y vuela 20 s con el E3; el simulador web
 (Playwright) entra en esa sala con el dron comercial y manda su estado. Comprueba que cada uno ve al otro con su nombre,
 su vehiculo y una posicion que cambia, que el panel del profesor los lista a los dos y que nadie recibe nada raro.
 Hace copia de la configuracion de Godot del usuario y la deja como estaba.
@@ -112,7 +112,7 @@ def prueba():
         time.sleep(0.1)
     salida = "\n".join(lineas)
     gv = r["vistos"].get("Prueba Godot")
-    ok("la web ve al piloto de Godot con el E1", bool(gv) and gv["avion"] == "E1", str(r["vistos"]))
+    ok("la web ve al piloto de Godot con el E3", bool(gv) and gv["avion"] == "E3", str(r["vistos"]))
     ok("la posicion del piloto de Godot cambia en la web", bool(gv) and gv["p0"] != gv["p1"], str(gv))
     ok("la web no recibe ningun estado raro ni falla al pintarlos", r["raros"] == 0 and not errs, (r["raros"], errs[:2]))
     ok("el panel de la sala en la web lista al de Godot", "Prueba Godot" in r["info"], r["info"][:120])

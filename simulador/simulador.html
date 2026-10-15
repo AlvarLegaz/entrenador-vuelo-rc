@@ -22,7 +22,7 @@
   piloto esta en el origen mirando al norte; la pista va hacia el norte (N 10 a 70).
 
   TECLAS (en vuelo)
-    Flechas  arriba/abajo = profundidad (abajo = tirar = morro arriba), izq/der = timon (alerones en el E2)
+    Flechas  arriba/abajo = profundidad (abajo = tirar = morro arriba), izq/der = alerones (timon en el Poli-1, con A/D)
     W / S    gases + / -        Espacio: cortar gases       L: lanzar a mano
     R        volver a empezar   Esc: pausa
     1 / 2 / 3 camara: piloto / persecucion / a bordo         [ / ]: compensador de profundidad
@@ -994,7 +994,7 @@ document.getElementById("btnCmDiseno").onclick = () => {
 };
 // ---- recorridos de la emisora y calibracion, por avion (se guardan en el navegador) ----
 // recorrido mecanico (grados a palanca a tope sin dual rate) de cada avion; si no esta, el del simulador
-const RECORRIDO_MECANICO = { E1: { prof: 12, timon: 15 }, E2: { prof: 12, aleron: 15 }, E3: { prof: 12, aleron: 15 }, T1: { prof: 15, aleron: 15 } };
+const RECORRIDO_MECANICO = { E3: { prof: 12, aleron: 15 }, T1: { prof: 15, aleron: 15 } };
 let cfgAvion = {};
 try { cfgAvion = JSON.parse(localStorage.getItem("sim_cfg_avion") || "{}"); } catch (e) {}
 function cfgDe(id) { return Object.assign({ drAlabeo: 100, drProf: 100, empuje: "", res: 100, temp: 20, lanzReal: true }, cfgAvion[id] || {}); }

@@ -4,7 +4,7 @@ func _init() -> void:
 	var ent := Entorno.new(); ent.poner_mundo(DatosComunes.mundo("cartagena"))
 	var z := DatosComunes.cargar_zona(DatosComunes.indice_zonas()[0]); ent.poner_zona(z)
 	ent.configurar_viento(2, 90, true)
-	var m := ModeloAvion.new(DatosComunes.avion("E1")); var a := m.estado_inicial(); m.lanzar(a); a["p"] = [0.0, 0.0, -150.0]; a["gases"] = 0.7
+	var m := ModeloAvion.new(DatosComunes.avion("E3")); var a := m.estado_inicial(); m.lanzar(a); a["p"] = [0.0, 0.0, -150.0]; a["gases"] = 0.7
 	var mm := { "pitch": 0.0, "yaw": 0.0, "trim": 0.0 }
 	var n := 5000
 	for parte in ["completo", "solo paso", "solo altura", "solo servos", "solo viento"]:

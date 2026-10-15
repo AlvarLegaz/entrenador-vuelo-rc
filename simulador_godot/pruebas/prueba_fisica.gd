@@ -47,7 +47,7 @@ func _init() -> void:
 	var ent := Entorno.new()
 	var fallos := 0
 	print("Fisica del avion: diferencia maxima con el navegador (posicion m, velocidad m/s, giro rad/s, actitud, mandos rad)")
-	for id in ["E1", "E2", "E3", "T1"]:
+	for id in ["E3", "T1"]:
 		var A := DatosComunes.avion(id)
 		var cf := { "masa_kg": A["masa_kg"] * 1.1, "cg_mm": A["cg_mm"][0] + 5, "temperatura": 30.0, "empuje_gf": 800.0, "resistencia": 1.2 }
 		var confs := { "normal": {}, "config": cf, "facil": cf }      # facil: la dificultad facil (la fisica de antes)

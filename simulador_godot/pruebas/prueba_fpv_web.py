@@ -1,6 +1,6 @@
 """Prueba del dron FPV en el simulador del navegador: carga sin errores, se elige el FPV, sale el OSD y la ayuda del
 FPV, no arma con el gas arriba, arma con el gas abajo, W sube el gas y despega, M cambia de modo, 1/2/3 cambian la
-camara, L desarma; y el E1 y el dron comercial siguen arrancando. Con una ruta, guarda ademas capturas del vuelo con la camara
+camara, L desarma; y el E3 y el dron comercial siguen arrancando. Con una ruta, guarda ademas capturas del vuelo con la camara
 FPV (3) y la de persecucion (2).
 
 Uso (desde la carpeta del repositorio; necesita Python con playwright y Google Chrome instalado):
@@ -80,10 +80,12 @@ def main():
         pg.keyboard.press("Escape"); time.sleep(0.2)
         pg.keyboard.press("KeyL"); time.sleep(0.2)
         ok("L desarma en el aire", pg.evaluate("!av.armado"))
-        time.sleep(4)
+        for _ in range(24):                          # desde unos 30 m tarda mas de 3 s en caer
+            if pg.evaluate("av.estado") in ("roto", "aterrizado"): break
+            time.sleep(0.5)
         ok("desarmado cae y el vuelo termina", pg.evaluate("av.estado") in ("roto", "aterrizado"), "(" + str(pg.evaluate("vuelo && vuelo.final")) + ")")
         # los otros siguen funcionando
-        for avion in ("E1", "DJI_MINI"):
+        for avion in ("E3", "DJI_MINI"):
             pg.evaluate(f"async () => {{ salirAlMenu(); elegirAvion('{avion}'); sesion.escenario = 'libre'; await empezar(); }}")
             time.sleep(1.0)
             ok(f"{avion} arranca", pg.evaluate("!modelo.esFPV && av.estado === 'en mano' && !document.body.classList.contains('fpv')"))

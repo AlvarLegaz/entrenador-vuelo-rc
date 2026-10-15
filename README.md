@@ -91,7 +91,7 @@ Todos los números del diseño están en `scripts/parametros_e1.py`. Después de
 python scripts/geom_e1.py          # piezas (scripts/out/stl) y mallas montadas
 python scripts/masas_e1.py         # masa, CG, posicion de la bateria, inercias
 python analisis/vlm_e1.py 0.895 0.0361 0.0746   # estabilidad y calado del estabilizador (masa, Ixx, Izz)
-python scripts/modelo_aero_e1.py   # modelo de vuelo -> simulador/aviones/E1.js
+python scripts/modelo_aero_e1.py   # modelo de vuelo (el E1 y el E2 ya no se exportan al simulador: ver el Entrenador 1)
 python scripts/vistas_e1.py        # ENTRENADOR_E1_vistas.png
 ```
 
@@ -151,11 +151,13 @@ $env:ENTRENADOR = "E2"             # PowerShell (en cmd: set ENTRENADOR=E2)
 python scripts/geom_e1.py          # piezas (scripts/out_E2/stl) y mallas montadas
 python scripts/masas_e1.py
 python analisis/vlm_e1.py 1.227 0.0400 0.0868       # con el fuselaje de 5 mm
-python scripts/modelo_aero_e1.py   # -> simulador/aviones/E2.js, con la clase ModeloE2 de scripts/clase_e2.js
+python scripts/modelo_aero_e1.py   # el E2 ya no se exporta al simulador (su clase ModeloE2 la lleva el E3)
 python scripts/vistas_e1.py        # ENTRENADOR_E2_vistas.png
 ```
 
 ## Entrenador E3: alerones y profundidad, ala plana
+
+**En el simulador es el «Entrenador 1»** (2026-10-15): el E1 y el E2 se han quitado del simulador (siguen aquí como diseño) y el E3 es el único entrenador del Hangar; su id sigue siendo `E3` para que valgan los vuelos guardados en el aula.
 
 El E2 con el ala **totalmente plana, sin diedro**, y una **deriva más alta** (120 × 195 mm en vez de 120 × 145). Es el paso siguiente para quien ya vuela con alerones: sin diedro el avión no tiende a nivelar las alas y hay que llevarlo siempre con los alerones. Sus números están en `scripts/parametros_e3.py` (cambian el diedro y la altura de la deriva respecto al E2).
 

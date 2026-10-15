@@ -133,6 +133,8 @@ modelo = dict(
 # (el servidor del aula lo genera leyendo la carpeta; sin servidor vale el que se escribe aqui)
 DIR_AV = os.path.join(DIR_SIM, "aviones")
 NL = chr(10)
+if ID in ("E1", "E2"):                      # retirados del simulador (2026-10-15): el entrenador del simulador es el E3
+    raise SystemExit("%s ya no esta en el simulador: no se exporta (el E3 es el Entrenador 1)" % ID)
 os.makedirs(DIR_AV, exist_ok=True)
 clase = getattr(P, "CLASE_JS", None)        # (nombre de la clase, fichero js en scripts/) para un avion con otra fisica
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:

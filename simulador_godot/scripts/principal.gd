@@ -23,7 +23,7 @@ const LANZ := { "prueba_s": 5.0, "fallo_s": 6.0, "fallo_h": 5.0 }
 const MUNDO := "cartagena"
 const LANZ_DEFECTO := { "cartagena": { "lat": 37.648889, "lon": -1.193194, "rumbo": 90 } }   # 37°38'56.0"N 1°11'35.5"W, hacia el este
 # recorrido mecanico (grados a palanca a tope sin dual rate) de cada avion: el mismo que en simulador.html
-const RECORRIDO_MECANICO := { "E1": { "prof": 12, "timon": 15 }, "E2": { "prof": 12, "aleron": 15 }, "E3": { "prof": 12, "aleron": 15 }, "T1": { "prof": 15, "aleron": 15 } }
+const RECORRIDO_MECANICO := { "E3": { "prof": 12, "aleron": 15 }, "T1": { "prof": 15, "aleron": 15 } }
 const DIFICULTAD_INFO := {
 	"real": "Par y estela de la hélice (el avión tiende a alabear y guiñar a la izquierda con gas), efecto P y giroscópico, pérdida por semiala (cae de un ala, puede entrar en barrena), efecto suelo, resistencia de perfil y de la hélice parada, viento más flojo junto al suelo, turbulencia que alabea, densidad según la temperatura, calibración con el avión real y lanzamiento con dispersión.",
 	"facil": "Sin par ni estela de la hélice, sin efectos P ni giroscópico, pérdida simétrica, sin efecto suelo, el mismo viento a cualquier altura, rachas sin alabeo, aire estándar y lanzamiento perfecto. Para aprender; el avión real se parece más al modo real." }

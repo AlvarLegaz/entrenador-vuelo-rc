@@ -104,7 +104,7 @@ def pruebas():
 
     print("-- vuelos con datos hostiles")
     import uuid
-    v = dict(id=str(uuid.uuid4()), alumno_id=id1, inicio=XSS, avion="E1", escenario="libre", resultado="LIBRE", tiempo_vuelo_s=12)
+    v = dict(id=str(uuid.uuid4()), alumno_id=id1, inicio=XSS, avion="E3", escenario="libre", resultado="LIBRE", tiempo_vuelo_s=12)
     c, r = pedir("POST", "/api/vuelos", v, pase=pase1); xss_inicio_aceptado = c in (200, 201)
     print("     vuelo con HTML en la fecha: %s" % c)
     for nombre, campo in [("tiempo infinito", dict(tiempo_vuelo_s=float("inf"))), ("tiempo 1e308", dict(tiempo_vuelo_s=1e308)),
@@ -138,7 +138,7 @@ def pruebas():
     c, r = pedir("POST", "/api/salas", {"escenario": "libre"}); ok("sin PIN no se crea una sala", c == 401)
     c, r = pedir("POST", "/api/salas/%s/expulsar" % cod, {"id": "x"}); ok("sin PIN no se expulsa", c == 401)
     c, r = pedir("DELETE", "/api/salas/" + cod); ok("sin PIN no se cierra la sala", c == 401)
-    bueno = dict(id="bueno-1", nombre="Pepe", avion="E1", p=[10, 20, -30], q=[1, 0, 0, 0], vn=[5, 0, 0], estado="volando", agl=30, objs=[1, 3, 0], tvuelo=12)
+    bueno = dict(id="bueno-1", nombre="Pepe", avion="E3", p=[10, 20, -30], q=[1, 0, 0, 0], vn=[5, 0, 0], estado="volando", agl=30, objs=[1, 3, 0], tvuelo=12)
     c, r = pedir("POST", "/api/salas/%s/estado" % cod, bueno); ok("un estado normal entra", c == 201, str(c))
     malos = [("objs con HTML", dict(bueno, id="malo-1", objs=[1, XSS, 0])), ("estado con HTML", dict(bueno, id="malo-2", estado=XSS, final=XSS, ahora=XSS)),
              ("p null", dict(bueno, id="malo-3", p=None)), ("p con texto", dict(bueno, id="malo-4", p=["a", "b", "c"])), ("q corto", dict(bueno, id="malo-5", q=[1])),
@@ -199,7 +199,7 @@ def pruebas():
             window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 5);
             salirDelAula(); irInicio(); try { localStorage.setItem("evrc_url_aula", base); } catch (e) {}
             if (typeof AULA !== "undefined" && AULA) AULA.url = base;
-            sesion.avion = "E1"; sesion.escenario = "libre"; await empezar();
+            sesion.avion = "E3"; sesion.escenario = "libre"; await empezar();
             const salas = await api("GET", "salas"); const s = salas[0];
             await api("POST", `salas/${s.codigo}/entrar`, { id: multiId(), clave: "", nombre: "Companero", alumno: null });
             MULTI.sala = s; MULTI.otros.clear();
