@@ -192,11 +192,14 @@ Object.assign(Visor.prototype, {
       const ip = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 1, 0.08), mAcero, patas.length), Mx = new THREE.Matrix4();
       patas.forEach(([x, M, s], k) => { const h = P.h0 + (s > 0 ? P.ancho * Math.sin(inc) : 0) * 0.92, [n, e] = op.ne(x, M.t + s * M.fondo * 0.42); ip.setMatrixAt(k, Mx.makeScale(1, h, 1).setPosition(e, M.y + h / 2, -n)); });
       G.add(ip);
-      op.modulos.forEach(([n, e, y], k) => {                                 // modulos danados: cristal roto (blanco) o muy sucio (marron)
+      op.modulos.forEach(([n, e, y], k) => {                                 // modulos danados: cristal roto (grietas) o excrementos de aves (manchas blancas)
         const [cd, gd] = lienzo(64, 128), roto = k % 2 === 0;
-        gd.fillStyle = roto ? "#24365c" : "#6b5a3a"; gd.fillRect(0, 0, 64, 128);
+        gd.fillStyle = "#24365c"; gd.fillRect(0, 0, 64, 128);
         if (roto) { gd.strokeStyle = "#e8eef5"; gd.lineWidth = 2; for (let r = 0; r < 9; r++) { const a = r * 0.7; gd.beginPath(); gd.moveTo(32, 64); gd.lineTo(32 + 40 * Math.cos(a), 64 + 70 * Math.sin(a)); gd.stroke(); } }
-        else for (let r = 0; r < 40; r++) { gd.fillStyle = `rgba(${150 + (r * 37) % 60},${120 + (r * 23) % 40},80,0.6)`; gd.beginPath(); gd.arc((r * 29) % 64, (r * 53) % 128, 4 + r % 6, 0, 7); gd.fill(); }
+        else for (const [x, yy, r] of [[32, 60, 9], [18, 30, 5], [44, 92, 6], [24, 100, 4], [48, 40, 4], [12, 74, 3], [52, 16, 3]]) {
+          gd.fillStyle = "#f2f0e8"; gd.beginPath(); gd.arc(x, yy, r, 0, 7); gd.fill();
+          gd.fillStyle = "#8a8578"; gd.beginPath(); gd.arc(x, yy, r * 0.4, 0, 7); gd.fill();
+        }
         const o = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), new THREE.MeshStandardMaterial({ map: texSRGB(cd), roughness: 0.5 }));
         o.position.set(e, y + 0.04, -n); o.rotation.order = "YXZ"; o.rotation.set(-Math.PI / 2 + inc, yaw, 0); G.add(o);      // sobre el panel, con su inclinacion
       });

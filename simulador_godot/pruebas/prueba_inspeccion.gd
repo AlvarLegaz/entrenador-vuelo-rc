@@ -82,13 +82,21 @@ func _initialize() -> void:
 	_ok("se crea con la fisica del dron comercial", p.crear_modelo("HQ3T") is ModeloCuadricoptero)
 	for par in [["op_inspeccion", "DJI_MINI"], ["op_video", "DJI_MINI"], ["op_paneles", "HQ3T"]]:
 		await _preparar(par[0]); _ok("%s sale con %s" % par, p.sesion["avion"] == par[1], p.sesion["avion"])
-	# ---- paneles: un punto caliente solo vale con la termica
+	# ---- paneles: cristal roto (solo camara normal), excrementos (las dos) y diodo de bypass (solo termica)
 	var op: Operacion = p.ev.op
-	_ok("paneles: 4 modulos con punto caliente", op.modulos_c.size() == 4, str(op.modulos_c.size()))
+	_ok("paneles: 6 modulos danados a simple vista y 3 diodos averiados", op.modulos.size() == 6 and op.modulos_c.size() == 3, "%d %d" % [op.modulos.size(), op.modulos_c.size()])
 	var Pm: Array = op.modulos_c[0]
-	var r := _apuntar(Pm, 0.01, 12, 0.1, 1, false, true); _ok("paneles: sin termica no vale", not "Punto caliente" in _texto(r), _texto(r))      # (si cae un modulo roto al lado, vale ese)
-	r = _apuntar(Pm, 0.01, 12, 0.1, 1, true, true); _ok("paneles: con termica vale", "Punto caliente 1" in _texto(r), _texto(r))
+	var r := _apuntar(Pm, 0.01, 12, 0.1, 1, false, true); _ok("diodo: sin termica no vale", not "Diodo" in _texto(r), _texto(r))
+	r = _apuntar(Pm, 0.01, 12, 0.1, 1, true, true); _ok("diodo: con termica vale", "Diodo de bypass averiado 1" in _texto(r), _texto(r))
 	await _captura("paneles_termica")
+	var Pr: Array = op.modulos[0]; var Pe: Array = op.modulos[1]
+	r = _apuntar(Pr, 0.01, 12, 0.1, 1, true, true); _ok("cristal roto: con termica no vale", not "Cristal roto" in _texto(r), _texto(r))
+	r = _apuntar(Pr, 0.01, 12, 0.1, 1, false, true); _ok("cristal roto: con la camara normal vale", "Cristal roto (módulo 1)" in _texto(r), _texto(r))
+	await _captura("paneles_cristal")
+	r = _apuntar(Pe, 0.01, 12, 0.1, 1, true, true); _ok("excrementos: con termica vale (punto caliente)", "Excrementos de aves (módulo 2), punto caliente" in _texto(r), _texto(r))
+	await _captura("paneles_excrementos_termica")
+	r = _apuntar(Pe, 0.01, 12, 0.1, 1, false, false)
+	await _captura("paneles_excrementos")
 	# ---- fabrica
 	await _preparar("op_sabic"); op = p.ev.op
 	_ok("op_sabic sale con el HQ3T y sus objetos termicos", p.sesion["avion"] == "HQ3T" and op.termicos.size() > 10, "%s %d" % [p.sesion["avion"], op.termicos.size()])

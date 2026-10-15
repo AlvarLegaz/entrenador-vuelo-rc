@@ -1299,15 +1299,15 @@ window.ESCENARIOS = {
    "desde": 300,
    "rachas": true
   },
-  "desc": "La planta fotovoltaica de La Aljorra, junto a la fábrica de SABIC (83 filas de seguidores solares de 320 m, unos 24.000 módulos), produce menos de lo que debería. Con el dron de inspección recorre las filas: encuentra los 6 módulos dañados (cristal roto o muy sucio) con la cámara normal y los 4 módulos con punto caliente (una célula quemada, que solo se ve con la cámara térmica), y fotografía cada uno desde arriba, sin bajar a menos de 3 m de los paneles.",
+  "desc": "La planta fotovoltaica de La Aljorra, junto a la fábrica de SABIC (83 filas de seguidores solares de 320 m, unos 24.000 módulos), produce menos de lo que debería. Con el dron de inspección recorre las filas y fotografía desde arriba, sin bajar a menos de 3 m de los paneles, tres averías: cristales rotos (solo se ven con la cámara normal), excrementos de aves (se ven con la normal, y en la térmica salen como un punto caliente) y diodos de bypass averiados (a simple vista no se nota nada; en la térmica, una franja caliente de un tercio del módulo). Son 6 módulos con el cristal roto o con excrementos y 3 con el diodo averiado.",
   "objetivos": [
    [
     "defectos",
-    "Fotografiar con la cámara normal los 6 módulos dañados: de 4 a 20 m (más lejos con zoom), con la cámara hacia abajo (−45° o más)"
+    "Fotografiar los 6 módulos dañados a simple vista (cristal roto, con la cámara normal; excrementos de aves, con la normal o la térmica): de 4 a 20 m (más lejos con zoom), con la cámara hacia abajo (−45° o más)"
    ],
    [
     "calientes",
-    "Encontrar con la cámara térmica los 4 módulos con punto caliente y fotografiarlos igual: de 4 a 20 m (más lejos con zoom), hacia abajo"
+    "Encontrar con la cámara térmica los 3 módulos con un diodo de bypass averiado (franja caliente de un tercio del módulo) y fotografiarlos igual: de 4 a 20 m (más lejos con zoom), hacia abajo"
    ],
    [
     "baja",
@@ -1342,8 +1342,8 @@ window.ESCENARIOS = {
    "avion": "HQ3T",
    "cliente": "Planta fotovoltaica de La Aljorra · mantenimiento",
    "lugar": "La Aljorra (Cartagena), junto a la fábrica de SABIC. Despegue desde el camino al norte del bloque de paneles.",
-   "trabajo": "Inspección de los módulos fila por fila con la cámara hacia abajo: a simple vista (cámara normal) los cristales rotos y la suciedad; con la cámara térmica (C) los puntos calientes, que en la imagen salen como manchas amarillas sobre el morado de los paneles. Con el zoom (Z / X) se puede volar más alto y ver más filas.",
-   "entrega": "10 fotos: una por módulo dañado (6, cámara normal) y una por punto caliente (4, cámara térmica), para cambiarlos.",
+   "trabajo": "Inspección de los módulos fila por fila con la cámara hacia abajo. Con la cámara normal, los cristales rotos (grietas blancas) y los excrementos de aves (manchas blancas). Con la cámara térmica (C), los diodos de bypass averiados: una franja naranja de un tercio del módulo sobre el morado de los paneles; los excrementos salen como un punto caliente amarillo y el cristal roto apenas se distingue. Con el zoom (Z / X) se puede volar más alto y ver más filas.",
+   "entrega": "9 fotos: una por módulo con el cristal roto o con excrementos (6) y una por diodo de bypass averiado (3, cámara térmica), para cambiarlos o limpiarlos.",
    "salida": {
     "n": 9539.4,
     "e": -5195.7,
@@ -1411,7 +1411,7 @@ window.ESCENARIOS = {
      -4963.6
     ]
    ],
-   "calientes": 4
+   "calientes": 3
   }
  },
  "op_video": {

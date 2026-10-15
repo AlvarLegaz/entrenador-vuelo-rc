@@ -26,6 +26,7 @@ func _vuelo(v: Dictionary) -> Dictionary:
 		if obj.has(k): obj[k]["texto"] += " (%s)" % t
 	var d: Dictionary = E["operacion"].duplicate()
 	if v["persona"] != null: d["persona"] = v["persona"]
+	if v.get("calientes") != null: d["calientes"] = v["calientes"]
 	var suelo := func(N: float, Ee: float) -> float: return 3 * sin(N * 0.01) + 2 * cos(Ee * 0.013)
 	var op := Operacion.new(d, marcar, anotar, { "casa": [E["operacion"]["salida"]["n"], E["operacion"]["salida"]["e"]], "suelo": suelo, "h0": 0.0 })
 	var avisos := []; var ahora := []; var p_ant = null; var av := {}; var choque = null
@@ -34,11 +35,12 @@ func _vuelo(v: Dictionary) -> Dictionary:
 		var s: Array = est[i]
 		av = { "p": [s[0], s[1], -s[2]], "q": Cuat.desde_euler(0, 0, s[3] * D2R), "estado": "volando", "posado": s[4] != 0, "t": s[8] }
 		if choque != null: continue
+		var cam := { "termica": s[9] != 0, "zoom": float(s[10]) }
 		if p_ant != null:
-			for t in op.paso(p_ant, av, 0.1, { "gimbal": s[5], "grabando": s[6] != 0 }): avisos.append("%.1f %s" % [s[8], t])
+			for t in op.paso(p_ant, av, 0.1, { "gimbal": s[5], "grabando": s[6] != 0 }.merged(cam)): avisos.append("%.1f %s" % [s[8], t])
 		if op.choque != "": choque = op.choque; continue
 		if s[7] != 0:
-			for t in op.foto(av, s[5]): avisos.append("%.1f foto: %s" % [s[8], t])
+			for t in op.foto(av, s[5], cam): avisos.append("%.1f foto: %s" % [s[8], t])
 		if i % 50 == 0: ahora.append(op.ahora(obj, av))
 		p_ant = av["p"]
 	var fin: String = "roto" if choque != null else v["final"]
@@ -85,9 +87,10 @@ func _initialize() -> void:
 		var s := [int(x["semilla"])]
 		var rnd := func() -> float: s[0] = (s[0] * 48271) % 2147483647; return s[0] / 2147483647.0
 		var dd := Operacion.sortear(Escenarios.datos()[x["mision"]]["operacion"], rnd); var dif := []
-		for k in ["puntos", "defectos", "manchas", "persona"]:
-			if not _igual(dd.get(k), x[k]):
-				dif.append("%s: %s / %s" % [k, JSON.stringify(dd.get(k)).left(160), JSON.stringify(x[k]).left(160)])
+		for k in ["puntos", "defectos", "manchas", "persona", "calientes", "puntosCalientes", "fuga", "placaTxt", "piloto"]:
+			var gv = dd.get(k) if not (k == "calientes" and not dd.get(k) is Array) else null     # en la fabrica, "calientes" es cuantos
+			if not _igual(gv, x[k]):
+				dif.append("%s: %s / %s" % [k, JSON.stringify(gv).left(160), JSON.stringify(x[k]).left(160)])
 		_ok("%s, semilla %d" % [x["mision"], x["semilla"]], dif.is_empty(), "" if dif.is_empty() else "\n      " + "\n      ".join(dif))
 	print("Las operaciones no son entrenamientos:")
 	_ok("el dron comercial tiene sus 6 entrenamientos", Escenarios.misiones_de("dron").size() == 6, str(Escenarios.misiones_de("dron")))

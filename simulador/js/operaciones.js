@@ -226,15 +226,20 @@ class Operacion {
       }
       this.mesasFila.push(fila);
     }
-    this.modulos = this.d.defectos.map(([f, x]) => {
-      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion);
-      return [n, e, M.y + P.h0 + P.ancho * s / 2];
+    // modulos danados a simple vista: los pares con el cristal roto y los impares con excrementos de aves, que en la
+    // termica dan un punto caliente (la celula tapada se calienta) de 60 a 75 grados
+    this.modulos = this.d.defectos.map(([f, x], k) => {
+      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion), y = M.y + P.h0 + P.ancho * s / 2;
+      if (k % 2) this.termicos.push({ tipo: "modulo", i: k, nombre: "módulo con excrementos de aves", T: 60 + 5 * ((f * 3 + x) % 4), P0: [n, e, y], P1: [n, e, y], r: 0.3 });
+      return [n, e, y];
     });
-    this.modulosC = (Array.isArray(this.d.calientes) ? this.d.calientes : []).map(([f, x], i) => {     // modulos con punto caliente: una celula quemada a 70-95 grados
-      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion);
-      const T = 70 + 5 * ((f * 7 + x) % 6);
-      this.termicos.push({ tipo: "modulo", i, nombre: "módulo con punto caliente", T, P0: [n, e, M.y + P.h0 + P.ancho * s / 2], P1: [n, e, M.y + P.h0 + P.ancho * s / 2], r: 0.5 });
-      return [n, e, M.y + P.h0 + P.ancho * s / 2];
+    // modulos con un diodo de bypass averiado: una de sus tres subcadenas de celulas (una franja de un tercio del modulo,
+    // a lo largo de la pendiente) se calienta entera, de 48 a 54 grados; a simple vista no se nota nada
+    this.modulosC = (Array.isArray(this.d.calientes) ? this.d.calientes : []).map(([f, x], i) => {
+      const F = this.mesasFila[f], M = F.find(q => x >= q.l0 && x <= q.l1) || F[0], [n, e] = this.ne(x, f * P.separacion), y = M.y + P.h0 + P.ancho * s / 2;
+      const dl = ((f + x) % 3 - 1) * 0.33, [n0, e0] = this.ne(x + dl, f * P.separacion - 0.9 * c), [n1, e1] = this.ne(x + dl, f * P.separacion + 0.9 * c);
+      this.termicos.push({ tipo: "modulo", i, nombre: "módulo con un diodo de bypass averiado", T: 48 + 2 * ((f * 5 + x) % 4), P0: [n0, e0, y - 0.9 * s], P1: [n1, e1, y + 0.9 * s], r: 0.16 });
+      return [n, e, y];
     });
   }
 
@@ -446,23 +451,26 @@ class Operacion {
     }
     if (d.planta) {                                    // paneles: cada modulo danado, desde arriba y de 4 a 20 m (con zoom, la distancia equivalente)
       let motivo = null;
-      const revisar = (lista, hechos, termico, nombre, id) => lista.forEach((P, i) => {
+      // vale(i): null si esa averia se ve con la camara puesta, o por que no; ok(i): el texto de la foto buena
+      const revisar = (lista, hechos, vale, nombre, ok, id) => lista.forEach((P, i) => {
         if (hechos[i]) return;
         const c = Operacion.camara(av, gimbal, P), de = c.d / zoom;
         if (!Operacion.enFoto(c, 1, zoom)) return;
-        if (termico !== ter) motivo = motivo || (termico ? `el ${nombre} ${i + 1} solo se ve con la cámara térmica (C)` : `con la térmica no se ven los cristales rotos ni la suciedad: cambia a la cámara normal (C)`);
+        const no = vale(i);
+        if (no) motivo = motivo || no;
         else if (gimbal > d.gimbal) motivo = motivo || `los paneles se fotografían desde arriba (cámara a ${d.gimbal}° o más)`;
         else if (de > d.dist[1]) motivo = motivo || `${nombre} ${i + 1} demasiado lejos (${c.d.toFixed(0)} m; a menos de ${d.dist[1]} m${zoom > 1 ? " con este zoom" : ""})`;
         else if (de < d.dist[0]) motivo = motivo || `${nombre} ${i + 1} demasiado cerca`;
         else if (!Operacion.enFoto(c, 0.8, zoom)) motivo = motivo || `${nombre} ${i + 1} en el borde de la foto: encuádralo`;
         else {
           hechos[i] = true;
-          T.push(termico ? `Punto caliente ${i + 1} ✓ (${hechos.filter(Boolean).length}/${lista.length})` : `Módulo dañado ${i + 1} ✓ (${hechos.filter(Boolean).length}/${lista.length})`);
+          T.push(`${ok(i)} ✓ (${hechos.filter(Boolean).length}/${lista.length})`);
           if (hechos.filter(Boolean).length === lista.length) m(id, "ok");
         }
       });
-      revisar(this.modulos, this.hechos, false, "módulo", "defectos");
-      revisar(this.modulosC, this.hechosC, true, "punto caliente", "calientes");
+      revisar(this.modulos, this.hechos, i => i % 2 === 0 && ter ? "con la térmica el cristal roto apenas se distingue: cambia a la cámara normal (C)" : null, "módulo",
+        i => i % 2 === 0 ? `Cristal roto (módulo ${i + 1})` : `Excrementos de aves (módulo ${i + 1})` + (ter ? ", punto caliente en la térmica" : ""), "defectos");
+      revisar(this.modulosC, this.hechosC, i => ter ? null : `el diodo averiado ${i + 1} solo se ve con la cámara térmica (C)`, "diodo", i => `Diodo de bypass averiado ${i + 1}`, "calientes");
       if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : "Foto sin ningún módulo dañado");
     }
     if (d.racks) {                                     // fabrica: la placa de la antorcha (zoom) y su piloto (termica)
@@ -537,7 +545,7 @@ class Operacion {
     if (d.planta) {
       const nc = this.hechosC.filter(Boolean).length, tc = this.modulosC.length;
       if (n === this.modulos.length && nc === tc) return volver;
-      return `Módulos dañados: <b>${n} de ${this.modulos.length}</b>` + (tc ? ` · puntos calientes (térmica): <b>${nc} de ${tc}</b>` : "") + " · recorre las filas con la cámara hacia abajo";
+      return `Módulos dañados: <b>${n} de ${this.modulos.length}</b>` + (tc ? ` · diodos averiados (térmica): <b>${nc} de ${tc}</b>` : "") + " · recorre las filas con la cámara hacia abajo";
     }
     if (d.racks) {
       const nc = this.hechosC.filter(Boolean).length, tc = d.puntosCalientes.length, ok = x => x ? "✓" : "pendiente";

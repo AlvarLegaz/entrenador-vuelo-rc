@@ -84,11 +84,15 @@ def main():
         ok("se crea con la fisica del dron comercial", pg.evaluate("Modelos.crear('HQ3T').esCuadricoptero === true"))
         for op_id, dron in [("op_inspeccion", "DJI_MINI"), ("op_video", "DJI_MINI"), ("op_paneles", "HQ3T")]:
             r = pg.evaluate(PREP, op_id); ok("%s sale con %s" % (op_id, dron), r["avion"] == dron, str(r))
-        # ---- paneles: un punto caliente solo vale con la termica
-        r = pg.evaluate("ev.op.modulosC.length"); ok("paneles: 4 modulos con punto caliente", r == 4, str(r))
+        # ---- paneles: cristal roto (solo camara normal), excrementos (las dos) y diodo de bypass (solo termica)
+        r = pg.evaluate("[ev.op.modulos.length, ev.op.modulosC.length]"); ok("paneles: 6 modulos danados a simple vista y 3 diodos averiados", r == [6, 3], str(r))
         Pm = pg.evaluate("ev.op.modulosC[0]")
-        r = pg.evaluate(APUNTAR, [Pm, 0.01, 12, 0.1, 1, False, True]); ok("paneles: sin termica no vale", not any("Punto caliente" in t for t in r["T"]), str(r["T"]))      # (si cae un modulo roto al lado, vale ese)
-        r = pg.evaluate(APUNTAR, [Pm, 0.01, 12, 0.1, 1, True, True]); ok("paneles: con termica vale", any("Punto caliente 1" in t for t in r["T"]), str(r["T"]))
+        r = pg.evaluate(APUNTAR, [Pm, 0.01, 12, 0.1, 1, False, True]); ok("diodo: sin termica no vale", not any("Diodo" in t for t in r["T"]), str(r["T"]))
+        r = pg.evaluate(APUNTAR, [Pm, 0.01, 12, 0.1, 1, True, True]); ok("diodo: con termica vale", any("Diodo de bypass averiado 1" in t for t in r["T"]), str(r["T"]))
+        Pr, Pe = pg.evaluate("ev.op.modulos.slice(0, 2)")
+        r = pg.evaluate(APUNTAR, [Pr, 0.01, 12, 0.1, 1, True, True]); ok("cristal roto: con termica no vale", not any("Cristal roto" in t for t in r["T"]), str(r["T"]))
+        r = pg.evaluate(APUNTAR, [Pr, 0.01, 12, 0.1, 1, False, True]); ok("cristal roto: con la camara normal vale", any("Cristal roto (módulo 1)" in t for t in r["T"]), str(r["T"]))
+        r = pg.evaluate(APUNTAR, [Pe, 0.01, 12, 0.1, 1, True, True]); ok("excrementos: con termica vale (punto caliente)", any("Excrementos de aves (módulo 2), punto caliente" in t for t in r["T"]), str(r["T"]))
         if salida: pg.evaluate(FOTO, 3); pg.screenshot(path=str(salida / "paneles_termica.png"))
         # ---- fabrica
         r = pg.evaluate(PREP, "op_sabic"); ok("op_sabic sale con el HQ3T y sus objetos termicos", r["avion"] == "HQ3T" and r["termicos"] > 10, str(r))

@@ -14,13 +14,14 @@ ESC = json.loads(t[m.end():t.rindex("}") + 1])
 DT = 0.1
 suelo = lambda N, E: 3 * math.sin(N * 0.01) + 2 * math.cos(E * 0.013)      # el mismo suelo de prueba en los dos lados
 
-def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None):
-    """piezas: lista de (N, E, altura sobre el suelo, rumbo, gimbal, grabando, foto, posado). Estados: [N, E, arriba, rumbo,
-    posado, gimbal, grabando, foto, t]."""
+def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, calientes=None):
+    """piezas: lista de (N, E, altura sobre el suelo, rumbo, gimbal, grabando, foto, posado[, termica, zoom]). Estados: [N, E,
+    arriba, rumbo, posado, gimbal, grabando, foto, t, termica, zoom]. calientes: los modulos con el diodo averiado (paneles)."""
     est = []
-    for k, (N, E, h, y, g, rec, foto, pos) in enumerate(piezas):
-        est.append([round(N, 3), round(E, 3), round(suelo(N, E) + h, 3), round(y, 3), int(pos), round(g, 3), int(rec), int(foto), round(k * DT, 2)])
-    return {"nombre": nombre, "mision": mision, "estados": est, "final": final, "bateria": bateria, "persona": persona}
+    for k, pz in enumerate(piezas):
+        N, E, h, y, g, rec, foto, pos = pz[:8]; ter, zoom = pz[8:10] if len(pz) > 8 else (0, 1)
+        est.append([round(N, 3), round(E, 3), round(suelo(N, E) + h, 3), round(y, 3), int(pos), round(g, 3), int(rec), int(foto), round(k * DT, 2), int(ter), zoom])
+    return {"nombre": nombre, "mision": mision, "estados": est, "final": final, "bateria": bateria, "persona": persona, "calientes": calientes}
 
 def tramo(a, b, v=8.0, y=None, g=-10, rec=0):
     """de a a b (N, E, h) a v m/s; y None = mirando hacia donde va."""
@@ -29,7 +30,7 @@ def tramo(a, b, v=8.0, y=None, g=-10, rec=0):
     for i in range(n): f = i / n; r.append((a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1]), a[2] + f * (b[2] - a[2]), yy, g, rec, 0, False))
     return r
 def quieto(p, s, y, g=-10, rec=0): return [(p[0], p[1], p[2], y, g, rec, 0, False)] * int(s / DT)
-def foto(p, y, g): return [(p[0], p[1], p[2], y, g, 0, 1, False), (p[0], p[1], p[2], y, g, 0, 0, False)]
+def foto(p, y, g, ter=0, zoom=1): return [(p[0], p[1], p[2], y, g, 0, 1, False, ter, zoom), (p[0], p[1], p[2], y, g, 0, 0, False, ter, zoom)]
 def despegue(c): return [(c[0], c[1], 0, 0, -10, 0, 0, True)] * 3 + tramo((c[0], c[1], 0.1), (c[0], c[1], 5), v=2, y=0)
 def aterrizaje(desde, c, y=0): return tramo(desde, (c[0], c[1], 5), y=y) + tramo((c[0], c[1], 5), (c[0], c[1], 0.1), v=1.5, y=y) + [(c[0], c[1], 0, y, -10, 0, 0, True)] * 5
 def apuntar(p, q):
@@ -101,16 +102,24 @@ O = ESC["op_paneles"]["operacion"]; C = (O["salida"]["n"], O["salida"]["e"]); PL
 def modulo(f, x):                                      # Operacion.ne: filas con su rumbo (90 = hacia el este)
     r = math.radians(PL.get("rumbo", 90)); t = f * PL["separacion"]
     return (PL["n0"] + x * math.cos(r) + t * math.sin(r), PL["e0"] + x * math.sin(r) - t * math.cos(r))
-def paneles(h=12, g=-90, todos=True):
+DIODOS = [[2, 40], [9, 150], [15, 260]]                 # los modulos con el diodo de bypass averiado (sin sortear)
+def paneles(h=12, g=-90, todos=True, camaras="bien", zoom=1):
+    """camaras "bien": cristal roto con la normal, excrementos con la termica y diodos con la termica; "mal": al reves
+    (cristal roto con la termica, diodos con la normal); "normal": todo con la normal."""
     r = despegue(C); u = (C[0], C[1], 5)
-    for k, (f, x) in enumerate(O["defectos"]):
+    for k, (f, x) in enumerate(O["defectos"] + DIODOS):
+        diodo = k >= len(O["defectos"])
         if not todos and k % 2: continue
-        n, e = modulo(f, x); p = (n, e, h); r += tramo(u, (n, e, max(h, 10))) + tramo((n, e, max(h, 10)), p, v=3) + foto(p, 0, g); u = p
+        ter = {"bien": diodo or k % 2 == 1, "mal": not diodo and k % 2 == 0, "normal": False}[camaras]
+        n, e = modulo(f, x); p = (n, e, h); r += tramo(u, (n, e, max(h, 10))) + tramo((n, e, max(h, 10)), p, v=3) + foto(p, 0, g, int(ter), zoom); u = p
     return r, u
-r, u = paneles(); V.append(vuelo("paneles ok", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
-r, u = paneles(todos=False); V.append(vuelo("paneles la mitad", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
-r, u = paneles(g=-20); V.append(vuelo("paneles camara horizontal", "op_paneles", r + aterrizaje((u[0], u[1], 12), C)))
-r, u = paneles(h=30); V.append(vuelo("paneles demasiado alto", "op_paneles", r + aterrizaje((u[0], u[1], 30), C)))
+r, u = paneles(); V.append(vuelo("paneles ok", "op_paneles", r + aterrizaje((u[0], u[1], 12), C), calientes=DIODOS))
+r, u = paneles(todos=False); V.append(vuelo("paneles la mitad", "op_paneles", r + aterrizaje((u[0], u[1], 12), C), calientes=DIODOS))
+r, u = paneles(camaras="mal"); V.append(vuelo("paneles con la camara equivocada", "op_paneles", r + aterrizaje((u[0], u[1], 12), C), calientes=DIODOS))
+r, u = paneles(camaras="normal"); V.append(vuelo("paneles todo con la camara normal", "op_paneles", r + aterrizaje((u[0], u[1], 12), C), calientes=DIODOS))
+r, u = paneles(g=-20); V.append(vuelo("paneles camara horizontal", "op_paneles", r + aterrizaje((u[0], u[1], 12), C), calientes=DIODOS))
+r, u = paneles(h=30); V.append(vuelo("paneles demasiado alto", "op_paneles", r + aterrizaje((u[0], u[1], 30), C), calientes=DIODOS))
+r, u = paneles(h=45, zoom=4); V.append(vuelo("paneles a 45 m con zoom 4x", "op_paneles", r + aterrizaje((u[0], u[1], 45), C), calientes=DIODOS))
 n, e = modulo(5, 70)
 V.append(vuelo("paneles demasiado bajo", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 3.5), v=2) + aterrizaje((n, e, 12), C)))
 V.append(vuelo("choca con los paneles", "op_paneles", despegue(C) + tramo((C[0], C[1], 5), (n, e, 12)) + tramo((n, e, 12), (n, e, 0.8), v=2), final="roto"))
@@ -142,16 +151,17 @@ JS = r"""V => V.map(v => {
   for (const [id, t] of E.objetivos) obj[id] = { texto: t, estado: CURSO.includes(id) ? "curso" : "pend" };
   const marcar = (k, e) => { if (obj[k] && obj[k].estado !== "mal") obj[k].estado = e; };
   const anotar = (k, t) => { if (obj[k]) obj[k].texto += ` (${t})`; };
-  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona;
+  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona; if (v.calientes) d.calientes = v.calientes;
   const suelo = (N, E) => 3 * Math.sin(N * 0.01) + 2 * Math.cos(E * 0.013);
   const op = new Operacion(d, marcar, anotar, { casa: [E.operacion.salida.n, E.operacion.salida.e], suelo, h0: 0 });
   const avisos = [], ahora = []; let pAnt = null, av = null, choque = null;
   v.estados.forEach((s, i) => {
     av = { p: [s[0], s[1], -s[2]], q: Cuat.desdeEuler(0, 0, s[3] * D2R), estado: "volando", posado: !!s[4], t: s[8] };
     if (choque) return;
-    if (pAnt) for (const t of op.paso(pAnt, av, 0.1, { gimbal: s[5], grabando: !!s[6] })) avisos.push(s[8].toFixed(1) + " " + t);
+    const cam = { termica: !!s[9], zoom: s[10] };
+    if (pAnt) for (const t of op.paso(pAnt, av, 0.1, Object.assign({ gimbal: s[5], grabando: !!s[6] }, cam))) avisos.push(s[8].toFixed(1) + " " + t);
     if (op.choque) { choque = op.choque; return; }
-    if (s[7]) for (const t of op.foto(av, s[5])) avisos.push(s[8].toFixed(1) + " foto: " + t);
+    if (s[7]) for (const t of op.foto(av, s[5], cam)) avisos.push(s[8].toFixed(1) + " foto: " + t);
     if (i % 50 === 0) ahora.push(op.ahora(obj, av));
     pAnt = av.p;
   });
@@ -172,14 +182,16 @@ with sync_playwright() as p:
     S = pg.evaluate("""S => S.flatMap(s => Object.keys(ESCENARIOS).filter(k => ESCENARIOS[k].operacion).map(k => {
       let x = s; const rnd = () => (x = (x * 48271) % 2147483647) / 2147483647;          // Park-Miller: igual en GDScript
       const d = Operacion.sortear(ESCENARIOS[k].operacion, rnd);
-      return { semilla: s, mision: k, puntos: d.puntos || null, defectos: d.defectos || null, manchas: d.manchas || null, persona: d.persona || null };
+      return { semilla: s, mision: k, puntos: d.puntos || null, defectos: d.defectos || null, manchas: d.manchas || null, persona: d.persona || null,
+               calientes: Array.isArray(d.calientes) ? d.calientes : null, puntosCalientes: d.puntosCalientes || null, fuga: d.fuga || null,
+               placaTxt: d.placaTxt || null, piloto: d.piloto === undefined ? null : d.piloto };
     }))""", SEMILLAS); b.close()
 assert not err, err
 # lo sorteado tiene que estar dentro de su zona y sin repetirse
 for x in S:
     O = ESC[x["mision"]]["operacion"]
     if x["mision"] == "op_inspeccion": assert len(x["puntos"]) == 6 and len({(q["n"], q["e"]) for q in x["puntos"]}) == 6, x
-    if x["defectos"]: assert len({tuple(f) for f in x["defectos"]}) == 8 and all(0 <= f < O["planta"]["filas"] and 3 <= e <= O["planta"]["largo"] - 4 for f, e in x["defectos"]), x
+    if x["defectos"]: assert len({tuple(f) for f in x["defectos"] + x["calientes"]}) == len(O["defectos"]) + O["calientes"] and all(0 <= f < O["planta"]["filas"] and 3 <= e <= O["planta"]["largo"] - 4 for f, e in x["defectos"]), x
     if x["manchas"]:
         P = O["parcela"]; assert all(P["n0"] + r <= n <= P["n1"] - r and P["e0"] + r <= e <= P["e1"] - r for n, e, r in x["manchas"]), x
     if x["persona"]: Z = O["zona"]; assert Z["n0"] < x["persona"][0] < Z["n1"] and Z["e0"] < x["persona"][1] < Z["e1"], x

@@ -874,15 +874,20 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 			var pq := op.ne(q[0], Mq["t"] + q[2] * Mq["fondo"] * 0.42)
 			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(1, h, 1)), Vector3(pq[1], Mq["y"] + h / 2, -pq[0])))
 		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.material_override = m_acero; G.add_child(mmi)
-		for k in op.modulos.size():                                   # modulos danados: cristal roto (blanco) o muy sucio (marron)
+		for k in op.modulos.size():                                   # modulos danados: cristal roto (grietas) o excrementos de aves (manchas blancas)
 			var md: Array = op.modulos[k]; var roto := k % 2 == 0
-			var im := Image.create(64, 128, false, Image.FORMAT_RGB8); im.fill(Color.html("#24365c" if roto else "#6b5a3a"))
+			var im := Image.create(64, 128, false, Image.FORMAT_RGB8); im.fill(Color.html("#24365c"))
 			if roto:
 				for r in 9:
 					var a := r * 0.7
 					for t in 40: var pt := Vector2(32, 64) + Vector2(40 * cos(a), 70 * sin(a)) * t / 40.0; if pt.x >= 0 and pt.y >= 0 and pt.x < 63 and pt.y < 127: im.fill_rect(Rect2i(int(pt.x), int(pt.y), 2, 2), Color.html("#e8eef5"))
 			else:
-				for r in 40: im.fill_rect(Rect2i((r * 29) % 64 - 3, (r * 53) % 128 - 3, 6 + r % 6, 6 + r % 6), Color8(150 + (r * 37) % 60, 120 + (r * 23) % 40, 80))
+				for sp in [[32, 60, 9], [18, 30, 5], [44, 92, 6], [24, 100, 4], [48, 40, 4], [12, 74, 3], [52, 16, 3]]:
+					for cc in [[1.0, Color.html("#f2f0e8")], [0.4, Color.html("#8a8578")]]:
+						var rr: float = sp[2] * cc[0]
+						for py in range(int(sp[1] - rr), int(sp[1] + rr) + 1):
+							for px in range(int(sp[0] - rr), int(sp[0] + rr) + 1):
+								if px >= 0 and py >= 0 and px < 64 and py < 128 and Vector2(px + 0.5 - sp[0], py + 0.5 - sp[1]).length() <= rr: im.set_pixel(px, py, cc[1])
 			var qm := QuadMesh.new(); qm.size = Vector2(1, 2)
 			var mt := StandardMaterial3D.new(); mt.albedo_texture = ImageTexture.create_from_image(im); mt.roughness = 0.5
 			var o: MeshInstance3D = en.call(qm, mt, md[0], md[1], md[2] + 0.06); o.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -(PI / 2 - inc))

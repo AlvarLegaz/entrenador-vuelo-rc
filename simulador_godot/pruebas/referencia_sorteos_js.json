@@ -44,7 +44,12 @@
   ],
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 1,
@@ -52,7 +57,12 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 1,
@@ -63,7 +73,12 @@
   "persona": [
    3040.0060690427226,
    -13090.885073393996
-  ]
+  ],
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 1,
@@ -97,7 +112,12 @@
     4.5
    ]
   ],
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 1,
@@ -127,7 +147,11 @@
    [
     7,
     180
-   ],
+   ]
+  ],
+  "manchas": null,
+  "persona": null,
+  "calientes": [
    [
     48,
     259
@@ -135,10 +159,16 @@
    [
     49,
     165
+   ],
+   [
+    72,
+    318
    ]
   ],
-  "manchas": null,
-  "persona": null
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 1,
@@ -146,7 +176,54 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_sabic",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": [
+   [
+    0,
+    0,
+    0.571,
+    132
+   ],
+   [
+    18,
+    0,
+    0.51,
+    117
+   ],
+   [
+    5,
+    8,
+    0.213,
+    122
+   ],
+   [
+    11,
+    16,
+    0.564,
+    120
+   ]
+  ],
+  "fuga": [
+   14,
+   3,
+   2
+  ],
+  "placaTxt": "A-96",
+  "piloto": true
  },
  {
   "semilla": 7,
@@ -193,7 +270,12 @@
   ],
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 7,
@@ -201,7 +283,12 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 7,
@@ -212,7 +299,12 @@
   "persona": [
    3040.0424832990593,
    -12856.195513757968
-  ]
+  ],
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 7,
@@ -246,7 +338,12 @@
     4.5
    ]
   ],
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 7,
@@ -276,7 +373,11 @@
    [
     52,
     295
-   ],
+   ]
+  ],
+  "manchas": null,
+  "persona": null,
+  "calientes": [
    [
     6,
     214
@@ -284,10 +385,16 @@
    [
     11,
     187
+   ],
+   [
+    11,
+    309
    ]
   ],
-  "manchas": null,
-  "persona": null
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 7,
@@ -295,7 +402,54 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_sabic",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": [
+   [
+    0,
+    7,
+    0.297,
+    112
+   ],
+   [
+    14,
+    1,
+    0.573,
+    129
+   ],
+   [
+    16,
+    1,
+    0.589,
+    133
+   ],
+   [
+    2,
+    7,
+    0.25,
+    122
+   ]
+  ],
+  "fuga": [
+   2,
+   3,
+   0
+  ],
+  "placaTxt": "A-78",
+  "piloto": true
  },
  {
   "semilla": 42,
@@ -342,7 +496,12 @@
   ],
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 42,
@@ -350,7 +509,12 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 42,
@@ -361,7 +525,12 @@
   "persona": [
    3040.2548997943545,
    -12867.173082547808
-  ]
+  ],
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 42,
@@ -395,7 +564,12 @@
     4.5
    ]
   ],
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 42,
@@ -425,7 +599,11 @@
    [
     63,
     173
-   ],
+   ]
+  ],
+  "manchas": null,
+  "persona": null,
+  "calientes": [
    [
     37,
     3
@@ -433,10 +611,16 @@
    [
     71,
     158
+   ],
+   [
+    67,
+    254
    ]
   ],
-  "manchas": null,
-  "persona": null
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 42,
@@ -444,7 +628,54 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_sabic",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": [
+   [
+    0,
+    4,
+    0.33,
+    118
+   ],
+   [
+    12,
+    7,
+    0.59,
+    126
+   ],
+   [
+    1,
+    1,
+    0.683,
+    121
+   ],
+   [
+    9,
+    0,
+    0.752,
+    120
+   ]
+  ],
+  "fuga": [
+   13,
+   3,
+   2
+  ],
+  "placaTxt": "A-63",
+  "piloto": true
  },
  {
   "semilla": 2026,
@@ -491,7 +722,12 @@
   ],
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 2026,
@@ -499,7 +735,12 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 2026,
@@ -510,7 +751,12 @@
   "persona": [
    3052.2958805562444,
    -13003.158696234766
-  ]
+  ],
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 2026,
@@ -544,7 +790,12 @@
     4.5
    ]
   ],
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 2026,
@@ -574,7 +825,11 @@
    [
     35,
     113
-   ],
+   ]
+  ],
+  "manchas": null,
+  "persona": null,
+  "calientes": [
    [
     49,
     60
@@ -582,10 +837,16 @@
    [
     18,
     234
+   ],
+   [
+    5,
+    16
    ]
   ],
-  "manchas": null,
-  "persona": null
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
  },
  {
   "semilla": 2026,
@@ -593,6 +854,53 @@
   "puntos": null,
   "defectos": null,
   "manchas": null,
-  "persona": null
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_sabic",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": [
+   [
+    0,
+    1,
+    0.388,
+    117
+   ],
+   [
+    2,
+    3,
+    0.389,
+    116
+   ],
+   [
+    13,
+    3,
+    0.447,
+    115
+   ],
+   [
+    11,
+    3,
+    0.309,
+    127
+   ]
+  ],
+  "fuga": [
+   1,
+   0,
+   1
+  ],
+  "placaTxt": "A-41",
+  "piloto": false
  }
 ]

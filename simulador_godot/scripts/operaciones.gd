@@ -282,18 +282,26 @@ func _planta() -> void:
 				var M := { "fila": i, "t": t, "l0": l0, "l1": l1, "fondo": P["ancho"] * c, "y": suelo.call(q[0], q[1]), "alto": P["h0"] + P["ancho"] * s }
 				mesas.append(M); fila.append(M); l0 += tr
 		mesas_fila.append(fila)
+	# modulos danados a simple vista: los pares con el cristal roto y los impares con excrementos de aves, que en la
+	# termica dan un punto caliente (la celula tapada se calienta) de 60 a 75 grados
+	var kd := 0
 	for q in d["defectos"]:
 		var F: Array = mesas_fila[int(q[0])]; var M: Dictionary = F[0]; var x: float = q[1]
 		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
-		var pq := ne(x, int(q[0]) * P["separacion"]); modulos.append([pq[0], pq[1], M["y"] + P["h0"] + P["ancho"] * s / 2])
-	var ic := 0
-	for q in (d["calientes"] if d.get("calientes") is Array else []):    # modulos con punto caliente: una celula quemada a 70-95 grados
-		var F: Array = mesas_fila[int(q[0])]; var M: Dictionary = F[0]; var x: float = q[1]
-		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
 		var pq := ne(x, int(q[0]) * P["separacion"]); var P3 := [pq[0], pq[1], M["y"] + P["h0"] + P["ancho"] * s / 2]
-		var Tm := 70 + 5 * ((int(q[0]) * 7 + int(q[1])) % 6)
-		termicos.append({ "tipo": "modulo", "i": ic, "nombre": "módulo con punto caliente", "T": Tm, "P0": P3, "P1": P3.duplicate(), "r": 0.5 })
-		modulos_c.append(P3); hechos_c.append(false); ic += 1
+		if kd % 2: termicos.append({ "tipo": "modulo", "i": kd, "nombre": "módulo con excrementos de aves", "T": 60 + 5 * ((int(q[0]) * 3 + int(q[1])) % 4), "P0": P3, "P1": P3.duplicate(), "r": 0.3 })
+		modulos.append(P3); kd += 1
+	# modulos con un diodo de bypass averiado: una de sus tres subcadenas de celulas (una franja de un tercio del modulo,
+	# a lo largo de la pendiente) se calienta entera, de 48 a 54 grados; a simple vista no se nota nada
+	var ic := 0
+	for q in (d["calientes"] if d.get("calientes") is Array else []):
+		var f := int(q[0]); var F: Array = mesas_fila[f]; var M: Dictionary = F[0]; var x: float = q[1]
+		for mm in F: if x >= mm["l0"] and x <= mm["l1"]: M = mm; break
+		var pq := ne(x, f * P["separacion"]); var y: float = M["y"] + P["h0"] + P["ancho"] * s / 2
+		var dl := ((f + int(q[1])) % 3 - 1) * 0.33; var q0 := ne(x + dl, f * P["separacion"] - 0.9 * c); var q1 := ne(x + dl, f * P["separacion"] + 0.9 * c)
+		termicos.append({ "tipo": "modulo", "i": ic, "nombre": "módulo con un diodo de bypass averiado", "T": 48 + 2 * ((f * 5 + int(q[1])) % 4),
+			"P0": [q0[0], q0[1], y - 0.9 * s], "P1": [q1[0], q1[1], y + 0.9 * s], "r": 0.16 })
+		modulos_c.append([pq[0], pq[1], y]); hechos_c.append(false); ic += 1
 
 ## Fabrica (trabajo de SABIC): los objetos de la termica, la valvula de la fuga y su zona ATEX, y la placa de la antorcha (_fabrica).
 func _fabrica() -> void:
@@ -498,25 +506,28 @@ func foto(av: Dictionary, gimbal: float, cam := {}) -> Array:
 		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto sin ninguna mancha")
 	if d.has("planta"):                                # paneles: cada modulo danado, desde arriba y de 4 a 20 m (con zoom, la distancia equivalente)
 		var mot := [""]
-		var revisar := func(lista: Array, hech: Array, termico: bool, nombre: String, id: String) -> void:
+		# vale(i): "" si esa averia se ve con la camara puesta, o por que no; ok(i): el texto de la foto buena
+		var revisar := func(lista: Array, hech: Array, vale: Callable, nombre: String, ok: Callable, id: String) -> void:
 			for i in lista.size():
 				if hech[i]: continue
 				var c := camara(av, gimbal, lista[i]); var de: float = c["d"] / zoom
 				if not en_foto(c, 1, zoom): continue
-				var motivo := ""
-				if termico != ter: motivo = ("el %s %d solo se ve con la cámara térmica (C)" % [nombre, i + 1]) if termico else "con la térmica no se ven los cristales rotos ni la suciedad: cambia a la cámara normal (C)"
+				var motivo: String = vale.call(i)
+				if motivo != "": pass
 				elif gimbal > d["gimbal"]: motivo = "los paneles se fotografían desde arriba (cámara a %s° o más)" % _n(d["gimbal"])
 				elif de > d["dist"][1]: motivo = "%s %d demasiado lejos (%d m; a menos de %s m%s)" % [nombre, i + 1, int(round(c["d"])), _n(d["dist"][1]), " con este zoom" if zoom > 1 else ""]
 				elif de < d["dist"][0]: motivo = "%s %d demasiado cerca" % [nombre, i + 1]
 				elif not en_foto(c, 0.8, zoom): motivo = "%s %d en el borde de la foto: encuádralo" % [nombre, i + 1]
 				else:
 					hech[i] = true; var k := hech.filter(func(x): return x).size()
-					T.append(("Punto caliente %d ✓ (%d/%d)" if termico else "Módulo dañado %d ✓ (%d/%d)") % [i + 1, k, lista.size()])
+					T.append("%s ✓ (%d/%d)" % [ok.call(i), k, lista.size()])
 					if k == lista.size(): m.call(id, "ok")
 				if motivo != "" and mot[0] == "": mot[0] = motivo
-		revisar.call(modulos, hechos, false, "módulo", "defectos")
+		revisar.call(modulos, hechos, func(i: int) -> String: return "con la térmica el cristal roto apenas se distingue: cambia a la cámara normal (C)" if i % 2 == 0 and ter else "", "módulo",
+			func(i: int) -> String: return ("Cristal roto (módulo %d)" % (i + 1)) if i % 2 == 0 else ("Excrementos de aves (módulo %d)" % (i + 1)) + (", punto caliente en la térmica" if ter else ""), "defectos")
 		while hechos_c.size() < modulos_c.size(): hechos_c.append(false)
-		revisar.call(modulos_c, hechos_c, true, "punto caliente", "calientes")
+		revisar.call(modulos_c, hechos_c, func(i: int) -> String: return "" if ter else "el diodo averiado %d solo se ve con la cámara térmica (C)" % (i + 1), "diodo",
+			func(i: int) -> String: return "Diodo de bypass averiado %d" % (i + 1), "calientes")
 		if T.is_empty(): T.append(("Foto no válida: " + mot[0]) if mot[0] != "" else "Foto sin ningún módulo dañado")
 	if d.has("racks"):                                 # fabrica: la placa de la antorcha (zoom) y su piloto (termica)
 		var A: Dictionary = d["antorcha"]; var P: Dictionary = d["placa"]; var h := Vector2(N - A["n"], E - A["e"]).length()
@@ -587,7 +598,7 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 	if d.has("planta"):
 		var nc := hechos_c.filter(func(x): return x).size(); var tc := modulos_c.size()
 		if n == modulos.size() and nc == tc: return volver
-		return "Módulos dañados: <b>%d de %d</b>" % [n, modulos.size()] + ((" · puntos calientes (térmica): <b>%d de %d</b>" % [nc, tc]) if tc > 0 else "") + " · recorre las filas con la cámara hacia abajo"
+		return "Módulos dañados: <b>%d de %d</b>" % [n, modulos.size()] + ((" · diodos averiados (térmica): <b>%d de %d</b>" % [nc, tc]) if tc > 0 else "") + " · recorre las filas con la cámara hacia abajo"
 	if d.has("racks"):
 		var nc := hechos_c.filter(func(x): return x).size(); var tc := (d["puntosCalientes"] as Array).size(); var ok := func(x: bool) -> String: return "✓" if x else "pendiente"
 		if nc == tc and hecho_fuga and hecho_placa and hecho_piloto: return volver
