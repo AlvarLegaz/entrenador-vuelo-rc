@@ -22,6 +22,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     this.dcg = 0; this.rho = RHO; this.calib = { empuje: 1, resistencia: 1 }; this.facil = false;
     this.mandos = Object.assign({}, datos.mandos);
     this.tempC = 15; this.B = Bateria.datos(this.propulsion);     // bateria Li-ion inteligente (js/bateria.js)
+    this.kEmp = 1; this.kPot = 1; this.sens = null;               // averias (js/desgaste.js): empuje, consumo y sensores
   }
   /** Masa, temperatura (densidad), empuje medido (gf, el maximo de los 4 motores) y factor de resistencia. */
   configurar({ masa_kg, cg_mm, temperatura, empuje_gf, resistencia }) {
@@ -82,6 +83,8 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     if (av.estado !== "volando" || av.posado || !av.bat) return;
     const pct = this.bateriaPct(av);
     if (pct <= 10 && !av.batForzado) { av.batForzado = true; av.avisoBat = "critica"; return; }
+    // una celda que se hunde (celda debil: js/desgaste.js) tambien obliga a aterrizar, aunque la carga diga otra cosa
+    if (!av.batForzado && Bateria.celdaMin(this.B, av.bat) < 2.85) { av.batForzado = true; av.avisoBat = "celda"; return; }
     if (av.batForzado) return;
     const casa = this.casa || [0, 0], d = Math.hypot(casa[0] - av.p[0], casa[1] - av.p[1]), agl = av.agl === undefined ? 0 : av.agl, hR = this.fc.rth_altura_m;
     if (!av.batRth && d > 15) {
@@ -107,12 +110,15 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     const Bt = this.B, eb = av.bat, Vb = Bateria.tension(Bt, eb), kV = Math.min(1, Vb / (Bt.celdas * 3.7));
     if (!av.sinBateria && av.estado === "volando" && Bateria.pct(Bt, eb) <= 0 && Bateria.celdaMin(Bt, eb) < 2.9) av.sinBateria = true;
     const parado = av.motorRoto || av.sinBateria;
-    const Tmax = pr.empuje_max_N * this.calib.empuje * kV * kV, suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl;
+    const Tmax = pr.empuje_max_N * this.calib.empuje * kV * kV * this.kEmp, suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl;
     const M = F.modos[this.modo] || F.modos.N, tilt = M.inclinacion_grados * D2R, c = av.cmd;
     if (parado) { c.vz = -1; }
     // --- estado: velocidad respecto al suelo en NED y en ejes de rumbo (adelante, derecha), angulos ---
-    const vn = Cuat.rot(q, v), [roll, pitch, yaw] = Cuat.euler(q), cy = Math.cos(yaw), sy = Math.sin(yaw);
-    const vf = vn[0] * cy + vn[1] * sy, vr = -vn[0] * sy + vn[1] * cy, vzUp = -vn[2];
+    // con un sensor averiado (this.sens, js/desgaste.js) el controlador cree otra cosa: brujula (rumbo), IMU (actitud),
+    // barometro (velocidad vertical) y GPS (el punto que sujeta se le va moviendo)
+    const S = this.sens, vn = Cuat.rot(q, v), [roll, pitch, yaw] = Cuat.euler(q);
+    const yawE = S ? yaw + S.rumbo : yaw, rollE = S ? roll + S.alabeo : roll, pitchE = S ? pitch + S.cabeceo : pitch, cy = Math.cos(yawE), sy = Math.sin(yawE);
+    const vf = vn[0] * cy + vn[1] * sy, vr = -vn[0] * sy + vn[1] * cy, vzUp = S ? -vn[2] - S.vz : -vn[2];
     // --- controlador de vuelo ---
     // velocidad horizontal objetivo (palanca derecha) -> aceleracion -> inclinacion objetivo (tope: inclinacion maxima)
     const amax = G0 * Math.tan(tilt);
@@ -122,7 +128,8 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     if (quieto && !av.posado) { if (!av.hold && Math.hypot(vf, vr) < 0.5) av.hold = [av.p[0], av.p[1]]; } else av.hold = null;
     let vfObj = c.adelante * M.vmax_ms, vrObj = c.derecha * M.vmax_ms;
     if (av.hold) {
-      const lim2 = (x, L) => Math.max(-L, Math.min(L, x)), vN = lim2(0.7 * (av.hold[0] - av.p[0]), 2), vE = lim2(0.7 * (av.hold[1] - av.p[1]), 2);
+      const gN = S && S.gps ? S.gps * Math.cos(2 * Math.PI * av.t / 25) : 0, gE = S && S.gps ? S.gps * Math.sin(2 * Math.PI * av.t / 31) : 0;
+      const lim2 = (x, L) => Math.max(-L, Math.min(L, x)), vN = lim2(0.7 * (av.hold[0] + gN - av.p[0]), 2), vE = lim2(0.7 * (av.hold[1] + gE - av.p[1]), 2);
       vfObj += vN * cy + vE * sy; vrObj += -vN * sy + vE * cy;
     }
     let af = M.kv * (vfObj - vf), ar = M.kv * (vrObj - vr);
@@ -132,7 +139,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     // proteccion de aterrizaje como la del dron comercial: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
     const agl = av.agl === undefined ? 100 : av.agl, bajaMax = Math.min(M.vzmax_baja, agl < 3 ? 0.6 : agl < 8 ? 1.5 : M.vzmax_baja);
     const vzObj = c.vz > 0 ? c.vz * M.vzmax_sube : c.vz * bajaMax;
-    let T = parado ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(roll) * Math.cos(pitch));
+    let T = parado ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(rollE) * Math.cos(pitchE));
     T = Math.max(0, Math.min(Tmax, T));
     // en el suelo: los motores al ralenti hasta que se pide subir; con la palanca abajo un rato, se paran (aterrizado)
     if (av.posado) {
@@ -148,7 +155,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
       av.posado = false;    // despega
     }
     // --- pares: angulos objetivo -> velocidades angulares objetivo -> par, con los topes de los motores ---
-    const pObj = F.ka * (rollObj - roll), qObj = F.ka * (pitchObj - pitch), rObj = c.guinada * M.rmax_grados_s * D2R;
+    const pObj = F.ka * (rollObj - rollE), qObj = F.ka * (pitchObj - pitchE), rObj = c.guinada * M.rmax_grados_s * D2R;
     const lim = (x, L) => Math.max(-L, Math.min(L, x));
     let Mx = lim(I.Ixx * F.kr * (pObj - w[0]), F.tau_max), My = lim(I.Iyy * F.kr * (qObj - w[1]), F.tau_max), Mz = lim(I.Izz * F.kr * (rObj - w[2]), F.tau_guinada);
     if (parado) { Mx = My = Mz = 0; }
@@ -176,7 +183,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
       av.posado = true; av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.q = Cuat.desdeEuler(0, 0, Cuat.euler(av.q)[2]); av.p[2] = -(suelo + 0.02);
     }
     // --- bateria (potencia inducida de los 4 rotores + electronica), revoluciones y lecturas ---
-    const A4 = 4 * Math.PI * Math.pow(pr.D_m / 2, 2), P = Math.pow(T, 1.5) / Math.sqrt(2 * rho * A4) / 0.55 + 4;
+    const A4 = 4 * Math.PI * Math.pow(pr.D_m / 2, 2), P = (Math.pow(T, 1.5) / Math.sqrt(2 * rho * A4) / 0.55 + 4) * this.kPot;
     Bateria.gastar(Bt, eb, P, dt); av.Wh = eb.Wh;
     av.T = T; av.gases = T / Tmax; av.rpm = Math.sqrt(T / Tmax) * pr.rpm_max;
     av.t += dt; av.V = Va; av.alfa = 0; av.beta = 0; av.perdida = 0; av.g_carga = T / (m * G0);

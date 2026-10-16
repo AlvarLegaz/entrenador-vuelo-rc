@@ -37,21 +37,24 @@ const Bateria = {
   pct(B, e) { return Math.max(0, 100 * (1 - e.mAh / Bateria.capacidad(B, e))); },
   /** Resistencia interna del pack a su temperatura (sube con el frio). */
   R(B, e) { return B.R_ohm * (1 + 0.04 * Math.max(0, 25 - e.T)); },
-  /** Tension en vacio de una celda con la carga gastada; agotada (mas alla de su capacidad), se desploma (hasta 2,5 V). */
-  ocvCelda(B, e) {
-    const C = B.curva || Bateria.CURVAS[B.quimica] || Bateria.CURVAS.lipo, cap = Bateria.capacidad(B, e);
+  /** Tension en vacio de una celda con la carga gastada; agotada (mas alla de su capacidad), se desploma (hasta 2,5 V).
+   *  k: fraccion de la capacidad de esa celda (una celda debil, js/desgaste.js, tiene menos). */
+  ocvCelda(B, e, k = 1) {
+    const C = B.curva || Bateria.CURVAS[B.quimica] || Bateria.CURVAS.lipo, cap = Bateria.capacidad(B, e) * k;
     const soc = Math.max(0, Math.min(1, 1 - e.mAh / cap));
     return Math.max(2.5, interp(C.soc, C.v, soc) - 6 * Math.max(0, e.mAh - cap) / cap);
   },
   /** Tension en bornes (V) con la potencia que se pide (la del paso anterior, e.P): en vacio menos la caida por la
    *  resistencia interna. Si se pide mas de lo que puede dar, se queda en la mitad (potencia maxima). Pone tambien la
-   *  tension de cada celda. */
+   *  tension de cada celda. Una celda debil (B.debil = { i, k }: averia de js/desgaste.js) se vacia antes, con el doble
+   *  de resistencia. */
   tension(B, e) {
-    const soc = Math.max(0, Math.min(1, 1 - e.mAh / Bateria.capacidad(B, e))), ocv = Bateria.ocvCelda(B, e), R = Bateria.R(B, e), n = B.celdas;
+    const soc = Math.max(0, Math.min(1, 1 - e.mAh / Bateria.capacidad(B, e))), ocv = Bateria.ocvCelda(B, e), R = Bateria.R(B, e), n = B.celdas, D = B.debil;
+    const Rv = D ? R * (n + 1) / n : R;
     let Voc = 0;
-    for (let i = 0; i < n; i++) { e.celdas[i] = ocv + Bateria.DESEQUILIBRIO_V[i % 6] * (1 + 2 * (1 - soc)); Voc += e.celdas[i]; }
-    const disc = Voc * Voc - 4 * R * e.P, V = disc > 0 ? 0.5 * (Voc + Math.sqrt(disc)) : 0.5 * Voc, I = e.P / Math.max(0.1, V);
-    for (let i = 0; i < n; i++) e.celdas[i] -= I * R / n;
+    for (let i = 0; i < n; i++) { e.celdas[i] = (D && D.i === i ? Bateria.ocvCelda(B, e, D.k) : ocv) + Bateria.DESEQUILIBRIO_V[i % 6] * (1 + 2 * (1 - soc)); Voc += e.celdas[i]; }
+    const disc = Voc * Voc - 4 * Rv * e.P, V = disc > 0 ? 0.5 * (Voc + Math.sqrt(disc)) : 0.5 * Voc, I = e.P / Math.max(0.1, V);
+    for (let i = 0; i < n; i++) e.celdas[i] -= I * R / n * (D && D.i === i ? 2 : 1);
     e.V = V; e.I = I;
     return V;
   },

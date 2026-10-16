@@ -23,6 +23,8 @@ var TA := []; var TCL := []; var TCDI := []; var TCM := []; var DA := []; var DE
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
 var temp_c := 15.0                # temperatura del aire (configurar): la de la bateria al despegar
 var B = null                      # bateria (bateria.gd); un motor de combustion no lleva
+var k_emp := 1.0; var k_pot := 1.0  # averias (desgaste.gd): helice danada, motor gastado
+var sens = null; var kT = null; var kP = null; var averias := []; var efe := {}; var _est = null; var _Bbase = null
 var Qmax: float; var Ihelice: float; var CD_helice_parada: float; var k_perfil: float
 var chorro := {}; var brazoDeriva: float; var brazoPerdida: float
 var CD_helice_parada_datos := 0.0
@@ -205,11 +207,11 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var T := 0.0; var Q := 0.0; var J := 0.0
 	if g > 0.02:
 		J = V / (n * pr["D_m"])
-		T = pr["CT0"] * (1.0 if fac else calib["empuje"]) * maxf(0, 1 - J / pr["J0"]) * dens * n * n * pow(pr["D_m"], 4)
+		T = pr["CT0"] * (1.0 if fac else calib["empuje"]) * maxf(0, 1 - J / pr["J0"]) * dens * n * n * pow(pr["D_m"], 4) * k_emp
 		Q = 0.0 if fac else Qmax * pow(n / pr["n_max_rps"], 2) * (0.6 + 0.4 * maxf(0, 1 - J / pr["J0"]))
-		if eb == null: av["Wh"] += pr["P_max_W"] * g * g * g * dt / 3600
+		if eb == null: av["Wh"] += pr["P_max_W"] * g * g * g * dt / 3600 * k_pot
 	if B != null and eb != null:              # la bateria: potencia del motor (como las vueltas al cubo) y de la electronica
-		Bateria.gastar(B, eb, (pr["P_max_W"] * pow(g * kV, 3) if g > 0.02 else 0.0) + 1, dt); av["Wh"] = eb["Wh"]
+		Bateria.gastar(B, eb, (pr["P_max_W"] * pow(g * kV, 3) * k_pot if g > 0.02 else 0.0) + 1, dt); av["Wh"] = eb["Wh"]
 		# el regulador corta el motor si una celda baja de 3,0 V con carga (bateria agotada): sin motor, a planear (tambien en facil)
 		if not av.get("cortado", false) and g > 0.05 and Bateria.celda_min(B, eb) < 3.0: av["cortado"] = true
 	av["T"] = T; av["Q"] = Q; av["rpm"] = n * 60 if g > 0.02 else 0.0

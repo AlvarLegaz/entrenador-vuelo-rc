@@ -6,13 +6,15 @@
 //  tension minima y desequilibrio de las celdas, corriente y temperatura maximas, avisos), las graficas con el tiempo
 //  (bateria y tension, cada celda, corriente y potencia, temperatura, altura y velocidad) con un cursor que da los
 //  valores y las marcas de los avisos, la traza del vuelo coloreada por la bateria y la exportacion a CSV.
+//  Y la pestana "Revision y reparacion" (js/desgaste.js): horas de vuelo, revisiones (lo que se ve: helices, motores,
+//  bateria, autodiagnostico de la app, superficies), reparaciones y el libro de mantenimiento.
 // =====================================================================
 const Taller = {
-  avion: null, lista: null, reg: null, cursor: null,
+  avion: null, lista: null, reg: null, cursor: null, pestana: "registros", vistos: {},
 
   abrir() {
     if (!Taller.avion || !Taller.ids().includes(Taller.avion)) Taller.avion = Taller.ids().includes(sesion.avion) ? sesion.avion : "DJI_MINI";
-    Taller.lista = null; Taller.reg = null;
+    Taller.lista = null; Taller.reg = null; Taller.pestana = "registros"; Taller.vistos = {};
     Taller.pintarVehiculos(); Taller.pintarCentro(); mostrar("pTaller");
   },
   /** Los vehiculos del hangar que llevan registro de vuelo (el bipode no). */
@@ -22,7 +24,7 @@ const Taller = {
     const cont = document.getElementById("tallerLista"), ids = Taller.ids();
     let cuenta = {}; try { for (const r of await RegistroDB.listar()) cuenta[r.avion] = (cuenta[r.avion] || 0) + 1; } catch (e) {}
     cont.innerHTML = ids.map(id => `<button class="tallerVeh${id === Taller.avion ? " sel" : ""}" data-id="${id}"><b>${esc(Modelos.datos(id).nombre)}</b><span>${cuenta[id] ? cuenta[id] + " registro" + (cuenta[id] > 1 ? "s" : "") + " en este ordenador" : "sin registros en este ordenador"}</span></button>`).join("");
-    cont.querySelectorAll("button").forEach(b => b.onclick = () => { Taller.avion = b.dataset.id; Taller.lista = null; Taller.reg = null; Taller.pintarVehiculos(); Taller.pintarCentro(); });
+    cont.querySelectorAll("button").forEach(b => b.onclick = () => { Taller.avion = b.dataset.id; Taller.lista = null; Taller.reg = null; Taller.pestana = "registros"; Taller.vistos = {}; Taller.pintarVehiculos(); Taller.pintarCentro(); });
   },
   /** La ficha de la bateria del vehiculo (de sus datos). */
   bateriaTexto(id) {
@@ -34,13 +36,40 @@ const Taller = {
     const c = document.getElementById("tallerCentro"), A = Modelos.datos(Taller.avion);
     if (Taller.reg) return Taller.pintarDetalle();
     let h = `<div class="capa"><h2>${esc(A.nombre)}</h2><p class="sub">${esc(Taller.bateriaTexto(Taller.avion))}</p>`;
+    if (Taller.lista) h += `<div class="pestTaller">${[["registros", "Registros de vuelo"], ["revision", "Revisión y reparación"]].map(([k, t]) =>
+      `<button class="btn${Taller.pestana === k ? " prim" : ""}" data-pest="${k}">${t}</button>`).join("")}</div>`;
     if (!Taller.lista) h += `<button class="btn prim grande" id="tallerConectar">🔌 Conectar y descargar los registros</button><div id="tallerProgreso"></div>`;
+    else if (Taller.pestana === "revision") h += Taller.htmlRevision();
     else if (!Taller.lista.length) h += `<p>No hay registros de vuelo de este vehículo. Vuela con él y vuelve: cada vuelo guarda su registro al terminar.</p>`;
     else h += `<p class="sub">${Taller.lista.length} registro${Taller.lista.length > 1 ? "s" : ""}. Elige uno para ver sus gráficas.</p><div class="tablaTaller"><table><tr><th>Fecha</th><th>Vuelo</th><th>Duración</th><th>Final</th><th>Muestras</th><th>Dónde</th></tr>${Taller.lista.map((r, i) =>
       `<tr data-i="${i}"><td>${new Date(r.inicio).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })}</td><td>${esc(r.escenario_nombre || r.escenario)}</td><td>${((r.duracion_s || 0) / 60).toFixed(1).replace(".", ",")} min</td><td>${esc(r.final || "")}</td><td>${r.muestras}</td><td>${r._aula ? "☁ aula" : "este ordenador"}</td></tr>`).join("")}</table></div>`;
     c.innerHTML = h + "</div>";
     const b = document.getElementById("tallerConectar"); if (b) b.onclick = () => Taller.conectar();
     c.querySelectorAll("tr[data-i]").forEach(tr => tr.onclick = () => Taller.ver(Taller.lista[+tr.dataset.i]));
+    c.querySelectorAll("button[data-pest]").forEach(b => b.onclick = () => { Taller.pestana = b.dataset.pest; Taller.pintarCentro(); });
+    c.querySelectorAll("button[data-rev]").forEach(b => b.onclick = () => Taller.revisar(b.dataset.rev));
+    c.querySelectorAll("button[data-rep]").forEach(b => b.onclick = () => Taller.reparar(b.dataset.rep));
+  },
+  /** La pestana de revision y reparacion: horas, revisiones (con lo que se ha visto), reparaciones y libro. */
+  htmlRevision() {
+    const A = Modelos.datos(Taller.avion), est = Desgaste.estado(Taller.avion), revs = Desgaste.revisiones(A);
+    let h = `<p>Horas de vuelo: <b>${fmtHoras(est.horas)}</b>${Desgaste.clase(A) !== "comb" ? ` · Batería: <b>${est.bateria.ciclos} ciclos de carga</b>` : ""}</p>`;
+    h += `<h3 class="tituloTaller">Revisar</h3><div class="botonesTaller">${revs.map(([id, t]) => `<button class="btn" data-rev="${id}">${esc(t)}</button>`).join("")}</div>`;
+    for (const [id, t] of revs) if (Taller.vistos[id]) h += `<div class="revTaller"><b>${esc(t)}</b><ul>${Taller.vistos[id].map(l => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+    h += `<h3 class="tituloTaller">Reparar</h3><div class="botonesTaller">${Desgaste.reparaciones(A).map(([id, t]) => `<button class="btn" data-rep="${id}">${esc(t)}</button>`).join("")}</div>`;
+    h += `<h3 class="tituloTaller">Libro de mantenimiento</h3>` + (est.libro.length ? `<div class="tablaTaller"><table><tr><th>Fecha</th><th>Horas del vehículo</th><th>Trabajo</th></tr>${est.libro.slice().reverse().map(e =>
+      `<tr><td>${fmtFecha(e.fecha)}</td><td>${fmtHoras(e.horas)}</td><td>${esc(e.texto)}</td></tr>`).join("")}</table></div>` : `<p class="sub">Sin trabajos todavía.</p>`);
+    return h;
+  },
+  /** Una revision: lo que se ve (Desgaste.revisar), sin decir la averia. */
+  revisar(id) { Taller.vistos[id] = Desgaste.revisar(Desgaste.estado(Taller.avion), Modelos.datos(Taller.avion), id); Taller.pintarCentro(); },
+  /** Una reparacion: renueva la pieza y lo apunta en el libro de mantenimiento (en el aula, o en el ordenador). */
+  async reparar(id) {
+    const A = Modelos.datos(Taller.avion), R = Desgaste.reparaciones(A).find(r => r[0] === id);
+    if (!R || !await confirmar(R[1], "Se cambia (o se calibra) y queda apuntado en el libro de mantenimiento. Vuela después para comprobar que el vehículo va bien.", "Hacerlo")) return;
+    const e = await Desgaste.modificar(Taller.avion, est => Desgaste.reparar(est, A, id, new Date().toISOString()));
+    if (!e) { toast("No se ha podido guardar: comprueba la conexión con el aula"); return; }
+    Taller.vistos = {}; toast("Hecho: apuntado en el libro de mantenimiento"); Taller.pintarCentro();
   },
   /** "Conecta" con el vehiculo y descarga sus registros: los de este ordenador y, con el alumno en el aula, los suyos. */
   async conectar() {
@@ -48,6 +77,7 @@ const Taller = {
     document.getElementById("tallerConectar").disabled = true;
     for (let i = 0; i < pasos.length; i++) { p.innerHTML = `<div class="barraTaller"><i style="width:${(i + 1) * 33}%"></i></div><p class="sub">${pasos[i]}</p>`; await new Promise(r => setTimeout(r, 450)); }
     let L = []; try { L = await RegistroDB.listar(Taller.avion); } catch (e) {}
+    await Desgaste.cargar();                        // y su estado: horas, averias y libro de mantenimiento
     if (sesion.aula && sesion.alumno) {
       try { for (const r of await api("GET", "registros?alumno=" + encodeURIComponent(sesion.alumno.id))) if (r.avion === Taller.avion && !L.some(x => x.id === r.id)) L.push(Object.assign(r, { _aula: true })); } catch (e) {}
     }

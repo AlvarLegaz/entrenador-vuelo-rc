@@ -25,6 +25,8 @@ var cg_mm: Array; var propulsion: Dictionary; var mandos: Dictionary; var malla:
 var compensador_grados := 0.0; var lanzamiento: Dictionary
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
 var temp_c := 15.0; var B: Dictionary            # bateria Li-ion inteligente (bateria.gd)
+var k_emp := 1.0; var k_pot := 1.0; var sens = null   # averias (desgaste.gd): empuje, consumo y sensores
+var averias := []; var efe := {}; var _est = null; var _Bbase = null; var kT = null; var kP = null
 ## dificultad facil: la mitad del viento sobre la resistencia y sin la turbulencia que alabea (como en JS)
 var facil := false
 
@@ -122,6 +124,9 @@ func _bateria_baja(av: Dictionary) -> void:
 	var pc := bateria_pct(av)
 	if pc <= 10 and not av["batForzado"]:
 		av["batForzado"] = true; av["avisoBat"] = "critica"; return
+	# una celda que se hunde (celda debil: desgaste.gd) tambien obliga a aterrizar, aunque la carga diga otra cosa
+	if not av["batForzado"] and Bateria.celda_min(B, av["bat"]) < 2.85:
+		av["batForzado"] = true; av["avisoBat"] = "celda"; return
 	if av["batForzado"]: return
 	var ca: Array = casa if casa != null else [0.0, 0.0]
 	var d := Vector2(ca[0] - av["p"][0], ca[1] - av["p"][1]).length(); var agl: float = av["agl"] if av.get("agl") != null else 0.0; var hR: float = fc["rth_altura_m"]
@@ -157,16 +162,21 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var eb: Dictionary = av["bat"]; var Vb := Bateria.tension(B, eb); var kV := minf(1.0, Vb / (int(B["celdas"]) * 3.7))
 	if not av["sinBateria"] and av["estado"] == "volando" and Bateria.pct(B, eb) <= 0 and Bateria.celda_min(B, eb) < 2.9: av["sinBateria"] = true
 	var parado: bool = av["motorRoto"] or av["sinBateria"]
-	var Tmax: float = pr["empuje_max_N"] * calib["empuje"] * kV * kV
+	var Tmax: float = pr["empuje_max_N"] * calib["empuje"] * kV * kV * k_emp
 	var tiene_agl: bool = av.get("agl") != null
 	var suelo: float = 0.0 if not tiene_agl else -av["p"][2] - av["agl"]
 	var M: Dictionary = F["modos"][modo] if F["modos"].has(modo) else F["modos"]["N"]
 	var tilt: float = M["inclinacion_grados"] * D2R; var c: Dictionary = av["cmd"]
 	if parado: c["vz"] = -1.0
 	# --- estado: velocidad respecto al suelo en NED y en ejes de rumbo (adelante, derecha), angulos ---
+	# con un sensor averiado (sens, desgaste.gd) el controlador cree otra cosa: brujula (rumbo), IMU (actitud), barometro
+	# (velocidad vertical) y GPS (el punto que sujeta se le va moviendo)
+	var S = sens
 	var vn := Cuat.rot(q, v); var eu := Cuat.euler(q); var roll: float = eu[0]; var pitch: float = eu[1]; var yaw: float = eu[2]
-	var cy := cos(yaw); var sy := sin(yaw)
-	var vf: float = vn[0] * cy + vn[1] * sy; var vr: float = -vn[0] * sy + vn[1] * cy; var vzUp: float = -vn[2]
+	var yawE: float = yaw + S["rumbo"] if S != null else yaw; var rollE: float = roll + S["alabeo"] if S != null else roll
+	var pitchE: float = pitch + S["cabeceo"] if S != null else pitch
+	var cy := cos(yawE); var sy := sin(yawE)
+	var vf: float = vn[0] * cy + vn[1] * sy; var vr: float = -vn[0] * sy + vn[1] * cy; var vzUp: float = -vn[2] - S["vz"] if S != null else -vn[2]
 	# --- controlador de vuelo ---
 	# velocidad horizontal objetivo (palanca derecha) -> aceleracion -> inclinacion objetivo (tope: inclinacion maxima)
 	var amax := G0 * tan(tilt)
@@ -177,7 +187,9 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	else: av["hold"] = null
 	var vfObj: float = c["adelante"] * M["vmax_ms"]; var vrObj: float = c["derecha"] * M["vmax_ms"]
 	if av["hold"] != null:
-		var vN := clampf(0.7 * (av["hold"][0] - av["p"][0]), -2, 2); var vE := clampf(0.7 * (av["hold"][1] - av["p"][1]), -2, 2)
+		var gN: float = S["gps"] * cos(2 * PI * av["t"] / 25) if S != null and S["gps"] else 0.0
+		var gE: float = S["gps"] * sin(2 * PI * av["t"] / 31) if S != null and S["gps"] else 0.0
+		var vN := clampf(0.7 * (av["hold"][0] + gN - av["p"][0]), -2, 2); var vE := clampf(0.7 * (av["hold"][1] + gE - av["p"][1]), -2, 2)
 		vfObj += vN * cy + vE * sy; vrObj += -vN * sy + vE * cy
 	var af: float = M["kv"] * (vfObj - vf); var ar: float = M["kv"] * (vrObj - vr)
 	var an := sqrt(af * af + ar * ar)
@@ -189,7 +201,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var agl: float = 100.0 if not tiene_agl else av["agl"]
 	var bajaMax: float = minf(M["vzmax_baja"], 0.6 if agl < 3 else (1.5 if agl < 8 else M["vzmax_baja"]))
 	var vzObj: float = c["vz"] * M["vzmax_sube"] if c["vz"] > 0 else c["vz"] * bajaMax
-	var T: float = 0.0 if parado else m * (G0 + F["kz"] * (vzObj - vzUp)) / maxf(0.5, cos(roll) * cos(pitch))
+	var T: float = 0.0 if parado else m * (G0 + F["kz"] * (vzObj - vzUp)) / maxf(0.5, cos(rollE) * cos(pitchE))
 	T = maxf(0, minf(Tmax, T))
 	# en el suelo: los motores al ralenti hasta que se pide subir; con la palanca abajo un rato, se paran (aterrizado)
 	if av["posado"]:
@@ -204,7 +216,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 			return [0.0, 0.0, 0.0]
 		av["posado"] = false    # despega
 	# --- pares: angulos objetivo -> velocidades angulares objetivo -> par, con los topes de los motores ---
-	var pObj: float = F["ka"] * (rollObj - roll); var qObj: float = F["ka"] * (pitchObj - pitch); var rObj: float = c["guinada"] * M["rmax_grados_s"] * D2R
+	var pObj: float = F["ka"] * (rollObj - rollE); var qObj: float = F["ka"] * (pitchObj - pitchE); var rObj: float = c["guinada"] * M["rmax_grados_s"] * D2R
 	var Mx: float = clampf(I["Ixx"] * F["kr"] * (pObj - w[0]), -F["tau_max"], F["tau_max"])
 	var My: float = clampf(I["Iyy"] * F["kr"] * (qObj - w[1]), -F["tau_max"], F["tau_max"])
 	var Mz: float = clampf(I["Izz"] * F["kr"] * (rObj - w[2]), -F["tau_guinada"], F["tau_guinada"])
@@ -237,7 +249,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	if agl2 <= 0.02 and vn2[2] >= 0 and vn2[2] < 2.0 and absf(roll) < 20 * D2R and absf(pitch) < 20 * D2R and c["vz"] <= 0.05:
 		av["posado"] = true; av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["q"] = Cuat.desde_euler(0, 0, Cuat.euler(av["q"])[2]); p[2] = -(suelo + 0.02)
 	# --- bateria (potencia inducida de los 4 rotores + electronica), revoluciones y lecturas ---
-	var A4: float = 4 * PI * pow(pr["D_m"] / 2, 2); var P: float = pow(T, 1.5) / sqrt(2 * rho * A4) / 0.55 + 4
+	var A4: float = 4 * PI * pow(pr["D_m"] / 2, 2); var P: float = (pow(T, 1.5) / sqrt(2 * rho * A4) / 0.55 + 4) * k_pot
 	Bateria.gastar(B, eb, P, dt); av["Wh"] = eb["Wh"]
 	av["T"] = T; av["gases"] = T / Tmax; av["rpm"] = sqrt(T / Tmax) * pr["rpm_max"]
 	av["t"] += dt; av["V"] = Va; av["alfa"] = 0.0; av["beta"] = 0.0; av["perdida"] = 0.0; av["g_carga"] = T / (m * G0)

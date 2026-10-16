@@ -212,6 +212,12 @@
   .graficasTaller > div { width: 260px; flex: none; } #tallerTraza { border-radius: 8px; display: block; }
   .eventosTaller { max-height: 300px; overflow: auto; font-size: 13px; margin-top: 8px; } .eventosTaller div { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
   @media (max-width: 900px) { .graficasTaller { flex-direction: column; } }
+  .pestTaller { display: flex; gap: 8px; margin: 12px 0; }
+  .botonesTaller { display: flex; flex-wrap: wrap; gap: 8px; }
+  .botonesTaller .btn { font-size: 14px; padding: 8px 14px; }
+  .tituloTaller { margin: 18px 0 8px; font-size: 15px; color: var(--texto); }
+  .revTaller { margin-top: 10px; background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+  .revTaller ul { margin: 6px 0 0; padding-left: 20px; } .revTaller li { margin: 2px 0; }
   .btn { background: rgba(255,255,255,.08); color: var(--texto); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 10px 18px; font-size: 15px;
          cursor: pointer; transition: background .12s, transform .08s; }
   .btn:hover { background: rgba(255,255,255,.14); } .btn:active { transform: translateY(1px); }
@@ -856,13 +862,14 @@
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
-<script src="js/bateria.js?v=1"></script>
-<script src="js/modelos.js?v=24"></script>
+<script src="js/bateria.js?v=2"></script>
+<script src="js/modelos.js?v=25"></script>
 <script src="js/entorno.js?v=25"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=8"></script>
 <script src="js/piloto_uav.js?v=2"></script>
-<script src="js/registro.js?v=1"></script>
+<script src="js/registro.js?v=2"></script>
+<script src="js/desgaste.js?v=1"></script>
 <script src="js/visor.js?v=38"></script>
 <script src="js/industria.js?v=4"></script>
 <script src="js/visor_real.js?v=44"></script>
@@ -987,7 +994,7 @@ async function dentroDelAula(alumno, pase) {
   sesion.alumno = alumno; sesion.pase = pase; sesion.aula = true; sesion.nombreAula = urlAula();
   try { sesion.nombreAula = (await api("GET", "estado")).aula; } catch (e) {}
   guardarSesion({ url: urlAula(), alumno, pase });
-  vaciarCola();
+  vaciarCola(); Desgaste.cargar();                 // el estado de sus vehiculos (horas, averias): js/desgaste.js
 }
 async function entrarAula(crear) {
   const err = document.getElementById("errAlumno"), u = guardarUrl(document.getElementById("urlAula").value);
@@ -1010,7 +1017,7 @@ async function entrarAula(crear) {
     err.textContent = e.status ? e.message : `No se puede conectar con el aula en ${u}. Comprueba la dirección y que el profesor tenga abierto SERVIDOR_AULA.bat.`;
   }
 }
-function salirDelAula() { sesion.aula = false; sesion.alumno = null; sesion.pase = null; guardarSesion(null); }
+function salirDelAula() { sesion.aula = false; sesion.alumno = null; sesion.pase = null; guardarSesion(null); Desgaste.cargar(); }
 function cerrarSesion() { const n = sesion.alumno && sesion.alumno.nombre; salirDelAula(); irAcceso(n ? `Sesión de ${n} cerrada.` : ""); }
 /** Al arrancar (o al recargar la pestana): si ya habia entrado en esta pestana, sigue dentro sin pedir la contrasena. */
 async function retomarSesion() {
@@ -1693,6 +1700,7 @@ async function empezar() {
   if (carga) await mostrarCarga(mundo.nombre, "Avión y física…", 0.1);
   modelo = Modelos.crear(sesion.avion);
   aplicarCM(modelo); aplicarCalibracion(modelo); aplicarDificultad(modelo);
+  Desgaste.aplicar(modelo, Desgaste.clase(modelo) ? Desgaste.estado(sesion.avion) : null);    // sus averias y el desgaste de la bateria
   visor.ponerAvion(Modelos.datos(sesion.avion));
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
@@ -1768,6 +1776,7 @@ function lanzar() {
   }
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: 0 };
   cnContador = 0; RegistroVuelo.empezar(vuelo); grabarMuestra();
+  const ap = Desgaste.avisosApp(modelo); if (ap.length) toast(ap.join(" · "));     // el autodiagnostico de la app al armar
 }
 function paso(dt) {
   aplicarRecorridos();
@@ -1790,7 +1799,9 @@ function paso(dt) {
   if (MULTI.caida) { caidaDerribado(dt); return; }          // multijugador: derribado por un bipode
   const pAnt = av.p.slice();
   if (modelo.esTerrestre) { pasoTerrestre(dt, viento, pAnt); return; }
+  Desgaste.antesPaso(modelo, av);                // averias: superficies con holgura o bisagra floja (js/desgaste.js)
   const vn = modelo.paso(av, viento, dt);
+  Desgaste.despuesPaso(modelo, av, dt);          // y vibraciones o el par de una helice danada
   avisosBateria();
   if (gasPalanca !== null) { av.gasMotor = av.gases; av.gases = gasPalanca; } else av.gasMotor = av.gases;   // la palanca del gas no se mueve: en crucero elige la velocidad
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
@@ -1847,6 +1858,7 @@ function avisosBateria() {
   if (k.startsWith("baja") && !ant.startsWith("baja")) toast(modelo.esCuadricoptero ? "Batería baja (30 %): vuelve pronto" : "Batería baja (20 %): aterriza pronto");
   if (k.startsWith("rth") && !ant.startsWith("rth")) toast("Batería justa para volver: volviendo a casa (mueve las palancas para cancelar)");
   if (k.startsWith("critica") && !ant.startsWith("critica")) { toast("¡Batería crítica! Aterrizaje forzoso: busca dónde posarlo"); aviso("Aterrizaje forzoso: batería crítica"); }
+  if (k.startsWith("celda") && !ant.startsWith("celda")) { toast("¡Tensión de celda muy baja! Aterrizaje forzoso"); aviso("Aterrizaje forzoso: una celda de la batería se ha hundido"); }
 }
 /** Un paso del bipode: la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso del modelo, la altura del
  *  terreno donde queda y los choques: arboles, pilones y edificios lo paran (no lo rompen); en el mar se hunde. */
@@ -1922,7 +1934,7 @@ function terminarVuelo(final, vn) {
   av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.rpm = 0;
   document.getElementById("guia").innerHTML = "";
   if (!vuelo) return;
-  vuelo.final = final; grabarMuestra(); RegistroVuelo.cerrar(vuelo);
+  vuelo.final = final; grabarMuestra(); RegistroVuelo.cerrar(vuelo); desgasteTrasVuelo(vuelo, final);
   evaluarFinal(final, vn || [0, 0, 0]);
   aviso(vuelo.lanzamiento ? "LANZAMIENTO FALLIDO: " + vuelo.lanzamiento.corto
         : final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
@@ -1936,6 +1948,17 @@ function terminarVuelo(final, vn) {
   if (salirTras) { salirTras = false; guardarVuelo(v, datosResultado(v)); irInicio(); return; }
   // solo si sigue siendo el vuelo en curso: si en esos 1,8 s se ha pulsado R o se ha salido, el resultado ya no toca
   setTimeout(() => { if (vuelo === v && pantallaActual === null && !Repeticion.activa) mostrarResultado(v); }, final === "abandonado" ? 0 : 1800);
+}
+
+/** Despues de cada vuelo, el desgaste del vehiculo (js/desgaste.js): horas, bateria y lo que se estropea; y las averias
+ *  que el profesor ha puesto en vuelo (sala multijugador). Se guarda en el aula (o en el ordenador). */
+function desgasteTrasVuelo(v, final) {
+  if (!Desgaste.clase(modelo)) return;
+  const R = v.reg, col = n => { const i = R ? R.columnas.indexOf(n) : -1; return i < 0 ? [] : R.filas.map(f => f[i]).filter(x => typeof x === "number"); };
+  const T = col("temperatura_bateria_C"), B = modelo.B ? col("bateria_pct") : [], A = Modelos.datos(sesion.avion), extra = (v.averiasSala || []).slice();
+  const info = { s: av.t, roto: final.startsWith("roto"), bat0: B.length ? B[0] : null, bat1: B.length ? B[B.length - 1] : null,
+                 tempMax: T.length ? Math.max(...T) : null, semilla: v.id, fecha: new Date().toISOString() };
+  Desgaste.modificar(sesion.avion, est => { for (const a of extra) Desgaste.anadir(est, a, "profesor", info.fecha); return Desgaste.trasVuelo(est, A, info); });
 }
 
 // =====================================================================
@@ -2125,6 +2148,7 @@ document.getElementById("cnAuto").addEventListener("change", e => e.target.blur(
 // =====================================================================
 function irInicio() {
   salirSala();                                  // al volver al inicio se sale de la sala multijugador
+  Desgaste.cargar();                            // el estado de los vehiculos, al dia (el profesor puede haber puesto averias)
   const A = Modelos.datos(sesion.avion);
   document.getElementById("inicioAvionNombre").textContent = A.nombre;
   document.getElementById("inicioAvionDesc").textContent = (A.descripcion || "").split(". ")[0];
@@ -2431,6 +2455,10 @@ function aplicarOrdenes(lista) {
     if (o.tipo === "quitar_exclusion") ORDENES.zonas = ORDENES.zonas.filter(z => z.id !== o.id);
     if (o.tipo === "senderista") { ORDENES.persona = [o.N, o.E]; if (moverDesaparecido() && nueva) toast("Nueva posición del desaparecido: búscalo"); }
     if (o.tipo === "fuga") { ORDENES.fuga = [o.N, o.E]; if (moverFugaProfesor() && nueva) toast("La fuga de gas ahora está en otra unidad: localízala de nuevo"); }
+    if (o.tipo === "averia" && nueva && modelo && av && vuelo && av.estado === "volando") {     // averia en vuelo: sin avisar (como en la realidad)
+      const a = Desgaste.adaptar(Modelos.datos(sesion.avion), { c: o.c, tipo: o.averia, n: o.celda });
+      if (a) { Desgaste.enVuelo(modelo, a); (vuelo.averiasSala = vuelo.averiasSala || []).push(a); const ap = Desgaste.avisosApp({ averias: [a], tipo: modelo.tipo }); if (ap.length) toast(ap.join(" · ")); }
+    }
   }
   if (cambio) { ordenesAlEvaluador(); if (visor && visor.ponerExclusiones) visor.ponerExclusiones(ORDENES.zonas); }
   pintarOrdenes();
@@ -3921,6 +3949,6 @@ function bucle(ahora) {
   requestAnimationFrame(bucle);
 })();
 </script>
-<script src="js/taller.js?v=1"></script>
+<script src="js/taller.js?v=2"></script>
 </body>
 </html>

@@ -38,7 +38,9 @@ const RegistroVuelo = {
     if (!R || (!forzar && av.t - R.tUlt < RegistroVuelo.CADA_S - 1e-9)) return;
     R.tUlt = av.t;
     const r = (x, n) => x === null || x === undefined || !isFinite(x) ? null : +(+x).toFixed(n), o = R.origen, D = Math.PI / 180;
-    const [rol, cab, rum] = Cuat.euler(av.q).map(a => a / D), vn = Cuat.rot(av.q, av.v), B = modelo.B, e = av.bat;
+    let [rol, cab, rum] = Cuat.euler(av.q).map(a => a / D);
+    const vn = Cuat.rot(av.q, av.v), B = modelo.B, e = av.bat, S = modelo.sens;
+    if (S) { rol += S.alabeo / D; cab += S.cabeceo / D; rum += S.rumbo / D; }     // como en un registro real: la actitud y el rumbo que cree el dron (IMU y brujula)
     const fila = [r(av.t, 2), r(o.lat + av.p[0] / 110574, 7), r(o.lon + av.p[1] / (111320 * Math.cos(o.lat * D)), 7), r(-av.p[2] - R.casa[2], 2),
       r(av.agl !== undefined ? av.agl : -av.p[2], 2), r(Math.hypot(vn[0], vn[1]), 2), r(-vn[2], 2), r(Math.hypot(av.p[0] - R.casa[0], av.p[1] - R.casa[1]), 1),
       r((rum + 360) % 360, 1), r(rol, 1), r(cab, 1), r(modelo.bateriaPct ? modelo.bateriaPct(av) : null, 1),

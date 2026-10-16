@@ -6,6 +6,8 @@ extends Control
 ## tension minima y desequilibrio de las celdas, corriente y temperatura maximas, avisos), las graficas con el tiempo
 ## (bateria y tension, cada celda, corriente y potencia, temperatura, altura y velocidad) con un cursor que da los
 ## valores y las marcas de los avisos, la traza del vuelo coloreada por la bateria y la exportacion a CSV.
+## Y la pestana "Revision y reparacion" (desgaste.gd): horas de vuelo, revisiones (lo que se ve: helices, motores,
+## bateria, autodiagnostico de la app, superficies), reparaciones y el libro de mantenimiento.
 
 const COLORES_CELDA := ["#4fc3f7", "#ffb74d", "#81c784", "#e57373", "#ba68c8", "#fff176"]
 
@@ -13,6 +15,8 @@ var p: Node
 var avion := ""
 var lista = null                 # los registros descargados (sin las muestras), o null si aun no se ha conectado
 var reg := {}                    # el registro que se mira
+var pestana := "registros"       # "registros" o "revision"
+var vistos := {}                 # revisiones hechas: id -> lineas
 var lista_veh: VBoxContainer
 var centro: VBoxContainer
 var grafica: Grafica
@@ -37,11 +41,11 @@ func ids() -> Array:
 
 func abrir() -> void:
 	if avion == "" or not ids().has(avion): avion = p.sesion["avion"] if ids().has(p.sesion["avion"]) else "DJI_MINI"
-	lista = null; reg = {}
+	lista = null; reg = {}; pestana = "registros"; vistos = {}
 	pintar_vehiculos(); pintar_centro(); p.mostrar("pTaller")
 
 func elegir(id: String) -> void:
-	avion = id; lista = null; reg = {}; pintar_vehiculos(); pintar_centro()
+	avion = id; lista = null; reg = {}; pestana = "registros"; vistos = {}; pintar_vehiculos(); pintar_centro()
 
 ## Los vehiculos, con cuantos registros hay de cada uno en este ordenador.
 func pintar_vehiculos() -> void:
@@ -80,10 +84,15 @@ func pintar_centro() -> void:
 	var cp: Array = Tema.capa(10); centro.add_child(cp[0]); var v: VBoxContainer = cp[1]
 	v.add_child(Tema.h2(String(DatosComunes.avion(avion).get("nombre", avion))))
 	v.add_child(Tema.sub(bateria_texto(avion)))
+	if lista != null:
+		var pe := HBoxContainer.new(); pe.add_theme_constant_override("separation", 8); v.add_child(pe)
+		for kt in [["registros", "Registros de vuelo"], ["revision", "Revisión y reparación"]]:
+			var bp := Tema.boton(kt[1], "BotonPrim" if pestana == kt[0] else "", func(): pestana = kt[0]; pintar_centro()); bp.name = "Pest_" + kt[0]; pe.add_child(bp)
 	if lista == null:
 		var b := Tema.boton("🔌 Conectar y descargar los registros", "BotonPrimGrande", func(): conectar()); b.name = "Conectar"
 		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; v.add_child(b)
 		var pr := VBoxContainer.new(); pr.name = "Progreso"; v.add_child(pr)
+	elif pestana == "revision": pintar_revision(v)
 	elif (lista as Array).is_empty():
 		v.add_child(Tema.etiqueta("No hay registros de vuelo de este vehículo. Vuela con él y vuelve: cada vuelo guarda su registro al terminar.", 15, Tema.TEXTO, false, true))
 	else:
@@ -97,6 +106,50 @@ func pintar_centro() -> void:
 			for t in txt:
 				var b := Button.new(); b.text = t; b.theme_type_variation = "BotonPlano"; b.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.focus_mode = Control.FOCUS_NONE
 				b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; b.pressed.connect(ver.bind(r)); g.add_child(b)
+
+## La pestana de revision y reparacion: horas, revisiones (con lo que se ha visto), reparaciones y libro (htmlRevision).
+func pintar_revision(v: VBoxContainer) -> void:
+	var A := DatosComunes.avion(avion); var est := Desgaste.estado(avion); var revs := Desgaste.revisiones(A)
+	v.add_child(Tema.rico("Horas de vuelo: [b]%s[/b]%s" % [PantallaPilotos.fmt_horas(float(est["horas"])),
+		(" · Batería: [b]%d ciclos de carga[/b]" % int(est["bateria"]["ciclos"])) if Desgaste.clase(A) != "comb" else ""], 15))
+	v.add_child(Tema.etiqueta("Revisar", 15, Tema.TEXTO, true))
+	var fr := HFlowContainer.new(); fr.add_theme_constant_override("h_separation", 8); fr.add_theme_constant_override("v_separation", 8); v.add_child(fr)
+	for r in revs:
+		var b := Tema.boton(r[1], "", func(): revisar(r[0])); b.name = "Rev_" + r[0]; fr.add_child(b)
+	for r in revs:
+		if not vistos.has(r[0]): continue
+		var pc := PanelContainer.new(); pc.add_theme_stylebox_override("panel", Tema.caja(Color(1, 1, 1, 0.05), Color(0, 0, 0, 0), 8, 0, 12, 8))
+		var lv := VBoxContainer.new(); lv.add_theme_constant_override("separation", 2); pc.add_child(lv); pc.name = "Visto_" + r[0]
+		lv.add_child(Tema.etiqueta(r[1], 14, Tema.TEXTO, true))
+		for l in vistos[r[0]]: lv.add_child(Tema.etiqueta("•  " + l, 14, Tema.TEXTO, false, true))
+		v.add_child(pc)
+	v.add_child(Tema.etiqueta("Reparar", 15, Tema.TEXTO, true))
+	var fp := HFlowContainer.new(); fp.add_theme_constant_override("h_separation", 8); fp.add_theme_constant_override("v_separation", 8); v.add_child(fp)
+	for r in Desgaste.reparaciones(A):
+		var b := Tema.boton(r[1], "", func(): reparar(r[0])); b.name = "Rep_" + r[0]; fp.add_child(b)
+	v.add_child(Tema.etiqueta("Libro de mantenimiento", 15, Tema.TEXTO, true))
+	var lib: Array = est["libro"]
+	if lib.is_empty(): v.add_child(Tema.sub("Sin trabajos todavía.")); return
+	var g := GridContainer.new(); g.columns = 3; g.name = "Libro"; v.add_child(g)
+	for t in ["Fecha", "Horas del vehículo", "Trabajo"]: g.add_child(_celda(Tema.etiqueta(t, 14, Tema.SUAVE, true)))
+	for k in range(lib.size() - 1, -1, -1):
+		var e: Dictionary = lib[k]
+		for t in [fecha(String(e["fecha"])), PantallaPilotos.fmt_horas(float(e["horas"])), String(e["texto"])]: g.add_child(_celda(Tema.etiqueta(t, 14)))
+
+## Una revision: lo que se ve (Desgaste.revisar), sin decir la averia.
+func revisar(id: String) -> void:
+	vistos[id] = Desgaste.revisar(Desgaste.estado(avion), DatosComunes.avion(avion), id); pintar_centro()
+
+## Una reparacion: renueva la pieza y lo apunta en el libro de mantenimiento (en el aula, o en el ordenador).
+func reparar(id: String, sin_preguntar := false) -> void:
+	var A := DatosComunes.avion(avion); var R = null
+	for x in Desgaste.reparaciones(A):
+		if x[0] == id: R = x; break
+	if R == null: return
+	if not sin_preguntar and not await p.confirmar(R[1], "Se cambia (o se calibra) y queda apuntado en el libro de mantenimiento. Vuela después para comprobar que el vehículo va bien.", "Hacerlo"): return
+	var e = await Desgaste.modificar(p, avion, func(est): return Desgaste.reparar(est, A, id, Aula.ahora_iso()))
+	if e == null: p.poner_toast_menu("No se ha podido guardar: comprueba la conexión con el aula"); return
+	vistos = {}; p.poner_toast_menu("Hecho: apuntado en el libro de mantenimiento"); pintar_centro()
 
 func _celda(c: Control) -> Control:
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -114,6 +167,7 @@ func conectar() -> void:
 		v.add_child(Tema.sub(["Conectando con el %s…" % nombre, "Leyendo la memoria de vuelo…", "Descargando los registros…"][i]))
 		await get_tree().create_timer(0.45).timeout
 	var L := RegistroVuelo.listar(avion)
+	await Desgaste.cargar(p)                      # y su estado: horas, averias y libro de mantenimiento
 	if p.aula.activo and p.sesion["alumno"] != null:
 		var r: Dictionary = await p.aula.api("GET", "registros?alumno=" + String(p.sesion["alumno"]["id"]).uri_encode())
 		if r["ok"] and r["datos"] is Array:

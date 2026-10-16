@@ -7,6 +7,7 @@
 <!-- Panel del profesor del simulador del aula. Necesita el servidor del aula (aula/servidor_aula.py)
      y el PIN del profesor. La sesion dura 8 h o hasta pulsar "Salir". -->
 <script src="escenarios.js"></script>
+<script src="js/catalogo_averias.js"></script>
 <style>
   :root { --fondo: #0d1b2a; --panel: #13263b; --borde: #2c4a6b; --texto: #e8eef5; --suave: #9fb3c8; --acento: #ffd34d;
           --ok: #66d36e; --mal: #ff6e66; }
@@ -141,6 +142,9 @@
             <button id="oNotamB">Publicar</button><button id="oNotamQ">Quitar los NOTAM</button></div>
           <div class="fila"><b style="min-width:150px">Aterrizaje</b>
             <select id="oPara"><option value="*">Todos</option></select><button id="oAterrizar" class="peligro">Ordenar aterrizaje inmediato</button></div>
+          <div class="fila"><b style="min-width:150px">Avería en vuelo</b>
+            <select id="oAvPara"><option value="*">Todos</option></select><select id="oAvTipo"></select><button id="oAvB">Provocarla</button>
+            <span class="sub">sin avisar al piloto, como en la realidad; queda en su vehículo hasta que la repare en el Taller</span></div>
           <div class="fila"><b style="min-width:150px">Zona de exclusión</b>
             radio <input type="number" id="oRadio" min="10" max="500" step="10" value="60" style="width:80px"> m
             <button id="oExcl">Marcarla en el mapa…</button><span id="oZonas" class="sub"></span></div>
@@ -356,11 +360,42 @@ async function verAlumno(al) {
   await modal(al.nombre, `<p>${fmtHoras(g.horas)} de vuelo · ${g.vuelos} vuelos · ${g.aterrizajes} aterrizajes · ${g.accidentes} accidentes</p>
     <table>${Object.keys(g.escenarios).map(e => `<tr><td class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔ superado" : "○ pendiente"}</td><td>${esc(nombreEsc(e))}</td><td>${g.escenarios[e].intentos} intentos</td></tr>`).join("")}</table>
     <h2>Historial</h2><div class="tabla"><table>${CAB_VUELOS(false)}${vs.map(v => filaVuelo(v, false)).join("") || '<tr><td colspan="9" class="sub">Sin vuelos</td></tr>'}</table></div>
+    <h2>Vehículos, averías y mantenimiento</h2><p class="sub">El alumno no ve las averías: las nota volando (avisos de la app y síntomas) y las tiene que encontrar y reparar en el Taller. Las de origen «desgaste», «golpe», «descarga» y «calor» salen solas con el uso (desde la primera hora de vuelo de cada vehículo).</p>
+    <div id="vehAlumno"></div>
+    <div class="fila" style="margin-top:8px"><b>Poner una avería</b> <select id="vaVeh">${Object.entries(CATALOGO_AVERIAS).map(([k, v]) => `<option value="${k}">${esc(v.nombre)}</option>`).join("")}</select>
+      <select id="vaAv"></select><button id="vaPoner">Poner avería</button></div>
     <h2>Registros de vuelo</h2><p class="sub">Como los que se descargan de un dron: 10 muestras por segundo con la batería (tensión, corriente, temperatura y cada celda), alturas, velocidades, mandos y avisos.</p>
     <div class="tabla"><table id="tRegAlumno"><tr><th>Fecha</th><th>Vehículo</th><th>Vuelo</th><th>Duración</th><th>Muestras</th><th>Final</th><th></th></tr>${rg.map(r =>
       `<tr><td>${fmtFecha(r.inicio)}</td><td>${esc(r.avion_nombre || r.avion)}</td><td>${esc(r.escenario_nombre || r.escenario)}</td><td>${((r.duracion_s || 0) / 60).toFixed(1)} min</td><td>${r.muestras}</td><td>${esc(r.final)}</td>
        <td><button data-reg="${esc(r.id)}">CSV</button></td></tr>`).join("") || '<tr><td colspan="7" class="sub">Sin registros</td></tr>'}</table></div>`,
-    [["Cerrar", true]], d => d.querySelectorAll("button[data-reg]").forEach(b => b.onclick = () => descargarRegistro(b.dataset.reg).catch(fallo)));
+    [["Cerrar", true]], d => {
+      d.querySelectorAll("button[data-reg]").forEach(b => b.onclick = () => descargarRegistro(b.dataset.reg).catch(fallo));
+      const lista = () => { const C = CATALOGO_AVERIAS[$("vaVeh").value]; $("vaAv").innerHTML = C.averias.map((a, i) => `<option value="${i}">${esc(a[3])}</option>`).join(""); };
+      $("vaVeh").onchange = lista; lista();
+      $("vaPoner").onclick = async () => {
+        const avion = $("vaVeh").value, a = CATALOGO_AVERIAS[avion].averias[+$("vaAv").value];
+        try { await api("POST", "profesor/vehiculos/averia", { alumno_id: al.id, avion, c: a[0], tipo: a[1], n: a[2] < 0 ? null : a[2] }); pintarVehAlumno(al); } catch (e) { fallo(e); }
+      };
+      pintarVehAlumno(al);
+    });
+}
+/** Los vehiculos del alumno (js/desgaste.js): horas, bateria, averias (con su origen; el profesor las puede quitar) y
+ *  el libro de mantenimiento, con lo que arreglo de verdad cada trabajo. */
+async function pintarVehAlumno(al) {
+  let V = {}; try { V = await api("GET", "profesor/vehiculos?alumno=" + encodeURIComponent(al.id)); } catch (e) { fallo(e); }
+  const ORIGEN = { profesor: "puesta por ti", desgaste: "desgaste", golpe: "golpe", descarga: "descarga profunda", calor: "calor" };
+  const nombreAv = (avion, a) => ((CATALOGO_AVERIAS[avion] || { averias: [] }).averias.find(x => x[0] === a.c && x[1] === a.tipo && (x[2] < 0 ? 0 : x[2]) === (a.n || 0)) || [0, 0, 0, a.c + " " + a.tipo])[3];
+  const ids = Object.keys(CATALOGO_AVERIAS).filter(k => V[k]).concat(Object.keys(V).filter(k => !CATALOGO_AVERIAS[k]));
+  $("vehAlumno").innerHTML = ids.length ? `<div class="tabla"><table id="tVehAlumno"><tr><th>Vehículo</th><th>Horas</th><th>Batería</th><th>Averías</th><th>Libro de mantenimiento (últimos trabajos)</th></tr>${ids.map(k => {
+    const e = V[k], nom = (CATALOGO_AVERIAS[k] || {}).nombre || k;
+    const av = e.averias.map(a => `<div>${esc(nombreAv(k, a))} <span class="sub2">(${esc(ORIGEN[a.origen] || a.origen)})</span> <button data-quitar="${esc(JSON.stringify([k, a.c, a.tipo, a.n === undefined ? null : a.n]))}" title="Quitar la avería">✕</button></div>`).join("") || '<span class="sub">ninguna</span>';
+    const lib = e.libro.slice(-4).reverse().map(x => `<div>${esc(fmtFecha(x.fecha))} · ${esc(x.texto)} <span class="sub2">${x.arreglo.length ? "→ arregló: " + esc(x.arreglo.join(", ")) : "→ no había avería ahí"}</span></div>`).join("") || '<span class="sub">sin trabajos</span>';
+    return `<tr><td>${esc(nom)}</td><td>${fmtHoras(e.horas)}</td><td>${Math.round(100 * e.bateria.salud)} % · ${e.bateria.ciclos} ciclos</td><td>${av}</td><td>${lib}</td></tr>`;
+  }).join("")}</table></div>` : '<p class="sub">Todavía no ha volado: sus vehículos están nuevos.</p>';
+  $("vehAlumno").querySelectorAll("button[data-quitar]").forEach(b => b.onclick = async () => {
+    const [avion, c, tipo, n] = JSON.parse(b.dataset.quitar);
+    try { await api("POST", "profesor/vehiculos/quitar", { alumno_id: al.id, avion, c, tipo, n }); pintarVehAlumno(al); } catch (e) { fallo(e); }
+  });
 }
 /** Descarga el registro de vuelo de un alumno en CSV. */
 async function descargarRegistro(id) {
@@ -508,6 +543,21 @@ $("oViento").onclick = () => { const vel = Math.max(0, Math.min(12, +$("oVel").v
   orden({ tipo: "viento", vel, desde, rachas: $("oRachas").checked }, `Viento enviado: ${vel} m/s del ${RUMBOS[desde / 45]}${$("oRachas").checked ? ", con rachas" : ""}.`); };
 $("oNotamB").onclick = () => { const t = $("oNotam").value.trim(); if (t) { orden({ tipo: "notam", texto: t }, "NOTAM publicado."); $("oNotam").value = ""; } };
 $("oNotamQ").onclick = () => orden({ tipo: "quitar_notam" }, "NOTAM quitados.");
+// averia en vuelo (js/desgaste.js): con un piloto, las de su vehiculo; con todos, las genericas (cada simulador la pone en
+// el componente equivalente de su vehiculo, si lo tiene)
+const AVERIAS_TODOS = [["helice1", "mella", -1, "Hélice dañada"], ["motor1", "rodamiento", -1, "Rodamiento del motor gastado"], ["bateria", "celda", 0, "Celda de la batería débil"],
+  ["bateria", "envejecida", -1, "Batería envejecida"], ["brujula", "descalibrada", -1, "Brújula descalibrada (drones)"], ["imu", "descalibrada", -1, "IMU descalibrada (drones)"],
+  ["gps", "antena", -1, "Antena del GPS dañada (drones)"], ["barometro", "deriva", -1, "Barómetro con deriva (drones)"],
+  ["servo_alerones", "holgura", -1, "Holgura en el servo de los alerones (aviones)"], ["bisagra_profundidad", "floja", -1, "Bisagra floja en la profundidad (aviones)"]];
+function listaAveriasSala() {
+  const j = (MP.J || []).find(x => x.id === $("oAvPara").value), L = j && CATALOGO_AVERIAS[j.avion] ? CATALOGO_AVERIAS[j.avion].averias : AVERIAS_TODOS;
+  MP.avLista = L; $("oAvTipo").innerHTML = L.map((a, i) => `<option value="${i}">${esc(a[3])}</option>`).join("");
+}
+$("oAvPara").onchange = listaAveriasSala; listaAveriasSala();
+$("oAvB").onclick = () => {
+  const a = (MP.avLista || [])[+$("oAvTipo").value]; if (!a) return;
+  orden({ tipo: "averia", para: $("oAvPara").value, c: a[0], averia: a[1], celda: a[2] < 0 ? null : a[2] }, `Avería «${a[3]}» provocada a ${$("oAvPara").value === "*" ? "todos" : $("oAvPara").selectedOptions[0].textContent}.`);
+};
 $("oAterrizar").onclick = () => orden({ tipo: "aterrizar", para: $("oPara").value }, `Orden de aterrizaje enviada a ${$("oPara").value === "*" ? "todos" : $("oPara").selectedOptions[0].textContent}.`);
 $("oExcl").onclick = () => { MP.clic = MP.clic === "exclusion" ? null : "exclusion"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa en el centro de la zona de exclusión." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
 $("oSend").onclick = () => { MP.clic = MP.clic === "senderista" ? null : "senderista"; $("oMsg").textContent = MP.clic ? "Haz clic en el mapa donde quieres poner al desaparecido." : ""; $("mMapa").style.cursor = MP.clic ? "crosshair" : ""; };
@@ -613,6 +663,9 @@ async function pintarSalas() {
     const para = $("oPara").value;
     $("oPara").innerHTML = '<option value="*">Todos</option>' + J.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}</option>`).join("");
     $("oPara").value = J.some(j => j.id === para) ? para : "*";
+    const pAv = $("oAvPara").value; MP.J = J;
+    $("oAvPara").innerHTML = '<option value="*">Todos</option>' + J.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)} (${esc(nombreAvion(j.avion))})</option>`).join("");
+    $("oAvPara").value = J.some(j => j.id === pAv) ? pAv : "*"; listaAveriasSala();
     $("mRutas").innerHTML = '<option value="">Ninguno</option><option value="*">Todos</option>' + pilotos.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("");
     $("mRutas").value = ver;
   }

@@ -563,13 +563,16 @@ func ir_perfil() -> void:
 	else: ir_acceso()
 func dentro_del_aula(alumno: Dictionary) -> void:
 	sesion["alumno"] = alumno; sesion["sin_registrar"] = false
+	Desgaste.cargar(self)                        # el estado de sus vehiculos (horas, averias): desgaste.gd
 func salir_del_aula() -> void:
 	aula.salir(); sesion["alumno"] = null; sesion["sin_registrar"] = true
+	Desgaste.cargar(self)
 func cerrar_sesion() -> void:
 	var n = sesion["alumno"]["nombre"] if sesion["alumno"] != null else null
 	salir_del_aula(); salir_sala(); ir_acceso(("Sesión de %s cerrada." % n) if n != null else "")
 func ir_inicio() -> void:
 	salir_sala()                                 # al volver al inicio se sale de la sala multijugador
+	Desgaste.cargar(self)                        # el estado de los vehiculos, al dia (el profesor puede haber puesto averias)
 	pantallas["pInicio"].refrescar(); mostrar("pInicio")
 func elegir_avion(id: String) -> void:
 	sesion["avion"] = id; _guardar()
@@ -664,6 +667,17 @@ func aplicar_ordenes(lista: Array) -> void:
 			"fuga":
 				ordenes["fuga"] = [float(o.get("N", 0)), float(o.get("E", 0))]
 				if mover_fuga_profesor() and nueva: poner_toast("La fuga de gas ahora está en otra unidad: localízala de nuevo")
+			"averia":                                # averia en vuelo: sin avisar (como en la realidad)
+				if nueva and modelo != null and vuelo != null and not av.is_empty() and av["estado"] == "volando" and not es_bipode():
+					var pide := { "c": String(o.get("c", "")), "tipo": String(o.get("averia", "")) }
+					if o.has("celda"): pide["n"] = int(o["celda"])
+					var a = Desgaste.adaptar(DatosComunes.avion(sesion["avion"]), pide)
+					if a != null:
+						Desgaste.en_vuelo(modelo, a)
+						if not vuelo.has("averiasSala"): vuelo["averiasSala"] = []
+						vuelo["averiasSala"].append(a)
+						var ap := Desgaste.avisos_app([a], DatosComunes.avion(sesion["avion"]))
+						if not ap.is_empty(): poner_toast(" · ".join(PackedStringArray(ap)))
 	if cambio: ordenes_al_evaluador(); _poner_exclusiones()
 	_pintar_ordenes()
 
@@ -938,6 +952,7 @@ func empezar() -> void:
 	modelo = crear_modelo(sesion["avion"])
 	aplicar_cm(modelo); aplicar_calibracion(modelo); aplicar_dificultad(modelo)
 	var A := DatosComunes.avion(sesion["avion"])
+	if Desgaste.clase(A) != "": Desgaste.aplicar(modelo, Desgaste.estado(sesion["avion"]))    # sus averias y el desgaste de la bateria
 	if avion3d: avion3d.queue_free()
 	avion3d = Avion3D.new(A); add_child(avion3d)
 	_texto_ayuda(A)
@@ -1031,6 +1046,9 @@ func _nuevo_vuelo(h0: float) -> void:
 	vuelo = { "id": Aula.uuid4(), "inicio": Aula.ahora_iso(), "inicio_local": Time.get_datetime_dict_from_system(), "tVuelo": 0.0, "filas": [], "final": "",
 			  "escenario": sesion["escenario"], "dificultad": sesion["dificultad"], "gasLanz": av["gases"], "hmax": h0, "otraCamara": false }
 	cn_contador = 0; RegistroVuelo.empezar(self, vuelo); grabar_muestra()
+	if not es_bipode():                          # el autodiagnostico de la app al armar
+		var ap := Desgaste.avisos_app(modelo.averias, DatosComunes.avion(sesion["avion"]))
+		if not ap.is_empty(): poner_toast(" · ".join(PackedStringArray(ap)))
 
 ## Coloca el avion en vuelo (escenarios con enVuelo), como si acabara de lanzarse y subir.
 func _empezar_en_vuelo() -> void:
@@ -1112,7 +1130,9 @@ func paso(dt: float) -> void:
 	if not _caida.is_empty(): _caida_derribado(dt); return     # multijugador: derribado por un bipode
 	var p_ant: Array = av["p"].duplicate()
 	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
+	Desgaste.antes_paso(modelo, av)               # averias: superficies con holgura o bisagra floja (desgaste.gd)
 	var vn: Array = modelo.paso(av, viento, dt)
+	Desgaste.despues_paso(modelo, av, dt)         # y vibraciones o el par de una helice danada
 	_avisos_bateria()
 	if destino_prueba != null: av["p"] = (destino_prueba as Array).duplicate(); av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]   # pruebas: el dron llevado en volandas
 	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
@@ -1166,6 +1186,24 @@ func paso(dt: float) -> void:
 ## Avisos de la bateria (bateria.gd), una vez cada uno: el dron con poca bateria (av.avisoBat del modelo: baja, vuelta a
 ## casa por bateria, aterrizaje forzoso), el avion al 20 % y con el motor cortado por el regulador, y sin bateria. Como
 ## avisosBateria() de simulador.html.
+## Despues de cada vuelo, el desgaste del vehiculo (desgaste.gd): horas, bateria y lo que se estropea; y las averias que
+## el profesor ha puesto en vuelo (sala multijugador). Se guarda en el aula (o en el ordenador). Como desgasteTrasVuelo.
+func desgaste_tras_vuelo(v: Dictionary, final: String) -> void:
+	var A := DatosComunes.avion(sesion["avion"])
+	if Desgaste.clase(A) == "": return
+	var R = v.get("reg")
+	var col := func(n: String) -> Array:
+		var i: int = (R["columnas"] as Array).find(n) if R != null else -1
+		if i < 0: return []
+		return (R["filas"] as Array).map(func(f): return f[i]).filter(func(x): return x is float or x is int)
+	var T: Array = col.call("temperatura_bateria_C"); var B: Array = col.call("bateria_pct") if modelo.get("B") is Dictionary and not (modelo.B as Dictionary).is_empty() else []
+	var extra: Array = (v.get("averiasSala", []) as Array).duplicate()
+	var info := { "s": float(av["t"]), "roto": final.begins_with("roto"), "bat0": B[0] if not B.is_empty() else null, "bat1": B[-1] if not B.is_empty() else null,
+				  "tempMax": T.max() if not T.is_empty() else null, "semilla": String(v["id"]), "fecha": Aula.ahora_iso() }
+	Desgaste.modificar(self, sesion["avion"], func(est):
+		for a in extra: Desgaste.anadir(est, a, "profesor", info["fecha"])
+		return Desgaste.tras_vuelo(est, A, info))
+
 func _avisos_bateria() -> void:
 	if av.get("bat") == null: return
 	var pc: float = modelo.bateria_pct(av)
@@ -1178,6 +1216,7 @@ func _avisos_bateria() -> void:
 	if k.begins_with("baja") and not ant.begins_with("baja"): poner_toast("Batería baja (30 %): vuelve pronto" if es_dron() else "Batería baja (20 %): aterriza pronto")
 	if k.begins_with("rth") and not ant.begins_with("rth"): poner_toast("Batería justa para volver: volviendo a casa (mueve las palancas para cancelar)")
 	if k.begins_with("critica") and not ant.begins_with("critica"): poner_toast("¡Batería crítica! Aterrizaje forzoso: busca dónde posarlo"); poner_aviso("Aterrizaje forzoso: batería crítica")
+	if k.begins_with("celda") and not ant.begins_with("celda"): poner_toast("¡Tensión de celda muy baja! Aterrizaje forzoso"); poner_aviso("Aterrizaje forzoso: una celda de la batería se ha hundido")
 
 var _aviso_choque := false
 func _paso_terrestre(dt: float, viento, p_ant: Array) -> void:
@@ -1328,7 +1367,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["rpm"] = 0.0
 	hud.guia.visible = false
 	if vuelo == null: return
-	vuelo["final"] = final; grabar_muestra(); RegistroVuelo.cerrar(self, vuelo)
+	vuelo["final"] = final; grabar_muestra(); RegistroVuelo.cerrar(self, vuelo); desgaste_tras_vuelo(vuelo, final)
 	ev.evaluar_final(sesion["escenario"], final, av, vn)
 	hud.aviso.text = ("LANZAMIENTO FALLIDO: " + String(vuelo["lanzamiento"]["corto"])) if vuelo.has("lanzamiento") else \
 		(("¡ROTO!  (" + final.substr(6, final.length() - 7) + ")") if final.begins_with("roto") else ("Aterrizado" if final == "aterrizado" else ("Aparcado" if final == "aparcado" else "") if final == "aparcado" else

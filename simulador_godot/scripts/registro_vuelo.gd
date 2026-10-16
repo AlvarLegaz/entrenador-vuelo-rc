@@ -52,6 +52,8 @@ static func muestra(p, vuelo, forzar := false) -> void:
 	R["tUlt"] = av["t"]
 	var o: Dictionary = R["origen"]; var D := PI / 180
 	var eu := Cuat.euler(av["q"]); var vn := Cuat.rot(av["q"], av["v"]); var m = p.modelo; var B = m.get("B"); var e = av.get("bat")
+	var S = m.get("sens")
+	if S != null: eu = [eu[0] + S["alabeo"], eu[1] + S["cabeceo"], eu[2] + S["rumbo"]]     # como en un registro real: lo que cree el dron (IMU y brujula)
 	var fila := [_r(av["t"], 2), _r(o["lat"] + av["p"][0] / 110574, 7), _r(o["lon"] + av["p"][1] / (111320 * cos(o["lat"] * D)), 7), _r(-av["p"][2] - R["casa"][2], 2),
 		_r(av["agl"] if av.get("agl") != null else -av["p"][2], 2), _r(Vector2(vn[0], vn[1]).length(), 2), _r(-vn[2], 2),
 		_r(Vector2(av["p"][0] - R["casa"][0], av["p"][1] - R["casa"][1]).length(), 1), _r(fposmod(eu[2] / D + 360, 360), 1), _r(eu[0] / D, 1), _r(eu[1] / D, 1),

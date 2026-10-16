@@ -48,20 +48,23 @@ static func _interp(xs: Array, ys: Array, x: float) -> float:
 	return ys[-1]
 
 ## Tension en vacio de una celda con la carga gastada; agotada (mas alla de su capacidad), se desploma (hasta 2,5 V).
-static func ocv_celda(B: Dictionary, e: Dictionary) -> float:
+static func ocv_celda(B: Dictionary, e: Dictionary, k := 1.0) -> float:
 	var C: Dictionary = B["curva"] if B["curva"] != null else CURVAS.get(B["quimica"], CURVAS["lipo"])
-	var cap := capacidad(B, e); var soc := maxf(0.0, minf(1.0, 1 - e["mAh"] / cap))
+	var cap := capacidad(B, e) * k; var soc := maxf(0.0, minf(1.0, 1 - e["mAh"] / cap))
 	return maxf(2.5, _interp(C["soc"], C["v"], soc) - 6 * maxf(0.0, e["mAh"] - cap) / cap)
 
 ## Tension en bornes (V) con la potencia que se pide (la del paso anterior, e.P): en vacio menos la caida por la
 ## resistencia interna. Si se pide mas de lo que puede dar, se queda en la mitad (potencia maxima). Pone tambien la
-## tension de cada celda.
+## tension de cada celda. Una celda debil (B.debil = { i, k }: averia de desgaste.gd) se vacia antes, con el doble de
+## resistencia. Como Bateria.tension en JS.
 static func tension(B: Dictionary, e: Dictionary) -> float:
 	var soc := maxf(0.0, minf(1.0, 1 - e["mAh"] / capacidad(B, e))); var ocv := ocv_celda(B, e); var r := R(B, e); var n: int = int(B["celdas"])
+	var D = B.get("debil"); var di: int = int(D["i"]) if D != null else -1
+	var rv: float = r * (n + 1) / n if D != null else r
 	var celdas: Array = e["celdas"]; var Voc := 0.0
-	for i in n: celdas[i] = ocv + DESEQUILIBRIO_V[i % 6] * (1 + 2 * (1 - soc)); Voc += celdas[i]
-	var disc: float = Voc * Voc - 4 * r * e["P"]; var V := 0.5 * (Voc + sqrt(disc)) if disc > 0 else 0.5 * Voc; var I: float = e["P"] / maxf(0.1, V)
-	for i in n: celdas[i] -= I * r / n
+	for i in n: celdas[i] = (ocv_celda(B, e, float(D["k"])) if i == di else ocv) + DESEQUILIBRIO_V[i % 6] * (1 + 2 * (1 - soc)); Voc += celdas[i]
+	var disc: float = Voc * Voc - 4 * rv * e["P"]; var V := 0.5 * (Voc + sqrt(disc)) if disc > 0 else 0.5 * Voc; var I: float = e["P"] / maxf(0.1, V)
+	for i in n: celdas[i] -= I * r / n * (2.0 if i == di else 1.0)
 	e["V"] = V; e["I"] = I
 	return V
 

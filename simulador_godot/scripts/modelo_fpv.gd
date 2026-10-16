@@ -25,6 +25,8 @@ var cg_mm: Array; var propulsion: Dictionary; var mandos: Dictionary; var fc: Di
 var compensador_grados := 0.0; var lanzamiento: Dictionary
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
 var temp_c := 15.0; var B: Dictionary            # LiPo 4S con su curva (bateria.gd)
+var kT = null; var kP = null                      # averias (desgaste.gd): empuje y consumo de cada motor
+var k_emp := 1.0; var k_pot := 1.0; var sens = null; var averias := []; var efe := {}; var _est = null; var _Bbase = null
 ## dificultad facil: la mitad del viento sobre la resistencia, sin turbulencia que alabea, sin entrada de aire en el
 ## empuje, sin efecto suelo y sin propwash (como en JS)
 var facil := false
@@ -181,9 +183,10 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 		mot[i] = f
 		var n: float = f * pr["rpm_max"] / 60; var kJ: float = 1.0 if FAC else maxf(0, minf(1.15, 1 - -va[2] / (pr["J0"] * maxf(n, 1) * D)))
 		var T: float = Tref * f * f * kJ * kGE * (1 - F["propwash_perdida"] * ipw)
+		if kT != null: T *= kT[i]                     # helice danada o motor gastado: empuja menos
 		Tt += T
 		Lr += -y * T; Mr += x * T; Nr += -s * (kq * T + pr["I_rotor"] * (f - f0) * Wmax / dt)
-		P += kq * T * f * Wmax / pr["rendimiento"]
+		P += kq * T * f * Wmax / pr["rendimiento"] * (kP[i] if kP != null else 1.0)
 	# sacudidas del propwash (deterministas: dos senos de 7 y 13 Hz) y turbulencia que alabea (Entorno.rafaga_alabeo)
 	var t: float = av["t"]
 	Lr += ipw * F["propwash_par"] * (0.6 * sin(2 * PI * 7.3 * t) + 0.4 * sin(2 * PI * 12.9 * t + 1.3))

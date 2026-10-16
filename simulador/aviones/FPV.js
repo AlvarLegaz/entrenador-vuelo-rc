@@ -27,6 +27,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
     this.dcg = 0; this.rho = RHO; this.calib = { empuje: 1, resistencia: 1 }; this.facil = false;
     this.mandos = Object.assign({}, datos.mandos);
     this.tempC = 15; this.B = Bateria.datos(this.propulsion);     // LiPo 4S con su curva (js/bateria.js)
+    this.kT = null; this.kP = null;                               // averias (js/desgaste.js): empuje y consumo de cada motor
   }
   /** Masa, temperatura (densidad), empuje estatico medido (gf, el de los 4 motores) y factor de resistencia. */
   configurar({ masa_kg, temperatura, empuje_gf, resistencia }) {
@@ -147,10 +148,11 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
       const f0 = av.motores[i], f = f0 + (u * kV - f0) * km;
       av.motores[i] = f;
       const n = f * pr.rpm_max / 60, kJ = FAC ? 1 : Math.max(0, Math.min(1.15, 1 - -va[2] / (pr.J0 * Math.max(n, 1) * D)));
-      const T = Tref * f * f * kJ * kGE * (1 - F.propwash_perdida * ipw);
+      let T = Tref * f * f * kJ * kGE * (1 - F.propwash_perdida * ipw);
+      if (this.kT) T *= this.kT[i];                              // helice danada o motor gastado: empuja menos
       Tt += T;
       Lr += -y * T; Mr += x * T; Nr += -s * (kq * T + pr.I_rotor * (f - f0) * Wmax / dt);
-      P += kq * T * f * Wmax / pr.rendimiento;
+      P += kq * T * f * Wmax / pr.rendimiento * (this.kP ? this.kP[i] : 1);
     }
     // sacudidas del propwash (deterministas: dos senos de 7 y 13 Hz) y turbulencia que alabea (Entorno.rafagaAlabeo)
     const t = av.t;

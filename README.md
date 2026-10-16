@@ -461,6 +461,30 @@ python analisis/mundo_cartagena/orto_region.py simulador/mundos/cartagena.js 12 
 
 **Modo Taller** (2026-10-16, menú de inicio, web y Godot iguales: `js/taller.js` y `scripts/pantalla_taller.gd`): se elige el vehículo (cada uno dice cuántos registros tiene en el ordenador y su batería), se pulsa **Conectar y descargar los registros** y salen sus vuelos: los de este ordenador y, con el alumno en el aula, también los suyos del servidor (☁ aula), como al descargar los de un dron comercial. Cada vuelo tiene un **resumen** (duración, final, altura, distancia y velocidad máximas, batería usada, tensión mínima de celda, desequilibrio entre celdas, corriente y temperatura máximas y número de avisos), las **gráficas** con el tiempo, una debajo de otra como en AirData (batería y tensión, cada celda, corriente y potencia, temperatura de la batería, altura y velocidad), con un **cursor** que da todos los valores en ese momento y las marcas de los avisos arriba, la **traza** vista desde arriba coloreada por la batería (verde llena, rojo vacía) con la lista de avisos, y **Exportar CSV**. Prueba: `prueba_taller.py` (la web vuela y lo mira en el Taller; Godot abre ese mismo registro y da el mismo resumen, las mismas gráficas y el mismo CSV byte a byte; en las dos, borrado del ordenador, se baja del aula).
 
+**Desgaste y averías** (2026-10-16, web y Godot iguales: `js/desgaste.js` y `scripts/desgaste.gd`): cada vehículo de cada alumno lleva su estado en el aula (sin conexión, en el ordenador): horas de vuelo, horas de cada componente, salud y ciclos de la batería, averías y libro de mantenimiento. **La primera hora de vuelo de cada vehículo no pasa nada**; después, cada vuelo puede estropear algo, más cuanto más usado está (con un azar con semilla, el mismo en las dos versiones), y también un golpe (una hélice y, a veces, la IMU), una descarga por debajo del 10 % o calentar la batería (pierde salud: menos capacidad y más resistencia interna; por debajo del 80 %, envejecida). **Averías y lo que se nota al volar:**
+- **Hélice dañada:** menos empuje, vibración (se ve en el alabeo y el cabeceo del registro) y más consumo; en el FPV, en ese motor.
+- **Rodamiento de motor gastado:** más corriente y algo de vibración.
+- **Batería envejecida o hinchada:** se vacía antes y cae más la tensión.
+- **Celda débil:** se hunde antes que las demás y, en el dron, obliga a aterrizar con «tensión de celda muy baja»; en los aviones, el regulador corta antes.
+- **Brújula descalibrada:** círculos en estacionario y trayectoria torcida respecto al morro; el rumbo del registro no cuadra.
+- **IMU descalibrada:** el dron se va de lado; el registro dice que va inclinado.
+- **GPS con la antena dañada:** no se queda quieto.
+- **Barómetro con deriva:** sube solo.
+- **Aviones:** servo con holgura (zona muerta en el mando) y bisagra floja (menos mando y flameo).
+
+La app del dron avisa al armar como la real (error de brújula, IMU, GPS débil). **No se bloquea ningún modo**: el alumno vuela con la avería, ve cómo se manifiesta y después va al Taller.
+
+En el **Taller**, la pestaña **Revisión y reparación** tiene:
+- **Revisiones** que enseñan lo que se ve, no el nombre de la avería: inspeccionar las hélices, girar los motores a mano, revisar la batería (aspecto, ciclos, capacidad a plena carga y tensión de cada celda), el autodiagnóstico de la app y mover las superficies a mano.
+- **Reparaciones:** cambiar una hélice o todas, un motor, la batería, un servo o una bisagra; calibrar la brújula o la IMU; cambiar el GPS o el barómetro.
+- El **libro de mantenimiento**.
+
+El **profesor**, en la ficha de cada alumno, ve sus vehículos (horas, batería, averías con su origen y el libro con lo que arregló de verdad cada trabajo) y puede **poner y quitar averías**. En una **sala de multijugador** puede provocarlas **en vuelo**, a un piloto o a todos, sin avisarles; quedan en su vehículo hasta que las reparen. El catálogo del panel (`js/catalogo_averias.js`) lo genera `pruebas/generar_referencia_averias.py`.
+
+Pruebas:
+- `prueba_averias.gd`: 20 vuelos con averías, el desgaste de 14 vuelos de cada vehículo, el Taller y el catálogo, todo igual que en el navegador.
+- `prueba_averias_aula.py`: aula, web, panel del profesor y Godot de punta a punta.
+
 **Rendimiento máximo** (2026-10-16, Ajustes › Gráficos, web y Godot): para portátiles y tabletas sencillos. La calidad baja y además media resolución, sin sombras ni resplandor, calima más cerca y, en el mundo real, materiales sencillos (las fachadas con su textura de siempre, el suelo sin grano, copas lisas de pocos triángulos, sin matas), árboles de la región solo hasta 1,5 km y el terreno de las zonas a 10 m (la física sigue con el de 5 m). Con la calidad automática se pone solo en tabletas y móviles (pantalla táctil sin ratón; en Godot, `OS.has_feature("mobile")`). En la web, al ponerlo o quitarlo la página se recarga. Frente a la calidad alta: la mitad de llamadas de dibujo, un 35-55 % menos de triángulos y entre 1,7 y 2,9 veces menos tiempo por imagen sin tarjeta gráfica.
 
 **Elementos singulares** (`simulador/singulares.js`, común a los dos): piezas modeladas a mano a partir de fotos y de la ortofoto, que no salen de los datos abiertos. La entrada del CIFP Politécnico: muro de bloque de hormigón con el cartel, el cilindro de la esquina, la ventana redonda con rejilla, la marquesina metálica, la réplica del submarino Peral y las banderas de la Unión Europea, España y la Región de Murcia. Las fotos solo sirven de referencia: texturas y cartel se dibujan por código.

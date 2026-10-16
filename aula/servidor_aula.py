@@ -52,7 +52,7 @@ SALAS = {}               # codigo -> dict(codigo, nombre, escenario, lanz, vient
 CERROJO_SALAS = threading.Lock()
 # ordenes del profesor a una sala (panel del profesor, con PIN): viento, NOTAM, aterrizaje, zonas de exclusion, el
 # desaparecido de la busqueda y la fuga de gas de la inspeccion de SABIC. Cada orden lleva su numero (n) y los simuladores aplican las que no han visto.
-ORDENES_SALA = ("viento", "notam", "quitar_notam", "aterrizar", "exclusion", "quitar_exclusion", "senderista", "fuga")
+ORDENES_SALA = ("viento", "notam", "quitar_notam", "aterrizar", "exclusion", "quitar_exclusion", "senderista", "fuga", "averia")
 JUGADOR_CADUCA = 6       # s sin noticias: el jugador sale de la sala
 SALA_CADUCA = 3 * 3600   # s sin nadie: la sala se cierra sola
 FALLOS = {}              # ip (o (ip, alumno)) -> (n intentos seguidos, bloqueado hasta); se cuenta ANTES de comprobar, bajo cerrojo
@@ -104,6 +104,9 @@ def crear_bd():
         avion_nombre TEXT, inicio TEXT NOT NULL, escenario TEXT, escenario_nombre TEXT, final TEXT, duracion_s REAL,
         muestras INTEGER NOT NULL, bytes INTEGER NOT NULL, recibido TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS registros_alumno ON registros(alumno_id, inicio);
+    CREATE TABLE IF NOT EXISTS vehiculos (
+        alumno_id TEXT NOT NULL REFERENCES alumnos(id) ON DELETE CASCADE, avion TEXT NOT NULL, version INTEGER NOT NULL,
+        estado TEXT NOT NULL, actualizado TEXT NOT NULL, PRIMARY KEY (alumno_id, avion));
     """)
     if "clave" not in [c[1] for c in con.execute("PRAGMA table_info(alumnos)")]:      # clave de acceso de cada alumno (2026-10-14)
         con.execute("ALTER TABLE alumnos ADD COLUMN clave TEXT")
@@ -114,6 +117,67 @@ def crear_bd():
 
 def ahora():
     return dt.datetime.now().isoformat(timespec="seconds")
+
+
+# ======================= estado de los vehiculos de cada alumno (js/desgaste.js) =======================
+# horas de vuelo, horas de cada componente, salud y ciclos de la bateria, averias y libro de mantenimiento. El
+# simulador lo cambia con version (si el profesor lo ha tocado mientras, 409 y lo repite sobre el nuevo).
+RE_AVION = re.compile(r"[A-Za-z0-9_]{1,30}")
+RE_COMP = re.compile(r"[a-z0-9_]{1,30}")
+RE_PALABRA = re.compile(r"[a-z]{1,20}")
+
+
+def vehiculo_nuevo():
+    return dict(version=0, horas=0, h={}, bateria=dict(salud=1, ciclos=0), averias=[], libro=[])
+
+
+def validar_averia(a):
+    if not isinstance(a, dict): raise Error(400, "averia no valida")
+    c, t = str(a.get("c") or ""), str(a.get("tipo") or "")
+    if not RE_COMP.fullmatch(c) or not RE_PALABRA.fullmatch(t): raise Error(400, "averia no valida")
+    x = dict(c=c, tipo=t, origen=str(a.get("origen") or "profesor")[:15], fecha=str(a.get("fecha") or "")[:40])
+    if not RE_PALABRA.fullmatch(x["origen"]): raise Error(400, "averia no valida")
+    if a.get("n") is not None: x["n"] = int(numero(a["n"], 0, 12, "n"))
+    return x
+
+
+def validar_vehiculo(e):
+    """El estado de un vehiculo que manda el simulador: solo campos conocidos, numeros finitos y textos acotados."""
+    if not isinstance(e, dict): raise Error(400, "estado del vehiculo no valido")
+    h = e.get("h") or {}
+    if not isinstance(h, dict) or len(h) > 40 or any(not RE_COMP.fullmatch(str(k)) for k in h): raise Error(400, "horas de los componentes no validas")
+    b = e.get("bateria") or {}
+    if not isinstance(b, dict): raise Error(400, "bateria no valida")
+    av, lb = e.get("averias") or [], e.get("libro") or []
+    if not isinstance(av, list) or len(av) > 40 or not isinstance(lb, list) or len(lb) > 200: raise Error(400, "averias o libro no validos")
+    libro = []
+    for x in lb:
+        if not isinstance(x, dict) or not RE_COMP.fullmatch(str(x.get("accion") or "")): raise Error(400, "libro no valido")
+        arr = x.get("arreglo") or []
+        if not isinstance(arr, list) or len(arr) > 12: raise Error(400, "libro no valido")
+        libro.append(dict(fecha=str(x.get("fecha") or "")[:40], accion=str(x["accion"]), texto=str(x.get("texto") or "")[:120],
+                          arreglo=[str(y)[:80] for y in arr], horas=round(numero(x.get("horas", 0), 0, 100000, "horas"), 3)))
+    return dict(horas=round(numero(e.get("horas", 0), 0, 100000, "horas"), 6),
+                h={str(k): round(numero(v, 0, 100000, "horas"), 6) for k, v in h.items()},
+                bateria=dict(salud=round(numero(b.get("salud", 1), 0.3, 1, "salud"), 4), ciclos=int(numero(b.get("ciclos", 0), 0, 100000, "ciclos"))),
+                averias=[validar_averia(a) for a in av], libro=libro)
+
+
+def vehiculos_de(con, aid):
+    """Los vehiculos de un alumno: {avion: estado con su version}."""
+    return {r["avion"]: dict(json.loads(r["estado"]), version=r["version"]) for r in con.execute("SELECT * FROM vehiculos WHERE alumno_id = ?", (aid,))}
+
+
+def guardar_vehiculo(con, aid, avion, estado, version):
+    """Guarda el estado si la version es la que hay (0 si no hay); si no, 409. Devuelve el estado con la version nueva."""
+    r = con.execute("SELECT version FROM vehiculos WHERE alumno_id = ? AND avion = ?", (aid, avion)).fetchone()
+    if (r["version"] if r else 0) != version: raise Error(409, "el estado del vehiculo ha cambiado: vuelve a leerlo")
+    e = dict(estado); e.pop("version", None)
+    with con:
+        con.execute("INSERT OR REPLACE INTO vehiculos (alumno_id, avion, version, estado, actualizado) VALUES (?, ?, ?, ?, ?)",
+                    (aid, avion, version + 1, json.dumps(e, ensure_ascii=False, separators=(",", ":")), ahora()))
+    CAMBIOS["desde_copia"] += 1
+    return dict(e, version=version + 1)
 
 
 # ======================= registros de vuelo =======================
@@ -728,6 +792,10 @@ class Manejador(BaseHTTPRequestHandler):
                     except (TypeError, ValueError): raise Error(400, "datos de la orden no válidos")
                     if "rachas" in b: o["rachas"] = bool(b["rachas"])
                     if b.get("texto"): o["texto"] = str(b["texto"])[:200]
+                    if tipo == "averia":                     # averia en vuelo (js/desgaste.js): componente, tipo y celda (n es el numero de orden)
+                        a = validar_averia(dict(c=b.get("c"), tipo=b.get("averia"), n=b.get("celda")))
+                        o["c"] = a["c"]; o["averia"] = a["tipo"]
+                        if "n" in a: o["celda"] = a["n"]
                     O.append(o); return o
                 if len(p) == 3 and p[2] == "rutas" and m == "GET":       # el panel del profesor: lo recorrido por cada uno
                     self.profesor(); return sala.get("rutas", {})
@@ -851,6 +919,18 @@ class Manejador(BaseHTTPRequestHandler):
             r = con.execute("SELECT * FROM registros WHERE id = ? AND alumno_id = ?", (p[1], aid)).fetchone()
             if not r: raise Error(404, "registro no encontrado")
             return leer_registro(r["id"])
+
+        # --- estado de los vehiculos del alumno (horas, averias, libro de mantenimiento), con su pase ---
+        if p == ["vehiculos"] and m in ("GET", "POST") and not self.es_profesor():
+            b = self.cuerpo() if m == "POST" else {}
+            aid = str(b.get("alumno_id") or "") if m == "POST" else q.get("alumno", [""])[0]
+            ra = con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone()
+            if not ra: raise Error(404, "alumno no encontrado")
+            if not ra["clave"] or not self.pase_ok(con, ra): raise Error(401, "Hace falta la clave del alumno")
+            if m == "GET": return vehiculos_de(con, aid)
+            avion = str(b.get("avion") or "")
+            if not RE_AVION.fullmatch(avion): raise Error(400, "vehiculo no valido")
+            return guardar_vehiculo(con, aid, avion, validar_vehiculo(b.get("estado")), int(numero(b.get("version", 0), 0, 1e9, "version")))
 
         # --- profesor ---
         if p == ["profesor", "certificado"] and m == "POST":     # el profesor define el certificado
@@ -993,6 +1073,26 @@ class Manejador(BaseHTTPRequestHandler):
             return [vuelo_dict(v) for v in rows]
         if p == ["exportar"] and m == "GET":
             return self.exportar(con, q.get("tipo", ["vuelos"])[0])
+        if p == ["vehiculos"] and m == "GET":          # los vehiculos de un alumno: horas, averias y libro de mantenimiento
+            return vehiculos_de(con, q.get("alumno", [""])[0])
+        if len(p) == 2 and p[0] == "vehiculos" and p[1] in ("averia", "quitar") and m == "POST":   # poner o quitar una averia
+            b = self.cuerpo(); aid = str(b.get("alumno_id") or ""); avion = str(b.get("avion") or "")
+            ra = con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone()
+            if not ra: raise Error(404, "alumno no encontrado")
+            if not RE_AVION.fullmatch(avion): raise Error(400, "vehiculo no valido")
+            e = vehiculos_de(con, aid).get(avion) or vehiculo_nuevo()
+            a = validar_averia(dict(b, origen="profesor", fecha=ahora()))
+            igual = lambda x: x["c"] == a["c"] and x["tipo"] == a["tipo"] and x.get("n", 0) == a.get("n", 0)
+            if p[1] == "averia":
+                if not any(igual(x) for x in e["averias"]):
+                    if len(e["averias"]) >= 40: raise Error(400, "demasiadas averias")
+                    e["averias"].append(a)
+                    if a["c"] == "bateria" and a["tipo"] == "envejecida": e["bateria"]["salud"] = min(e["bateria"]["salud"], 0.78)
+                    if a["c"] == "bateria" and a["tipo"] == "hinchada": e["bateria"]["salud"] = min(e["bateria"]["salud"], 0.6)
+            else: e["averias"] = [x for x in e["averias"] if not igual(x)]
+            r = guardar_vehiculo(con, aid, avion, e, e["version"])
+            registrar(con, "averia" if p[1] == "averia" else "quitar averia", "%s: %s %s %s" % (ra["nombre"], avion, a["c"], a["tipo"]))
+            return r
         if p == ["registros"] and m == "GET":          # registros de vuelo de un alumno (o de todos)
             aid = q.get("alumno", [None])[0]
             sql = "SELECT r.*, a.nombre AS alumno FROM registros r JOIN alumnos a ON a.id = r.alumno_id"

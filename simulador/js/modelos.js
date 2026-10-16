@@ -64,6 +64,7 @@ class ModeloAvion {
     const pr = this.propulsion, Dm = pr.D_m;
     this.tempC = 15;                                      // temperatura del aire (configurar): la de la bateria al despegar
     this.B = pr.combustible ? null : Bateria.datos(pr);   // bateria (js/bateria.js); un motor de combustion no lleva
+    this.kEmp = 1; this.kPot = 1;                         // averias (js/desgaste.js): helice danada, motor gastado
     this.Qmax = pr.P_max_W / (2 * Math.PI * pr.n_max_rps);                         // par a tope (0,16 N m con el X2212 y la 9x4,7)
     this.Ihelice = datos.I_helice !== undefined ? datos.I_helice : 0.012 * (Dm / 0.2286) ** 3 * Dm * Dm / 12;   // helice de 12 g como varilla
     // helice parada: unos 27 cm2 de resistencia (palas de frente) para una 9", escalado con el diametro al cuadrado
@@ -191,12 +192,12 @@ class ModeloAvion {
     let T = 0, Q = 0, J = 0;
     if (g > 0.02) {
       J = V / (n * pr.D_m);
-      T = pr.CT0 * (FAC ? 1 : this.calib.empuje) * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4);
+      T = pr.CT0 * (FAC ? 1 : this.calib.empuje) * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4) * this.kEmp;
       Q = FAC ? 0 : this.Qmax * (n / pr.n_max_rps) ** 2 * (0.6 + 0.4 * Math.max(0, 1 - J / pr.J0));   // par que absorbe la helice
-      if (!eb) av.Wh += pr.P_max_W * g * g * g * dt / 3600;
+      if (!eb) av.Wh += pr.P_max_W * g * g * g * dt / 3600 * this.kPot;
     }
     if (Bt && eb) {                         // la bateria: potencia del motor (como las vueltas al cubo) y de la electronica
-      Bateria.gastar(Bt, eb, (g > 0.02 ? pr.P_max_W * (g * kV) ** 3 : 0) + 1, dt); av.Wh = eb.Wh;
+      Bateria.gastar(Bt, eb, (g > 0.02 ? pr.P_max_W * (g * kV) ** 3 * this.kPot : 0) + 1, dt); av.Wh = eb.Wh;
       // el regulador corta el motor si una celda baja de 3,0 V con carga (bateria agotada): sin motor, a planear (tambien en facil)
       if (!av.cortado && g > 0.05 && Bateria.celdaMin(Bt, eb) < 3.0) av.cortado = true;
     }
