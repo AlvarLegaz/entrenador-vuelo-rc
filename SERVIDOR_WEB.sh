@@ -19,6 +19,11 @@ if [ "$PUERTO" -lt 1024 ] && [ "$(id -u)" -ne 0 ]; then
   echo "o usa otro puerto sin sudo: $0 8000"
   exit 1
 fi
+# las zonas de detalle (no van en git): si faltan o hay una version nueva se descargan (unos 330 MB; si ya estan, sale
+# enseguida). Sin ellas el simulador funciona igual, con menos detalle en esos sitios. Con sudo, la descarga va con el
+# usuario que lo lanza: las zonas tienen que ser suyas, no de root
+if [ "$(id -u)" -eq 0 ] && [ -n "$SUDO_USER" ]; then ZONAS=(sudo -u "$SUDO_USER" bash ./DESCARGAR_ZONAS.sh); else ZONAS=(bash ./DESCARGAR_ZONAS.sh); fi
+"${ZONAS[@]}" || echo "Sigo sin las zonas de detalle (el simulador funciona igual, con menos detalle)."
 DIR=":$PUERTO"; [ "$PUERTO" = "80" ] && DIR=""
 echo "Simulador web en http://localhost$DIR y, desde los demas ordenadores, http://IP-de-este$DIR con esta IP:"
 for ip in $(hostname -I 2>/dev/null); do case "$ip" in *:*) ;; *) echo "   http://$ip$DIR";; esac; done

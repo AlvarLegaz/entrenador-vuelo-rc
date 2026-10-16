@@ -17,6 +17,9 @@ if not defined PY (
   pause
   exit /b 1
 )
+rem Las zonas de detalle (no van en git): si faltan o hay una version nueva se descargan (unos 330 MB; si ya estan, sale
+rem enseguida). Sin ellas el simulador funciona igual, con menos detalle en esos sitios.
+powershell -NoProfile -ExecutionPolicy Bypass -File "simulador\descargar_zonas.ps1"
 set "PUERTO=%~1"
 if "%PUERTO%"=="" set "PUERTO=80"
 set "DIR=:%PUERTO%"
