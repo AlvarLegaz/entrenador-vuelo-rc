@@ -62,6 +62,8 @@ class ModeloAvion {
     this.rho = RHO;                                       // densidad del aire (configurar({ temperatura }))
     this.calib = { empuje: 1, resistencia: 1 };           // calibracion con medidas del avion real (configurar)
     const pr = this.propulsion, Dm = pr.D_m;
+    this.tempC = 15;                                      // temperatura del aire (configurar): la de la bateria al despegar
+    this.B = pr.combustible ? null : Bateria.datos(pr);   // bateria (js/bateria.js); un motor de combustion no lleva
     this.Qmax = pr.P_max_W / (2 * Math.PI * pr.n_max_rps);                         // par a tope (0,16 N m con el X2212 y la 9x4,7)
     this.Ihelice = datos.I_helice !== undefined ? datos.I_helice : 0.012 * (Dm / 0.2286) ** 3 * Dm * Dm / 12;   // helice de 12 g como varilla
     // helice parada: unos 27 cm2 de resistencia (palas de frente) para una 9", escalado con el diametro al cuadrado
@@ -87,7 +89,7 @@ class ModeloAvion {
    *  del VLM estan calculadas respecto al CG de diseno: paso() traslada sus momentos al CG nuevo, como en el
    *  avion real. Las inercias se escalan con la masa (no se sabe donde va el lastre). */
   configurar({ masa_kg, cg_mm, temperatura, empuje_gf, resistencia }) {
-    if (temperatura !== undefined) this.rho = 101325 / (287.05 * (temperatura + 273.15));
+    if (temperatura !== undefined) { this.rho = 101325 / (287.05 * (temperatura + 273.15)); this.tempC = temperatura; }
     if (empuje_gf) { const pr = this.propulsion; this.calib.empuje = empuje_gf / 1000 * G0 / (pr.CT0 * RHO * pr.n_max_rps ** 2 * pr.D_m ** 4); }
     if (resistencia) this.calib.resistencia = resistencia;
     if (masa_kg) {
@@ -105,7 +107,8 @@ class ModeloAvion {
   estadoInicial() {
     const av = { p: [0, 0, -1.6], q: Cuat.desdeEuler(0, 2 * D2R, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0,
                  asim: (Math.random() < 0.5 ? -1 : 1) * (0.2 + 0.4 * Math.random()),   // grados: ninguna ala es perfecta
-                 estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false };
+                 estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false,
+                 bat: this.B ? Bateria.nueva(this.B, this.tempC) : null, cortado: false };
     if (this.tren) { av.p = [0, 0, -this.alturaEnTierra()]; av.q = Cuat.desdeEuler(0, 0, 0); av.freno = 1; av.enTierra = true; av.despegado = false; av.trenComp = 0; }
     return av;
   }
@@ -170,7 +173,7 @@ class ModeloAvion {
     const CL0 = ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS));
     // resistencia: parasita (por el factor de calibracion), de perfil creciente con el CL, inducida, de la perdida y,
     // con el motor parado, la de la helice quieta
-    const pr = this.propulsion, g = av.motorRoto ? 0 : av.gases;
+    const pr = this.propulsion, g = av.motorRoto || av.cortado ? 0 : av.gases;
     const CDhel = g < 0.05 ? (FAC ? this.CD_helice_parada_datos : this.CD_helice_parada) : 0;
     const CD = FAC ? this.CD0 + CDhel + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 : this.CD0 * this.calib.resistencia + this.k_perfil * (CL0 - 0.3) ** 2 + (1 - f) * CDi + f * 2 * Math.sin(alfa) ** 2 + CDhel;
     const aP = ad > 0 ? P.alfa_perdida_grados : P.alfa_perdida_neg_grados;
@@ -178,15 +181,24 @@ class ModeloAvion {
     const kman = 1 - f * (1 - P.mando_post_perdida);      // eficacia de los mandos tras la perdida
     const aD = Math.max(this.DA[0], Math.min(this.DA[this.DA.length - 1], ad));
     const d = (n) => this.deriv(n, aD), M = this.mandosCoef(av, d, kman);
-    // ---- motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gas * tension (la bateria cae ~10 % al vaciarse) ----
-    if (av.motorRoto) av.gases = 0;
-    const bat = Math.max(0, 1 - av.Wh / pr.masa_bateria_Wh), n = pr.n_max_rps * g * (FAC || pr.combustible ? 1 : 1 - 0.10 * (1 - bat));   // un motor de combustion no pierde vueltas al gastar
+    // ---- motor y helice: T = CT0 (1 - J/J0) rho n^2 D^4, n = n_max * gas * tension: las vueltas siguen a la tension de la
+    // bateria (js/bateria.js: cae con la corriente y al gastarse; en la fisica facil no se nota); con combustion, fijas ----
+    if (av.motorRoto || av.cortado) av.gases = 0;
+    const Bt = this.B, eb = av.bat;
+    let kV = 1;
+    if (Bt && eb) { const Vb = Bateria.tension(Bt, eb); if (!FAC) kV = Vb / (Bt.celdas * 4.2); }
+    const n = pr.n_max_rps * g * kV;
     let T = 0, Q = 0, J = 0;
     if (g > 0.02) {
       J = V / (n * pr.D_m);
       T = pr.CT0 * (FAC ? 1 : this.calib.empuje) * Math.max(0, 1 - J / pr.J0) * rho * n * n * Math.pow(pr.D_m, 4);
       Q = FAC ? 0 : this.Qmax * (n / pr.n_max_rps) ** 2 * (0.6 + 0.4 * Math.max(0, 1 - J / pr.J0));   // par que absorbe la helice
-      av.Wh += pr.P_max_W * g * g * g * dt / 3600;
+      if (!eb) av.Wh += pr.P_max_W * g * g * g * dt / 3600;
+    }
+    if (Bt && eb) {                         // la bateria: potencia del motor (como las vueltas al cubo) y de la electronica
+      Bateria.gastar(Bt, eb, (g > 0.02 ? pr.P_max_W * (g * kV) ** 3 : 0) + 1, dt); av.Wh = eb.Wh;
+      // el regulador corta el motor si una celda baja de 3,0 V con carga (bateria agotada): sin motor, a planear (tambien en facil)
+      if (!av.cortado && g > 0.05 && Bateria.celdaMin(Bt, eb) < 3.0) av.cortado = true;
     }
     av.T = T; av.Q = Q; av.rpm = g > 0.02 ? n * 60 : 0;
     // chorro de la helice sobre la cola (momento: velocidad en la estela V^2 + 2T/(rho A), ~80 % desarrollada en la
@@ -246,7 +258,7 @@ class ModeloAvion {
     return vn;
   }
 
-  bateriaPct(av) { return Math.max(0, 100 * (1 - av.Wh / this.propulsion.masa_bateria_Wh)); }
+  bateriaPct(av) { return this.B && av.bat ? Bateria.pct(this.B, av.bat) : Math.max(0, 100 * (1 - av.Wh / this.propulsion.masa_bateria_Wh)); }
 
   /** Tren de aterrizaje (aviones de pista, datos.tren): cada rueda es un muelle con amortiguador vertical (av.agl: altura
    *  del CG sobre el suelo; av.dSuelo, si esta: cuanto mas alto esta el suelo bajo cada rueda que bajo el CG), con rodadura (y freno, av.freno 0..1, en las principales)

@@ -21,10 +21,11 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     this.masa_diseno_kg = datos.masa_kg; this.inercia_diseno = Object.assign({}, datos.inercia);
     this.dcg = 0; this.rho = RHO; this.calib = { empuje: 1, resistencia: 1 }; this.facil = false;
     this.mandos = Object.assign({}, datos.mandos);
+    this.tempC = 15; this.B = Bateria.datos(this.propulsion);     // bateria Li-ion inteligente (js/bateria.js)
   }
   /** Masa, temperatura (densidad), empuje medido (gf, el maximo de los 4 motores) y factor de resistencia. */
   configurar({ masa_kg, cg_mm, temperatura, empuje_gf, resistencia }) {
-    if (temperatura !== undefined) this.rho = 101325 / (287.05 * (temperatura + 273.15));
+    if (temperatura !== undefined) { this.rho = 101325 / (287.05 * (temperatura + 273.15)); this.tempC = temperatura; }
     if (empuje_gf) this.calib.empuje = empuje_gf / 1000 * G0 / this.propulsion.empuje_max_N;
     if (resistencia) this.calib.resistencia = resistencia;
     if (masa_kg) { this.masa_kg = masa_kg; const k = masa_kg / this.masa_diseno_kg; for (const n in this.inercia_diseno) this.inercia[n] = this.inercia_diseno[n] * k; }
@@ -34,7 +35,8 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     return { p: [0, 0, -0.02], q: Cuat.desdeEuler(0, 0, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0, asim: 0,
              estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false,
              posado: true, despegado: false, tParar: 0, cmd: { adelante: 0, derecha: 0, guinada: 0, vz: 0 },
-             gimbal: -10, rth: null, despegueAuto: false, hold: null };
+             gimbal: -10, rth: null, despegueAuto: false, hold: null,
+             bat: Bateria.nueva(this.B, this.tempC), sinBateria: false, avisoBat: "", batRth: false, batForzado: false };
   }
   /** Armar: motores al ralenti en el suelo; despega al pedir velocidad vertical. */
   lanzar(av) {
@@ -47,8 +49,11 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   servos(av, mando, dt) {
     const e = this.mandos.expo || 0, ex = s => (1 - e) * s + e * s * s * s, cl = x => Math.max(-1, Math.min(1, x || 0));
     const obj = { adelante: ex(cl(-mando.pitch)), derecha: ex(cl(mando.yaw)), guinada: ex(cl(mando.guinada)), vz: cl(mando.vz) };
-    // cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial)
-    if (Math.max(...Object.values(obj).map(Math.abs)) > 0.3) { av.rth = null; av.despegueAuto = false; }
+    this._bateriaBaja(av);
+    // cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial); el aterrizaje forzoso por
+    // bateria critica no: se puede mover en horizontal para buscar sitio, pero sigue bajando
+    if (av.batForzado) { av.rth = null; av.despegueAuto = false; obj.vz = Math.min(obj.vz, -0.6); }
+    else if (Math.max(...Object.values(obj).map(Math.abs)) > 0.3) { av.rth = null; av.despegueAuto = false; }
     if (av.rth) this._rth(av, obj);
     else if (av.despegueAuto) { obj.adelante = obj.derecha = obj.guinada = 0; obj.vz = av.agl < 1.2 ? 0.5 : 0; if (av.agl >= 1.2) av.despegueAuto = false; }
     for (const k in obj) av.cmd[k] += Math.max(-10 * dt, Math.min(10 * dt, obj[k] - av.cmd[k]));
@@ -70,6 +75,22 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     }
     if (R.fase === "bajar") { obj.vz = -1; av.hold = [casa[0], casa[1]]; }      // baja sujetando la posicion sobre casa
   }
+  /** Bateria baja como en el dron comercial (av.avisoBat lo cuenta al simulador): al 30 % avisa; cuando la carga justo
+   *  alcanza para volver (la vuelta a 8 m/s con la subida y la bajada, un 30 % mas de lo que gasta ahora y un 15 % de reserva) vuelve
+   *  a casa solo (una vez; con las palancas se cancela); al 10 % aterrizaje forzoso donde este. */
+  _bateriaBaja(av) {
+    if (av.estado !== "volando" || av.posado || !av.bat) return;
+    const pct = this.bateriaPct(av);
+    if (pct <= 10 && !av.batForzado) { av.batForzado = true; av.avisoBat = "critica"; return; }
+    if (av.batForzado) return;
+    const casa = this.casa || [0, 0], d = Math.hypot(casa[0] - av.p[0], casa[1] - av.p[1]), agl = av.agl === undefined ? 0 : av.agl, hR = this.fc.rth_altura_m;
+    if (!av.batRth && d > 15) {
+      const t = d / 8 + Math.max(0, hR - agl) / 3 + Math.max(agl, hR) / 1.5 + 10, Pw = av.bat.P > 1 ? av.bat.P : 40;
+      const pctVuelta = 100 * 1.3 * Pw * t / 3600 / (Bateria.capacidad(this.B, av.bat) / 1000 * this.B.celdas * 3.7) + 15;   // volando gasta mas; llegar sobre el 10 % del forzoso
+      if (pct <= pctVuelta) { av.batRth = true; av.avisoBat = "rth"; if (!av.rth) this.volverACasa(av); return; }
+    }
+    if (pct <= 30 && av.avisoBat === "") av.avisoBat = "baja";
+  }
   /** Volver a casa (boton RTH de la app o tecla H). */
   volverACasa(av) {
     if (av.estado !== "volando" || av.posado) return;
@@ -81,9 +102,14 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
   /** Un paso: controlador de vuelo -> empuje y pares -> dinamica de 6 grados de libertad. Devuelve la velocidad NED. */
   paso(av, viento, dt) {
     const m = this.masa_kg, I = this.inercia, F = this.fc, pr = this.propulsion, q = av.q, v = av.v, w = av.w, rho = this.rho;
-    const Tmax = pr.empuje_max_N * this.calib.empuje, suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl;
+    // bateria: el empuje maximo baja cuando la tension cae por debajo de la nominal (3,7 V por celda); agotada (una celda
+    // por debajo de 2,9 V con carga), los motores se paran
+    const Bt = this.B, eb = av.bat, Vb = Bateria.tension(Bt, eb), kV = Math.min(1, Vb / (Bt.celdas * 3.7));
+    if (!av.sinBateria && av.estado === "volando" && Bateria.pct(Bt, eb) <= 0 && Bateria.celdaMin(Bt, eb) < 2.9) av.sinBateria = true;
+    const parado = av.motorRoto || av.sinBateria;
+    const Tmax = pr.empuje_max_N * this.calib.empuje * kV * kV, suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl;
     const M = F.modos[this.modo] || F.modos.N, tilt = M.inclinacion_grados * D2R, c = av.cmd;
-    if (av.motorRoto) { c.vz = -1; }
+    if (parado) { c.vz = -1; }
     // --- estado: velocidad respecto al suelo en NED y en ejes de rumbo (adelante, derecha), angulos ---
     const vn = Cuat.rot(q, v), [roll, pitch, yaw] = Cuat.euler(q), cy = Math.cos(yaw), sy = Math.sin(yaw);
     const vf = vn[0] * cy + vn[1] * sy, vr = -vn[0] * sy + vn[1] * cy, vzUp = -vn[2];
@@ -106,17 +132,17 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     // proteccion de aterrizaje como la del dron comercial: cerca del suelo la bajada se limita (0,6 m/s por debajo de 3 m, 1,5 por debajo de 8)
     const agl = av.agl === undefined ? 100 : av.agl, bajaMax = Math.min(M.vzmax_baja, agl < 3 ? 0.6 : agl < 8 ? 1.5 : M.vzmax_baja);
     const vzObj = c.vz > 0 ? c.vz * M.vzmax_sube : c.vz * bajaMax;
-    let T = av.motorRoto ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(roll) * Math.cos(pitch));
+    let T = parado ? 0 : m * (G0 + F.kz * (vzObj - vzUp)) / Math.max(0.5, Math.cos(roll) * Math.cos(pitch));
     T = Math.max(0, Math.min(Tmax, T));
     // en el suelo: los motores al ralenti hasta que se pide subir; con la palanca abajo un rato, se paran (aterrizado)
     if (av.posado) {
-      if (c.vz <= 0.05 || av.motorRoto) T = 0;
+      if (c.vz <= 0.05 || parado) T = 0;
       if (T <= m * G0 * 1.02) {
         av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.q = Cuat.desdeEuler(0, 0, yaw); av.p[2] = -(suelo + 0.02);
-        av.T = T; av.gases = av.motorRoto ? 0 : 0.08; av.rpm = av.motorRoto ? 0 : 0.25 * pr.rpm_max; av.V = 0; av.g_carga = 1; av.alfa = 0; av.beta = 0; av.t += dt;
-        av.Wh += (av.motorRoto ? 0 : 6) * dt / 3600;
+        av.T = T; av.gases = parado ? 0 : 0.08; av.rpm = parado ? 0 : 0.25 * pr.rpm_max; av.V = 0; av.g_carga = 1; av.alfa = 0; av.beta = 0; av.t += dt;
+        Bateria.gastar(Bt, eb, parado ? 0 : 6, dt); av.Wh = eb.Wh;
         av.tParar = (c.vz < -0.3 || av.rth) && av.despegado ? av.tParar + dt : 0;   // RTH: al posarse para los motores
-        if (av.tParar > 0.8 || (av.motorRoto && av.despegado)) av.p[2] = -(suelo - 0.05);    // posado y motores parados: el simulador lo da por aterrizado
+        if (av.tParar > 0.8 || (parado && av.despegado)) av.p[2] = -(suelo - 0.05);    // posado y motores parados: el simulador lo da por aterrizado
         return [0, 0, 0];
       }
       av.posado = false;    // despega
@@ -125,7 +151,7 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     const pObj = F.ka * (rollObj - roll), qObj = F.ka * (pitchObj - pitch), rObj = c.guinada * M.rmax_grados_s * D2R;
     const lim = (x, L) => Math.max(-L, Math.min(L, x));
     let Mx = lim(I.Ixx * F.kr * (pObj - w[0]), F.tau_max), My = lim(I.Iyy * F.kr * (qObj - w[1]), F.tau_max), Mz = lim(I.Izz * F.kr * (rObj - w[2]), F.tau_guinada);
-    if (av.motorRoto) { Mx = My = Mz = 0; }
+    if (parado) { Mx = My = Mz = 0; }
     // turbulencia que alabea (Entorno.rafagaAlabeo): el dron la nota y el controlador la corrige
     if (av.pg && !this.facil) Mx += I.Ixx * av.pg * 4;
     // --- fuerzas en ejes cuerpo: empuje hacia arriba, peso, resistencia con el viento (la mitad en fisica facil) ---
@@ -151,12 +177,12 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
     }
     // --- bateria (potencia inducida de los 4 rotores + electronica), revoluciones y lecturas ---
     const A4 = 4 * Math.PI * Math.pow(pr.D_m / 2, 2), P = Math.pow(T, 1.5) / Math.sqrt(2 * rho * A4) / 0.55 + 4;
-    av.Wh += P * dt / 3600;
+    Bateria.gastar(Bt, eb, P, dt); av.Wh = eb.Wh;
     av.T = T; av.gases = T / Tmax; av.rpm = Math.sqrt(T / Tmax) * pr.rpm_max;
     av.t += dt; av.V = Va; av.alfa = 0; av.beta = 0; av.perdida = 0; av.g_carga = T / (m * G0);
     return vn2;
   }
-  bateriaPct(av) { return Math.max(0, 100 * (1 - av.Wh / this.propulsion.masa_bateria_Wh)); }
+  bateriaPct(av) { return av.bat ? Bateria.pct(this.B, av.bat) : Math.max(0, 100 * (1 - av.Wh / this.propulsion.masa_bateria_Wh)); }
 };
 
 // ---- datos del dron, en JSON estricto (claves entre comillas, colores en decimal, sin comentarios dentro): el
@@ -180,7 +206,8 @@ window.ModeloCuadricoptero = window.ModeloCuadricoptero || class ModeloCuadricop
                         ["Batería", "2S 2250 mAh, 17 Wh: unos 30 min de vuelo"], ["Mandos", "modo 2: izquierda gas y guiñada, derecha inclinación; conmutador C/N/S y rueda del gimbal"],
                         ["Controlador", "estabilizado con retención de posición y altura (como con GPS)"], ["Velocidad de pérdida", "0 m/s (no entra en pérdida)"]],
     "masa_kg": 0.249, "b_m": 0.25, "S_m2": 0.03, "c_m": 0.1, "inercia": { "Ixx": 0.0006, "Iyy": 0.0007, "Izz": 0.0012, "Ixz": 0 }, "cg_mm": [0, 0, 0],
-    "propulsion": { "empuje_max_N": 4.9, "rpm_max": 16000, "D_m": 0.076, "masa_bateria_Wh": 17.3, "P_max_W": 110 },
+    "propulsion": { "empuje_max_N": 4.9, "rpm_max": 16000, "D_m": 0.076, "masa_bateria_Wh": 17.3, "P_max_W": 110,
+                    "bateria": { "quimica": "liion", "celdas": 2, "capacidad_mAh": 2250, "R_ohm": 0.06, "masa_kg": 0.086 } },
     "fc": { "modos": { "C": { "vmax_ms": 6, "vzmax_sube": 2, "vzmax_baja": 1.5, "inclinacion_grados": 15, "rmax_grados_s": 60, "kv": 0.9 },
                        "N": { "vmax_ms": 10, "vzmax_sube": 3, "vzmax_baja": 3, "inclinacion_grados": 25, "rmax_grados_s": 100, "kv": 1.2 },
                        "S": { "vmax_ms": 16, "vzmax_sube": 5, "vzmax_baja": 3.5, "inclinacion_grados": 40, "rmax_grados_s": 200, "kv": 1.5 } },

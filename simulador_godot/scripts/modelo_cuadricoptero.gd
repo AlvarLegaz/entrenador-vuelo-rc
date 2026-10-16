@@ -24,6 +24,7 @@ var inercia: Dictionary; var inercia_diseno: Dictionary; var masa_diseno_kg: flo
 var cg_mm: Array; var propulsion: Dictionary; var mandos: Dictionary; var malla: Dictionary; var fc: Dictionary
 var compensador_grados := 0.0; var lanzamiento: Dictionary
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
+var temp_c := 15.0; var B: Dictionary            # bateria Li-ion inteligente (bateria.gd)
 ## dificultad facil: la mitad del viento sobre la resistencia y sin la turbulencia que alabea (como en JS)
 var facil := false
 
@@ -33,10 +34,11 @@ func _init(d: Dictionary) -> void:
 	inercia = d["inercia"].duplicate(); inercia_diseno = d["inercia"].duplicate(); masa_diseno_kg = d["masa_kg"]
 	cg_mm = d["cg_mm"]; propulsion = d["propulsion"]; fc = d["fc"]; mandos = d["mandos"].duplicate(); malla = d.get("malla", {})
 	compensador_grados = d.get("compensador_grados", 0.0); lanzamiento = d["lanzamiento"]
+	B = Bateria.datos(propulsion)
 
 ## Masa, temperatura (densidad), empuje medido (gf, el maximo de los 4 motores) y factor de resistencia. (cg_mm no se usa.)
 func configurar(op: Dictionary) -> void:
-	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15))
+	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15)); temp_c = op["temperatura"]
 	if op.get("empuje_gf", 0): calib["empuje"] = op["empuje_gf"] / 1000.0 * G0 / propulsion["empuje_max_N"]
 	if op.get("resistencia", 0): calib["resistencia"] = op["resistencia"]
 	if op.get("masa_kg", 0):
@@ -49,7 +51,8 @@ func estado_inicial() -> Dictionary:
 	return { "p": [0.0, 0.0, -0.02], "q": Cuat.desde_euler(0, 0, 0), "v": [0.0, 0.0, 0.0], "w": [0.0, 0.0, 0.0], "de": 0.0, "dr": 0.0, "da": 0.0,
 			 "gases": 0.0, "Wh": 0.0, "asim": 0.0, "estado": "en mano", "t": 0.0, "alfa": 0.0, "beta": 0.0, "V": 0.0, "g_carga": 1.0, "perdida": 0.0,
 			 "T": 0.0, "rpm": 0.0, "motorRoto": false, "posado": true, "despegado": false, "tParar": 0.0,
-			 "cmd": { "adelante": 0.0, "derecha": 0.0, "guinada": 0.0, "vz": 0.0 }, "gimbal": -10.0, "rth": null, "despegueAuto": false, "hold": null }
+			 "cmd": { "adelante": 0.0, "derecha": 0.0, "guinada": 0.0, "vz": 0.0 }, "gimbal": -10.0, "rth": null, "despegueAuto": false, "hold": null,
+			 "bat": Bateria.nueva(B, temp_c), "sinBateria": false, "avisoBat": "", "batRth": false, "batForzado": false }
 
 ## Armar: motores al ralenti en el suelo; despega al pedir velocidad vertical.
 func lanzar(av: Dictionary) -> void:
@@ -73,10 +76,14 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 	var ex := func(s: float) -> float: return (1 - e) * s + e * s * s * s
 	var obj := { "adelante": ex.call(_cl(-float(mando.get("pitch", 0.0)))), "derecha": ex.call(_cl(mando.get("yaw"))),
 				 "guinada": ex.call(_cl(mando.get("guinada"))), "vz": _cl(mando.get("vz")) }
-	# cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial)
+	_bateria_baja(av)
+	# cualquier palanca cancela el RTH y el despegue automatico (como en el dron comercial); el aterrizaje forzoso por
+	# bateria critica no: se puede mover en horizontal para buscar sitio, pero sigue bajando
 	var mx := 0.0
 	for k in obj: mx = maxf(mx, absf(obj[k]))
-	if mx > 0.3:
+	if av.get("batForzado", false):
+		av["rth"] = null; av["despegueAuto"] = false; obj["vz"] = minf(obj["vz"], -0.6)
+	elif mx > 0.3:
 		av["rth"] = null; av["despegueAuto"] = false
 	if av["rth"]: _rth(av, obj)
 	elif av["despegueAuto"]:
@@ -107,6 +114,26 @@ func _rth(av: Dictionary, obj: Dictionary) -> void:
 	if R["fase"] == "bajar":
 		obj["vz"] = -1.0; av["hold"] = [ca[0], ca[1]]      # baja sujetando la posicion sobre casa
 
+## Bateria baja como en el dron comercial (av.avisoBat lo cuenta al simulador): al 30 % avisa; cuando la carga justo
+## alcanza para volver (la vuelta a 8 m/s con la subida y la bajada, un 30 % mas de lo que gasta ahora y un 15 % de reserva) vuelve
+## a casa solo (una vez; con las palancas se cancela); al 10 % aterrizaje forzoso donde este. Como _bateriaBaja en JS.
+func _bateria_baja(av: Dictionary) -> void:
+	if av["estado"] != "volando" or av["posado"] or av.get("bat") == null: return
+	var pc := bateria_pct(av)
+	if pc <= 10 and not av["batForzado"]:
+		av["batForzado"] = true; av["avisoBat"] = "critica"; return
+	if av["batForzado"]: return
+	var ca: Array = casa if casa != null else [0.0, 0.0]
+	var d := Vector2(ca[0] - av["p"][0], ca[1] - av["p"][1]).length(); var agl: float = av["agl"] if av.get("agl") != null else 0.0; var hR: float = fc["rth_altura_m"]
+	if not av["batRth"] and d > 15:
+		var t := d / 8 + maxf(0.0, hR - agl) / 3 + maxf(agl, hR) / 1.5 + 10; var Pw: float = av["bat"]["P"] if av["bat"]["P"] > 1 else 40.0
+		var pct_vuelta := 100 * 1.3 * Pw * t / 3600 / (Bateria.capacidad(B, av["bat"]) / 1000 * int(B["celdas"]) * 3.7) + 15   # volando gasta mas; llegar sobre el 10 % del forzoso
+		if pc <= pct_vuelta:
+			av["batRth"] = true; av["avisoBat"] = "rth"
+			if not av["rth"]: volver_a_casa(av)
+			return
+	if pc <= 30 and av["avisoBat"] == "": av["avisoBat"] = "baja"
+
 ## Volver a casa (boton RTH de la app o tecla H).
 func volver_a_casa(av: Dictionary) -> void:
 	if av["estado"] != "volando" or av["posado"]: return
@@ -125,12 +152,17 @@ func mandos_coef(_av = null, _d = null, _kman = 1.0) -> Dictionary:
 ## en av: agl (altura sobre el suelo) y pg (alabeo de la turbulencia). Devuelve la velocidad NED.
 func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var m := masa_kg; var I := inercia; var F := fc; var pr := propulsion; var q: Array = av["q"]; var v: Array = av["v"]; var w: Array = av["w"]
-	var Tmax: float = pr["empuje_max_N"] * calib["empuje"]
+	# bateria: el empuje maximo baja cuando la tension cae por debajo de la nominal (3,7 V por celda); agotada (una celda
+	# por debajo de 2,9 V con carga), los motores se paran
+	var eb: Dictionary = av["bat"]; var Vb := Bateria.tension(B, eb); var kV := minf(1.0, Vb / (int(B["celdas"]) * 3.7))
+	if not av["sinBateria"] and av["estado"] == "volando" and Bateria.pct(B, eb) <= 0 and Bateria.celda_min(B, eb) < 2.9: av["sinBateria"] = true
+	var parado: bool = av["motorRoto"] or av["sinBateria"]
+	var Tmax: float = pr["empuje_max_N"] * calib["empuje"] * kV * kV
 	var tiene_agl: bool = av.get("agl") != null
 	var suelo: float = 0.0 if not tiene_agl else -av["p"][2] - av["agl"]
 	var M: Dictionary = F["modos"][modo] if F["modos"].has(modo) else F["modos"]["N"]
 	var tilt: float = M["inclinacion_grados"] * D2R; var c: Dictionary = av["cmd"]
-	if av["motorRoto"]: c["vz"] = -1.0
+	if parado: c["vz"] = -1.0
 	# --- estado: velocidad respecto al suelo en NED y en ejes de rumbo (adelante, derecha), angulos ---
 	var vn := Cuat.rot(q, v); var eu := Cuat.euler(q); var roll: float = eu[0]; var pitch: float = eu[1]; var yaw: float = eu[2]
 	var cy := cos(yaw); var sy := sin(yaw)
@@ -157,18 +189,18 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var agl: float = 100.0 if not tiene_agl else av["agl"]
 	var bajaMax: float = minf(M["vzmax_baja"], 0.6 if agl < 3 else (1.5 if agl < 8 else M["vzmax_baja"]))
 	var vzObj: float = c["vz"] * M["vzmax_sube"] if c["vz"] > 0 else c["vz"] * bajaMax
-	var T: float = 0.0 if av["motorRoto"] else m * (G0 + F["kz"] * (vzObj - vzUp)) / maxf(0.5, cos(roll) * cos(pitch))
+	var T: float = 0.0 if parado else m * (G0 + F["kz"] * (vzObj - vzUp)) / maxf(0.5, cos(roll) * cos(pitch))
 	T = maxf(0, minf(Tmax, T))
 	# en el suelo: los motores al ralenti hasta que se pide subir; con la palanca abajo un rato, se paran (aterrizado)
 	if av["posado"]:
-		if c["vz"] <= 0.05 or av["motorRoto"]: T = 0.0
+		if c["vz"] <= 0.05 or parado: T = 0.0
 		if T <= m * G0 * 1.02:
 			av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["q"] = Cuat.desde_euler(0, 0, yaw); av["p"][2] = -(suelo + 0.02)
-			av["T"] = T; av["gases"] = 0.0 if av["motorRoto"] else 0.08; av["rpm"] = 0.0 if av["motorRoto"] else 0.25 * pr["rpm_max"]
+			av["T"] = T; av["gases"] = 0.0 if parado else 0.08; av["rpm"] = 0.0 if parado else 0.25 * pr["rpm_max"]
 			av["V"] = 0.0; av["g_carga"] = 1.0; av["alfa"] = 0.0; av["beta"] = 0.0; av["t"] += dt
-			av["Wh"] += (0.0 if av["motorRoto"] else 6.0) * dt / 3600
+			Bateria.gastar(B, eb, 0.0 if parado else 6.0, dt); av["Wh"] = eb["Wh"]
 			av["tParar"] = av["tParar"] + dt if (c["vz"] < -0.3 or av["rth"]) and av["despegado"] else 0.0   # RTH: al posarse para los motores
-			if av["tParar"] > 0.8 or (av["motorRoto"] and av["despegado"]): av["p"][2] = -(suelo - 0.05)    # posado y motores parados: el simulador lo da por aterrizado
+			if av["tParar"] > 0.8 or (parado and av["despegado"]): av["p"][2] = -(suelo - 0.05)    # posado y motores parados: el simulador lo da por aterrizado
 			return [0.0, 0.0, 0.0]
 		av["posado"] = false    # despega
 	# --- pares: angulos objetivo -> velocidades angulares objetivo -> par, con los topes de los motores ---
@@ -176,7 +208,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var Mx: float = clampf(I["Ixx"] * F["kr"] * (pObj - w[0]), -F["tau_max"], F["tau_max"])
 	var My: float = clampf(I["Iyy"] * F["kr"] * (qObj - w[1]), -F["tau_max"], F["tau_max"])
 	var Mz: float = clampf(I["Izz"] * F["kr"] * (rObj - w[2]), -F["tau_guinada"], F["tau_guinada"])
-	if av["motorRoto"]:
+	if parado:
 		Mx = 0.0; My = 0.0; Mz = 0.0
 	# turbulencia que alabea (Entorno.rafaga_alabeo): el dron la nota y el controlador la corrige
 	var pg: float = float(av.get("pg", 0.0)) if av.get("pg") != null else 0.0
@@ -206,10 +238,11 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 		av["posado"] = true; av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["q"] = Cuat.desde_euler(0, 0, Cuat.euler(av["q"])[2]); p[2] = -(suelo + 0.02)
 	# --- bateria (potencia inducida de los 4 rotores + electronica), revoluciones y lecturas ---
 	var A4: float = 4 * PI * pow(pr["D_m"] / 2, 2); var P: float = pow(T, 1.5) / sqrt(2 * rho * A4) / 0.55 + 4
-	av["Wh"] += P * dt / 3600
+	Bateria.gastar(B, eb, P, dt); av["Wh"] = eb["Wh"]
 	av["T"] = T; av["gases"] = T / Tmax; av["rpm"] = sqrt(T / Tmax) * pr["rpm_max"]
 	av["t"] += dt; av["V"] = Va; av["alfa"] = 0.0; av["beta"] = 0.0; av["perdida"] = 0.0; av["g_carga"] = T / (m * G0)
 	return vn2
 
 func bateria_pct(av: Dictionary) -> float:
+	if av.get("bat") != null: return Bateria.pct(B, av["bat"])
 	return maxf(0, 100 * (1 - av["Wh"] / propulsion["masa_bateria_Wh"]))

@@ -26,25 +26,24 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
     this.masa_diseno_kg = datos.masa_kg; this.inercia = Object.assign({}, datos.inercia); this.inercia_diseno = Object.assign({}, datos.inercia);
     this.dcg = 0; this.rho = RHO; this.calib = { empuje: 1, resistencia: 1 }; this.facil = false;
     this.mandos = Object.assign({}, datos.mandos);
+    this.tempC = 15; this.B = Bateria.datos(this.propulsion);     // LiPo 4S con su curva (js/bateria.js)
   }
   /** Masa, temperatura (densidad), empuje estatico medido (gf, el de los 4 motores) y factor de resistencia. */
   configurar({ masa_kg, temperatura, empuje_gf, resistencia }) {
-    if (temperatura !== undefined) this.rho = 101325 / (287.05 * (temperatura + 273.15));
+    if (temperatura !== undefined) { this.rho = 101325 / (287.05 * (temperatura + 273.15)); this.tempC = temperatura; }
     if (empuje_gf) this.calib.empuje = empuje_gf / 1000 * G0 / (4 * this.propulsion.empuje_motor_N);
     if (resistencia) this.calib.resistencia = resistencia;
     if (masa_kg) { this.masa_kg = masa_kg; const k = masa_kg / this.masa_diseno_kg; for (const n in this.inercia_diseno) this.inercia[n] = this.inercia_diseno[n] * k; }
   }
-  /** Tension en vacio de la bateria (V) con la carga gastada (mAh). */
-  _voc(mAh) {
-    const pr = this.propulsion, soc = Math.max(0, 1 - mAh / pr.capacidad_mAh);
-    return pr.celdas * interp(pr.curva_soc, pr.curva_v, soc);
-  }
+  /** Tension en vacio de la bateria (V) con lo gastado hasta ahora. */
+  _voc(av) { let s = 0; const B = this.B, e = av.bat, o = Bateria.ocvCelda(B, e); for (let i = 0; i < B.celdas; i++) s += o; return s; }
   /** En el suelo y desarmado ("en mano" para el simulador: L lo arma). */
   estadoInicial() {
+    const bat = Bateria.nueva(this.B, this.tempC);
     return { p: [0, 0, -0.02], q: Cuat.desdeEuler(0, 0, 0), v: [0, 0, 0], w: [0, 0, 0], de: 0, dr: 0, da: 0, gases: 0, Wh: 0, asim: 0,
              estado: "en mano", t: 0, alfa: 0, beta: 0, V: 0, g_carga: 1, perdida: 0, T: 0, rpm: 0, motorRoto: false,
              posado: true, despegado: false, armado: false, tArmado: 0, cmd: { alabeo: 0, cabeceo: 0, guinada: 0 }, integ: [0, 0, 0],
-             motores: [0, 0, 0, 0], mAh: 0, Vbat: this._voc(0), I: 0, P: 0, propwash: 0 };
+             motores: [0, 0, 0, 0], mAh: 0, Vbat: bat.V, I: 0, P: 0, propwash: 0, bat };
   }
   /** Armar (el simulador comprueba antes que el gas este abajo): motores al ralenti en el suelo. */
   lanzar(av) {
@@ -59,7 +58,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
   /** Para los escenarios que empiezan en el aire: armado, en vuelo y con el gas que lo sostiene. */
   armarEnVuelo(av) {
     av.armado = true; av.posado = false; av.despegado = true; av.integ = [0, 0, 0];
-    const F = this.fc, kV = this._voc(av.mAh) / this.propulsion.V_ref, Tm = this.propulsion.empuje_motor_N * this.calib.empuje * kV * kV;
+    const F = this.fc, kV = this._voc(av) / this.propulsion.V_ref, Tm = this.propulsion.empuje_motor_N * this.calib.empuje * kV * kV;
     const u = Math.sqrt(this.masa_kg * G0 / 4 / Tm);
     av.gases = Math.max(0, Math.min(1, (u - F.ralenti) / (1 - F.ralenti))); av.motores = [u * kV, u * kV, u * kV, u * kV];
   }
@@ -91,8 +90,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
     const suelo = av.agl === undefined ? 0 : -av.p[2] - av.agl, agl = av.agl === undefined ? 100 : av.agl;
     const [roll, pitch, yaw] = Cuat.euler(q);
     // --- bateria: tension en vacio segun lo gastado y caida por la resistencia interna con la potencia del paso anterior ---
-    const Voc = this._voc(av.mAh), disc = Voc * Voc - 4 * pr.R_ohm * av.P;
-    const V = disc > 0 ? 0.5 * (Voc + Math.sqrt(disc)) : 0.5 * Voc;
+    const V = Bateria.tension(this.B, av.bat);
     av.Vbat = V;
     const kV = V / pr.V_ref, Tref = pr.empuje_motor_N * this.calib.empuje, TmaxV = Tref * kV * kV, idle = F.ralenti;
     // --- controlador de vuelo: consignas de velocidad de giro segun el modo ---
@@ -160,7 +158,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
     Mr += ipw * F.propwash_par * (0.6 * Math.sin(2 * Math.PI * 8.1 * t + 0.7) + 0.4 * Math.sin(2 * Math.PI * 11.7 * t + 2.1));
     if (av.pg && !FAC) Lr += I.Ixx * av.pg * 4;
     // --- bateria: potencia de los motores (par x vueltas / rendimiento) y de la electronica; corriente con la tension ---
-    av.P = P; av.I = P / V; av.mAh += av.I * dt / 3.6; av.Wh += P * dt / 3600;
+    Bateria.gastar(this.B, av.bat, P, dt); av.P = av.bat.P; av.I = av.bat.I; av.mAh = av.bat.mAh; av.Wh = av.bat.Wh;
     av.T = Tt; av.rpm = 0.25 * (av.motores[0] + av.motores[1] + av.motores[2] + av.motores[3]) * pr.rpm_max;
     av.alfa = 0; av.beta = 0; av.perdida = 0; av.g_carga = Tt / (m * G0);
     if (armado) av.tArmado += dt;
@@ -198,7 +196,7 @@ window.ModeloFPV = window.ModeloFPV || class ModeloFPV {
     }
     return vn2;
   }
-  bateriaPct(av) { return Math.max(0, 100 * (1 - av.mAh / this.propulsion.capacidad_mAh)); }
+  bateriaPct(av) { return Bateria.pct(this.B, av.bat); }
   /** Tension por celda (V) con la carga de ahora. */
   celda(av) { return av.Vbat / this.propulsion.celdas; }
 };

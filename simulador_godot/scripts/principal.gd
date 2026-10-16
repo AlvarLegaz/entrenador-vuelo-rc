@@ -530,7 +530,9 @@ func poner_aviso(txt: String, segundos := 0.0) -> void:
 		await get_tree().create_timer(segundos).timeout
 		if hud.aviso.text == txt: hud.aviso.text = ""
 var _t_toast := 0
+var toasts_registro = null          # pruebas: si es una lista, cada aviso de poner_toast se apunta en ella
 func poner_toast(txt: String) -> void:
+	if toasts_registro != null: toasts_registro.append(txt)
 	hud.toast.text = txt; _t_toast += 1; var n := _t_toast
 	await get_tree().create_timer(1.5).timeout
 	if n == _t_toast: hud.toast.text = ""
@@ -1094,6 +1096,7 @@ func paso(dt: float) -> void:
 	var p_ant: Array = av["p"].duplicate()
 	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
 	var vn: Array = modelo.paso(av, viento, dt)
+	_avisos_bateria()
 	if destino_prueba != null: av["p"] = (destino_prueba as Array).duplicate(); av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]   # pruebas: el dron llevado en volandas
 	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
 	else: av["gasMotor"] = av["gases"]
@@ -1143,6 +1146,22 @@ func paso(dt: float) -> void:
 
 ## Un paso del bipode (pasoTerrestre de la web): la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso
 ## del modelo, la altura del terreno donde queda y los choques: arboles y pilones lo paran (no lo rompen); en el mar se hunde.
+## Avisos de la bateria (bateria.gd), una vez cada uno: el dron con poca bateria (av.avisoBat del modelo: baja, vuelta a
+## casa por bateria, aterrizaje forzoso), el avion al 20 % y con el motor cortado por el regulador, y sin bateria. Como
+## avisosBateria() de simulador.html.
+func _avisos_bateria() -> void:
+	if av.get("bat") == null: return
+	var pc: float = modelo.bateria_pct(av)
+	var k: String = (String(av.get("avisoBat", "")) if String(av.get("avisoBat", "")) != "" else ("baja" if not es_dron() and pc <= 20 else "")) + ("+cortado" if av.get("cortado", false) else "") + ("+agotada" if av.get("sinBateria", false) else "")
+	var ant: String = av.get("_batVisto", "")
+	if k == ant: return
+	av["_batVisto"] = k
+	if av.get("sinBateria", false) and not ant.contains("+agotada"): poner_toast("Batería agotada: los motores se paran"); return
+	if av.get("cortado", false) and not ant.contains("+cortado"): poner_toast("El regulador ha cortado el motor: batería agotada. Planea y aterriza"); poner_aviso("Motor cortado: batería agotada"); return
+	if k.begins_with("baja") and not ant.begins_with("baja"): poner_toast("Batería baja (30 %): vuelve pronto" if es_dron() else "Batería baja (20 %): aterriza pronto")
+	if k.begins_with("rth") and not ant.begins_with("rth"): poner_toast("Batería justa para volver: volviendo a casa (mueve las palancas para cancelar)")
+	if k.begins_with("critica") and not ant.begins_with("critica"): poner_toast("¡Batería crítica! Aterrizaje forzoso: busca dónde posarlo"); poner_aviso("Aterrizaje forzoso: batería crítica")
+
 var _aviso_choque := false
 func _paso_terrestre(dt: float, viento, p_ant: Array) -> void:
 	var p: Array = av["p"]; var d := 1.5
@@ -1509,6 +1528,7 @@ func dji_despegar() -> void:
 	elif av["estado"] == "volando": av["rth"] = { "fase": "bajar" }; poner_toast("Aterrizando")
 func dji_rth() -> void:
 	if modelo == null or not es_dron() or rep_activa or av["estado"] != "volando" or av.get("posado", false): return
+	if av.get("batForzado", false): poner_toast("Aterrizaje forzoso por batería crítica: no se puede cancelar"); return
 	if av.get("rth") != null and av["rth"]["fase"] != "bajar": av["rth"] = null; poner_toast("Volver a casa cancelado"); return
 	modelo.volver_a_casa(av); poner_toast("Volviendo a casa")
 

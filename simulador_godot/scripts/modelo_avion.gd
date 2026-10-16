@@ -21,6 +21,8 @@ var cg_mm: Array; var perdida: Dictionary; var propulsion: Dictionary; var mando
 var compensador_grados := 0.0; var lanzamiento: Dictionary
 var TA := []; var TCL := []; var TCDI := []; var TCM := []; var DA := []; var DER := {}
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
+var temp_c := 15.0                # temperatura del aire (configurar): la de la bateria al despegar
+var B = null                      # bateria (bateria.gd); un motor de combustion no lleva
 var Qmax: float; var Ihelice: float; var CD_helice_parada: float; var k_perfil: float
 var chorro := {}; var brazoDeriva: float; var brazoPerdida: float
 var CD_helice_parada_datos := 0.0
@@ -48,6 +50,7 @@ func _init(d: Dictionary) -> void:
 		DER[k] = col
 	var pr := propulsion; var Dm: float = pr["D_m"]
 	Qmax = pr["P_max_W"] / (2 * PI * pr["n_max_rps"])
+	B = null if pr.get("combustible", false) else Bateria.datos(pr)
 	Ihelice = d["I_helice"] if d.has("I_helice") else 0.012 * pow(Dm / 0.2286, 3) * Dm * Dm / 12
 	CD_helice_parada_datos = d.get("CD_helice_parada", 0.0)
 	CD_helice_parada = d["CD_helice_parada"] if d.has("CD_helice_parada") else 0.0027 * pow(Dm / 0.2286, 2) / S_m2
@@ -72,7 +75,7 @@ static func interp(xs: Array, ys: Array, x: float) -> float:
 
 ## Masa (kg), X del CG (mm desde la bancada), temperatura (C), empuje estatico medido (gf) y factor de resistencia.
 func configurar(op: Dictionary) -> void:
-	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15))
+	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15)); temp_c = op["temperatura"]
 	if op.get("empuje_gf", 0):
 		var pr := propulsion
 		calib["empuje"] = op["empuje_gf"] / 1000.0 * G0 / (pr["CT0"] * RHO * pow(pr["n_max_rps"], 2) * pow(pr["D_m"], 4))
@@ -93,7 +96,8 @@ func estado_inicial() -> Dictionary:
 				"de": 0.0, "dr": 0.0, "da": 0.0, "gases": 0.0, "Wh": 0.0,
 				"asim": (-1.0 if randf() < 0.5 else 1.0) * (0.2 + 0.4 * randf()),
 				"estado": "en mano", "t": 0.0, "alfa": 0.0, "beta": 0.0, "V": 0.0, "g_carga": 1.0, "perdida": 0.0, "T": 0.0, "Q": 0.0,
-				"rpm": 0.0, "motorRoto": false, "elevon_izq": 0.0, "elevon_der": 0.0, "perdidaLados": [0.0, 0.0] }
+				"rpm": 0.0, "motorRoto": false, "elevon_izq": 0.0, "elevon_der": 0.0, "perdidaLados": [0.0, 0.0],
+				"bat": Bateria.nueva(B, temp_c) if B != null else null, "cortado": false }
 	if tren != null:
 		av["p"] = [0.0, 0.0, -altura_en_tierra()]; av["q"] = Cuat.desde_euler(0, 0, 0); av["freno"] = 1.0; av["enTierra"] = true; av["despegado"] = false; av["trenComp"] = 0.0
 	return av
@@ -182,7 +186,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 		fiS = x16 / (1 + x16)
 	CDi *= fiS
 	var CL0 := ((1 - f) * CLlin + f * CLplaca) * (1 + 0.06 * (1 - fiS))
-	var pr := propulsion; var g: float = 0.0 if av["motorRoto"] else av["gases"]
+	var pr := propulsion; var g: float = 0.0 if (av["motorRoto"] or av.get("cortado", false)) else av["gases"]
 	var CDhel := (CD_helice_parada_datos if fac else CD_helice_parada) if g < 0.05 else 0.0
 	var s2a := pow(sin(alfa), 2)                     # sin(alfa) al cuadrado, una vez (se usaba tres veces)
 	var CD: float = CD0 + CDhel + (1 - f) * CDi + f * 2 * s2a if fac else CD0 * calib["resistencia"] + k_perfil * pow(CL0 - 0.3, 2) + (1 - f) * CDi + f * 2 * s2a + CDhel
@@ -191,15 +195,23 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var kman: float = 1 - f * (1 - P["mando_post_perdida"])
 	var aD := clampf(ad, DA[0], DA[DA.size() - 1])
 	var M := mandos_coef(av, aD, kman)
-	# motor y helice
-	if av["motorRoto"]: av["gases"] = 0.0
-	var bat := maxf(0, 1 - av["Wh"] / pr["masa_bateria_Wh"]); var n: float = pr["n_max_rps"] * g * (1.0 if (fac or pr.get("combustible", false)) else 1 - 0.10 * (1 - bat))
+	# motor y helice: las vueltas siguen a la tension de la bateria (bateria.gd; en la fisica facil no se nota)
+	if av["motorRoto"] or av.get("cortado", false): av["gases"] = 0.0
+	var eb = av.get("bat"); var kV := 1.0
+	if B != null and eb != null:
+		var Vb := Bateria.tension(B, eb)
+		if not fac: kV = Vb / (int(B["celdas"]) * 4.2)
+	var n: float = pr["n_max_rps"] * g * kV
 	var T := 0.0; var Q := 0.0; var J := 0.0
 	if g > 0.02:
 		J = V / (n * pr["D_m"])
 		T = pr["CT0"] * (1.0 if fac else calib["empuje"]) * maxf(0, 1 - J / pr["J0"]) * dens * n * n * pow(pr["D_m"], 4)
 		Q = 0.0 if fac else Qmax * pow(n / pr["n_max_rps"], 2) * (0.6 + 0.4 * maxf(0, 1 - J / pr["J0"]))
-		av["Wh"] += pr["P_max_W"] * g * g * g * dt / 3600
+		if eb == null: av["Wh"] += pr["P_max_W"] * g * g * g * dt / 3600
+	if B != null and eb != null:              # la bateria: potencia del motor (como las vueltas al cubo) y de la electronica
+		Bateria.gastar(B, eb, (pr["P_max_W"] * pow(g * kV, 3) if g > 0.02 else 0.0) + 1, dt); av["Wh"] = eb["Wh"]
+		# el regulador corta el motor si una celda baja de 3,0 V con carga (bateria agotada): sin motor, a planear (tambien en facil)
+		if not av.get("cortado", false) and g > 0.05 and Bateria.celda_min(B, eb) < 3.0: av["cortado"] = true
 	av["T"] = T; av["Q"] = Q; av["rpm"] = n * 60 if g > 0.02 else 0.0
 	# chorro de la helice sobre la cola
 	var Adisco: float = PI * pr["D_m"] * pr["D_m"] / 4; var rq := 1.0 if fac else minf(6, 1 + 0.8 * 2 * T / (dens * Adisco) / (V * V))
@@ -254,6 +266,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	return vn
 
 func bateria_pct(av: Dictionary) -> float:
+	if B != null and av.get("bat") != null: return Bateria.pct(B, av["bat"])
 	return maxf(0, 100 * (1 - av["Wh"] / propulsion["masa_bateria_Wh"]))
 
 static func _sg(x: float, e: float) -> float: return x / sqrt(x * x + e * e)      # signo suave: sin saltos al pararse

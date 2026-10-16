@@ -24,6 +24,7 @@ var inercia: Dictionary; var inercia_diseno: Dictionary; var masa_diseno_kg: flo
 var cg_mm: Array; var propulsion: Dictionary; var mandos: Dictionary; var fc: Dictionary
 var compensador_grados := 0.0; var lanzamiento: Dictionary
 var dcg := 0.0; var rho := RHO; var calib := { "empuje": 1.0, "resistencia": 1.0 }
+var temp_c := 15.0; var B: Dictionary            # LiPo 4S con su curva (bateria.gd)
 ## dificultad facil: la mitad del viento sobre la resistencia, sin turbulencia que alabea, sin entrada de aire en el
 ## empuje, sin efecto suelo y sin propwash (como en JS)
 var facil := false
@@ -34,10 +35,11 @@ func _init(d: Dictionary) -> void:
 	inercia = d["inercia"].duplicate(); inercia_diseno = d["inercia"].duplicate(); masa_diseno_kg = d["masa_kg"]
 	cg_mm = d["cg_mm"]; propulsion = d["propulsion"]; fc = d["fc"]; mandos = d["mandos"].duplicate()
 	compensador_grados = d.get("compensador_grados", 0.0); lanzamiento = d["lanzamiento"]
+	B = Bateria.datos(propulsion)
 
 ## Masa, temperatura (densidad), empuje estatico medido (gf, el de los 4 motores) y factor de resistencia. (cg_mm no se usa.)
 func configurar(op: Dictionary) -> void:
-	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15))
+	if op.has("temperatura"): rho = 101325 / (287.05 * (op["temperatura"] + 273.15)); temp_c = op["temperatura"]
 	if op.get("empuje_gf", 0): calib["empuje"] = op["empuje_gf"] / 1000.0 * G0 / (4 * propulsion["empuje_motor_N"])
 	if op.get("resistencia", 0): calib["resistencia"] = op["resistencia"]
 	if op.get("masa_kg", 0):
@@ -45,18 +47,20 @@ func configurar(op: Dictionary) -> void:
 		var k := masa_kg / masa_diseno_kg
 		for n in inercia_diseno.keys(): inercia[n] = inercia_diseno[n] * k
 
-## Tension en vacio de la bateria (V) con la carga gastada (mAh).
-func _voc(mAh: float) -> float:
-	var pr := propulsion; var soc := maxf(0, 1 - mAh / pr["capacidad_mAh"])
-	return pr["celdas"] * ModeloAvion.interp(pr["curva_soc"], pr["curva_v"], soc)
+## Tension en vacio de la bateria (V) con lo gastado hasta ahora.
+func _voc(av: Dictionary) -> float:
+	var s := 0.0; var o := Bateria.ocv_celda(B, av["bat"])
+	for i in int(B["celdas"]): s += o
+	return s
 
 ## En el suelo y desarmado ("en mano" para el simulador: lanzar() lo arma).
 func estado_inicial() -> Dictionary:
+	var bat := Bateria.nueva(B, temp_c)
 	return { "p": [0.0, 0.0, -0.02], "q": Cuat.desde_euler(0, 0, 0), "v": [0.0, 0.0, 0.0], "w": [0.0, 0.0, 0.0], "de": 0.0, "dr": 0.0, "da": 0.0,
 			 "gases": 0.0, "Wh": 0.0, "asim": 0.0, "estado": "en mano", "t": 0.0, "alfa": 0.0, "beta": 0.0, "V": 0.0, "g_carga": 1.0, "perdida": 0.0,
 			 "T": 0.0, "rpm": 0.0, "motorRoto": false, "posado": true, "despegado": false, "armado": false, "tArmado": 0.0,
 			 "cmd": { "alabeo": 0.0, "cabeceo": 0.0, "guinada": 0.0 }, "integ": [0.0, 0.0, 0.0], "motores": [0.0, 0.0, 0.0, 0.0],
-			 "mAh": 0.0, "Vbat": _voc(0), "I": 0.0, "P": 0.0, "propwash": 0.0 }
+			 "mAh": 0.0, "Vbat": bat["V"], "I": 0.0, "P": 0.0, "propwash": 0.0, "bat": bat }
 
 ## Armar (el simulador comprueba antes que el gas este abajo): motores al ralenti en el suelo.
 func lanzar(av: Dictionary) -> void:
@@ -71,7 +75,7 @@ func desarmar(av: Dictionary) -> void:
 ## Para los escenarios que empiezan en el aire: armado, en vuelo y con el gas que lo sostiene.
 func armar_en_vuelo(av: Dictionary) -> void:
 	av["armado"] = true; av["posado"] = false; av["despegado"] = true; av["integ"] = [0.0, 0.0, 0.0]
-	var F := fc; var kV: float = _voc(av["mAh"]) / propulsion["V_ref"]; var Tm: float = propulsion["empuje_motor_N"] * calib["empuje"] * kV * kV
+	var F := fc; var kV: float = _voc(av) / propulsion["V_ref"]; var Tm: float = propulsion["empuje_motor_N"] * calib["empuje"] * kV * kV
 	var u := sqrt(masa_kg * G0 / 4 / Tm)
 	av["gases"] = clampf((u - F["ralenti"]) / (1 - F["ralenti"]), 0, 1); av["motores"] = [u * kV, u * kV, u * kV, u * kV]
 
@@ -117,8 +121,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var agl: float = 100.0 if not tiene_agl else av["agl"]
 	var eu := Cuat.euler(q); var roll: float = eu[0]; var pitch: float = eu[1]; var yaw: float = eu[2]
 	# --- bateria: tension en vacio segun lo gastado y caida por la resistencia interna con la potencia del paso anterior ---
-	var Voc := _voc(av["mAh"]); var disc: float = Voc * Voc - 4 * pr["R_ohm"] * av["P"]
-	var V: float = 0.5 * (Voc + sqrt(disc)) if disc > 0 else 0.5 * Voc
+	var V := Bateria.tension(B, av["bat"])
 	av["Vbat"] = V
 	var kV: float = V / pr["V_ref"]; var Tref: float = pr["empuje_motor_N"] * calib["empuje"]; var TmaxV: float = Tref * kV * kV; var idle: float = F["ralenti"]
 	# --- controlador de vuelo: consignas de velocidad de giro segun el modo ---
@@ -188,7 +191,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	var pg: float = float(av.get("pg", 0.0)) if av.get("pg") != null else 0.0
 	if pg and not FAC: Lr += I["Ixx"] * pg * 4
 	# --- bateria: potencia de los motores y de la electronica; corriente con la tension ---
-	av["P"] = P; av["I"] = P / V; av["mAh"] += av["I"] * dt / 3.6; av["Wh"] += P * dt / 3600
+	var eb: Dictionary = av["bat"]; Bateria.gastar(B, eb, P, dt); av["P"] = eb["P"]; av["I"] = eb["I"]; av["mAh"] = eb["mAh"]; av["Wh"] = eb["Wh"]
 	av["T"] = Tt; av["rpm"] = 0.25 * (mot[0] + mot[1] + mot[2] + mot[3]) * pr["rpm_max"]
 	av["alfa"] = 0.0; av["beta"] = 0.0; av["perdida"] = 0.0; av["g_carga"] = Tt / (m * G0)
 	if armado: av["tArmado"] += dt
@@ -225,7 +228,7 @@ func paso(av: Dictionary, viento: Array, dt: float) -> Array:
 	return vn2
 
 func bateria_pct(av: Dictionary) -> float:
-	return maxf(0, 100 * (1 - av["mAh"] / propulsion["capacidad_mAh"]))
+	return Bateria.pct(B, av["bat"])
 
 ## Tension por celda (V) con la carga de ahora.
 func celda(av: Dictionary) -> float:

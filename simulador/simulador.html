@@ -826,7 +826,8 @@
 
 <script src="lib/three.js?v=20"></script>
 <script src="lib/three-extras.js?v=21"></script>
-<script src="js/modelos.js?v=23"></script>
+<script src="js/bateria.js?v=1"></script>
+<script src="js/modelos.js?v=24"></script>
 <script src="js/entorno.js?v=25"></script>
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=8"></script>
@@ -1752,6 +1753,7 @@ function paso(dt) {
   const pAnt = av.p.slice();
   if (modelo.esTerrestre) { pasoTerrestre(dt, viento, pAnt); return; }
   const vn = modelo.paso(av, viento, dt);
+  avisosBateria();
   if (gasPalanca !== null) { av.gasMotor = av.gases; av.gases = gasPalanca; } else av.gasMotor = av.gases;   // la palanca del gas no se mueve: en crucero elige la velocidad
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
   if (modelo.tren) {                           // avion de pista: lo que rompe el tren o las alas en tierra y el final de la carrera
@@ -1794,6 +1796,19 @@ function paso(dt) {
   }
   const suelo = entorno.contactoSuelo(av, vn);
   if (suelo) terminarVuelo(suelo, vn);
+}
+/** Avisos de la bateria (js/bateria.js), una vez cada uno: el dron con poca bateria (av.avisoBat del modelo: baja, vuelta a
+ *  casa por bateria, aterrizaje forzoso), el avion al 20 % y con el motor cortado por el regulador, y sin bateria. */
+function avisosBateria() {
+  if (!av.bat) return;
+  const pct = modelo.bateriaPct(av), k = (av.avisoBat || (!modelo.esCuadricoptero && pct <= 20 ? "baja" : "")) + (av.cortado ? "+cortado" : "") + (av.sinBateria ? "+agotada" : "");
+  if (k === (av._batVisto || "")) return;
+  const ant = av._batVisto || ""; av._batVisto = k;
+  if (av.sinBateria && !ant.includes("+agotada")) { toast("Batería agotada: los motores se paran"); return; }
+  if (av.cortado && !ant.includes("+cortado")) { toast("El regulador ha cortado el motor: batería agotada. Planea y aterriza"); aviso("Motor cortado: batería agotada"); return; }
+  if (k.startsWith("baja") && !ant.startsWith("baja")) toast(modelo.esCuadricoptero ? "Batería baja (30 %): vuelve pronto" : "Batería baja (20 %): aterriza pronto");
+  if (k.startsWith("rth") && !ant.startsWith("rth")) toast("Batería justa para volver: volviendo a casa (mueve las palancas para cancelar)");
+  if (k.startsWith("critica") && !ant.startsWith("critica")) { toast("¡Batería crítica! Aterrizaje forzoso: busca dónde posarlo"); aviso("Aterrizaje forzoso: batería crítica"); }
 }
 /** Un paso del bipode: la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso del modelo, la altura del
  *  terreno donde queda y los choques: arboles, pilones y edificios lo paran (no lo rompen); en el mar se hunde. */
@@ -3248,6 +3263,7 @@ function djiDespegar() {
 }
 function djiRTH() {
   if (!modelo || !modelo.esCuadricoptero || Repeticion.activa || av.estado !== "volando" || av.posado) return;
+  if (av.batForzado) { toast("Aterrizaje forzoso por batería crítica: no se puede cancelar"); return; }
   if (av.rth && av.rth.fase !== "bajar") { av.rth = null; toast("Volver a casa cancelado"); return; }
   modelo.volverACasa(av); toast("Volviendo a casa");
 }
