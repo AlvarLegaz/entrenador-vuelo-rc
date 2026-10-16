@@ -51,7 +51,7 @@ GUION = r"""
       }
       if (i % 250 === 0)
         muestras.push({ t, p: a.p.slice(), v: a.v.slice(), w: a.w.slice(), q: a.q.slice(), Wh: a.Wh, estado: a.estado,
-                        V: a.bat ? a.bat.V : 0, celdas: a.bat ? a.bat.celdas.slice() : [], avisoBat: a.avisoBat || "" });
+                        V: a.bat ? a.bat.V : 0, celdas: a.bat ? a.bat.celdas.slice() : [], avisoBat: a.avisoBat || "", rotura: a.roturaMontaje || "" });
       m.servos(a, mando, DT);
       a.agl = -a.p[2];
       const viento = ent.vientoA(VIENTO, a.agl);
@@ -60,6 +60,7 @@ GUION = r"""
       Desgaste.antesPaso(m, a);
       const vn = m.paso(a, viento, DT);
       Desgaste.despuesPaso(m, a, DT);
+      if (a.roturaMontaje && !finales.length) finales.push({ t, final: "roto (" + a.roturaMontaje + ")", N: a.p[0], E: a.p[1] });
       const final = contacto(a, vn);
       if (final) {
         a.estado = final.startsWith("roto") ? "roto" : final === "aterrizado" ? "aterrizado" : "terminado";
@@ -90,15 +91,16 @@ GUION = r"""
     { id: "e3_celda", avion: "E3", averias: [{ c: "bateria", tipo: "celda", n: 2 }] },
     { id: "t1_servo", avion: "T1", averias: [{ c: "servo_elevon_izq", tipo: "holgura" }, { c: "bisagra_elevon_der", tipo: "floja" }] },
     { id: "g1_timon", avion: "G1", averias: [{ c: "bisagra_timon", tipo: "floja" }, { c: "servo_profundidad", tipo: "holgura" }] },
+    { id: "grajo_montaje", avion: "GRAJO", averias: [{ c: "montaje_cola", tipo: "suelto" }, { c: "montaje_ala", tipo: "suelto" }, { c: "helice", tipo: "mella" }] },
   ];
   const trazas = {};
   for (const c of CASOS) trazas[c.id] = traza(c);
   // desgaste de 14 vuelos seguidos de cada vehiculo (empieza con 0,8 h: los primeros no rompen nada)
   const desgaste = {}, taller = {}, catalogo = {};
-  for (const id of ["DJI_MINI", "HQ3T", "FPV", "E3", "T1", "G1", "XM7"]) {
+  for (const id of ["DJI_MINI", "HQ3T", "FPV", "E3", "T1", "G1", "XM7", "GRAJO"]) {
     const A = Modelos.datos(id), est = Object.assign(Desgaste.nuevo(), { horas: 0.8 }), pasos = [];
     for (let k = 0; k < 14; k++) {
-      const info = { s: 600 + 97 * k, roto: k % 5 === 3, bat0: 100, bat1: k % 4 === 2 ? 7 : 35, tempMax: k % 6 === 4 ? 61 : 32, semilla: "vuelo-" + k + "-" + id, fecha: "2026-10-16T10:" + String(k).padStart(2, "0") + ":00Z" };
+      const info = { s: 600 + 97 * k, roto: k % 5 === 3, bat0: 100, bat1: k % 4 === 2 ? 7 : 35, tempMax: k % 6 === 4 ? 61 : 32, semilla: "vuelo-" + k + "-" + id, fecha: "2026-10-16T10:" + String(k).padStart(2, "0") + ":00Z", tomaPerdida: k % 2 === 0 };
       const nuevas = Desgaste.trasVuelo(est, A, info);
       pasos.push({ nuevas: nuevas.map(a => [a.c, a.tipo, a.n === undefined ? -1 : a.n, a.origen]), horas: est.horas, salud: est.bateria.salud, ciclos: est.bateria.ciclos, n: est.averias.length });
     }

@@ -4,6 +4,8 @@ extends Control
 ## pestanas: Ficha (caracteristicas) y Ajustes del avion (centro de gravedad y peso, recorridos de la emisora y
 ## lanzamiento, calibracion con el avion real y aire), en secciones plegables como los <details> de la web.
 
+var sec_morro: Control
+var morros := {}
 var p: Node
 var d: Dictionary
 var lista: VBoxContainer
@@ -78,6 +80,16 @@ func _txt_b(tam := 14) -> Label:
 	var l := Tema.etiqueta("", tam, Tema.TEXTO, true, true); return l
 
 func _construir_ajustes() -> void:
+	# ---- morro de camaras (solo los vehiculos que lo cambian: el Grajo) ----
+	var pm := plegable("Carga útil: morro de cámaras", true); sec_morro = pm[0]; var mo: VBoxContainer = pm[1]; panel_ajustes.add_child(sec_morro)
+	var grupo := ButtonGroup.new()
+	for op in [["fijo", "[b]Fijo[/b] · cámaras de color e infrarroja que miran al frente y de lado, sujetas al avión (se inclinan con él). V cambia de una a otra; para apuntar, se apunta con el avión"],
+			   ["orientable", "[b]Orientable[/b] · torreta estabilizada de día y noche bajo el morro (como la modernización DDL): se mueve con las flechas y Mayúsculas y se fija en un punto (K). Pesa 0,3 kg más"]]:
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 8)
+		var cb := CheckBox.new(); cb.button_group = grupo; cb.name = "Morro_" + op[0]; cb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		cb.toggled.connect(func(on): if on and not _pintando: p.poner_morro(p.sesion["avion"], op[0]); previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.4))
+		var t := Tema.rico(op[1], 14); t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(cb); h.add_child(t); mo.add_child(h); morros[op[0]] = cb
 	# ---- centro de gravedad y peso ----
 	var pc := plegable("Centro de gravedad y peso", true); sec_cm = pc[0]; var c: VBoxContainer = pc[1]; panel_ajustes.add_child(sec_cm)
 	s_cg = Tema.deslizador(15, 60, 1, 30)
@@ -142,7 +154,11 @@ func refrescar() -> void:
 	if A.has("perfil") and not tiene.call("perfil"): filas.insert(2, ["Perfil alar", A["perfil"]])
 	for x in panel_ficha.get_children(): x.queue_free()
 	panel_ficha.add_child(Tema.tabla_datos(filas))
-	previa.mostrar(A, 1.4)
+	previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.4)
+	var mo = p.morro_de(p.sesion["avion"]); sec_morro.visible = mo != null
+	_pintando = true
+	for k in morros: morros[k].button_pressed = k == mo
+	_pintando = false
 	refrescar_cm()
 
 func refrescar_cm() -> void:
@@ -167,8 +183,9 @@ func refrescar_cm() -> void:
 	else: txt = "Margen estático %d %% (punto neutro al %d %%): dentro de lo normal en un entrenador (10–30 %%)." % [int(round(margen)), int(round(np))]
 	if c["masa"] > dd["masa"] * 1.15: txt += " Con %d g más, pierde a %s m/s: hay que lanzarlo más fuerte y aterrizar más rápido." % [int(c["masa"] - dd["masa"]), _f1(vs)]
 	elif c["masa"] < dd["masa"] * 0.9: txt += " Más ligero: vuela más despacio, pero las rachas lo mueven más."
-	var gmin = null if A.has("tren") else p.gas_minimo_lanzamiento({})      # un avion de pista no se lanza a mano
-	if A.has("tren"): txt += " Despega y aterriza en pista."
+	var gmin = null if (A.has("tren") or A.get("lanzado_a_mano", false)) else p.gas_minimo_lanzamiento({})      # un avion de pista no se lanza a mano; el Grajo lo sube el automatico
+	if A.get("lanzado_a_mano", false): txt += " Se lanza a mano, de cara al viento, con el motor a tope: el piloto automático lo sube solo (modo Lanzamiento)."
+	elif A.has("tren"): txt += " Despega y aterriza en pista."
 	elif gmin == null: color = Color("#ff6e66"); txt += " ⚠ Con %d g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano." % int(c["masa"])
 	else: txt += " Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el %d %% de gas." % p.pct_gas(gmin)
 	t_efecto.text = txt; t_efecto.add_theme_color_override("font_color", color)

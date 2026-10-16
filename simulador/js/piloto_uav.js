@@ -64,6 +64,17 @@ class PilotoUAV {
   /** Un paso. pal: palancas {pitch, yaw, guinada} y gasPalanca (0..1, la del gas: en crucero elige la velocidad).
    *  Devuelve {pitch, yaw, guinada, gas, freno}: gas y freno null si no los lleva (los manda el piloto). */
   paso(av, dt, pal, gasPalanca) {
+    // con un sensor averiado (this.sens, js/desgaste.js: el Grajo) el piloto trabaja con lo que creen los sensores: el
+    // GPS (la posicion se le va moviendo), la brujula (rumbo), la IMU (actitud) y el barometro (altura que se va)
+    const S = this.sens;
+    if (S && !this._conSens) {
+      const e0 = Cuat.euler(av.q), dz = S.vz * av.t, ae = Object.assign({}, av, {
+        p: [av.p[0] + (S.gps ? S.gps * Math.cos(2 * Math.PI * av.t / 25) : 0), av.p[1] + (S.gps ? S.gps * Math.sin(2 * Math.PI * av.t / 31) : 0), av.p[2] + dz],
+        q: Cuat.desdeEuler(e0[0] + S.alabeo, e0[1] + S.cabeceo, e0[2] + S.rumbo) });
+      if (av.agl !== undefined) ae.agl = av.agl - dz;
+      this._conSens = true; const r = this.paso(ae, dt, pal, gasPalanca); this._conSens = false;
+      av.profToma = ae.profToma; return r;
+    }
     const P = this.P, L = PilotoUAV.lim, W = PilotoUAV.envolver, e = Cuat.euler(av.q), V = Math.max(1, P.pitot && av.V !== undefined ? av.V : Math.hypot(...av.v));   // con datos.piloto.pitot (el Grajo), la del aire
     const vn = Cuat.rot(av.q, av.v), vz = -vn[2], h = -av.p[2], m = this.modo;
     this.vzc = vz;                                       // la subida pedida (la pone altura(); si no, la que lleva)

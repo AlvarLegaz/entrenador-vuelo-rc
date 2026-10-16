@@ -9,6 +9,7 @@ extends Node3D
 
 var prof: Node3D; var timon: Node3D; var alerones := []; var helice: Node3D; var luces := []
 var torreta: Node3D                  # torreta EO/IR (XM-7): gira e inclina con av.torreta {pan, tilt}
+var cam_fija = null                  # morro de camaras fijo (el Grajo): {pos, frontal, lateral}, sujetas al avion
 var fpv: ModeloFPV3D = null      # dron FPV: su modelo 3D (modelo_fpv_3d.gd, con los datos de aviones/FPV.js)
 var camara_fpv := false          # con la camara FPV el dron no se dibuja (la camara va dentro del bastidor)
 var dji: ModeloDJI3D            # cuadricoptero: el modelo detallado (null en los aviones)
@@ -89,6 +90,8 @@ func _init(datos: Dictionary) -> void:
 	if K.has("torreta"):                 # torreta EO/IR: la bola y sus ventanas, sobre su centro
 		var TQ: Dictionary = K["torreta"]; torreta = Node3D.new(); torreta.position = Vector3(TQ["centro"][0], TQ["centro"][1], TQ["centro"][2]); add_child(torreta)
 		for mm in [TQ, TQ["ventanas"]]: var mi := _pieza(torreta, mm, int(mm["color"])); mi.position = -torreta.position
+		if TQ.has("yugo"): _pieza(self, TQ["yugo"], int(TQ["yugo"]["color"]))      # la horquilla, fija al avion
+	elif K.has("cam_fija"): cam_fija = K["cam_fija"]
 	if K.has("helices"):        # multicoptero: un disco horizontal por rotor (en ejes cuerpo el plano x-y ya es horizontal)
 		helice = Node3D.new()
 		for hp in K["helices"]:

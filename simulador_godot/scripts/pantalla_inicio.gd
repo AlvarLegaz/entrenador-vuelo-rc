@@ -120,4 +120,4 @@ func refrescar() -> void:
 	var w := maxf(perfil_nombre.get_minimum_size().x, perfil_modo.get_minimum_size().x) + 44
 	perfil.custom_minimum_size = Vector2(w, 84); perfil.offset_left = -w / 2; perfil.offset_right = w / 2
 	chip_aula.text = p.aula.texto_estado()
-	previa.mostrar(A, 1.75)
+	previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.75)

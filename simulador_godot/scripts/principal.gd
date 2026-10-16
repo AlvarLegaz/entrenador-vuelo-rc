@@ -435,6 +435,24 @@ func destacados_lanz() -> Array:
 	return Escenarios.datos().get(sesion["escenario"], {}).get("destacados", [])
 ## El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San
 ## Javier). Como necesitaPista() y destacadoConPista() de la web.
+## ---- morro de camaras (datos.camara.morros: el Grajo): fijo (camaras sujetas al avion) u orientable (torreta, con su
+## peso); se elige en el Hangar y se guarda por vehiculo (morroDe y datosVisor de la web) ----
+func morro_de(id: String):
+	var C = DatosComunes.avion(id).get("camara")
+	if not C is Dictionary or not C.has("morros"): return null
+	var m = aj.get("morro", {}).get(id)
+	return m if (C["morros"] as Array).has(m) else C["morros"][0]
+func poner_morro(id: String, m: String) -> void:
+	if not aj.has("morro"): aj["morro"] = {}
+	aj["morro"][id] = m; _guardar()
+## Los datos del vehiculo para dibujarlo, con el morro elegido.
+func datos_visor(id: String) -> Dictionary:
+	var A := DatosComunes.avion(id); var m = morro_de(id)
+	if m == null or not A.has("malla"): return A
+	var K: Dictionary = (A["malla"] as Dictionary).duplicate(); var B := A.duplicate(); B["malla"] = K
+	if m == "fijo": K.erase("torreta")
+	else: K.erase("cam_fija")
+	return B
 func necesita_pista() -> bool: return DatosComunes.avion(sesion["avion"]).get("tren") != null     # los de tren (el Cernicalo) despegan de pista; el Grajo, a mano
 func destacado_con_pista() -> Dictionary:
 	for d in destacados_lanz():
@@ -954,7 +972,8 @@ func empezar() -> void:
 	var A := DatosComunes.avion(sesion["avion"])
 	if Desgaste.clase(A) != "": Desgaste.aplicar(modelo, Desgaste.estado(sesion["avion"]))    # sus averias y el desgaste de la bateria
 	if avion3d: avion3d.queue_free()
-	avion3d = Avion3D.new(A); add_child(avion3d)
+	avion3d = Avion3D.new(datos_visor(sesion["avion"])); add_child(avion3d)
+	if morro_de(sesion["avion"]) == "orientable": modelo.configurar({ "masa_kg": modelo.masa_kg + float(A["camara"].get("masa_orientable_kg", 0.0)) })   # la torreta pesa
 	_texto_ayuda(A)
 	hud_dji.b_briefing.visible = E.has("operacion"); ver_briefing(false)   # trabajos: el briefing a mano (B)
 	# el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
@@ -1022,6 +1041,7 @@ func reiniciar() -> void:
 	if es_uav():
 		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual() if con_tren() else null, [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
 		av["torreta"] = { "pan": 0.0, "tilt": -20 * D2R }; UAV["fijo"] = null; UAV["cruz"] = null; UAV["fotos"] = 0
+		if morro_de(sesion["avion"]) == "fijo": UAV["vista"] = "frontal"; poner_vista_fija()     # morro fijo: la camara frontal
 	else: piloto = null
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
 	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
@@ -1112,6 +1132,7 @@ func paso(dt: float) -> void:
 	var gas_palanca = null
 	if piloto != null and av["estado"] == "volando" and piloto.modo != "MANUAL":      # UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
 		piloto.viento_desde = ent.viento["rumbo"] - PI; piloto.viento_vel = ent.viento["base"]     # la toma en perdida, contra el viento
+		piloto.sens = modelo.sens                                                                  # sensores averiados (el Grajo)
 		var o := piloto.paso(av, dt, mando, av["gases"])
 		var mm := mando.duplicate(); mm["pitch"] = o["pitch"]; mm["yaw"] = o["yaw"]; mm["guinada"] = o["guinada"]
 		modelo.servos(av, mm, dt)
@@ -1136,6 +1157,7 @@ func paso(dt: float) -> void:
 	Desgaste.antes_paso(modelo, av)               # averias: superficies con holgura o bisagra floja (desgaste.gd)
 	var vn: Array = modelo.paso(av, viento, dt)
 	Desgaste.despues_paso(modelo, av, dt)         # y vibraciones o el par de una helice danada
+	if av.has("roturaMontaje"): terminar_vuelo("roto (" + String(av["roturaMontaje"]) + ")", vn); return     # el Grajo con el ala sin asegurar
 	_avisos_bateria()
 	if destino_prueba != null: av["p"] = (destino_prueba as Array).duplicate(); av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]   # pruebas: el dron llevado en volandas
 	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
@@ -1202,7 +1224,7 @@ func desgaste_tras_vuelo(v: Dictionary, final: String) -> void:
 	var T: Array = col.call("temperatura_bateria_C"); var B: Array = col.call("bateria_pct") if modelo.get("B") is Dictionary and not (modelo.B as Dictionary).is_empty() else []
 	var extra: Array = (v.get("averiasSala", []) as Array).duplicate()
 	var info := { "s": float(av["t"]), "roto": final.begins_with("roto"), "bat0": B[0] if not B.is_empty() else null, "bat1": B[-1] if not B.is_empty() else null,
-				  "tempMax": T.max() if not T.is_empty() else null, "semilla": String(v["id"]), "fecha": Aula.ahora_iso() }
+				  "tempMax": T.max() if not T.is_empty() else null, "semilla": String(v["id"]), "fecha": Aula.ahora_iso(), "tomaPerdida": av.get("tomaPerdida", false) }
 	Desgaste.modificar(self, sesion["avion"], func(est):
 		for a in extra: Desgaste.anadir(est, a, "profesor", info["fecha"])
 		return Desgaste.tras_vuelo(est, A, info))
@@ -1362,7 +1384,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	if av["estado"] != "volando": return
 	if vn == null: vn = [0.0, 0.0, 0.0]
 	# lanzamiento fallido: en el suelo antes de 6 s sin pasar de 5 m. No cuenta como aterrizaje; si se ha roto, como accidente
-	if vuelo != null and not es_dron() and not es_bipode() and not con_tren() and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
+	if vuelo != null and not es_dron() and not es_bipode() and not con_tren() and not modelo.datos.get("lanzado_a_mano", false) and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
 		vuelo["lanzamiento"] = causa_lanzamiento_fallido(vuelo["gasLanz"])
 		var roto := final.begins_with("roto")
 		final = ("roto (" if roto else "") + "lanzamiento fallido: " + String(vuelo["lanzamiento"]["corto"]) + (")" if roto else "")
@@ -1696,6 +1718,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		if k == KEY_X: dji_zoom(-1)
 		if k == KEY_C: dji_termica()
 		if k == KEY_K: uav_fijar()
+		if k == KEY_V and morro_de(sesion["avion"]) == "fijo": cambiar_vista_fija()
 		if k == KEY_F: uav_foto()
 	elif k == KEY_H and not dron: mostrar_hud = not mostrar_hud
 	if k == KEY_G and libre: vto["rachas"] = not vto["rachas"]
@@ -1804,6 +1827,9 @@ func torreta_con_flechas() -> bool:
 	return piloto != null and (Input.is_physical_key_pressed(KEY_SHIFT) or piloto.modo in ["PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"])
 ## Donde esta la torreta (NED) y hacia donde mira (vector unitario NED).
 func eje_torreta() -> Array:
+	if avion3d != null and avion3d.cam_fija != null:            # morro fijo: sujeta al avion
+		var tf: Dictionary = av["torreta"]; var ct := cos(float(tf["tilt"])); var st := sin(float(tf["tilt"])); var cf := Cuat.rot(av["q"], avion3d.cam_fija["pos"])
+		return [[av["p"][0] + cf[0], av["p"][1] + cf[1], av["p"][2] + cf[2]], Cuat.rot(av["q"], [ct * cos(float(tf["pan"])), ct * sin(float(tf["pan"])), -st])]
 	var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]
 	var c := Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"]) if modelo.datos["malla"].has("torreta") else [0.0, 0.0, 0.0]
 	return [[av["p"][0] + c[0], av["p"][1] + c[1], av["p"][2] + c[2]], [cos(yaw) * cos(tr["tilt"]), sin(yaw) * cos(tr["tilt"]), -sin(tr["tilt"])]]
@@ -1824,8 +1850,15 @@ func punto_cruz() -> Variant:
 		ant = s; s += maxf(5, s * 0.02)
 	return null
 ## Cada cuadro: mueve la torreta con las flechas, Q/E y el mando (mas despacio cuanto mas zoom) o la apunta al punto fijo.
+## Morro fijo: la camara de la ventana elegida (frontal o lateral), con su inclinacion fija respecto al avion.
+func poner_vista_fija() -> void:
+	var F: Array = DatosComunes.avion(sesion["avion"])["malla"]["cam_fija"][UAV.get("vista", "frontal")]
+	av["torreta"] = { "pan": float(F[0]) * D2R, "tilt": float(F[1]) * D2R }
+func cambiar_vista_fija() -> void:
+	UAV["vista"] = "frontal" if UAV.get("vista", "frontal") == "lateral" else "lateral"; poner_vista_fija()
+	poner_toast("Cámara lateral (izquierda)" if UAV["vista"] == "lateral" else "Cámara frontal")
 func mover_torreta(dt: float) -> void:
-	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto": return
+	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto" or morro_de(sesion["avion"]) == "fijo": return   # el morro fijo no se mueve
 	var tr: Dictionary = av["torreta"]; var z: float = cam_dji()["zoom"]; var k := TORRETA_VEL / pow(z, 0.7) * dt; var fl := torreta_con_flechas()
 	var T := func(kk: int) -> float: return 1.0 if Input.is_physical_key_pressed(kk) else 0.0
 	var dp: float = ((T.call(KEY_RIGHT) - T.call(KEY_LEFT)) if fl else 0.0) + (_mando_torreta[0] if not _mando_torreta.is_empty() else 0.0)
@@ -1839,6 +1872,7 @@ func mover_torreta(dt: float) -> void:
 	UAV["cruz"] = punto_cruz()
 ## K: fija la torreta en el punto de la cruz (o la suelta).
 func uav_fijar() -> void:
+	if morro_de(sesion["avion"]) == "fijo": poner_toast("Con el morro fijo no hay torreta: apunta con el avión"); return
 	if not es_uav(): return
 	if UAV["fijo"] != null: UAV["fijo"] = null; poner_toast("Torreta: punto suelto"); return
 	var c: Variant = punto_cruz()
@@ -1955,6 +1989,12 @@ func _camara() -> void:
 	var t := Avion3D.ned(av["p"])
 	if _args.has("cenital"):          # pruebas: vista vertical del punto de lanzamiento desde la altura dada
 		cam.fov = 60; cam.global_position = vista.base + Vector3(0, float(_args["cenital"]), 0); cam.look_at(vista.base, Vector3.FORWARD); return
+	if es_uav() and camara == 3 and avion3d.cam_fija != null:      # morro fijo: la camara sujeta al avion, al frente o de lado
+		var tf: Dictionary = av["torreta"]; var qf: Array = av["q"]; var ct := cos(float(tf["tilt"])); var st := sin(float(tf["tilt"])); var cp := cos(float(tf["pan"])); var sp := sin(float(tf["pan"]))
+		var fwf := Avion3D.ned(Cuat.rot(qf, [ct * cp, ct * sp, -st])); var upf := Avion3D.ned(Cuat.rot(qf, [-st * cp, -st * sp, -ct]))
+		var posf := t + Avion3D.ned(Cuat.rot(qf, avion3d.cam_fija["pos"])) + 0.03 * fwf; var zf: float = cam_dji()["zoom"]
+		cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zf)) if zf > 1 else 58.0; cam.global_position = posf; cam.look_at(posf + fwf, upf)
+		return
 	if es_uav() and camara != 2 and avion3d.torreta != null:
 		if camara == 1:              # camara de vuelo: fija en el morro, algo inclinada hacia abajo
 			var q: Array = av["q"]; var ti := -4 * D2R

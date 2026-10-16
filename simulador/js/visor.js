@@ -61,6 +61,7 @@ function construirAvion(datos) {
     torreta = new THREE.Group(); torreta.position.set(...K.torreta.centro); torreta.rotation.order = "ZYX";
     for (const m of [K.torreta, K.torreta.ventanas]) { const mm = new THREE.Mesh(geom(m), mat(m.color)); mm.position.set(-K.torreta.centro[0], -K.torreta.centro[1], -K.torreta.centro[2]); torreta.add(mm); }
     grupo.add(torreta);
+    if (K.torreta.yugo) grupo.add(new THREE.Mesh(geom(K.torreta.yugo), mat(K.torreta.yugo.color)));    // la horquilla, fija al avion
   }
   const matHelice = () => new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
   let helice;
@@ -89,7 +90,8 @@ function construirAvion(datos) {
     g.add(new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 6), new THREE.MeshBasicMaterial({ color: l.color })));
     grupo.add(g); return g;
   });
-  return { grupo, prof, timon, alerones, helice, luces, torreta, centroTorreta: K.torreta ? K.torreta.centro : null, dron: !!K.helices };
+  return { grupo, prof, timon, alerones, helice, luces, torreta, centroTorreta: K.torreta ? K.torreta.centro : null, dron: !!K.helices,
+           camFija: !K.torreta && K.cam_fija ? K.cam_fija : null };     // morro de camaras fijo (el Grajo): sujetas al avion
 }
 
 // ---------------------------------------------------------------------
@@ -1239,6 +1241,14 @@ void main() {
       // UAV: camara de vuelo, fija en el morro y algo inclinada hacia abajo (la que usa el piloto para despegar y aterrizar)
       const q = av.q, ti = -4 * Math.PI / 180, pos = ned2three(Cuat.rot(q, [1.1, 0, 0.05])), fw = ned2three(Cuat.rot(q, [Math.cos(ti), 0, -Math.sin(ti)])), up = ned2three(Cuat.rot(q, [-Math.sin(ti), 0, -Math.cos(ti)]));
       cam.position.set(t[0] + pos[0], t[1] + pos[1], t[2] + pos[2]); cam.fov = 55;
+      cam.up.set(up[0], up[1], up[2]); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
+    } else if (this.camara === 3 && this.avion && this.avion.camFija) {
+      // morro de camaras fijo (el Grajo): la camara va sujeta al avion (se inclina con el), mirando al frente o de lado
+      // (av.torreta: pan y tilt de la ventana elegida); el zoom es digital
+      const tr = av.torreta || { pan: 0, tilt: 0 }, q = av.q, ct = Math.cos(tr.tilt), st = Math.sin(tr.tilt), cp = Math.cos(tr.pan), sp = Math.sin(tr.pan);
+      const pos = ned2three(Cuat.rot(q, this.avion.camFija.pos)), fw = ned2three(Cuat.rot(q, [ct * cp, ct * sp, -st])), up = ned2three(Cuat.rot(q, [-st * cp, -st * sp, -ct]));
+      cam.position.set(t[0] + pos[0] + 0.03 * fw[0], t[1] + pos[1] + 0.03 * fw[1], t[2] + pos[2] + 0.03 * fw[2]);
+      cam.fov = this.zoomCam > 1 ? 2 * Math.atan(Math.tan(29 * Math.PI / 180) / this.zoomCam) * 180 / Math.PI : 58;
       cam.up.set(up[0], up[1], up[2]); cam.lookAt(t[0] + pos[0] + fw[0], t[1] + pos[1] + fw[1], t[2] + pos[2] + fw[2]);
     } else if (this.camara === 3 && this.avion && this.avion.torreta) {
       // UAV: la torreta EO/IR, estabilizada (sin el alabeo ni el cabeceo del avion), con el rumbo del avion mas su giro

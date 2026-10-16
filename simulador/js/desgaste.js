@@ -10,7 +10,10 @@
 //  inspecciona, se repara y se apunta en el libro.
 //  Efectos (aplicar): empuje y consumo (kEmp, kPot y, en el FPV, por motor), vibraciones y par de una helice danada
 //  (antesPaso/despuesPaso, alrededor de modelo.paso), sensores del dron comercial (modelo.sens: brujula, IMU, GPS y
-//  barometro), bateria (capacidad y resistencia con la salud, celda debil) y superficies (holgura del servo, bisagra).
+//  barometro; y en el Grajo, los del piloto automatico), bateria (capacidad y resistencia con la salud, celda debil),
+//  superficies (holgura del servo, bisagra) y, en el Grajo, el montaje: en la toma en perdida profunda pueden soltarse el
+//  ala, la cola o el morro (esta hecho asi); sin asegurarlos, el ala se suelta en vuelo con carga, la cola flamea y el
+//  morro se queda sin video.
 // =====================================================================
 const Desgaste = {
   HORAS_SIN_AVERIAS: 1,
@@ -23,14 +26,17 @@ const Desgaste = {
   CLAVE_SUP: { alerones: "da", profundidad: "de", timon: "dr", elevon_izq: "elevon_izq", elevon_der: "elevon_der" },
   // por cada hora de uso del componente (tasa x horas, por hora de vuelo) o fija (por hora de vuelo)
   TASAS: { helice: [0.06, 1], motor: [0.02, 1], servo: [0.04, 1], bisagra: [0.03, 1], celda: [0.02, 1], brujula: [0.05, 0], imu: [0.03, 0], gps: [0.02, 0], barometro: [0.02, 0] },
-  VIB: { cuad: 45, fpv: 250, avion: 120, comb: 120 },        // aceleracion angular de la vibracion a tope de gas (rad/s2)
+  VIB: { cuad: 45, fpv: 250, avion: 120, comb: 120, uav: 120 },
+  MONTAJE: { ala: ["el ala", "Ala"], cola: ["la cola", "Cola (botalón y estabilizador)"], morro: ["el morro de cámaras", "Morro de cámaras"] },
+  SUELTA_TOMA: [["montaje_ala", 0.35], ["montaje_cola", 0.3], ["montaje_morro", 0.15]],     // probabilidad de soltarse en la toma en perdida        // aceleracion angular de la vibracion a tope de gas (rad/s2)
 
-  /** Clase del vehiculo para las averias: "cuad" (dron comercial), "fpv", "avion" (electrico), "comb" (de combustion)
-   *  o null (el bipode no tiene). */
+  /** Clase del vehiculo para las averias: "cuad" (dron comercial), "fpv", "avion" (electrico), "comb" (de combustion),
+   *  "uav" (el Grajo: lanzado a mano, con piloto automatico y montaje) o null (el bipode no tiene). */
   clase(A) {
     if (!A || A.tipo === "bipode") return null;
     if (A.tipo === "cuadricoptero") return "cuad";
     if (A.tipo === "fpv") return "fpv";
+    if (A.uav && A.lanzado_a_mano) return "uav";
     return A.propulsion && A.propulsion.combustible ? "comb" : "avion";
   },
   /** Superficies de mando de un avion (las que tienen servo y bisagra). */
@@ -50,8 +56,9 @@ const Desgaste = {
       for (let i = 1; i <= 4; i++) c.push(["motor" + i, `Motor ${i} (${Desgaste.NOMBRE_MOTOR[i - 1]})`]);
     } else c.push(["helice", "Hélice"], ["motor", "Motor"]);
     if (k !== "comb") c.push(["bateria", "Batería"]);
-    if (k === "cuad") c.push(["brujula", "Brújula"], ["imu", "IMU"], ["gps", "GPS"], ["barometro", "Barómetro"]);
-    for (const s of Desgaste.superficies(k === "avion" || k === "comb" ? A : {}))
+    if (k === "cuad" || k === "uav") c.push(["brujula", "Brújula"], ["imu", "IMU"], ["gps", "GPS"], ["barometro", "Barómetro"]);
+    if (k === "uav") for (const p in Desgaste.MONTAJE) c.push(["montaje_" + p, Desgaste.MONTAJE[p][1] + " (montaje)"]);
+    for (const s of Desgaste.superficies(k === "avion" || k === "comb" || k === "uav" ? A : {}))
       c.push(["servo_" + s, "Servo " + Desgaste.de(Desgaste.SUPERFICIES[s])], ["bisagra_" + s, "Bisagra " + Desgaste.de(Desgaste.SUPERFICIES[s])]);
     return c;
   },
@@ -73,6 +80,7 @@ const Desgaste = {
     if (f === "barometro") return "Barómetro con deriva";
     if (f === "servo") return "Holgura en el servo " + Desgaste.de(Desgaste.SUPERFICIES[s] || s);
     if (f === "bisagra") return "Bisagra floja en " + (Desgaste.SUPERFICIES[s] || s);
+    if (f === "montaje") return (Desgaste.MONTAJE[s] || [s, s])[1] + " sin asegurar (se soltó)";
     return a.c;
   },
   /** Las averias que se pueden poner (panel del profesor y salas): [{c, tipo, n}] con su nombre. */
@@ -85,7 +93,7 @@ const Desgaste = {
         const B = Bateria.datos(A.propulsion || {});
         for (let i = 0; i < B.celdas; i++) L.push({ c, tipo: "celda", n: i });
         L.push({ c, tipo: "hinchada" });
-      } else L.push({ c, tipo: { helice: "mella", motor: "rodamiento", brujula: "descalibrada", imu: "descalibrada", gps: "antena", barometro: "deriva", servo: "holgura", bisagra: "floja" }[f] });
+      } else L.push({ c, tipo: { helice: "mella", motor: "rodamiento", brujula: "descalibrada", imu: "descalibrada", gps: "antena", barometro: "deriva", servo: "holgura", bisagra: "floja", montaje: "suelto" }[f] });
     }
     return L.map(a => Object.assign(a, { nombre: Desgaste.nombre(a) }));
   },
@@ -126,7 +134,13 @@ const Desgaste = {
           if (h) { const [x, y, g] = Desgaste.MOTORES[i], t = m.fc.tau_max, tg = m.fc.tau_guinada; E.par[0] += 0.01 * y * t; E.par[1] -= 0.01 * x * t; E.par[2] -= 0.05 * g * tg; }
         } else { m.kEmp *= h ? 0.85 : 0.95; m.kPot *= h ? 1.05 : 1.12; }
       }
-      if (k === "cuad" && (f === "brujula" || f === "imu" || f === "gps" || f === "barometro")) {
+      if (f === "montaje") {                                // montaje sin asegurar (el Grajo)
+        const s = a.c.replace(/^[a-z]+_/, "");
+        if (s === "ala") E.alaSuelta = true;
+        if (s === "morro") E.sinVideo = true;
+        if (s === "cola") { const P = E.sup.de || (E.sup.de = { h: 0, ef: 1, fl: 0 }); P.ef = Math.min(P.ef, 0.5); P.fl = Math.max(P.fl, 2.5 * D2R); P.h = Math.max(P.h, 2 * D2R); }
+      }
+      if ((k === "cuad" || k === "uav") && (f === "brujula" || f === "imu" || f === "gps" || f === "barometro")) {
         const S = m.sens || (m.sens = { rumbo: 0, alabeo: 0, cabeceo: 0, gps: 0, vz: 0 });
         if (f === "brujula") S.rumbo = 50 * D2R;
         if (f === "imu") { S.alabeo = 3 * D2R; S.cabeceo = -2 * D2R; }
@@ -165,6 +179,7 @@ const Desgaste = {
     if (av._sup) { for (const k in av._sup) av[k] = av._sup[k]; av._sup = null; }
     const E = m.efe;
     if (!E || av.estado !== "volando" || av.posado || av.armado === false) return;
+    if (E.alaSuelta && av.g_carga > 1.6 && !av.roturaMontaje) av.roturaMontaje = "se ha soltado el ala en vuelo: no estaba asegurada";   // el simulador lo da por roto
     const t = av.t, g = Math.max(0, Math.min(1, av.gases || 0)), w = av.w, I = m.inercia;
     if (E.vib) {
       const A = E.vib * Desgaste.VIB[E.clase] * g, TAU = 2 * Math.PI;
@@ -194,7 +209,7 @@ const Desgaste = {
   },
   /** Avisos de la app al armar (el autodiagnostico del dron comercial): lo que el dron real dice de sus sensores. */
   avisosApp(m) {
-    if (!m.averias || Desgaste.clase(m) !== "cuad") return [];
+    if (!m.averias || (Desgaste.clase(m) !== "cuad" && Desgaste.clase(m) !== "uav")) return [];
     const L = [];
     for (const a of m.averias) {
       if (a.c === "brujula") L.push("Error de brújula: calibra la brújula");
@@ -221,8 +236,13 @@ const Desgaste = {
     for (const [c] of comp) est.h[c] = +((est.h[c] || 0) + dh).toFixed(6);
     const conBat = comp.some(([c]) => c === "bateria") && info.bat0 !== null && info.bat1 !== null;
     if (conBat && info.bat0 - info.bat1 > 25) est.bateria.ciclos += 1;
-    if (est.horas <= Desgaste.HORAS_SIN_AVERIAS) return nuevas;            // la primera hora no pasa nada
-    const rnd = Desgaste.azar(info.semilla), F = info.fecha, poner = (a, o) => { const x = Desgaste.anadir(est, a, o, F); if (x) nuevas.push(x); };
+    const F = info.fecha, poner = (a, o) => { const x = Desgaste.anadir(est, a, o, F); if (x) nuevas.push(x); };
+    if (info.tomaPerdida && Desgaste.clase(A) === "uav") {             // la toma en perdida: piezas sueltas (tambien la primera hora: es su diseño)
+      const rt = Desgaste.azar(info.semilla + "/toma");
+      for (const [c, p] of Desgaste.SUELTA_TOMA) if (rt() < p) poner({ c, tipo: "suelto" }, "toma");
+    }
+    if (est.horas <= Desgaste.HORAS_SIN_AVERIAS) return nuevas;        // la primera hora no se estropea nada
+    const rnd = Desgaste.azar(info.semilla);
     if (conBat) {                                                       // la bateria: ciclos, descargas profundas y calor
       let s = est.bateria.salud;
       if (info.bat0 - info.bat1 > 25) s -= 0.004;
@@ -251,9 +271,11 @@ const Desgaste = {
   /** Lo que se puede revisar en el taller: [id, texto]. */
   revisiones(A) {
     const k = Desgaste.clase(A), r = [["helices", "Inspeccionar las hélices"], ["motores", "Girar los motores a mano"]];
+    if (k === "uav") r.unshift(["montaje", "Comprobar el montaje"]);
     if (k !== "comb") r.push(["bateria", "Revisar la batería"]);
     if (k === "cuad") r.push(["app", "Autodiagnóstico de la app"]);
-    if (k === "avion" || k === "comb") r.push(["superficies", "Mover las superficies a mano"]);
+    if (k === "uav") r.push(["app", "Autodiagnóstico de la estación de control"]);
+    if (k === "avion" || k === "comb" || k === "uav") r.push(["superficies", "Mover las superficies a mano"]);
     return r;
   },
   /** El resultado de una revision: lineas de texto (lo que se ve, no el nombre de la averia). */
@@ -271,8 +293,12 @@ const Desgaste = {
       L.push("Celdas en reposo: " + Array.from({ length: B.celdas }, (_, i) => (3.85 + [0, -0.006, 0.003, -0.004, 0.005, -0.002][i % 6] - (deb && deb.n === i ? 0.09 : 0)).toFixed(2).replace(".", ",") + " V").join(" · "));
     }
     if (id === "app") {
-      const m = { averias: est.averias, tipo: A.tipo }, av = Desgaste.avisosApp(m);
+      const m = { averias: est.averias, tipo: A.tipo, uav: A.uav, lanzado_a_mano: A.lanzado_a_mano, propulsion: A.propulsion }, av = Desgaste.avisosApp(m);
       L.push(...(av.length ? av : ["Sin errores: brújula, IMU y GPS correctos"]));
+    }
+    if (id === "montaje") for (const p in Desgaste.MONTAJE) {
+      const M = Desgaste.MONTAJE[p];
+      L.push(M[1] + ": " + (tiene("montaje_" + p) ? "se soltó en la toma (está hecho para soltarse): hay que montarlo y asegurar los cierres" : "montado y asegurado"));
     }
     if (id === "superficies") for (const s of Desgaste.superficies(A)) {
       const nom = Desgaste.SUPERFICIES[s], N = nom[0].toUpperCase() + nom.slice(1);
@@ -297,6 +323,7 @@ const Desgaste = {
       else if (f === "gps") r.push([c, "Cambiar el módulo GPS", [c]]);
       else if (f === "barometro") r.push([c, "Cambiar el barómetro", [c]]);
       else if (f === "servo" || f === "bisagra") r.push([c, (f === "servo" ? "Cambiar el " : "Cambiar la ") + n[0].toLowerCase() + n.slice(1), [c]]);
+      else if (f === "montaje") r.push([c, "Montar y asegurar " + Desgaste.MONTAJE[c.replace(/^[a-z]+_/, "")][0], [c]]);
     }
     return k ? r : [];
   },

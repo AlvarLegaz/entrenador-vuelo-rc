@@ -154,6 +154,9 @@
   #gcsConsignas { position: absolute; left: 16px; top: 48px; font: 600 12px/1.6 ui-monospace, Consolas, monospace; color: #4dd0e1; text-shadow: 0 0 4px #000; }
   #gcsDer { right: 16px; } #gcsDer button { width: 52px; height: 30px; border-radius: 5px; font: 700 12px ui-monospace, Consolas, monospace; }
   #gcsDer .sep { height: 6px; } #gcsDer .txt { font: 600 11px ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
+  #gcsSinVideo { position: fixed; inset: 0; background: #050607; color: #ff6e66; display: none; align-items: center; justify-content: center; flex-direction: column;
+                 font: 700 34px ui-monospace, monospace; letter-spacing: .1em; text-align: center; pointer-events: none; z-index: 0; }
+  #gcsSinVideo span { font-size: 15px; letter-spacing: 0; color: #c9d1d9; margin-top: 10px; font-weight: 400; }
   #gcsMira { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; text-align: center;
              font: 600 12px/1.5 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
   #gcsMira svg { width: 120px; height: 120px; display: block; margin: 0 auto; }
@@ -591,6 +594,10 @@
       <div class="pestanas"><button class="sel" data-p="ficha">Ficha</button><button data-p="ajustes">Ajustes del avión</button></div>
       <div class="panelPestana sel" data-p="ficha"><table class="datos" id="avDatos"></table></div>
       <div class="panelPestana" data-p="ajustes">
+        <details class="avanzado" id="secMorro" open><summary>Carga útil: morro de cámaras</summary>
+          <label class="fila" style="gap:8px;align-items:flex-start"><input type="radio" name="morro" value="fijo"> <span><b>Fijo</b> · cámaras de color e infrarroja que miran al frente y de lado, sujetas al avión (se inclinan con él). V cambia de una a otra; para apuntar, se apunta con el avión</span></label>
+          <label class="fila" style="gap:8px;align-items:flex-start"><input type="radio" name="morro" value="orientable"> <span><b>Orientable</b> · torreta estabilizada de día y noche bajo el morro (como la modernización DDL): se mueve con las flechas y Mayúsculas y se fija en un punto (K). Pesa 0,3 kg más</span></label>
+        </details>
         <details class="avanzado" id="secCM" open><summary>Centro de gravedad y peso</summary>
           <div class="fila"><label for="cmCg">Centro de gravedad</label><span class="sub">morro</span><input type="range" id="cmCg" min="15" max="60" step="1"><span class="sub">cola</span></div>
           <b id="cmCgTxt" style="display:block;margin:-4px 0 8px"></b>
@@ -800,6 +807,7 @@
 
 <!-- ============ CAPAS ============ -->
 <div id="gcs" class="hudCapa">
+  <div id="gcsSinVideo">SIN VÍDEO<br><span>el morro de cámaras no está bien asegurado: revísalo en el Taller</span></div>
   <div id="gcsTop"><span class="modo" id="gcsModo">MANUAL</span><span class="estado" id="gcsEstado"></span><span id="gcsEnlace">ENLACE ▮▮▮▮ 100 %</span><span id="gcsComb"></span></div>
   <div id="gcsConsignas"></div>
   <div class="djiBotones" id="gcsDer">
@@ -870,7 +878,7 @@
 <script src="js/piloto_uav.js?v=2"></script>
 <script src="js/registro.js?v=2"></script>
 <script src="js/desgaste.js?v=1"></script>
-<script src="js/visor.js?v=38"></script>
+<script src="js/visor.js?v=39"></script>
 <script src="js/industria.js?v=4"></script>
 <script src="js/visor_real.js?v=44"></script>
 <script src="js/bipode.js?v=3"></script>
@@ -1089,8 +1097,9 @@ function pintarCM() {
   else { color = "#8be08f"; txt = `Margen estático ${margen.toFixed(0)} % (punto neutro al ${np.toFixed(0)} %): dentro de lo normal en un entrenador (10–30 %).`; }
   if (c.masa > d.masa * 1.15) txt += ` Con ${c.masa - d.masa} g más, pierde a ${vs.toFixed(1)} m/s: hay que lanzarlo más fuerte y aterrizar más rápido.`;
   else if (c.masa < d.masa * 0.9) txt += ` Más ligero: vuela más despacio, pero las rachas lo mueven más.`;
-  const gmin = A.tren ? undefined : gasMinimoLanzamiento({});      // un avion de pista no se lanza a mano
-  if (gmin === undefined) txt += " Despega y aterriza en pista.";
+  const gmin = A.tren || A.lanzado_a_mano ? undefined : gasMinimoLanzamiento({});      // un avion de pista no se lanza a mano; el Grajo lo sube el automatico
+  if (A.lanzado_a_mano) txt += " Se lanza a mano, de cara al viento, con el motor a tope: el piloto automático lo sube solo (modo Lanzamiento).";
+  else if (gmin === undefined) txt += " Despega y aterriza en pista.";
   else if (gmin === null) { color = "#ff6e66"; txt += ` ⚠ Con ${c.masa} g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano.`; }
   else txt += ` Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el ${pctGas(gmin)} % de gas.`;
   const e = document.getElementById("cmEfecto"); e.textContent = txt; e.style.color = color;
@@ -1701,7 +1710,8 @@ async function empezar() {
   modelo = Modelos.crear(sesion.avion);
   aplicarCM(modelo); aplicarCalibracion(modelo); aplicarDificultad(modelo);
   Desgaste.aplicar(modelo, Desgaste.clase(modelo) ? Desgaste.estado(sesion.avion) : null);    // sus averias y el desgaste de la bateria
-  visor.ponerAvion(Modelos.datos(sesion.avion));
+  visor.ponerAvion(datosVisor(sesion.avion));
+  if (morroDe(sesion.avion) === "orientable") modelo.configurar({ masa_kg: modelo.masa_kg + (modelo.camara.masa_orientable_kg || 0) });   // la torreta pesa
   document.getElementById("ayudaLR").textContent = (modelo.mandos && modelo.mandos.izq_der) || "timón";
   if (modelo.ayuda) document.getElementById("ayudaAvion").textContent = modelo.ayuda;
   document.getElementById("ayudaTeclasDron").style.display = modelo.esCuadricoptero && !modelo.esFPV ? "" : "none";
@@ -1735,6 +1745,7 @@ function reiniciar() {
   av = modelo.estadoInicial(); colocarEnBase(av);
   piloto = modelo.uav ? (c => new PilotoUAV(modelo.piloto, modelo.tren ? pistaActual() : null, [c.N, c.E, entorno.altura ? entorno.altura(c.N, c.E) : 0]))(casa()) : null;   // el lanzado a mano, sin pista
   if (modelo.uav) { av.torreta = { pan: 0, tilt: -20 * D2R }; UAV.fijo = null; UAV.cruz = null; UAV.fotos = 0; }
+  if (morroDe(sesion.avion) === "fijo") { UAV.vista = "frontal"; ponerVistaFija(); }       // morro fijo: la camara frontal
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
   orientarLanzamiento();
@@ -1785,6 +1796,7 @@ function paso(dt) {
   let gasPalanca = null;
   if (piloto && av.estado === "volando" && piloto.modo !== "MANUAL") {      // UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
     piloto.vientoDesde = entorno.viento.rumbo - Math.PI; piloto.vientoVel = entorno.viento.base;     // la toma en perdida, contra el viento
+    piloto.sens = modelo.sens || null;                                                                 // sensores averiados (el Grajo)
     const o = piloto.paso(av, dt, mando, av.gases);
     modelo.servos(av, Object.assign({}, mando, { pitch: o.pitch, yaw: o.yaw, guinada: o.guinada }), dt);
     if (o.gas !== null) { gasPalanca = av.gases; av.gases = o.gas; }
@@ -1804,6 +1816,7 @@ function paso(dt) {
   Desgaste.antesPaso(modelo, av);                // averias: superficies con holgura o bisagra floja (js/desgaste.js)
   const vn = modelo.paso(av, viento, dt);
   Desgaste.despuesPaso(modelo, av, dt);          // y vibraciones o el par de una helice danada
+  if (av.roturaMontaje) { terminarVuelo("roto (" + av.roturaMontaje + ")", vn); return; }      // el Grajo con el ala sin asegurar
   avisosBateria();
   if (gasPalanca !== null) { av.gasMotor = av.gases; av.gases = gasPalanca; } else av.gasMotor = av.gases;   // la palanca del gas no se mueve: en crucero elige la velocidad
   if (vuelo) { vuelo.tVuelo += dt; vuelo.hmax = Math.max(vuelo.hmax, -av.p[2] - (entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0)); }
@@ -1928,7 +1941,7 @@ function terminarVuelo(final, vn) {
   if (av.estado !== "volando") return;
   // lanzamiento fallido: acaba en el suelo antes de LANZ.fallo_s sin haber subido de LANZ.fallo_h. No cuenta como
   // aterrizaje; si se ha roto, si como accidente
-  if (vuelo && !modelo.esCuadricoptero && !modelo.esTerrestre && !modelo.tren && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
+  if (vuelo && !modelo.esCuadricoptero && !modelo.esTerrestre && !modelo.tren && !modelo.lanzado_a_mano && av.t < LANZ.fallo_s && vuelo.hmax < LANZ.fallo_h && (final === "aterrizado" || final.startsWith("roto"))) {
     vuelo.lanzamiento = causaLanzamientoFallido(vuelo.gasLanz);
     final = (final.startsWith("roto") ? "roto (" : "") + "lanzamiento fallido: " + vuelo.lanzamiento.corto + (final.startsWith("roto") ? ")" : "");
   }
@@ -1959,7 +1972,7 @@ function desgasteTrasVuelo(v, final) {
   const R = v.reg, col = n => { const i = R ? R.columnas.indexOf(n) : -1; return i < 0 ? [] : R.filas.map(f => f[i]).filter(x => typeof x === "number"); };
   const T = col("temperatura_bateria_C"), B = modelo.B ? col("bateria_pct") : [], A = Modelos.datos(sesion.avion), extra = (v.averiasSala || []).slice();
   const info = { s: av.t, roto: final.startsWith("roto"), bat0: B.length ? B[0] : null, bat1: B.length ? B[B.length - 1] : null,
-                 tempMax: T.length ? Math.max(...T) : null, semilla: v.id, fecha: new Date().toISOString() };
+                 tempMax: T.length ? Math.max(...T) : null, semilla: v.id, fecha: new Date().toISOString(), tomaPerdida: !!av.tomaPerdida };
   Desgaste.modificar(sesion.avion, est => { for (const a of extra) Desgaste.anadir(est, a, "profesor", info.fecha); return Desgaste.trasVuelo(est, A, info); });
 }
 
@@ -2157,7 +2170,7 @@ function irInicio() {
   document.getElementById("inicioPerfilNombre").textContent = sesion.alumno ? sesion.alumno.nombre : "Sin conexión";
   document.getElementById("inicioPerfilModo").textContent = sesion.alumno ? "online · aula " + sesion.nombreAula : "el progreso no se guarda";
   document.getElementById("chipAula").textContent = sesion.alumno ? "Aula: " + sesion.nombreAula : "Sin conexión: los vuelos no se guardan";
-  previa.mostrar(A, 1.75); mostrar("pInicio");
+  previa.mostrar(datosVisor(sesion.avion), 1.75); mostrar("pInicio");
 }
 document.getElementById("mnVolar").onclick = irVolar;               // se vuela con el usuario del aula (o sin conexion)
 document.getElementById("mnEntrenar").onclick = irEntrenamientos;
@@ -2176,6 +2189,22 @@ function elegirAvion(id) { sesion.avion = id; try { localStorage.setItem("sim_av
 function robotDesbloqueado() { return !!(sesion.alumno && sesion.alumno.progreso && sesion.alumno.progreso.robot); }
 /** Los vehiculos del hangar: el robot, solo con los logros. */
 function idsHangar() { return Modelos.ids().filter(id => !Modelos.datos(id).oculto || robotDesbloqueado()); }
+// ---- morro de camaras (datos.camara.morros: el Grajo): fijo (camaras frontal y lateral sujetas al avion) u orientable
+// (torreta estabilizada, con su peso); se elige en el Hangar y se guarda por vehiculo ----
+function morroDe(id) {
+  const C = (Modelos.datos(id) || {}).camara; if (!C || !C.morros) return null;
+  let m = null; try { m = localStorage.getItem("sim_morro_" + id); } catch (e) {}
+  return C.morros.includes(m) ? m : C.morros[0];
+}
+function ponerMorro(id, m) { try { localStorage.setItem("sim_morro_" + id, m); } catch (e) {} }
+/** Los datos del vehiculo para dibujarlo: con el morro elegido (sin la torreta si es el fijo; sin las camaras fijas si no). */
+function datosVisor(id) {
+  const A = Modelos.datos(id), m = morroDe(id);
+  if (!m || !A.malla) return A;
+  const K = Object.assign({}, A.malla);
+  if (m === "fijo") delete K.torreta; else delete K.cam_fija;
+  return Object.assign({}, A, { malla: K });
+}
 /** Si el vehiculo elegido es el robot y este piloto no lo tiene, vuelve al dron comercial. */
 function vehiculoPermitido() { if (Modelos.datos(sesion.avion) && Modelos.datos(sesion.avion).oculto && !robotDesbloqueado()) elegirAvion(Modelos.ids().includes("DJI_MINI") ? "DJI_MINI" : idsHangar()[0]); }
 function irHangar() {
@@ -2191,10 +2220,18 @@ function irHangar() {
     b.onclick = () => { elegirAvion(id); irHangar(); };
     sel.appendChild(b);
   }
-  pintarFichaAvion(); previa.mostrar(Modelos.datos(sesion.avion), 1.4); pintarCM();
+  pintarFichaAvion(); previa.mostrar(datosVisor(sesion.avion), 1.4); pintarCM(); pintarMorro();
   mostrar("pHangar");
 }
 const irAvion = irHangar;
+/** Hangar: el morro de camaras (solo los vehiculos que lo cambian). */
+function pintarMorro() {
+  const C = Modelos.datos(sesion.avion).camara, sec = document.getElementById("secMorro");
+  sec.style.display = C && C.morros ? "" : "none";
+  if (!C || !C.morros) return;
+  const m = morroDe(sesion.avion);
+  for (const r of document.querySelectorAll("#secMorro input[name=morro]")) { r.checked = r.value === m; r.onchange = () => { ponerMorro(sesion.avion, r.value); previa.mostrar(datosVisor(sesion.avion), 1.4); }; }
+}
 function pintarFichaAvion() {
   const A = Modelos.datos(sesion.avion);
   document.getElementById("avNombre").textContent = A.nombre;
@@ -2959,6 +2996,7 @@ window.addEventListener("keydown", e => {
     if (e.code === "KeyX") djiZoom(-1);
     if (e.code === "KeyC") djiTermica();
     if (e.code === "KeyK") uavFijar();
+    if (e.code === "KeyV" && morroDe(sesion.avion) === "fijo") cambiarVistaFija();
     if (e.code === "KeyF") uavFoto();
   } else if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
   if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
@@ -3190,6 +3228,11 @@ const TORRETA = { vel: 45 * D2R, tiltMin: -90 * D2R, tiltMax: 10 * D2R };
 function torretaConFlechas() { return !!(piloto && (teclas["ShiftLeft"] || teclas["ShiftRight"] || ["PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"].includes(piloto.modo))); }
 /** Donde esta la torreta (NED) y hacia donde mira (vector unitario NED). */
 function ejeTorreta() {
+  const CF = visor.avion && visor.avion.camFija;
+  if (CF) {                                     // morro fijo: sujeta al avion
+    const tr = av.torreta, ct = Math.cos(tr.tilt), st = Math.sin(tr.tilt), c = Cuat.rot(av.q, CF.pos);
+    return [[av.p[0] + c[0], av.p[1] + c[1], av.p[2] + c[2]], Cuat.rot(av.q, [ct * Math.cos(tr.pan), ct * Math.sin(tr.pan), -st])];
+  }
   const tr = av.torreta, yaw = Cuat.euler(av.q)[2] + tr.pan, c = visor.avion && visor.avion.centroTorreta ? Cuat.rot(av.q, visor.avion.centroTorreta) : [0, 0, 0];
   return [[av.p[0] + c[0], av.p[1] + c[1], av.p[2] + c[2]], [Math.cos(yaw) * Math.cos(tr.tilt), Math.sin(yaw) * Math.cos(tr.tilt), -Math.sin(tr.tilt)]];
 }
@@ -3208,8 +3251,11 @@ function puntoCruz() {
   return null;
 }
 /** Cada cuadro: mueve la torreta con las flechas, Q/E y el mando (mas despacio cuanto mas zoom) o la apunta al punto fijo. */
+/** Morro fijo: la camara de la ventana elegida (frontal o lateral), con su inclinacion fija respecto al avion. */
+function ponerVistaFija() { const F = Modelos.datos(sesion.avion).malla.cam_fija[UAV.vista || "frontal"]; av.torreta = { pan: F[0] * D2R, tilt: F[1] * D2R }; }
+function cambiarVistaFija() { UAV.vista = UAV.vista === "lateral" ? "frontal" : "lateral"; ponerVistaFija(); toast(UAV.vista === "lateral" ? "Cámara lateral (izquierda)" : "Cámara frontal"); }
 function moverTorreta(dt) {
-  if (!modelo || !modelo.uav || !av.torreta || av.estado === "roto") return;
+  if (!modelo || !modelo.uav || !av.torreta || av.estado === "roto" || morroDe(sesion.avion) === "fijo") return;   // el morro fijo no se mueve
   const tr = av.torreta, z = camDJI().zoom, k = TORRETA.vel / Math.pow(z, 0.7) * dt, fl = torretaConFlechas();
   const dp = (fl ? (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0) : 0) + (MANDO.torreta ? MANDO.torreta[0] : 0);
   const dtl = (fl ? (teclas["ArrowUp"] ? 1 : 0) - (teclas["ArrowDown"] ? 1 : 0) : 0) + (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) + (MANDO.torreta ? -MANDO.torreta[1] : 0) + (MANDO.gimbal || 0);
@@ -3223,6 +3269,7 @@ function moverTorreta(dt) {
 /** K: fija la torreta en el punto de la cruz (o la suelta). */
 function uavFijar() {
   if (!modelo.uav) return;
+  if (morroDe(sesion.avion) === "fijo") { toast("Con el morro fijo no hay torreta: apunta con el avión"); return; }
   if (UAV.fijo) { UAV.fijo = null; toast("Torreta: punto suelto"); return; }
   const c = puntoCruz(); if (!c) { toast("La cruz no apunta al suelo: baja la torreta"); return; }
   UAV.fijo = [c[0], c[1], c[2]]; toast("Torreta fijada en " + coordTxt(c[0], c[1]));
@@ -3790,7 +3837,7 @@ function hud() {
  *  la mira de la torreta (en la camara 3) con lo que ve: sensor, zoom, giro e inclinacion, el punto de la cruz y su
  *  distancia; y la escala de temperaturas con la termica. */
 function hudUav(h, vn, vs, dist, yaw) {
-  const m = piloto ? piloto.modo : "MANUAL", auto = !["MANUAL", "ESTAB"].includes(m), pistaM = m === "DESPEGUE" || m === "ATERRIZAJE";
+  const m = piloto ? piloto.modo : "MANUAL", auto = !["MANUAL", "ESTAB"].includes(m), pistaM = m === "DESPEGUE" || m === "ATERRIZAJE" || m === "LANZAMIENTO";
   ponerTxt($h("gcsModo"), piloto ? PUAV_NOMBRE[m].toUpperCase() : "MANUAL"); ponerClase($h("gcsModo"), "modo" + (pistaM ? " pista" : auto ? " auto" : ""));
   const suelo = entorno.altura ? entorno.altura(av.p[0], av.p[1]) : 0, agl = -av.p[2] - suelo;
   const est = Repeticion.activa ? "REPETICIÓN" : av.estado === "en mano" ? "MOTOR PARADO · L arranca" : av.estado === "volando" ? (av.enTierra ? (av.frenoAparc ? "EN TIERRA · FRENO DE APARCAMIENTO (espacio)" : "EN TIERRA") : "EN VUELO")
@@ -3809,7 +3856,9 @@ function hudUav(h, vn, vs, dist, yaw) {
   const cm = camDJI(), cam3 = visor.camara === 3, tr = av.torreta || { pan: 0, tilt: 0 };
   ponerTxt($h("gcsZoomTxt"), cm.zoom + "x"); ponerClase($h("gcsIR"), cm.termica ? "activo" : ""); ponerClase($h("gcsFijar"), UAV.fijo ? "activo" : "");
   visor.zoomCam = cam3 ? cm.zoom : 1; visor.termica = cam3 && cm.termica;
-  ponerEstilo($h("gcsMira"), "display", cam3 ? "block" : "none"); ponerEstilo($h("gcsPaleta"), "display", cam3 && cm.termica ? "block" : "none");
+  ponerEstilo($h("gcsMira"), "display", cam3 ? "block" : "none");
+  ponerEstilo($h("gcsSinVideo"), "display", cam3 && modelo.efe && modelo.efe.sinVideo ? "flex" : "none");     // el Grajo con el morro sin asegurar
+  ponerEstilo($h("gcsPaleta"), "display", cam3 && cm.termica ? "block" : "none");
   ponerEstilo($h("gcsSensor"), "display", cam3 ? "block" : "none");
   if (cam3) {
     const X = UAV.cruz, L = ev && ev.op ? ev.op.lectura : null;

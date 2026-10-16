@@ -77,5 +77,28 @@ func _init() -> void:
 	print("Grajo MX-2 (lanzamiento a mano y toma en perdida profunda): %d muestras (navegador %d), final '%s' ('%s'), posicion %.6f m, actitud %.8f, modos o fases distintos %d" % [
 		og.size(), RG.size(), fing, ref["grajo"]["fin"], gp, gq, gmodo])
 	ok = ok and ok_g
+	# el Grajo con los sensores averiados (el piloto trabaja con lo que creen)
+	var s2 := ModeloAvion.new(DatosComunes.avion("GRAJO")); var c2 := s2.estado_inicial(); var os2 := []
+	var ap2 := PilotoUAV.new(s2.datos["piloto"], null, [0.0, 0.0, 0.0]); ap2.viento_desde = 0.0; ap2.viento_vel = 4.0
+	ap2.sens = { "rumbo": 50 * D2R, "alabeo": 3 * D2R, "cabeceo": -2 * D2R, "gps": 3.5, "vz": 0.15 }
+	c2["p"] = [0.0, 0.0, -1.6]; s2.lanzar(c2); c2["asim"] = 0.2; var m2 := { "pitch": 0.0, "yaw": 0.0, "guinada": 0.0, "trim": 0.0 }
+	ap2.poner("LANZAMIENTO", c2)
+	for i in int(150 / DT):
+		var t := i * DT
+		if i == int(70 / DT): ap2.poner("PUNTO", c2, [300.0, 200.0])
+		c2["agl"] = -c2["p"][2]
+		var o := ap2.paso(c2, DT, { "pitch": 0.0, "yaw": 0.0, "guinada": 0.0 }, 0.0)
+		m2["pitch"] = o["pitch"]; m2["yaw"] = o["yaw"]; c2["gases"] = o["gas"] if o["gas"] != null else 0.0
+		if i % 1000 == 0: os2.append({ "t": t, "p": c2["p"].duplicate(), "q": c2["q"].duplicate(), "modo": ap2.modo, "fase": ap2.fase })
+		s2.servos(c2, m2, DT); s2.paso(c2, [-4.0, 0.0, 0.0], DT)
+		if -c2["p"][2] <= 0: os2.append({ "t": t, "fin": "suelo", "p": c2["p"].duplicate() }); break
+	var RS: Array = ref["grajo_sens"]["muestras"]; var sp := 0.0; var smodo := 0
+	for k in mini(os2.size(), RS.size()):
+		if RS[k].has("fin") or os2[k].has("fin"): continue
+		for j in 3: sp = maxf(sp, absf(float(os2[k]["p"][j]) - float(RS[k]["p"][j])))
+		if os2[k]["modo"] != RS[k]["modo"]: smodo += 1
+	var ok_s := os2.size() == RS.size() and sp < 0.05 and smodo == 0
+	print("Grajo MX-2 con los sensores averiados: %d muestras (navegador %d), posicion %.6f m, modos distintos %d" % [os2.size(), RS.size(), sp, smodo])
+	ok = ok and ok_s
 	print("RESULTADO: " + ("todo igual" if ok else "DISTINTO"))
 	quit(0 if ok else 1)

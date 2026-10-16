@@ -63,7 +63,7 @@ func _traza(caso: Dictionary, ent: Entorno, VIENTO: Array) -> Dictionary:
 		if i % 250 == 0:
 			var b = a.get("bat")
 			muestras.append({ "t": t, "p": a["p"].duplicate(), "v": a["v"].duplicate(), "w": a["w"].duplicate(), "q": a["q"].duplicate(), "Wh": a["Wh"], "estado": a["estado"],
-							  "V": b["V"] if b != null else 0.0, "celdas": (b["celdas"] as Array).duplicate() if b != null else [], "avisoBat": String(a.get("avisoBat", "")) })
+							  "V": b["V"] if b != null else 0.0, "celdas": (b["celdas"] as Array).duplicate() if b != null else [], "avisoBat": String(a.get("avisoBat", "")), "rotura": String(a.get("roturaMontaje", "")) })
 		m.servos(a, mando, DT)
 		a["agl"] = -a["p"][2]
 		var viento := ent.viento_a(VIENTO, a["agl"])
@@ -72,6 +72,7 @@ func _traza(caso: Dictionary, ent: Entorno, VIENTO: Array) -> Dictionary:
 		Desgaste.antes_paso(m, a)
 		var vn: Array = m.paso(a, viento, DT)
 		Desgaste.despues_paso(m, a, DT)
+		if a.has("roturaMontaje") and finales.is_empty(): finales.append({ "t": t, "final": "roto (" + String(a["roturaMontaje"]) + ")", "N": a["p"][0], "E": a["p"][1] })
 		var final := _contacto(ent, a, vn)
 		if final != "":
 			a["estado"] = "roto" if final.begins_with("roto") else ("aterrizado" if final == "aterrizado" else "terminado")
@@ -104,7 +105,7 @@ func _initialize() -> void:
 			for c in ["p", "v", "w", "q", "Wh", "V", "celdas"]:
 				var d := _dif(gm[k][c], r[k][c]); dmax = maxf(dmax, d)
 				if d > 1e-6 and t_primer < 0: t_primer = float(r[k]["t"])
-			if gm[k]["estado"] != r[k]["estado"] or gm[k]["avisoBat"] != r[k]["avisoBat"]: disc += 1
+			if gm[k]["estado"] != r[k]["estado"] or gm[k]["avisoBat"] != r[k]["avisoBat"] or gm[k]["rotura"] != r[k]["rotura"]: disc += 1
 		var fr: Array = R["trazas"][caso["id"]]["finales"]; var fg: Array = g["finales"]
 		var ok_fin := fr.size() == fg.size()
 		for k in mini(fr.size(), fg.size()):
@@ -117,7 +118,7 @@ func _initialize() -> void:
 		var pasos: Array = R["desgaste"][id]
 		for k in pasos.size():
 			var info := { "s": 600.0 + 97 * k, "roto": k % 5 == 3, "bat0": 100.0, "bat1": 7.0 if k % 4 == 2 else 35.0, "tempMax": 61.0 if k % 6 == 4 else 32.0,
-						  "semilla": "vuelo-%d-%s" % [k, id], "fecha": "2026-10-16T10:%02d:00Z" % k }
+						  "semilla": "vuelo-%d-%s" % [k, id], "fecha": "2026-10-16T10:%02d:00Z" % k, "tomaPerdida": k % 2 == 0 }
 			var nuevas := Desgaste.tras_vuelo(est, A, info)
 			var nv := nuevas.map(func(a): return [a["c"], a["tipo"], int(a.get("n", -1)), a["origen"]])
 			var P: Dictionary = pasos[k]

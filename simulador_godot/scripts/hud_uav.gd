@@ -12,6 +12,7 @@ var consignas: Label
 var botones := {}; var b_auto: Button
 var zoom_txt: Label; var b_ir: Button; var b_fijar: Button
 var mira: VBoxContainer; var obj: RichTextLabel
+var sin_video: ColorRect            # el Grajo con el morro de camaras sin asegurar: la camara 3 sin imagen (#gcsSinVideo)
 var sensor: Label
 var paleta: VBoxContainer
 var _clase_modo := ""; var _activos := {}
@@ -38,6 +39,11 @@ func _poner_activo(b: Button, si: bool) -> void:
 
 func _init(p_: Node) -> void:
 	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT); mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sin_video = ColorRect.new(); sin_video.color = Color("#050607"); sin_video.set_anchors_preset(Control.PRESET_FULL_RECT); sin_video.mouse_filter = Control.MOUSE_FILTER_IGNORE; sin_video.visible = false
+	var sv := Tema.rico("[center][color=#ff6e66][font_size=34][b]SIN VÍDEO[/b][/font_size][/color]
+[color=#c9d1d9]el morro de cámaras no está bien asegurado: revísalo en el Taller[/color][/center]", 15)
+	sv.set_anchors_preset(Control.PRESET_CENTER); sv.custom_minimum_size = Vector2(700, 110); sv.position = Vector2(-350, -55); sv.fit_content = true
+	sin_video.add_child(sv); add_child(sin_video)
 	# ---- barra de arriba ----
 	var deg := Gradient.new(); deg.set_color(0, Color(5 / 255.0, 12 / 255.0, 8 / 255.0, 0.85)); deg.set_color(1, Color(5 / 255.0, 12 / 255.0, 8 / 255.0, 0))
 	var gt := GradientTexture2D.new(); gt.gradient = deg; gt.fill_from = Vector2(0, 0); gt.fill_to = Vector2(0, 1); gt.width = 4; gt.height = 40
@@ -113,7 +119,7 @@ static func _hm(h: float) -> String: return "%d:%02d" % [int(h), int(fmod(h, 1.0
 ## hudUav de la web: lo que se ve en cada cuadro.
 func pintar(vn: Array, dist: float, yaw: float) -> void:
 	var av: Dictionary = p.av; var pil = p.piloto; var m: String = pil.modo if pil != null else "MANUAL"
-	var auto := not (m in ["MANUAL", "ESTAB"]); var pista_m := m == "DESPEGUE" or m == "ATERRIZAJE"
+	var auto := not (m in ["MANUAL", "ESTAB"]); var pista_m := m == "DESPEGUE" or m == "ATERRIZAJE" or m == "LANZAMIENTO"
 	modo.text = (PilotoUAV.NOMBRE[m] as String).to_upper() if pil != null else "MANUAL"; _clase("pista" if pista_m else ("auto" if auto else ""))
 	var suelo: float = p.ent.altura(av["p"][0], av["p"][1]) if p.en_mundo() else 0.0; var agl: float = -av["p"][2] - suelo
 	var est := "REPETICIÓN" if p.rep_activa else ("MOTOR PARADO · L arranca" if av["estado"] == "en mano" else (("EN TIERRA · FRENO DE APARCAMIENTO (espacio)" if av.get("frenoAparc", false) else "EN TIERRA") if av.get("enTierra", false) else "EN VUELO") if av["estado"] == "volando" else String(av["estado"]).to_upper())
@@ -137,6 +143,7 @@ func pintar(vn: Array, dist: float, yaw: float) -> void:
 	var cm: Dictionary = p.cam_dji(); var cam3: bool = p.camara == 3; var tr: Dictionary = av.get("torreta", { "pan": 0.0, "tilt": 0.0 })
 	zoom_txt.text = "%dx" % int(cm["zoom"]); _poner_activo(b_ir, cm["termica"]); _poner_activo(b_fijar, p.UAV["fijo"] != null)
 	mira.visible = cam3; sensor.visible = cam3; paleta.visible = cam3 and cm["termica"]
+	sin_video.visible = cam3 and p.modelo.get("efe") != null and bool(p.modelo.efe.get("sinVideo", false))     # el Grajo con el morro sin asegurar
 	if cam3:
 		var X = p.UAV["cruz"]; var L = p.ev.op.lectura if (p.ev != null and p.ev.op != null) else null
 		var s := "[center]" + ("[b][color=#ffb74d]FIJADO[/color][/b]\n" if p.UAV["fijo"] != null else "")

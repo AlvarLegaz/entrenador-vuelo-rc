@@ -18,8 +18,10 @@ const NOMBRE_HELICE := ["delantera derecha", "delantera izquierda", "trasera izq
 const SUPERFICIES := { "alerones": "los alerones", "profundidad": "la profundidad", "timon": "el timón", "elevon_izq": "el elevón izquierdo", "elevon_der": "el elevón derecho" }
 const CLAVE_SUP := { "alerones": "da", "profundidad": "de", "timon": "dr", "elevon_izq": "elevon_izq", "elevon_der": "elevon_der" }
 const TASAS := { "helice": [0.06, 1], "motor": [0.02, 1], "servo": [0.04, 1], "bisagra": [0.03, 1], "celda": [0.02, 1], "brujula": [0.05, 0], "imu": [0.03, 0], "gps": [0.02, 0], "barometro": [0.02, 0] }
-const VIB := { "cuad": 45.0, "fpv": 250.0, "avion": 120.0, "comb": 120.0 }
-const TIPO_FAMILIA := { "helice": "mella", "motor": "rodamiento", "brujula": "descalibrada", "imu": "descalibrada", "gps": "antena", "barometro": "deriva", "servo": "holgura", "bisagra": "floja" }
+const VIB := { "cuad": 45.0, "fpv": 250.0, "avion": 120.0, "comb": 120.0, "uav": 120.0 }
+const MONTAJE := { "ala": ["el ala", "Ala"], "cola": ["la cola", "Cola (botalón y estabilizador)"], "morro": ["el morro de cámaras", "Morro de cámaras"] }
+const SUELTA_TOMA := [["montaje_ala", 0.35], ["montaje_cola", 0.3], ["montaje_morro", 0.15]]     # probabilidad de soltarse en la toma en perdida
+const TIPO_FAMILIA := { "helice": "mella", "motor": "rodamiento", "brujula": "descalibrada", "imu": "descalibrada", "gps": "antena", "barometro": "deriva", "servo": "holgura", "bisagra": "floja", "montaje": "suelto" }
 const DESEQ := [0, -0.006, 0.003, -0.004, 0.005, -0.002]
 const F_LOCAL := "user://vehiculos.json"
 
@@ -28,6 +30,7 @@ static func clase(A: Dictionary) -> String:
 	if A.is_empty() or A.get("tipo", "") == "bipode": return ""
 	if A.get("tipo", "") == "cuadricoptero": return "cuad"
 	if A.get("tipo", "") == "fpv": return "fpv"
+	if A.get("uav", false) and A.get("lanzado_a_mano", false): return "uav"
 	return "comb" if A.get("propulsion", {}).get("combustible", false) else "avion"
 
 ## Superficies de mando de un avion (las que tienen servo y bisagra).
@@ -59,8 +62,10 @@ static func componentes(A: Dictionary) -> Array:
 		for i in range(1, 5): c.append(["motor%d" % i, "Motor %d (%s)" % [i, NOMBRE_MOTOR[i - 1]]])
 	else: c.append_array([["helice", "Hélice"], ["motor", "Motor"]])
 	if k != "comb": c.append(["bateria", "Batería"])
-	if k == "cuad": c.append_array([["brujula", "Brújula"], ["imu", "IMU"], ["gps", "GPS"], ["barometro", "Barómetro"]])
-	for s in superficies(A if k == "avion" or k == "comb" else {}):
+	if k == "cuad" or k == "uav": c.append_array([["brujula", "Brújula"], ["imu", "IMU"], ["gps", "GPS"], ["barometro", "Barómetro"]])
+	if k == "uav":
+		for m in MONTAJE: c.append(["montaje_" + m, MONTAJE[m][1] + " (montaje)"])
+	for s in superficies(A if k == "avion" or k == "comb" or k == "uav" else {}):
 		c.append(["servo_" + s, "Servo " + de(SUPERFICIES[s])]); c.append(["bisagra_" + s, "Bisagra " + de(SUPERFICIES[s])])
 	return c
 
@@ -87,6 +92,7 @@ static func nombre(a: Dictionary) -> String:
 	if f == "barometro": return "Barómetro con deriva"
 	if f == "servo": return "Holgura en el servo " + de(SUPERFICIES.get(s, s))
 	if f == "bisagra": return "Bisagra floja en " + SUPERFICIES.get(s, s)
+	if f == "montaje": return MONTAJE.get(s, [s, s])[1] + " sin asegurar (se soltó)"
 	return c
 
 ## Las averias que se pueden poner: [{c, tipo, n?, nombre}].
@@ -149,7 +155,14 @@ static func aplicar(m, est) -> void:
 					E["par"][0] += 0.01 * M[1] * t; E["par"][1] -= 0.01 * M[0] * t; E["par"][2] -= 0.05 * M[2] * tg
 			else:
 				m.k_emp *= 0.85 if h else 0.95; m.k_pot *= 1.05 if h else 1.12
-		if k == "cuad" and f in ["brujula", "imu", "gps", "barometro"]:
+		if f == "montaje":                         # montaje sin asegurar (el Grajo)
+			var sm := _sup(a["c"])
+			if sm == "ala": E["alaSuelta"] = true
+			if sm == "morro": E["sinVideo"] = true
+			if sm == "cola":
+				if not E["sup"].has("de"): E["sup"]["de"] = { "h": 0.0, "ef": 1.0, "fl": 0.0 }
+				var Pc: Dictionary = E["sup"]["de"]; Pc["ef"] = minf(Pc["ef"], 0.5); Pc["fl"] = maxf(Pc["fl"], 2.5 * D2R); Pc["h"] = maxf(Pc["h"], 2 * D2R)
+		if (k == "cuad" or k == "uav") and f in ["brujula", "imu", "gps", "barometro"]:
 			if m.sens == null: m.sens = { "rumbo": 0.0, "alabeo": 0.0, "cabeceo": 0.0, "gps": 0.0, "vz": 0.0 }
 			if f == "brujula": m.sens["rumbo"] = 50 * D2R
 			if f == "imu": m.sens["alabeo"] = 3 * D2R; m.sens["cabeceo"] = -2 * D2R
@@ -213,6 +226,7 @@ static func despues_paso(m, av: Dictionary, dt: float) -> void:
 	if m.get("efe") == null or m.efe.is_empty(): return
 	var E: Dictionary = m.efe
 	if av["estado"] != "volando" or av.get("posado", false) or av.get("armado", true) == false: return
+	if E.get("alaSuelta", false) and float(av.get("g_carga", 1.0)) > 1.6 and not av.has("roturaMontaje"): av["roturaMontaje"] = "se ha soltado el ala en vuelo: no estaba asegurada"
 	var t: float = av["t"]; var g := clampf(float(av.get("gases", 0.0)), 0.0, 1.0); var w: Array = av["w"]; var I: Dictionary = m.inercia
 	if E["vib"]:
 		var A: float = E["vib"] * VIB[E["clase"]] * g
@@ -226,7 +240,7 @@ static func despues_paso(m, av: Dictionary, dt: float) -> void:
 
 ## Avisos de la app al armar (el autodiagnostico del dron comercial).
 static func avisos_app(averias: Array, A: Dictionary) -> Array:
-	if clase(A) != "cuad": return []
+	if clase(A) != "cuad" and clase(A) != "uav": return []
 	var L := []
 	for a in averias:
 		if a["c"] == "brujula": L.append("Error de brújula: calibra la brújula")
@@ -255,11 +269,16 @@ static func tras_vuelo(est: Dictionary, A: Dictionary, info: Dictionary) -> Arra
 	for cc in comp: est["h"][cc[0]] = _r6(float(est["h"].get(cc[0], 0.0)) + dh)
 	var con_bat: bool = comp.any(func(cc): return cc[0] == "bateria") and info["bat0"] != null and info["bat1"] != null
 	if con_bat and float(info["bat0"]) - float(info["bat1"]) > 25: est["bateria"]["ciclos"] = int(est["bateria"]["ciclos"]) + 1
-	if float(est["horas"]) <= HORAS_SIN_AVERIAS: return nuevas
-	var rs := azar(String(info["semilla"])); var F: String = info["fecha"]
+	var F: String = info["fecha"]
 	var poner := func(a: Dictionary, o: String) -> void:
 		var x = anadir(est, a, o, F)
 		if x != null: nuevas.append(x)
+	if info.get("tomaPerdida", false) and clase(A) == "uav":       # la toma en perdida: piezas sueltas (tambien la primera hora: es su diseño)
+		var rt := azar(String(info["semilla"]) + "/toma")
+		for st in SUELTA_TOMA:
+			if _rnd(rt) < st[1]: poner.call({ "c": st[0], "tipo": "suelto" }, "toma")
+	if float(est["horas"]) <= HORAS_SIN_AVERIAS: return nuevas
+	var rs := azar(String(info["semilla"]))
 	if con_bat:
 		var s: float = est["bateria"]["salud"]
 		if float(info["bat0"]) - float(info["bat1"]) > 25: s -= 0.004
@@ -289,9 +308,11 @@ static func tras_vuelo(est: Dictionary, A: Dictionary, info: Dictionary) -> Arra
 # ---------------------------------------------------------------- taller: inspeccion y reparacion
 static func revisiones(A: Dictionary) -> Array:
 	var k := clase(A); var r := [["helices", "Inspeccionar las hélices"], ["motores", "Girar los motores a mano"]]
+	if k == "uav": r.push_front(["montaje", "Comprobar el montaje"])
 	if k != "comb": r.append(["bateria", "Revisar la batería"])
 	if k == "cuad": r.append(["app", "Autodiagnóstico de la app"])
-	if k == "avion" or k == "comb": r.append(["superficies", "Mover las superficies a mano"])
+	if k == "uav": r.append(["app", "Autodiagnóstico de la estación de control"])
+	if k == "avion" or k == "comb" or k == "uav": r.append(["superficies", "Mover las superficies a mano"])
 	return r
 
 static func _tiene(est: Dictionary, c: String, t := "") -> bool:
@@ -325,6 +346,9 @@ static func revisar(est: Dictionary, A: Dictionary, id: String) -> Array:
 	if id == "app":
 		var av := avisos_app(est["averias"], A)
 		L.append_array(av if not av.is_empty() else ["Sin errores: brújula, IMU y GPS correctos"])
+	if id == "montaje":
+		for mm in MONTAJE:
+			L.append(MONTAJE[mm][1] + ": " + ("se soltó en la toma (está hecho para soltarse): hay que montarlo y asegurar los cierres" if _tiene(est, "montaje_" + mm) else "montado y asegurado"))
 	if id == "superficies":
 		for s in superficies(A):
 			var nom: String = SUPERFICIES[s]; var N := nom.substr(0, 1).to_upper() + nom.substr(1)
@@ -348,6 +372,7 @@ static func reparaciones(A: Dictionary) -> Array:
 		elif f == "gps": r.append([c, "Cambiar el módulo GPS", [c]])
 		elif f == "barometro": r.append([c, "Cambiar el barómetro", [c]])
 		elif f == "servo" or f == "bisagra": r.append([c, ("Cambiar el " if f == "servo" else "Cambiar la ") + _minus1(n), [c]])
+		elif f == "montaje": r.append([c, "Montar y asegurar " + MONTAJE[_sup(c)][0], [c]])
 	return r if clase(A) != "" else []
 
 ## Hace una reparacion: renueva los componentes, quita sus averias y lo apunta en el libro. Devuelve la entrada.

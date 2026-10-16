@@ -99,7 +99,17 @@ func _velocidad(vc: float, vz: float) -> float:          # y mas gas si tiene qu
 
 ## Un paso. pal: palancas {pitch, yaw, guinada}; gas_palanca (0..1): en crucero elige la velocidad. Devuelve
 ## {pitch, yaw, guinada, gas, freno}: gas y freno null si no los lleva.
+var sens = null                  # sensores averiados (desgaste.gd: el Grajo); el piloto trabaja con lo que creen
+var _con_sens := false
 func paso(av: Dictionary, dt: float, pal: Dictionary, gas_palanca: float) -> Dictionary:
+	if sens != null and not _con_sens:          # con lo que creen el GPS, la brujula, la IMU y el barometro (como en JS)
+		var S: Dictionary = sens; var e0 := Cuat.euler(av["q"]); var t: float = av["t"]; var dz: float = S["vz"] * t
+		var ae := av.duplicate()
+		ae["p"] = [av["p"][0] + (S["gps"] * cos(2 * PI * t / 25) if S["gps"] else 0.0), av["p"][1] + (S["gps"] * sin(2 * PI * t / 31) if S["gps"] else 0.0), av["p"][2] + dz]
+		ae["q"] = Cuat.desde_euler(e0[0] + S["alabeo"], e0[1] + S["cabeceo"], e0[2] + S["rumbo"])
+		if av.get("agl") != null: ae["agl"] = av["agl"] - dz
+		_con_sens = true; var r := paso(ae, dt, pal, gas_palanca); _con_sens = false
+		av["profToma"] = ae.get("profToma", false); return r
 	_e = Cuat.euler(av["q"]); _V = maxf(1, float(av["V"]) if P.get("pitot", false) and av.get("V") != null else _norma(av["v"])); _dt = dt; _av = av   # con datos.piloto.pitot (el Grajo), la del aire
 	var e := _e; var V := _V
 	var vn := Cuat.rot(av["q"], av["v"]); var vz: float = -vn[2]; var h: float = -av["p"][2]; var m := modo

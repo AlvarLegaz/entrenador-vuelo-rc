@@ -93,10 +93,10 @@ cd_cola = cf(V_CRUCERO * P.HT_C / 1e3 / nu) * 1.1 * moj_cola / S
 cd_morro = 0.25 * (P.FUS_W * P.FUS_H / 1e6) * 0.3 / S          # morro romo con las ventanas de las camaras
 CD0 = (cd_ala + cd_fus + cd_boom + cd_cola + cd_morro + 0.005) * 1.15   # +0,005 pilono, motor, antenas e interferencias
 
-# ---- helice propulsora de 9" con un motor sin escobillas en 4S: ~1,2 kgf estaticos a 9.500 rpm (SUPUESTO) ----
-D_prop, n_max, T_N = P.D_HELICE_MM / 1e3, 9500 / 60, 12.0
+# ---- helice propulsora de 9" con un motor sin escobillas en 4S: ~1,4 kgf estaticos a 9.800 rpm (SUPUESTO) ----
+D_prop, n_max, T_N = P.D_HELICE_MM / 1e3, 9800 / 60, 14.0
 CT0 = T_N / 1.225 / n_max ** 2 / D_prop ** 4
-prop = dict(T_max_N=T_N, D_m=D_prop, n_max_rps=n_max, CT0=float(CT0), J0=0.75, I_max_A=16.0, P_max_W=230.0,
+prop = dict(T_max_N=T_N, D_m=D_prop, n_max_rps=n_max, CT0=float(CT0), J0=0.75, I_max_A=18.0, P_max_W=260.0,
             masa_bateria_Wh=4 * 3.7 * 5.2, bateria=P.BATERIA_DATOS, downthrust_grados=P.DOWNTHRUST)
 
 # ---- mandos: timon (que hace alabear con el poliedro) y profundidad; recorrido de profundidad grande para la
@@ -371,6 +371,12 @@ antenas = [tubo((395.0, 0, P.FUS_H / 2 - 4), (405.0, 0, P.FUS_H / 2 + 110), 2.2,
 z_gps = P.Z_ALA + 0.06 * P.C + 8                          # sobre el extrados del tramo central, encima del CG
 gps = [cuerpo([(P.X_LE + 70, 10, 3, z_gps, 2.0), (P.X_LE + 73, 14, 5, z_gps + 2, 2.0), (P.X_LE + 97, 14, 5, z_gps + 2, 2.0), (P.X_LE + 100, 10, 3, z_gps, 2.0)], n=24, cerrar=(True, True))]
 
+# ---- morro orientable (como la modernizacion DDL): bola estabilizada bajo el morro, con su ventana; la camara fija va en
+# las ventanas del morro (frontal y lateral izquierda), sujeta al avion ----
+TC = (62.0, 0.0, -P.FUS_H / 2 - 22.0)
+yugo_t = [tubo((TC[0], 0, -P.FUS_H / 2 + 6), (TC[0], 0, TC[2] + 16), 16.0, 13.0, n=20)]
+bola_t = esfera(TC, 25.0, n=28, m=16)
+ventana_t = [esfera((TC[0] + 23.0, 0.0, TC[2]), 9.0, n=16, m=8)]
 malla = dict(fuselaje=juntar(vaina, asiento, color=GRIS, suave=True), ala=juntar(*ala_p, color=GRIS, suave=True),
              estab=juntar(*estab, deriva, color=GRIS, suave=True), prof=dict(prof, suave=True),
              bisagra_prof=np.round(a_cuerpo([(xh, 0.0, P.HT_Z)])[0], 4).tolist(),
@@ -380,6 +386,9 @@ malla = dict(fuselaje=juntar(vaina, asiento, color=GRIS, suave=True), ala=juntar
                      juntar(*botalon, color=NEGRO, suave=True), juntar(*anclajes, color=OSCURO, suave=True),
                      juntar(pilono, color=GRIS, suave=True), juntar(*motor, *aletas, cono, color=OSCURO, suave=True),
                      juntar(*palas, color=NEGRO, suave=True), juntar(*gps, color=0xc9ccc4, suave=True), juntar(*varillas, *bocinas, *antenas, color=NEGRO)],
+             torreta=dict(juntar(bola_t, color=OSCURO, suave=True), centro=np.round(a_cuerpo([TC])[0], 4).tolist(),
+                          ventanas=juntar(*ventana_t, color=CRISTAL, suave=True), yugo=juntar(*yugo_t, color=OSCURO, suave=True)),
+             cam_fija=dict(pos=np.round(a_cuerpo([(4.0, 0.0, -12.0)])[0], 4).tolist(), frontal=[0.0, -15.0], lateral=[-90.0, -35.0]),
              helice=np.round(a_cuerpo([(P.X_HELICE, 0.0, P.Z_MOTOR)])[0], 4).tolist(), helice_r=D_prop / 2)
 
 # =====================================================================
@@ -417,14 +426,15 @@ modelo = dict(
     chorro=dict(prof=0.0, timon=0.0, deriva=0.0),            # helice propulsora: la cola no esta en su estela
     # toma en perdida profunda: la toca con mucha velocidad vertical (diseñada para eso) y puede soltarse alguna pieza
     toma_perdida=dict(alfa_min=20.0, vz_max_ms=9.5, vel_max_ms=8.0),
-    camara=dict(zoom=[1, 2, 4], zoom_optico=1, termica=True, torreta=False, morros=["fijo", "orientable"],
-                fijo=dict(frontal=[0.0, -15.0], lateral=[-90.0, -35.0])),
-    piloto=dict(v_min=10.5, v_alarma=10.0, v_max=20.0, v_crucero=12.0, v_aprox=12.5, alfa_max=8.5, k_alfa=1.5,
+    # carga util (REAL): morro fijo con las camaras de color e infrarroja frontal y lateral (sin zoom optico: el digital
+    # de la estacion) o el orientable de la modernizacion (torreta estabilizada, 0,3 kg mas). Se elige en el Hangar
+    camara=dict(zoom=[1, 2, 4], zoom_optico=1, termica=True, morros=["fijo", "orientable"], masa_orientable_kg=0.3),
+    piloto=dict(v_min=10.5, v_alarma=10.5, v_max=20.0, v_crucero=12.0, v_aprox=12.5, alfa_max=7.5, k_alfa=1.5,
                 alabeo_max=30.0, cabeceo_max=14.0, cabeceo_min=-12.0, cabeceo_crucero=2.0, cabeceo_subida=12.0,
                 h_min=30.0, h_base=90.0, h_fin_despegue=30.0, vz_max=3.0, radio_orbita=80.0, k_orbita=40.0,
                 giro_consigna=20.0, subida_consigna=3.0,
                 pitot=True, timon_alabeo=True, k_alabeo=0.8, k_p=0.2, k_cabeceo=1.5, k_q=0.8, k_i_cabeceo=1.0, k_derrape=0.0, k_r=0.8,
-                k_rumbo=1.0, k_altura=0.2, k_vz=0.05, k_gas=0.15, k_gas_vz=0.1, k_i_gas=0.03, gas_crucero=0.5,
+                k_rumbo=1.0, k_altura=0.2, k_vz=0.05, k_gas=0.3, k_gas_vz=0.1, k_i_gas=0.05, gas_crucero=0.5,
                 toma=dict(h_entrada=30.0, d_final=150.0, h_perdida=18.0, prof=1.0)),
     malla=malla, punto_neutro_mm=xnp, x_le_mm=P.X_LE,
     colores=dict(fuselaje=GRIS, ala=GRIS, estab=GRIS, moviles=GRIS),

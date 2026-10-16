@@ -373,6 +373,24 @@ El modelo 3D es procedural y común a los dos simuladores: `analisis/bipode/gene
 | W/S gas (se queda donde se deja) · Espacio gas a cero | LB modo · RB cámara · Back empezar de nuevo · Start pausa |
 | L armar (con el gas abajo) / desarmar · M modo ANGLE/HORIZON/ACRO | A armar / desarmar |
 
+**Grajo MX-2: mini UAV lanzado a mano** (2026-10-16, web y Godot iguales). Es como el RQ-11B Raven del Ejército de Tierra, para que los alumnos aprendan su manejo y su mantenimiento; en la app no se usan marcas. Se genera con `scripts/parametros_grajo.py` y `scripts/modelo_aero_grajo.py`, que escriben `simulador/aviones/GRAJO.js`. Lo público del real va marcado REAL y lo demás SUPUESTO.
+- **Datos del real:** 1,37 m de envergadura, 0,91 m de largo y 1,9 kg; hélice propulsora arriba y detrás del fuselaje; ala alta en poliedro y botalón de cola; 32–81 km/h, 30–150 m sobre el suelo y 60–90 min.
+- **Supuestos:** batería Li-ion 4S de 5,2 Ah y timón y profundidad sin alerones, de modo que vira con el timón gracias al poliedro.
+- **Piloto automático** (`js/piloto_uav.js` / `scripts/piloto_uav.gd`):
+  - se lanza a mano, de cara al viento, y el modo **Lanzamiento** lo sube solo hasta crucero;
+  - **aterriza en pérdida profunda** en un punto (P): entra contra el viento, se alinea con el punto, para el motor, sube la profundidad del todo y baja a unos 45°. Con 0 a 8 m/s de viento cae a 8–16 m del punto;
+  - mide la velocidad del aire (`pitot`) y vira con el timón con amortiguador de guiñada (`timon_alabeo`);
+  - el Cernícalo sigue igual.
+- **Cámaras, a elegir en el Hangar:**
+  - **morro fijo:** cámaras de color e infrarroja frontal y lateral sujetas al avión, que se inclinan con él; V cambia de una a otra;
+  - **orientable:** torreta estabilizada de la modernización DDL, 0,3 kg más.
+- **Averías y mantenimiento** (clase «uav» de `js/desgaste.js`):
+  - los sensores del piloto automático (brújula, IMU, GPS y barómetro) hacen que el autopiloto trabaje con lo que creen;
+  - **montaje:** en la toma en pérdida profunda se pueden soltar el ala, la cola o el morro, porque está hecho así;
+  - si no se aseguran, el ala se suelta en vuelo en cuanto carga más de 1,6 g, la cola flamea y manda menos, y el morro deja la cámara sin vídeo;
+  - en el Taller: «Comprobar el montaje» y «Montar y asegurar…».
+- **Pruebas:** `prueba_piloto_uav.gd` (lanzamiento y toma, y vuelo con los sensores averiados) y `prueba_averias.gd`, ambas iguales en la web y en Godot.
+
 ## Física del simulador: qué tiene en cuenta
 
 Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `ModeloAvion.paso()`), revisado en `analisis/REVISION_REALISMO.md`:

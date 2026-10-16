@@ -57,7 +57,24 @@ GUION = r"""
     g.paso(b, [-4, 0, 0], DT);
     if (-b.p[2] <= 0) { fing = b.alfa > g.toma_perdida.alfa_min ? "toma en perdida" : "otro"; og.push({ t, fin: fing, p: b.p.slice(), alfa: b.alfa }); break; }
   }
-  return { muestras: out, cambios, fin, grajo: { muestras: og, cambios: cg, fin: fing } };
+  // y otra vez con los sensores averiados (js/desgaste.js): el piloto trabaja con lo que creen el GPS, la brujula, la IMU
+  // y el barometro: crucero y luego ir a un punto
+  const s2 = Modelos.crear("GRAJO"), c2 = s2.estadoInicial(), os2 = [];
+  const ap2 = new PilotoUAV(s2.piloto, null, [0, 0, 0]); ap2.vientoDesde = 0; ap2.vientoVel = 4;
+  ap2.sens = { rumbo: 50 * D2R, alabeo: 3 * D2R, cabeceo: -2 * D2R, gps: 3.5, vz: 0.15 };
+  c2.p = [0, 0, -1.6]; s2.lanzar(c2); c2.asim = 0.2; const m2 = { pitch: 0, yaw: 0, guinada: 0, trim: 0 };
+  ap2.poner("LANZAMIENTO", c2);
+  for (let i = 0; i < Math.trunc(150 / DT); i++) {
+    const t = i * DT;
+    if (i === Math.trunc(70 / DT)) ap2.poner("PUNTO", c2, [300, 200]);
+    c2.agl = -c2.p[2];
+    const o = ap2.paso(c2, DT, { pitch: 0, yaw: 0, guinada: 0 }, 0);
+    m2.pitch = o.pitch; m2.yaw = o.yaw; c2.gases = o.gas !== null ? o.gas : 0;
+    if (i % 1000 === 0) os2.push({ t, p: c2.p.slice(), q: c2.q.slice(), modo: ap2.modo, fase: ap2.fase });
+    s2.servos(c2, m2, DT); s2.paso(c2, [-4, 0, 0], DT);
+    if (-c2.p[2] <= 0) { os2.push({ t, fin: "suelo", p: c2.p.slice() }); break; }
+  }
+  return { muestras: out, cambios, fin, grajo: { muestras: og, cambios: cg, fin: fing }, grajo_sens: { muestras: os2 } };
 }
 """
 with sync_playwright() as p:
@@ -68,4 +85,5 @@ with sync_playwright() as p:
 assert not err, err
 json.dump(r, open(AQUI / "referencia_piloto_uav_js.json", "w", encoding="utf-8"), separators=(",", ":"))
 print(len(r["muestras"]), "muestras; cambios:", r["cambios"], "; final:", r["fin"], r["muestras"][-1].get("p"))
+print("Grajo con sensores averiados:", len(r["grajo_sens"]["muestras"]), "muestras; final", r["grajo_sens"]["muestras"][-1])
 G = r["grajo"]; print("Grajo:", len(G["muestras"]), "muestras; cambios:", G["cambios"], "; final:", G["fin"], G["muestras"][-1])
