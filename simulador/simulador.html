@@ -1294,7 +1294,7 @@ const mundoDe = id => ESCENARIOS[id].mundo ? Mundos.datos(ESCENARIOS[id].mundo) 
 // ---- punto de lanzamiento en un mundo real: se elige en un mapa (textura del terreno + carreteras + pueblos) ----
 const LANZ_MAPA = { k: 1, x0: 0, y0: 0 };
 function casa() {
-  if (modelo && modelo.uav) { const P = pistaActual(); if (P) { const r = P.rumbo * D2R; return { N: P.n + 60 * Math.cos(r), E: P.e + 60 * Math.sin(r), rumbo: P.rumbo }; } }   // UAV: en la cabecera de la pista
+  if (modelo && modelo.uav && modelo.tren) { const P = pistaActual(); if (P) { const r = P.rumbo * D2R; return { N: P.n + 60 * Math.cos(r), E: P.e + 60 * Math.sin(r), rumbo: P.rumbo }; } }   // UAV de pista: en la cabecera
   return entorno.mundo && sesion.lanz ? sesion.lanz : { N: 0, E: 0 };
 }
 /** La pista del escenario (escenarios.js "pista" o la de su trabajo), con la altura del suelo en el umbral, o null. */
@@ -1396,7 +1396,7 @@ document.getElementById("mapaLanz").addEventListener("click", e => {
 /** Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"). */
 function destacadosLanz() { return (ESCENARIOS[sesion.escenario] || {}).destacados || []; }
 /** El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San Javier). */
-const necesitaPista = () => !!(Modelos.datos(sesion.avion) || {}).uav;
+const necesitaPista = () => !!(Modelos.datos(sesion.avion) || {}).tren;     // los de tren (el Cernicalo) despegan de pista; el Grajo, a mano
 const destacadoConPista = () => destacadosLanz().find(d => d.pista);
 function elegirDestacado(d) {
   if (necesitaPista() && !d.pista && destacadoConPista()) { d = destacadoConPista(); toast(Modelos.datos(sesion.avion).nombre + " despega de pista: sale de " + d.nombre); }
@@ -1733,7 +1733,7 @@ async function empezar() {
 function reiniciar() {
   MANDO.gasFpv = false; MULTI.caida = null;
   av = modelo.estadoInicial(); colocarEnBase(av);
-  piloto = modelo.uav ? (c => new PilotoUAV(modelo.piloto, pistaActual(), [c.N, c.E, entorno.altura ? entorno.altura(c.N, c.E) : 0]))(casa()) : null;
+  piloto = modelo.uav ? (c => new PilotoUAV(modelo.piloto, modelo.tren ? pistaActual() : null, [c.N, c.E, entorno.altura ? entorno.altura(c.N, c.E) : 0]))(casa()) : null;   // el lanzado a mano, sin pista
   if (modelo.uav) { av.torreta = { pan: 0, tilt: -20 * D2R }; UAV.fijo = null; UAV.cruz = null; UAV.fotos = 0; }
   const F = ESCENARIOS[sesion.escenario].pista_fpv;
   if (F && modelo.esFPV && !mundoDe(sesion.escenario)) { av.p = [F.salida[0], F.salida[1], -0.02]; modelo.modo = F.modo; }   // en la plataforma y en el modo de la mision
@@ -1777,12 +1777,14 @@ function lanzar() {
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: 0 };
   cnContador = 0; RegistroVuelo.empezar(vuelo); grabarMuestra();
   const ap = Desgaste.avisosApp(modelo); if (ap.length) toast(ap.join(" · "));     // el autodiagnostico de la app al armar
+  if (piloto && modelo.lanzado_a_mano) { piloto.c.rumbo = Cuat.euler(av.q)[2]; piloto.poner("LANZAMIENTO", av); piloto.c.rumbo = Cuat.euler(av.q)[2]; piloto.modoVisto = piloto.modo; }   // lanzado a mano: sube solo
 }
 function paso(dt) {
   aplicarRecorridos();
   let viento = entorno.actualizar(dt);
   let gasPalanca = null;
   if (piloto && av.estado === "volando" && piloto.modo !== "MANUAL") {      // UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
+    piloto.vientoDesde = entorno.viento.rumbo - Math.PI; piloto.vientoVel = entorno.viento.base;     // la toma en perdida, contra el viento
     const o = piloto.paso(av, dt, mando, av.gases);
     modelo.servos(av, Object.assign({}, mando, { pitch: o.pitch, yaw: o.yaw, guinada: o.guinada }), dt);
     if (o.gas !== null) { gasPalanca = av.gases; av.gases = o.gas; }
@@ -1843,7 +1845,7 @@ function paso(dt) {
           su.tipo === "sentido" ? `¡Sentido contrario en el ${nom}! El orden es ${entorno.ordenPilones(sen)}` :
           su.n === 1 ? `Pilón ${nom}: salida` : `Pilón ${nom} ${su.n - 1}/4`);
   }
-  const suelo = entorno.contactoSuelo(av, vn);
+  const suelo = entorno.contactoSuelo(av, vn, modelo.toma_perdida);
   if (suelo) terminarVuelo(suelo, vn);
 }
 /** Avisos de la bateria (js/bateria.js), una vez cada uno: el dron con poca bateria (av.avisoBat del modelo: baja, vuelta a

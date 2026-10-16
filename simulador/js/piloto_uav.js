@@ -1,5 +1,5 @@
 // =====================================================================
-//  PILOTO AUTOMATICO DE UN UAV DE ALA FIJA (Cernicalo XM-7, datos.uav y datos.piloto)
+//  PILOTO AUTOMATICO DE UN UAV DE ALA FIJA (Cernicalo XM-7 y Grajo MX-2, datos.uav y datos.piloto)
 //  Como los de los UAV tacticos reales, por capas: el lazo interior lleva el alabeo y el cabeceo con los alerones y la
 //  profundidad (y amortigua la guinada con los timones); encima, el rumbo, la altura y la velocidad (con el gas); y
 //  encima de todo, la navegacion (ir a un punto y dar vueltas sobre el, volver a la base) y el despegue y el aterrizaje
@@ -9,12 +9,15 @@
 //  Modos: MANUAL (las palancas pasan tal cual), ESTAB (estabilizado: la palanca pide alabeo y cabeceo y al soltarla
 //  nivela), CRUCERO (mantiene altura, rumbo y velocidad; las palancas cambian la altura y el rumbo pedidos y la del gas
 //  la velocidad), PUNTO (va a un punto y da vueltas sobre el), BASE (vuelve sobre la pista o el despegue), DESPEGUE y
-//  ATERRIZAJE (automaticos, en la pista).
+//  ATERRIZAJE (automaticos, en la pista). Sin pista (el Grajo, lanzado a mano): LANZAMIENTO (motor a tope, alas
+//  niveladas y subida hasta h_fin_despegue; luego crucero) y ATERRIZAJE en perdida profunda en un punto (datos.piloto.toma):
+//  contra el viento a un punto de entrada, alineado con el de toma bajando y, a la distancia justa, motor parado y
+//  profundidad arriba del todo (av.profToma: el recorrido de prof_toma_grados): baja a ~45 grados hasta el suelo.
 //  Angulos en radianes; posiciones NED (m) del simulador; altura = -p[2] (la del simulador, no sobre el mar).
 // =====================================================================
-const PUAV_MODOS = ["MANUAL", "ESTAB", "CRUCERO", "PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"];
+const PUAV_MODOS = ["MANUAL", "ESTAB", "CRUCERO", "PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE", "LANZAMIENTO"];
 const PUAV_NOMBRE = { MANUAL: "Manual", ESTAB: "Estabilizado", CRUCERO: "Crucero", PUNTO: "Ir a punto", BASE: "Vuelta a base",
-                      DESPEGUE: "Despegue automático", ATERRIZAJE: "Aterrizaje automático" };
+                      DESPEGUE: "Despegue automático", ATERRIZAJE: "Aterrizaje automático", LANZAMIENTO: "Lanzamiento" };
 
 class PilotoUAV {
   /** P: datos.piloto del avion (velocidades y limites); pista: {n, e, rumbo (grados), largo, h (altura del suelo)} o null;
@@ -24,6 +27,7 @@ class PilotoUAV {
     this.modo = "MANUAL"; this.fase = ""; this.c = { alt: 0, rumbo: 0, vel: P.v_crucero, punto: null };
     this.iTh = 0; this.iV = 0; this.automatico = false;     // automatico: si se ha usado el despegue o el aterrizaje automatico
     this.gasVisto = null;                                     // la palanca del gas: en crucero, al moverla cambia la velocidad pedida
+    this.vientoDesde = 0;                                     // de donde viene el viento (rad): la toma sin pista se hace contra el
   }
 
   static envolver(a) { return a - 2 * Math.PI * Math.round(a / (2 * Math.PI)); }
@@ -32,9 +36,10 @@ class PilotoUAV {
   /** Cambia de modo con las consignas de lo que esta haciendo ahora (altura, rumbo y velocidad actuales). Devuelve el
    *  texto para el aviso o "" si no se puede (p. ej. el despegue automatico en el aire). */
   poner(modo, av, punto) {
-    const e = Cuat.euler(av.q), V = Math.hypot(...av.v), h = -av.p[2], P = this.P, L = PilotoUAV.lim;
+    const P = this.P, e = Cuat.euler(av.q), V = P.pitot && av.V !== undefined ? av.V : Math.hypot(...av.v), h = -av.p[2], L = PilotoUAV.lim;
     if (modo === "DESPEGUE" && !(this.pista && av.enTierra)) return "";
-    if (modo === "ATERRIZAJE" && (!this.pista || av.enTierra)) return "";
+    if (modo === "ATERRIZAJE" && ((!this.pista && !P.toma) || av.enTierra)) return "";
+    if (modo === "LANZAMIENTO" && this.pista) return "";
     if (["CRUCERO", "PUNTO", "BASE", "ESTAB"].includes(modo) && av.enTierra) return "";
     this.modo = modo; this.fase = ""; this.iTh = 0; this.iV = 0; this.gasVisto = null;
     this.c.alt = h; this.c.rumbo = e[2]; this.c.vel = L(V, P.v_min, P.v_max);
@@ -42,7 +47,9 @@ class PilotoUAV {
     if (modo === "PUNTO") { this.c.punto = punto ? punto.slice() : [av.p[0], av.p[1]]; this.c.alt = Math.max(h, this.suelo0() + P.h_min); this.c.vel = Math.max(this.c.vel, P.v_crucero); }
     if (modo === "BASE") { const b = this.puntoBase(); this.c.punto = b; this.c.alt = this.suelo0() + P.h_base; this.c.vel = P.v_crucero; }
     if (modo === "DESPEGUE") { this.fase = "carrera"; this.automatico = true; }
-    if (modo === "ATERRIZAJE") { this.fase = "llegada"; this.automatico = true; this.c.vel = P.v_aprox; }
+    if (modo === "ATERRIZAJE") { this.fase = "llegada"; this.automatico = true; this.c.vel = P.v_aprox; if (!this.pista) this.c.punto = punto ? punto.slice() : [this.casa[0], this.casa[1]]; }
+    if (modo === "LANZAMIENTO") { this.fase = "subida"; this.automatico = true; }
+    av.profToma = false;
     return PUAV_NOMBRE[modo];
   }
 
@@ -57,7 +64,7 @@ class PilotoUAV {
   /** Un paso. pal: palancas {pitch, yaw, guinada} y gasPalanca (0..1, la del gas: en crucero elige la velocidad).
    *  Devuelve {pitch, yaw, guinada, gas, freno}: gas y freno null si no los lleva (los manda el piloto). */
   paso(av, dt, pal, gasPalanca) {
-    const P = this.P, L = PilotoUAV.lim, W = PilotoUAV.envolver, e = Cuat.euler(av.q), V = Math.max(1, Math.hypot(...av.v));
+    const P = this.P, L = PilotoUAV.lim, W = PilotoUAV.envolver, e = Cuat.euler(av.q), V = Math.max(1, P.pitot && av.V !== undefined ? av.V : Math.hypot(...av.v));   // con datos.piloto.pitot (el Grajo), la del aire
     const vn = Cuat.rot(av.q, av.v), vz = -vn[2], h = -av.p[2], m = this.modo;
     this.vzc = vz;                                       // la subida pedida (la pone altura(); si no, la que lleva)
     const out = { pitch: pal.pitch, yaw: pal.yaw, guinada: pal.guinada, gas: null, freno: null };
@@ -65,6 +72,8 @@ class PilotoUAV {
     // ---- lazo interior: alabeo y cabeceo pedidos -> alerones y profundidad; los timones quitan el derrape ----
     const actitud = (phi, th) => {
       out.yaw = L(P.k_alabeo * (phi - e[0]) - P.k_p * av.w[0], -1, 1);
+      // sin alerones (el Grajo: datos.piloto.timon_alabeo): el timon hace alabear (con el poliedro) y amortigua la guinada a la vez
+      if (P.timon_alabeo) out.yaw = L(P.k_alabeo * (phi - e[0]) - P.k_p * av.w[0] - P.k_r * (av.w[2] - G0 * Math.sin(e[0]) / V), -1, 1);
       // proteccion contra la perdida: con mucho angulo de ataque (o muy despacio) no deja tirar mas y baja el morro
       const sobra = av.alfa - P.alfa_max, lento = P.v_alarma - V;
       if (sobra > 0 || lento > 0) th = Math.min(th, e[1] - P.k_alfa * Math.max(sobra, 0) * D2R - 0.02 * Math.max(lento, 0));
@@ -99,6 +108,13 @@ class PilotoUAV {
       actitud(rumbo(this.c.rumbo), altura(this.c.alt, P.vz_max)); out.gas = velocidad(this.c.vel);
       return out;
     }
+    if (m === "LANZAMIENTO") {                          // lanzado a mano: motor a tope, alas niveladas y a subir; arriba, crucero
+      out.gas = 1; actitud(0, P.cabeceo_subida * D2R);
+      const agl = av.agl === undefined ? h - this.suelo0() : av.agl;
+      if (agl > P.h_fin_despegue) { const r = this.c.rumbo; this.poner("CRUCERO", av); this.c.alt = this.suelo0() + P.h_base; this.c.rumbo = r; this.c.vel = P.v_crucero; return this.paso(av, 0, { pitch: 0, yaw: 0, guinada: 0 }, gasPalanca); }
+      return out;
+    }
+    if (m === "ATERRIZAJE" && !this.pista) return this.tomaPerdida(av, out, actitud, rumbo, altura, velocidad, e, V, vz, h);
     const ps = this.pista, rp = ps.rumbo * D2R, [dEje, tEje] = this.ejePista(av.p[0], av.p[1]), agl = av.agl === undefined ? h - ps.h : av.agl;
     if (m === "DESPEGUE") {
       out.freno = 0; out.gas = 1;
@@ -139,4 +155,34 @@ class PilotoUAV {
     out.guinada = L(P.k_rumbo_tierra * W(rp - e[2]) - P.k_eje * tEje - P.k_r_tierra * av.w[2], -1, 1);
     return out;
   }
+
+  /** Toma en perdida profunda en el punto c.punto (sin pista: el Grajo). La senda final va contra el viento: entrada a
+   *  d_final m a sotavento del punto, a h_entrada sobre el; por la final bajando hasta h_perdida; y donde, con lo que
+   *  baja en perdida (~45 grados respecto al aire) y lo que lo empuja el viento, va a caer en el punto: motor parado,
+   *  profundidad arriba del todo (av.profToma) y alas niveladas hasta el suelo. */
+  tomaPerdida(av, out, actitud, rumbo, altura, velocidad, e, V, vz, h) {
+    const P = this.P, T = P.toma, L = PilotoUAV.lim, W = PilotoUAV.envolver, [tN, tE] = this.c.punto, hT = this.casa[2];
+    const rf = this.vientoDesde, cf = Math.cos(rf), sf = Math.sin(rf);            // rumbo de la final: hacia donde viene el viento
+    const dn = av.p[0] - tN, de = av.p[1] - tE, a = -(dn * cf + de * sf), t = -dn * sf + de * cf;     // a: lo que falta hasta el punto por la final; t: desvio
+    const agl = av.agl === undefined ? h - hT : av.agl;
+    av.profToma = false;
+    if (this.fase === "llegada") {                       // a la entrada, a sotavento
+      const eN = tN - T.d_final * cf, eE = tE - T.d_final * sf, d = Math.hypot(av.p[0] - eN, av.p[1] - eE);
+      actitud(rumbo(Math.atan2(eE - av.p[1], eN - av.p[0])), altura(Math.max(hT, h - agl) + T.h_entrada, P.vz_max)); out.gas = velocidad(P.v_crucero);   // sobre el suelo que tiene debajo
+      if (d < 25 || (a > 0.6 * T.d_final && a < 1.3 * T.d_final && Math.abs(t) < 25 && Math.abs(W(rf - e[2])) < 30 * D2R)) this.fase = "final";
+      return out;
+    }
+    if (this.fase === "final") {                         // por la final, bajando hasta h_perdida, hasta el punto de entrar en perdida
+      actitud(rumbo(W(rf - Math.atan(t / 30))), altura(Math.max(hT + T.h_perdida + Math.max(0, a - this.dPerdida(av, agl)) * (T.h_entrada - T.h_perdida) / T.d_final, h - agl + 0.8 * T.h_perdida), P.vz_max));
+      out.gas = velocidad(P.v_aprox);
+      if (a <= this.dPerdida(av, agl)) this.fase = "perdida";
+      if (a < -40) this.fase = "llegada";                // se ha pasado: otra vuelta
+      return out;
+    }
+    actitud(0, 0); out.gas = 0; out.pitch = T.prof; av.profToma = true;       // perdida profunda: alas niveladas con el timon
+    return out;
+  }
+  /** Lo que avanza sobre el suelo desde que entra en perdida a agl m de altura: ~45 grados respecto al aire (lo que baja,
+   *  lo avanza) menos el viento de cara, mas lo que tarda en frenar. */
+  dPerdida(av, agl) { const w = Math.max(0, this.vientoVel || 0), vb = 6.0; return Math.max(0, agl * (vb - w) / vb) + 8; }
 }

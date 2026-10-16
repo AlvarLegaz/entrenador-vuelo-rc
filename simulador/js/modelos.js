@@ -127,7 +127,8 @@ class ModeloAvion {
   /** Palanca (-1..1, con exponencial) -> consigna de las superficies -> servo con retardo y velocidad maxima. */
   servos(av, mando, dt) {
     const m = this.mandos, e = m.expo, ex = s => (1 - e) * s + e * s * s * s;
-    const deObj = -ex(mando.pitch) * m.prof_max_grados * D2R + mando.trim * D2R;   // tirar -> profundidad arriba
+    const pm = av.profToma && m.prof_toma_grados ? m.prof_toma_grados : m.prof_max_grados;    // toma en perdida profunda (piloto automatico): todo el recorrido
+    const deObj = -ex(mando.pitch) * pm * D2R + mando.trim * D2R;                  // tirar -> profundidad arriba
     const drObj = ex(mando.yaw) * m.timon_max_grados * D2R;                         // derecha -> timon a la derecha
     const vmax = m.servo_vel_grados_s * D2R;
     for (const [k, obj] of [["de", deObj], ["dr", drObj]])

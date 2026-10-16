@@ -1,7 +1,8 @@
 """Genera pruebas/referencia_piloto_uav_js.json para pruebas/prueba_piloto_uav.gd: un vuelo del Cernicalo XM-7 con el
 piloto automatico del navegador (simulador/js/piloto_uav.js con la fisica de modelos.js) sobre un suelo plano con una
 pista: despegue automatico, estabilizado con la palanca, crucero con cambios de rumbo, altura y velocidad, ir a punto
-y aterrizaje automatico hasta pararse. Aqui y alli, el mismo guion (si se cambia, hay que cambiarlo igual en los dos).
+y aterrizaje automatico hasta pararse; y un vuelo del Grajo MX-2 (sin pista: lanzamiento, crucero y toma en perdida
+profunda con viento). Aqui y alli, el mismo guion (si se cambia, hay que cambiarlo igual en los dos).
 Necesita Python con playwright y Chrome. Uso (desde la carpeta del repositorio):
     python simulador_godot/pruebas/generar_referencia_piloto_uav.py
 """
@@ -37,14 +38,34 @@ GUION = r"""
     const f = m.finTren(a);
     if (f) { fin = f; out.push({ t, fin: f, p: a.p.slice() }); break; }
   }
-  return { muestras: out, cambios, fin };
+  // el Grajo MX-2 (sin pista): lanzado a mano, sube solo, crucero y toma en perdida profunda junto a la casa con 4 m/s
+  // de viento del norte (la final, hacia el norte)
+  const g = Modelos.crear("GRAJO"), b = g.estadoInicial(), og = [], cg = [];
+  const apg = new PilotoUAV(g.piloto, null, [0, 0, 0]); apg.vientoDesde = 0; apg.vientoVel = 4;
+  b.p = [0, 0, -1.6]; g.lanzar(b); b.asim = 0.2;
+  const mg = { pitch: 0, yaw: 0, guinada: 0, trim: 0 };
+  cg.push([0, "LANZAMIENTO", apg.poner("LANZAMIENTO", b)]);
+  let fing = "";
+  for (let i = 0; i < Math.trunc(400 / DT); i++) {
+    const t = i * DT;
+    if (i === Math.trunc(80 / DT)) cg.push([+t.toFixed(3), "ATERRIZAJE", apg.poner("ATERRIZAJE", b)]);
+    b.agl = -b.p[2];
+    const o = apg.paso(b, DT, { pitch: 0, yaw: 0, guinada: 0 }, 0);
+    mg.pitch = o.pitch; mg.yaw = o.yaw; mg.guinada = o.guinada; b.gases = o.gas !== null ? o.gas : 0;
+    if (i % 1000 === 0) og.push({ t, p: b.p.slice(), q: b.q.slice(), v: b.v.slice(), modo: apg.modo, fase: apg.fase, gas: b.gases });
+    g.servos(b, mg, DT);
+    g.paso(b, [-4, 0, 0], DT);
+    if (-b.p[2] <= 0) { fing = b.alfa > g.toma_perdida.alfa_min ? "toma en perdida" : "otro"; og.push({ t, fin: fing, p: b.p.slice(), alfa: b.alfa }); break; }
+  }
+  return { muestras: out, cambios, fin, grajo: { muestras: og, cambios: cg, fin: fing } };
 }
 """
 with sync_playwright() as p:
     b = p.chromium.launch(channel="chrome", args=["--allow-file-access-from-files"]); pg = b.new_page()
     err = []; pg.on("pageerror", lambda e: err.append(str(e)))
-    pg.goto(URL); pg.wait_for_function("typeof Modelos !== 'undefined' && !!Modelos.datos('XM7') && typeof PilotoUAV !== 'undefined'", timeout=60000)
+    pg.goto(URL); pg.wait_for_function("typeof Modelos !== 'undefined' && !!Modelos.datos('XM7') && !!Modelos.datos('GRAJO') && typeof PilotoUAV !== 'undefined'", timeout=60000)
     r = pg.evaluate(GUION); b.close()
 assert not err, err
 json.dump(r, open(AQUI / "referencia_piloto_uav_js.json", "w", encoding="utf-8"), separators=(",", ":"))
 print(len(r["muestras"]), "muestras; cambios:", r["cambios"], "; final:", r["fin"], r["muestras"][-1].get("p"))
+G = r["grajo"]; print("Grajo:", len(G["muestras"]), "muestras; cambios:", G["cambios"], "; final:", G["fin"], G["muestras"][-1])

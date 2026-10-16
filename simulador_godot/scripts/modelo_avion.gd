@@ -122,7 +122,8 @@ func servos(av: Dictionary, mando: Dictionary, dt: float) -> void:
 	var m := mandos; var e: float = m["expo"]
 	var ex := func(s: float) -> float: return (1 - e) * s + e * s * s * s
 	var vmax: float = m["servo_vel_grados_s"] * D2R; var tau: float = m["servo_tau_s"]
-	var deObj: float = -ex.call(mando["pitch"]) * m["prof_max_grados"] * D2R + mando["trim"] * D2R
+	var pm: float = m["prof_toma_grados"] if av.get("profToma", false) and m.has("prof_toma_grados") else m["prof_max_grados"]   # toma en perdida profunda: todo el recorrido
+	var deObj: float = -ex.call(mando["pitch"]) * pm * D2R + mando["trim"] * D2R
 	if tipo == "timon":
 		var drObj: float = ex.call(mando["yaw"]) * m["timon_max_grados"] * D2R
 		for par in [["de", deObj], ["dr", drObj]]:

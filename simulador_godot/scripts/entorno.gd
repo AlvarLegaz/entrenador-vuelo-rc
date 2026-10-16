@@ -191,13 +191,16 @@ func en_mar(N: float, E: float) -> bool:
 	return m[1] > 0.7 if not m.is_empty() else en_mar_mundo(N, E)
 
 ## Contacto con el suelo: "" si sigue en el aire; si no, "aterrizado" o "roto (motivo)".
-func contacto_suelo(av: Dictionary, vn: Array, suelo_dado: float = NAN) -> String:
+func contacto_suelo(av: Dictionary, vn: Array, suelo_dado: float = NAN, toma = null) -> String:
 	var p: Array = av["p"]
 	var suelo := altura(p[0], p[1]) if is_nan(suelo_dado) else suelo_dado      # quien ya la ha calculado en esa posicion, la pasa
 	if -p[2] > suelo: return ""
 	p[2] = -suelo
 	if en_mar(p[0], p[1]): return "roto (ha caído al mar)"
 	var e := Cuat.euler(av["q"]); var vz: float = -vn[2]; var vel := sqrt(vn[0] * vn[0] + vn[1] * vn[1]); var L := limites
+	# toma en perdida profunda (datos.toma_perdida: el Grajo): mucho angulo de ataque, bajando deprisa y casi sin avance
+	if toma != null and float(av.get("alfa", 0.0)) > float(toma["alfa_min"]) and vz > -float(toma["vz_max_ms"]) and vel < float(toma["vel_max_ms"]) and absf(e[0]) < 35 * D2R:
+		av["tomaPerdida"] = true; return "aterrizado"
 	if vz < -L["descenso_ms"]: return "roto (demasiado descenso)"
 	if absf(e[0]) > L["alabeo_grados"] * D2R: return "roto (ala en el suelo)"
 	if vel > L["vel_suelo_ms"]: return "roto (demasiada velocidad)"

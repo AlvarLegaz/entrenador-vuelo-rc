@@ -97,12 +97,15 @@ class Entorno {
   }
 
   /** Contacto con el suelo: null si sigue en el aire; si no, "aterrizado" o "roto (motivo)". */
-  contactoSuelo(av, vn) {
+  contactoSuelo(av, vn, toma) {
     const suelo = this.altura ? this.altura(av.p[0], av.p[1]) : 0;
     if (-av.p[2] > suelo) return null;
     av.p[2] = -suelo;
     if (this.enMar && this.enMar(av.p[0], av.p[1])) return "roto (ha caído al mar)";
     const [roll, pitch] = Cuat.euler(av.q), vz = -vn[2], vel = Math.hypot(vn[0], vn[1]), L = this.limites;
+    // toma en perdida profunda (datos.toma_perdida: el Grajo): llega con mucho angulo de ataque, bajando deprisa y casi
+    // sin avance; esta hecho para eso (las piezas se sueltan y se vuelven a montar)
+    if (toma && av.alfa > toma.alfa_min && vz > -toma.vz_max_ms && vel < toma.vel_max_ms && Math.abs(roll) < 35 * D2R) { av.tomaPerdida = true; return "aterrizado"; }
     if (vz < -L.descenso_ms) return "roto (demasiado descenso)";
     if (Math.abs(roll) > L.alabeo_grados * D2R) return "roto (ala en el suelo)";
     if (vel > L.vel_suelo_ms) return "roto (demasiada velocidad)";

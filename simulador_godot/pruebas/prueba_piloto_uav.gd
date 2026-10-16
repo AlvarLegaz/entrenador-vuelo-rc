@@ -49,5 +49,33 @@ func _init() -> void:
 	print("Piloto automatico del UAV: %d muestras (navegador %d), final '%s' ('%s'), posicion %.6f m, actitud %.8f, modos o fases distintos %d%s" % [
 		out.size(), R.size(), fin, ref["fin"], dp, dq, dmodo, "" if primer < 0 else " (primera diferencia > 1 mm en t=%.0f s)" % primer])
 	print("  final en N %.1f E %.1f (navegador N %.1f E %.1f)" % [out[-1]["p"][0], out[-1]["p"][1], R[-1]["p"][0], R[-1]["p"][1]])
+	# el Grajo MX-2 (sin pista): lanzamiento, crucero y toma en perdida profunda con viento del norte
+	var g := ModeloAvion.new(DatosComunes.avion("GRAJO")); var b := g.estado_inicial(); var og := []; var cg := []
+	var apg := PilotoUAV.new(g.datos["piloto"], null, [0.0, 0.0, 0.0]); apg.viento_desde = 0.0; apg.viento_vel = 4.0
+	b["p"] = [0.0, 0.0, -1.6]; g.lanzar(b); b["asim"] = 0.2
+	var mg := { "pitch": 0.0, "yaw": 0.0, "guinada": 0.0, "trim": 0.0 }
+	cg.append([0.0, "LANZAMIENTO", apg.poner("LANZAMIENTO", b)])
+	var fing := ""
+	for i in int(400 / DT):
+		var t := i * DT
+		if i == int(80 / DT): cg.append([snappedf(t, 0.001), "ATERRIZAJE", apg.poner("ATERRIZAJE", b)])
+		b["agl"] = -b["p"][2]
+		var o := apg.paso(b, DT, { "pitch": 0.0, "yaw": 0.0, "guinada": 0.0 }, 0.0)
+		mg["pitch"] = o["pitch"]; mg["yaw"] = o["yaw"]; mg["guinada"] = o["guinada"]; b["gases"] = o["gas"] if o["gas"] != null else 0.0
+		if i % 1000 == 0: og.append({ "t": t, "p": b["p"].duplicate(), "q": b["q"].duplicate(), "modo": apg.modo, "fase": apg.fase })
+		g.servos(b, mg, DT)
+		g.paso(b, [-4.0, 0.0, 0.0], DT)
+		if -b["p"][2] <= 0:
+			fing = "toma en perdida" if b["alfa"] > g.datos["toma_perdida"]["alfa_min"] else "otro"; og.append({ "t": t, "fin": fing, "p": b["p"].duplicate() }); break
+	var RG: Array = ref["grajo"]["muestras"]; var gp := 0.0; var gq := 0.0; var gmodo := 0
+	for k in mini(og.size(), RG.size()):
+		if RG[k].has("fin") or og[k].has("fin"): continue
+		for j in 3: gp = maxf(gp, absf(float(og[k]["p"][j]) - float(RG[k]["p"][j])))
+		for j in 4: gq = maxf(gq, absf(float(og[k]["q"][j]) - float(RG[k]["q"][j])))
+		if og[k]["modo"] != RG[k]["modo"] or og[k]["fase"] != RG[k]["fase"]: gmodo += 1
+	var ok_g := og.size() == RG.size() and gp < 0.05 and gq < 1e-4 and gmodo == 0 and fing == String(ref["grajo"]["fin"])
+	print("Grajo MX-2 (lanzamiento a mano y toma en perdida profunda): %d muestras (navegador %d), final '%s' ('%s'), posicion %.6f m, actitud %.8f, modos o fases distintos %d" % [
+		og.size(), RG.size(), fing, ref["grajo"]["fin"], gp, gq, gmodo])
+	ok = ok and ok_g
 	print("RESULTADO: " + ("todo igual" if ok else "DISTINTO"))
 	quit(0 if ok else 1)

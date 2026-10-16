@@ -396,7 +396,7 @@ func causa_lanzamiento_fallido(gas: float) -> Dictionary:
 func en_mundo() -> bool: return not ent.mundo.is_empty()
 func ent_campo() -> Entorno: return _ent_campo
 func _casa() -> Dictionary:
-	if es_uav():                          # UAV: en la cabecera de la pista
+	if es_uav() and con_tren():           # UAV de pista: en la cabecera
 		var P = pista_actual()
 		if P != null:
 			var r: float = float(P["rumbo"]) * D2R
@@ -435,7 +435,7 @@ func destacados_lanz() -> Array:
 	return Escenarios.datos().get(sesion["escenario"], {}).get("destacados", [])
 ## El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San
 ## Javier). Como necesitaPista() y destacadoConPista() de la web.
-func necesita_pista() -> bool: return DatosComunes.avion(sesion["avion"]).get("uav", false)
+func necesita_pista() -> bool: return DatosComunes.avion(sesion["avion"]).get("tren") != null     # los de tren (el Cernicalo) despegan de pista; el Grajo, a mano
 func destacado_con_pista() -> Dictionary:
 	for d in destacados_lanz():
 		if d.has("pista"): return d
@@ -1020,7 +1020,7 @@ func reiniciar() -> void:
 	_gas_fpv_mando = false; _caida = {}
 	av = modelo.estado_inicial(); colocar_en_base(av)
 	if es_uav():
-		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual(), [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
+		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual() if con_tren() else null, [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
 		av["torreta"] = { "pan": 0.0, "tilt": -20 * D2R }; UAV["fijo"] = null; UAV["cruz"] = null; UAV["fotos"] = 0
 	else: piloto = null
 	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
@@ -1087,6 +1087,8 @@ func lanzar() -> void:
 		av["v"][0] *= 1 + 0.08 * gauss.call()
 		av["q"] = Cuat.desde_euler(e[0] + 4 * D2R * gauss.call(), e[1] + 2.5 * D2R * gauss.call(), e[2] + 3 * D2R * gauss.call())
 	_nuevo_vuelo(0.0)
+	if piloto != null and modelo.datos.get("lanzado_a_mano", false):           # lanzado a mano: sube solo
+		piloto.c["rumbo"] = Cuat.euler(av["q"])[2]; piloto.poner("LANZAMIENTO", av); piloto.c["rumbo"] = Cuat.euler(av["q"])[2]; _piloto_visto = piloto.modo
 
 # =====================================================================
 #  PASO DE LA SIMULACION (paso() de simulador.html)
@@ -1109,6 +1111,7 @@ func paso(dt: float) -> void:
 	var viento := ent.actualizar(dt)
 	var gas_palanca = null
 	if piloto != null and av["estado"] == "volando" and piloto.modo != "MANUAL":      # UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
+		piloto.viento_desde = ent.viento["rumbo"] - PI; piloto.viento_vel = ent.viento["base"]     # la toma en perdida, contra el viento
 		var o := piloto.paso(av, dt, mando, av["gases"])
 		var mm := mando.duplicate(); mm["pitch"] = o["pitch"]; mm["yaw"] = o["yaw"]; mm["guinada"] = o["guinada"]
 		modelo.servos(av, mm, dt)
@@ -1178,7 +1181,7 @@ func paso(dt: float) -> void:
 			"dentro": poner_toast("¡Por dentro del pilón %s! Vuelta anulada" % nom)
 			"sentido": poner_toast("¡Sentido contrario en el %s! El orden es %s" % [nom, ent.orden_pilones(sen)])
 			_: poner_toast(("Pilón %s: salida" % nom) if int(su["n"]) == 1 else ("Pilón %s %d/4" % [nom, int(su["n"]) - 1]))
-	var suelo := ent.contacto_suelo(av, vn, suelo_h)
+	var suelo := ent.contacto_suelo(av, vn, suelo_h, modelo.datos.get("toma_perdida") if modelo is ModeloAvion else null)
 	if suelo != "": terminar_vuelo(suelo, vn)
 
 ## Un paso del bipode (pasoTerrestre de la web): la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso
