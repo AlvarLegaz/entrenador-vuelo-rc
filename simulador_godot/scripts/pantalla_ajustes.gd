@@ -134,8 +134,9 @@ func _process(_dt: float) -> void:
 # ---------------------------------------------------------------- graficos
 func _graficos(c: VBoxContainer) -> void:
 	c.add_child(Tema.h2("Calidad gráfica"))
-	o_calidad = Tema.desplegable(["Automática: alta, y baja sola si no llega a 35 fps", "Alta: sombras, agua con reflejos, vegetación lejana", "Media: sin vegetación lejana ni reflejos", "Baja: tres cuartos de resolución, sin matas ni nubes"])
-	o_calidad.item_selected.connect(func(i): p.aj["calidad_modo"] = ["auto", "2", "1", "0"][i]; p.guardar_ajustes(); refrescar())
+	o_calidad = Tema.desplegable(["Automática: alta, y baja sola si no llega a 35 fps", "Alta: sombras, agua con reflejos, vegetación lejana", "Media: sin vegetación lejana ni reflejos", "Baja: tres cuartos de resolución, sin matas ni nubes",
+								  "Rendimiento máximo: portátiles y tabletas sencillos (media resolución, sin sombras, materiales simples)"])
+	o_calidad.item_selected.connect(func(i): p.aj["calidad_modo"] = ["auto", "2", "1", "0", "min"][i]; p.guardar_ajustes(); refrescar())
 	c.add_child(Tema.fila("Calidad", o_calidad))
 	t_calidad = Tema.sub("", 13); c.add_child(t_calidad)
 	c.add_child(Tema.margen(Tema.h2("Cámara del piloto"), 0, 18, 0, 0))
@@ -187,8 +188,8 @@ func refrescar() -> void:
 		var k: String = par[0]; var base = MandoCfg.PERFILES.get(M.perfil, {}).get(k)
 		mon[k]["inv"].button_pressed = (int(M.ejes[k]["s"]) != int(base[1])) if base != null else int(M.ejes[k]["s"]) < 0
 	var modo: String = p.aj.get("calidad_modo", "auto")
-	o_calidad.selected = ["auto", "2", "1", "0"].find(modo)
-	t_calidad.text = "Ahora: %s%s. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel." % [["baja", "media", "alta"][p.calidad_actual()], " (automática)" if modo == "auto" else ""]
+	o_calidad.selected = ["auto", "2", "1", "0", "min"].find(modo)
+	t_calidad.text = "Ahora: %s%s. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel." % ["rendimiento máximo" if p.minimo() else ["baja", "media", "alta"][p.calidad_actual()], (" (automática: tableta o móvil)" if p.minimo() else " (automática)") if modo == "auto" else ""]
 	var z: float = p.aj.get("zoom_piloto", 0.03); var iz := -1
 	for i in ZOOMS.size():
 		if absf(ZOOMS[i] - z) < 0.004: iz = i

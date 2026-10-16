@@ -30,6 +30,11 @@ var _claro_hecho := Vector2(INF, INF)
 var _zona_arboles: Node3D
 var _zona_datos := {}
 var calidad := 2                   # 0 baja, 1 media, 2 alta (se fija antes de construir)
+## Rendimiento maximo (portatiles y tabletas sencillos; se fija antes de construir, con la calidad 0): sin sombras ni
+## resplandor, calima mas cerca y materiales sencillos (fachadas con su textura de siempre, suelo sin grano, copas lisas
+## y de pocos triangulos, sin matas), arboles de la region solo hasta 1,5 km y terreno de las zonas a 10 m. Como
+## Visor.minimo de la web
+var minimo := false
 
 ## Para medir el rendimiento: --sin=arboles,sombras,ssao,mar,edificios,niebla,cielo (tras -- en la linea de ordenes).
 static func sin_(parte: String) -> bool:
@@ -100,17 +105,17 @@ func _cielo_y_luz() -> void:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES; env.tonemap_exposure = luz_(0, 1.05); env.tonemap_white = 6.0
 	env.ssao_enabled = not sin_("ssao") and calidad >= 2; env.ssao_radius = 1.5; env.ssao_intensity = 1.5
-	env.glow_enabled = true; env.glow_intensity = 0.3; env.glow_bloom = 0.02
+	env.glow_enabled = not minimo; env.glow_intensity = 0.3; env.glow_bloom = 0.02
 	# calima del Campo de Cartagena: niebla por distancia de 2,5 a 10,5 km (como el navegador) y perspectiva aerea
 	env.fog_enabled = not sin_("niebla"); env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_depth_begin = 2500.0; env.fog_depth_end = 10500.0; env.fog_depth_curve = 1.3
+	env.fog_depth_begin = 1500.0 if minimo else 2500.0; env.fog_depth_end = 6000.0 if minimo else 10500.0; env.fog_depth_curve = 1.3
 	env.fog_light_color = Color(0.72, 0.79, 0.86); env.fog_aerial_perspective = 0.4; env.fog_sky_affect = 0.0
 	env.adjustment_enabled = true; env.adjustment_saturation = luz_(5, 1.2); env.adjustment_contrast = luz_(4, 1.18)
 	we.environment = env; add_child(we)
 	sol = DirectionalLight3D.new()
 	sol.look_at_from_position(Vector3(-3500, 5200, 2600).normalized(), Vector3.ZERO, Vector3.UP)
 	sol.light_energy = luz_(2, 1.2); sol.light_color = Color(1.0, 0.96, 0.9); sol.light_angular_distance = 0.6
-	sol.shadow_enabled = not sin_("sombras")
+	sol.shadow_enabled = not sin_("sombras") and not minimo
 	sol.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if calidad > 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sol.directional_shadow_max_distance = [300.0, 600.0, 900.0][calidad]; sol.directional_shadow_blend_splits = true
 	sol.directional_shadow_split_1 = 0.03; sol.directional_shadow_split_2 = 0.12; sol.directional_shadow_split_3 = 0.4
@@ -297,16 +302,37 @@ static func _esfera(radiales: int, anillos: int) -> SphereMesh:
 const SHADER_SUELO := """
 shader_type spatial;
 render_mode cull_disabled;
-// Suelo con la ortofoto y, cerca de la camara, un grano fino (piedras, matas, tierra) que rompe los pixeles de 0,5 m.
+// Suelo con la ortofoto (conGrano de visor.js, el mismo calculo: SUELO_GLSL). Cerca de la camara, un grano fino que rompe
+// los pixeles de 0,5 m segun lo que hay en la foto: fuerte con piedras claras en la tierra, mas en la vegetacion y muy
+// suave en el asfalto y el hormigon; con relieve (la luz saca los terrones). Las sombras de la foto se aclaran.
 uniform sampler2D orto : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2D grano : filter_linear_mipmap, repeat_enable;
 varying vec3 pm;
+vec3 sueloSinSombra(vec3 c) {
+  float lum = dot(c, vec3(0.3, 0.59, 0.11));
+  float m = (1.0 - smoothstep(0.16, 0.3, lum)) * smoothstep(-0.01, 0.05, c.b - c.r);
+  return mix(c, c * 1.55 + 0.03, m * 0.55);
+}
+float sueloGrano(vec3 c, float g1, float g2, out float alto) {
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float gris = 1.0 - smoothstep(0.04, 0.12, mx - mn), veg = smoothstep(0.0, 0.04, c.g - max(c.r, c.b) * 0.98);
+  float A = mix(mix(0.32, 0.12, gris), 0.42, veg), g = g1 * 0.55 + g2 * 0.45;
+  float piedra = smoothstep(0.74, 0.8, g2) * (1.0 - gris) * (1.0 - veg);
+  alto = (g - 0.5) * mix(0.06, 0.015, gris) + piedra * 0.02;
+  return (1.0 + A * (2.0 * g - 1.0)) * (1.0 + 0.25 * piedra);
+}
+vec3 sueloRelieve(vec3 N, vec3 pv, float h) {
+  vec3 dpx = dFdx(pv), dpy = dFdy(pv); float dhx = dFdx(h), dhy = dFdy(h);
+  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);
+  return normalize(abs(det) * N - sign(det) * (dhx * r1 + dhy * r2));
+}
 void vertex() { pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	vec3 c = texture(orto, UV).rgb;
-	float g = texture(grano, pm.xz / 3.7).r * 0.55 + texture(grano, pm.xz / 0.83).r * 0.45;
-	float k = mix(0.68 + 0.64 * g, 1.0, smoothstep(20.0, 160.0, length(VERTEX)));
-	ALBEDO = c * k; ROUGHNESS = 1.0; SPECULAR = 0.3;
+	vec3 c = sueloSinSombra(texture(orto, UV).rgb);
+	float cerca = 1.0 - smoothstep(20.0, 160.0, length(VERTEX)), alto;
+	float k = sueloGrano(c, texture(grano, pm.xz / 3.7).r, texture(grano, pm.xz / 0.83).r, alto);
+	ALBEDO = c * mix(1.0, k, cerca); ROUGHNESS = 1.0; SPECULAR = 0.3;
+	NORMAL = sueloRelieve(NORMAL, VERTEX, alto * cerca);
 }
 """
 
@@ -323,10 +349,12 @@ static func _mat_suelo(tex: Texture2D) -> ShaderMaterial:
 
 const SHADER_ARBOL := """
 shader_type spatial;
-// Copa de arbol: la esfera se deforma con ruido (silueta irregular, distinta en cada arbol) y el color lleva manchas
-// de hojas y sombra interior; la luz que atraviesa las hojas (BACKLIGHT) la aclara a contraluz.
+// Copa de arbol: la esfera se deforma con ruido (silueta irregular, distinta en cada arbol) y el color lleva racimos
+// de hojas y sombra interior (mas oscura abajo, donde no llega el cielo, y mas clara arriba); la luz que atraviesa las
+// hojas (BACKLIGHT) la aclara a contraluz y la copa se mece con la brisa. Como materialCopas de visor.js.
 uniform float rugosidad = 0.28;
 varying float hueco;
+varying float alto;
 float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float ruido(vec3 x) {
 	vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -336,19 +364,29 @@ float ruido(vec3 x) {
 void vertex() {
 	vec3 s = vec3(float(INSTANCE_ID) * 1.73, float(INSTANCE_ID) * 0.37, 0.0);
 	float n = ruido(VERTEX * 1.6 + s) * 0.6 + ruido(VERTEX * 4.1 + s) * 0.4;
+	alto = VERTEX.y;
 	VERTEX += NORMAL * (n - 0.5) * 2.0 * rugosidad;
 	hueco = n;
+	float fase = dot(MODEL_MATRIX[3].xz, vec2(0.37, 0.71));
+	VERTEX.xz += vec2(sin(TIME * 1.6 + fase), cos(TIME * 1.3 + fase * 1.7)) * 0.035 * (alto + 1.0);     // la brisa
 }
 void fragment() {
 	vec3 pm = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float f = ruido(pm * 2.7) * 0.55 + ruido(pm * 8.3) * 0.45;
-	ALBEDO = COLOR.rgb * (0.6 + 0.75 * f) * (0.7 + 0.5 * hueco);
+	float f = ruido(pm * 1.8) * 0.6 + ruido(pm * 5.5) * 0.4;
+	ALBEDO = COLOR.rgb * (0.6 + 0.75 * f) * (0.7 + 0.5 * hueco) * mix(0.7, 1.25, smoothstep(-0.9, 0.85, alto));
 	ROUGHNESS = 0.92; SPECULAR = 0.15;
 	BACKLIGHT = COLOR.rgb * 0.35;
 }
 """
 
 static var _mat_arbol: ShaderMaterial
+
+## Copas lisas para el rendimiento maximo (el color de cada una, sin el sombreador de las copas).
+static var _mat_arbol_simple: StandardMaterial3D
+static func _mat_copas_simple() -> StandardMaterial3D:
+	if _mat_arbol_simple == null:
+		_mat_arbol_simple = StandardMaterial3D.new(); _mat_arbol_simple.vertex_color_use_as_albedo = true; _mat_arbol_simple.roughness = 0.92
+	return _mat_arbol_simple
 
 static func _mat_copas() -> ShaderMaterial:
 	if _mat_arbol == null:
@@ -463,7 +501,7 @@ func _arboles_de_la_region(cN: float, cE: float) -> void:
 	var T: Dictionary = ent.terreno; var W := img_region.get_width(); var Hh := img_region.get_height()
 	var mpx: float = (T["nE"] - 1) * T["paso"] / W
 	var r := RandomNumberGenerator.new(); r.seed = 11 + int(cN / 97) + int(cE / 89)
-	var arboles := []; var paso := 24.0; var R: float = [2500.0, 4500.0, 7000.0][calidad]
+	var arboles := []; var paso := 24.0; var R: float = 1500.0 if minimo else [2500.0, 4500.0, 7000.0][calidad]
 	var n := -R
 	while n <= R and arboles.size() < 60000:
 		var e := -R
@@ -485,7 +523,7 @@ func _arboles_de_la_region(cN: float, cE: float) -> void:
 	var solidos := []
 	for a in arboles: var y: float = ent.altura(a[1], a[0]); solidos.append([a[0], a[1], 0.9 * a[2], y, y + 1.55 * a[2]])
 	ent.poner_arboles("region", solidos)
-	_instanciar(_arboles_region, _esfera(6, 3), _mat_copas(), arboles, func(it: Array) -> Array:
+	_instanciar(_arboles_region, _esfera(6, 3), _mat_copas_simple() if minimo else _mat_copas(), arboles, func(it: Array) -> Array:
 		var s: float = it[2]
 		var b := Basis(Vector3.UP, s * 5.0).scaled_local(Vector3(s, s * 0.8, s))
 		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + s * 0.75, -it[1])), lin(it[3])], 1000.0, 0.0, 7500.0)
@@ -520,7 +558,8 @@ var _tex_orto := {}           # texturas de las teselas de la zona que se esta c
 func _terreno_zona(z: Dictionary) -> void:
 	_tex_orto = {}
 	var Z: Dictionary = z["meta"]; var D: PackedInt32Array = z["dem"]; var n: int = Z["dem"]["n"]; var paso: float = Z["dem"]["paso_m"]
-	var nt: int = Z["orto"]["teselas"]; var celdas := int(round(Z["orto"]["tesela_m"] / paso))
+	var kd := 2 if minimo else 1            # rendimiento maximo: un vertice cada 10 m
+	var nt: int = Z["orto"]["teselas"]; var celdas := int(round(Z["orto"]["tesela_m"] / paso / kd))
 	var Y := PackedFloat32Array(); Y.resize(n * n)
 	for k in n * n:
 		var v := D[k]; Y[k] = (-1.5 if v == -32768 else maxf(1.0, v / 10.0)) - h0
@@ -528,10 +567,10 @@ func _terreno_zona(z: Dictionary) -> void:
 	for ti in nt:
 		for tj in nt:
 			var pos := PackedVector3Array(); var nor := PackedVector3Array(); var uv := PackedVector2Array(); var idx := PackedInt32Array()
-			var i0 := ti * celdas; var j0 := tj * celdas; var w := celdas + 1
+			var i0 := ti * celdas * kd; var j0 := tj * celdas * kd; var w := celdas + 1
 			for a in w:
 				for b in w:
-					var i := i0 + a; var j := j0 + b; var k := i * n + j
+					var i := i0 + a * kd; var j := j0 + b * kd; var k := i * n + j
 					pos.append(Vector3(E0 + j * paso, Y[k], -(N0 + i * paso)))
 					var fE := (Y[k + (1 if j < n - 1 else 0)] - Y[k - (1 if j > 0 else 0)]) / (2 * paso)
 					var fN := (Y[k + (n if i < n - 1 else 0)] - Y[k - (n if i > 0 else 0)]) / (2 * paso)
@@ -558,7 +597,11 @@ func _terreno_zona(z: Dictionary) -> void:
 			var nombre: String = Z["orto"]["archivo"].replace("{i}", str(ti)).replace("{j}", str(tj))
 			var tx := _tex_de(String(z["base"]).path_join(nombre), 2 if calidad >= 1 else 1); _tex_orto[str(ti) + "_" + str(tj)] = tx
 			mapa_zonas.append({ "tex": tx, "N0": Z["N0"] + ti * Z["orto"]["tesela_m"], "E0": Z["E0"] + tj * Z["orto"]["tesela_m"], "lado": Z["orto"]["tesela_m"] })
-			_zona.add_child(_mi(_malla(pos, nor, idx, uv), _mat_suelo(tx), false))
+			var ms: Material = _mat_suelo(tx)
+			if minimo:                      # rendimiento maximo: la ortofoto sin grano
+				var sm := StandardMaterial3D.new(); sm.albedo_texture = tx; sm.roughness = 1.0; sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				sm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS; ms = sm
+			_zona.add_child(_mi(_malla(pos, nor, idx, uv), ms, false))
 
 ## Edificios del Catastro: cada huella extruida a sus plantas (3 m por planta) desde la cota del terreno. Tejados con la
 ## propia ortofoto de la zona (la tesela de su centro: cubiertas reales, lucernarios, placas...), fachadas con una ventana
@@ -570,15 +613,32 @@ func _edificios_zona(z: Dictionary) -> void:
 	var lista = JSON.parse_string(FileAccess.get_file_as_string(ruta))
 	if not lista is Array: return
 	var Z: Dictionary = z["meta"]; var nt: int = Z["orto"]["teselas"]; var tm: float = Z["orto"]["tesela_m"]
-	var fach := { "claro": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()],
-				  "ladrillo": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()] }
+	var fach := { "claro": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array(), PackedVector2Array()],
+				  "ladrillo": [PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array(), PackedVector2Array()] }
 	var tejados := {}
 	var solidos := []                       # para Entorno.choca_edificio: la planta, el pie y el tejado
 	for ed in lista:
 		if (ed["p"] as Array).size() >= 6: solidos.append([ed["p"], ed["b"] - h0 - 0.4, ed["b"] - h0 + ed["pl"] * 3.0 + 0.5])
 	ent.poner_edificios("zona:" + String(Z["id"]), solidos)
 	var crema := lin(Color.hex(0xeee6d8ff)); var r := RandomNumberGenerator.new(); r.seed = 5
-	for ed in lista:
+	# paredes en la misma arista que otro edificio (dos paredes en el mismo plano parpadean, y mas con ventanas distintas):
+	# si los edificios quedan a lados opuestos es una medianera, que solo se levanta por encima del tejado del vecino; si
+	# quedan del mismo lado (piezas superpuestas del Catastro) se dibuja entera la del mas alto. Con alturas iguales se
+	# queda la del primero de la lista. Como _edificiosZona de visor_real.js
+	var aristas := {}
+	for i in lista.size():
+		var p: Array = lista[i]["p"]; var nv := p.size() / 2; var yt: float = lista[i]["b"] - h0 + lista[i]["pl"] * 3.0 + 0.5
+		if nv < 3: continue
+		var ar := 0.0
+		for k in nv:
+			var j := (k + 1) % nv; ar += p[2 * k] * p[2 * j + 1] - p[2 * j] * p[2 * k + 1]
+		for k in nv:
+			var j := (k + 1) % nv; var a := _llave(p[2 * k], p[2 * k + 1]); var b := _llave(p[2 * j], p[2 * j + 1])
+			var c := a + "|" + b if a < b else b + "|" + a
+			if not aristas.has(c): aristas[c] = []
+			aristas[c].append([i, yt, (1 if a < b else -1) * int(signf(ar))])      # lado del edificio respecto a la arista
+	for ie in lista.size():
+		var ed: Dictionary = lista[ie]
 		var p: Array = ed["p"]
 		if p.size() < 6: continue
 		var P := PackedVector2Array()
@@ -588,17 +648,29 @@ func _edificios_zona(z: Dictionary) -> void:
 		var es_l: bool = ed.has("f")
 		var F: Array = fach["ladrillo" if es_l else "claro"]
 		var Cw: Color = Color.WHITE * (0.92 + 0.12 * r.randf()) if es_l else crema.lerp(C, 0.12) * (0.93 + 0.1 * r.randf()); Cw.a = 1.0
-		var u := 0.0
-		for k in P.size():                      # fachadas: u en modulos de 3,5 m, v en plantas (v = 0 arriba de la textura)
-			var a := P[k]; var b := P[(k + 1) % P.size()]; var L := a.distance_to(b); var u0 := u / 3.5; var u1 := (u + L) / 3.5; u += L
-			var A0 := Vector3(a.x, y0, -a.y); var B0 := Vector3(b.x, y0, -b.y); var A1 := Vector3(a.x, y1, -a.y); var B1 := Vector3(b.x, y1, -b.y)
-			var nn := (B1 - A0).cross(B0 - A0).normalized()
-			F[0].append_array([A0, B0, B1, A0, B1, A1]); for q in 6: F[1].append(nn); F[2].append(Cw)
-			F[3].append_array([Vector2(u0, alto), Vector2(u1, alto), Vector2(u1, 0), Vector2(u0, alto), Vector2(u1, 0), Vector2(u0, 0)])
-		var t := Geometry2D.triangulate_polygon(P)
 		var ce := 0.0; var cn := 0.0
 		for v in P: ce += v.x; cn += v.y
 		ce /= P.size(); cn /= P.size()
+		var sem := fposmod(ce * 0.6180339 + cn * 0.3711, 1.0)        # semilla del edificio (la misma en la web)
+		var u := 0.0
+		for k in P.size():                      # fachadas: u en modulos de 3,5 m, v en plantas (v = 0 arriba de la textura)
+			var a := P[k]; var b := P[(k + 1) % P.size()]; var L := a.distance_to(b); var u0 := u / 3.5; var u1 := (u + L) / 3.5; u += L
+			var la := _llave(a.x, a.y); var lb := _llave(b.x, b.y); var otros: Array = aristas.get(la + "|" + lb if la < lb else lb + "|" + la, [])
+			var lado := 0
+			for ot in otros:
+				if ot[0] == ie: lado = ot[2]
+			var yb := y0; var tapada := false
+			for ot in otros:
+				if ot[0] == ie: continue
+				if ot[1] > y1 + 0.01 or (ot[1] >= y1 - 0.01 and ot[0] < ie): tapada = true     # el otro es mas alto (o igual y va antes)
+				elif ot[2] != lado: yb = maxf(yb, ot[1])                                      # medianera: por encima del vecino
+			if tapada or yb >= y1 - 0.01: continue
+			var vb := alto - (yb - y0) / 3.0
+			var A0 := Vector3(a.x, yb, -a.y); var B0 := Vector3(b.x, yb, -b.y); var A1 := Vector3(a.x, y1, -a.y); var B1 := Vector3(b.x, y1, -b.y)
+			var nn := (B1 - A0).cross(B0 - A0).normalized()
+			F[0].append_array([A0, B0, B1, A0, B1, A1]); for q in 6: F[1].append(nn); F[2].append(Cw); F[4].append(Vector2(sem, alto))
+			F[3].append_array([Vector2(u0, vb), Vector2(u1, vb), Vector2(u1, 0), Vector2(u0, vb), Vector2(u1, 0), Vector2(u0, 0)])
+		var t := Geometry2D.triangulate_polygon(P)
 		var ti := clampi(int(floor((cn - Z["N0"]) / tm)), 0, nt - 1); var tj := clampi(int(floor((ce - Z["E0"]) / tm)), 0, nt - 1)
 		var clave := str(ti) + "_" + str(tj)
 		if not tejados.has(clave): tejados[clave] = [PackedVector3Array(), PackedVector2Array(), Z["N0"] + ti * tm, Z["E0"] + tj * tm]
@@ -609,10 +681,12 @@ func _edificios_zona(z: Dictionary) -> void:
 	for nombre in fach:
 		var F: Array = fach[nombre]
 		if F[0].is_empty(): continue
-		var arr := []; arr.resize(Mesh.ARRAY_MAX); arr[Mesh.ARRAY_VERTEX] = F[0]; arr[Mesh.ARRAY_NORMAL] = F[1]; arr[Mesh.ARRAY_COLOR] = F[2]; arr[Mesh.ARRAY_TEX_UV] = F[3]
+		var arr := []; arr.resize(Mesh.ARRAY_MAX); arr[Mesh.ARRAY_VERTEX] = F[0]; arr[Mesh.ARRAY_NORMAL] = F[1]; arr[Mesh.ARRAY_COLOR] = F[2]; arr[Mesh.ARRAY_TEX_UV] = F[3]; arr[Mesh.ARRAY_TEX_UV2] = F[4]
 		var am := ArrayMesh.new(); am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-		var mat := StandardMaterial3D.new(); mat.vertex_color_use_as_albedo = true; mat.albedo_texture = fachada(nombre); mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		mat.roughness = 0.9; mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		var mat: Material = _mat_fachada(nombre)
+		if minimo:                          # rendimiento maximo: la textura con ventanas de siempre
+			var sm := StandardMaterial3D.new(); sm.vertex_color_use_as_albedo = true; sm.albedo_texture = fachada(nombre); sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+			sm.roughness = 0.9; sm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC; mat = sm
 		var mi := MeshInstance3D.new(); mi.mesh = am; mi.material_override = mat; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 		_zona.add_child(mi)
 	for clave in tejados:
@@ -626,12 +700,94 @@ func _edificios_zona(z: Dictionary) -> void:
 		var mi := MeshInstance3D.new(); mi.mesh = am; mi.material_override = mat; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 		_zona.add_child(mi)
 
+## Un vertice (E, N) redondeado a 5 cm, para las aristas compartidas (la misma que en _edificiosZona de visor_real.js).
+static func _llave(x: float, y: float) -> String:
+	return str(int(floor(x * 20 + 0.5))) + "," + str(int(floor(y * 20 + 0.5)))
+
+## Fachadas de los edificios del Catastro dibujadas en el sombreador (FACHADA_GLSL de visor_real.js, el mismo calculo):
+## cada edificio elige por su semilla (UV2.x) un tipo de ventana, el color de sus persianas y de su carpinteria; cada
+## ventana baja la persiana a su altura; la planta baja lleva locales y portales; zocalo, cornisa y chorretones; el
+## cristal refleja el cielo segun el angulo. De lejos se funde con el color medio. UV2.y: alto del muro en plantas.
+const SHADER_FACHADA := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D tex_pared : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float es_ladrillo = 0.0;
+float fh1(float n) { return fract(sin(n) * 43758.5453); }
+float fh2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void fachadaProc(vec2 uv, vec2 ed, float lad, vec3 pared, out vec3 col, out float vid) {
+  float s = floor(ed.x * 1000.0 + 0.5), pl = floor(ed.y * 10.0 + 0.5) / 10.0 - 0.3, vv = uv.y - 0.1333;   // redondeadas: llegan interpoladas y el sorteo cambiaria de un pixel a otro
+  float cx = floor(uv.x), cy = floor(vv); vec2 f = vec2(fract(uv.x), fract(vv));
+  col = pared * (0.9 + 0.1 * smoothstep(0.0, 1.2, vv)); vid = 0.0;
+  float tv = lad > 0.5 ? 4.0 : floor(fh1(s * 91.7) * 4.0);
+  if (pl < 2.5 && tv > 1.5 && tv < 2.5) tv = 0.0;
+  vec4 R = tv < 0.5 ? vec4(0.2, 0.8, 0.32, 0.72) : tv < 1.5 ? vec4(0.3, 0.7, 0.05, 0.78) : tv < 2.5 ? vec4(0.04, 0.96, 0.3, 0.82) : tv < 3.5 ? vec4(0.12, 0.88, 0.36, 0.74) : vec4(0.34, 0.66, 0.62, 0.82);
+  bool bajo = cy < 0.5 && lad < 0.5 && pl >= 2.5;
+  float tb = fh2(vec2(cx, s * 37.0));
+  if (bajo) R = tb < 0.55 ? vec4(0.06, 0.94, 0.0, 0.8) : tb < 0.8 ? vec4(0.3, 0.7, 0.0, 0.74) : vec4(0.2, 0.8, 0.32, 0.72);
+  if (vv < 0.28) col = lad > 0.5 ? col * 0.8 : mix(col, vec3(0.42, 0.41, 0.39), 0.65);
+  if (vv > pl - 0.04 && vv < pl) col *= 0.7;
+  else if (vv >= pl && vv < pl + 0.05) col = mix(col, vec3(0.93, 0.92, 0.9), 0.5);
+  if (vv < 0.0 || vv > pl) return;
+  float x0 = R.x, x1 = R.y, y0 = R.z, y1 = R.w;
+  bool doble = tv > 2.5 && tv < 3.5 && !bajo;
+  bool enX = f.x >= x0 && f.x <= x1 && !(doble && f.x > 0.44 && f.x < 0.56);
+  if (!(bajo && y0 < 0.01) && f.y < y0 && f.y > y0 - 0.035 && f.x > x0 - 0.03 && f.x < x1 + 0.03) { col = vec3(0.86, 0.85, 0.82); return; }
+  if (enX && f.y < y0 - 0.035 && f.y > y0 - 0.4)
+    col *= 1.0 - 0.14 * (1.0 - (y0 - 0.035 - f.y) / 0.365) * (0.4 + 0.6 * fh2(vec2(floor(f.x * 18.0) + cx * 31.0, s)));
+  if (!enX || f.y < y0 || f.y > y1) return;
+  float mc = lad > 0.5 ? 0.0 : step(0.7, fh1(s * 13.0));
+  vec3 marcoC = mix(vec3(0.88, 0.88, 0.86), vec3(0.24, 0.22, 0.2), mc);
+  bool marco = f.x < x0 + 0.025 || f.x > x1 - 0.025 || f.y < y0 + 0.03 || f.y > y1 - 0.03
+    || (doble && f.x > 0.415 && f.x < 0.585)
+    || ((tv < 0.5 || (bajo && tb >= 0.8)) && abs(f.x - 0.5) < 0.012)
+    || (tv > 1.5 && tv < 2.5 && !bajo && fract((f.x - x0) / 0.23) < 0.05);
+  if (bajo && tb >= 0.55 && tb < 0.8) { col = vec3(0.3, 0.2, 0.13) * (marco ? 0.75 : 0.9 + 0.1 * step(0.5, fract(f.x * 9.0))); return; }
+  if (marco) { col = marcoC; return; }
+  float h = fh2(vec2(cx * 1.7 + cy * 13.1, s * 57.0));
+  if (bajo && tb < 0.55) {
+    float pf = fh2(vec2(cx + 7.0, s)) < 0.5 ? 1.0 : h * 0.6;
+    if (f.y > y1 - pf * (y1 - y0)) { col = vec3(0.5, 0.51, 0.52) * (0.85 + 0.15 * step(0.4, fract(f.y * 26.0))); return; }
+    col = vec3(0.07, 0.075, 0.08); vid = 1.0; return;
+  }
+  if (tv > 0.5 && tv < 1.5 && f.y < 0.36 && (fract(f.x * 28.0) < 0.3 || f.y > 0.335)) { col = vec3(0.16, 0.16, 0.17); return; }
+  float pc = fh1(s * 7.3);
+  vec3 persiana = pc < 0.45 ? vec3(0.78, 0.72, 0.6) : pc < 0.75 ? vec3(0.86, 0.86, 0.84) : pc < 0.9 ? vec3(0.44, 0.33, 0.24) : vec3(0.34, 0.44, 0.3);
+  if (tv < 1.5 || doble || (bajo && tb >= 0.8)) {
+    float pf = pow(h, 1.8) * 0.95;
+    if (f.y > y1 - pf * (y1 - y0)) { col = persiana * (0.86 + 0.14 * step(0.5, fract(f.y * 40.0))); return; }
+  }
+  col = (tv > 1.5 && tv < 2.5) ? mix(vec3(0.07, 0.09, 0.1), vec3(0.1, 0.09, 0.07), step(0.5, fh1(s * 3.1))) : vec3(0.05, 0.055, 0.06);
+  if (tv < 1.5 && fh2(vec2(cx, cy + s * 11.0)) > 0.6) col = mix(col, vec3(0.55, 0.5, 0.42), 0.55);
+  vid = 1.0;
+}
+float fachadaLejos(float w) { return smoothstep(0.15, 0.5, w); }
+float fachadaFresnel(vec3 n, vec3 v) { return 0.15 + 0.6 * pow(1.0 - abs(dot(n, v)), 3.0); }
+void fragment() {
+	vec3 base = texture(tex_pared, UV).rgb * COLOR.rgb;
+	vec2 uvf = vec2(UV.x, UV2.y - UV.y);
+	float fL = fachadaLejos(max(fwidth(uvf.x), fwidth(uvf.y))); vec3 col; float vid;
+	fachadaProc(uvf, UV2, es_ladrillo, base, col, vid);
+	ALBEDO = mix(col, base * 0.8, fL); vid *= 1.0 - fL;
+	ROUGHNESS = 0.9;
+	EMISSION = vid * fachadaFresnel(NORMAL, VIEW) * vec3(0.55, 0.65, 0.78);
+}
+"""
+static var _sh_fachada: Shader
+static func _mat_fachada(tipo: String) -> ShaderMaterial:
+	if _sh_fachada == null: _sh_fachada = Shader.new(); _sh_fachada.code = SHADER_FACHADA
+	var m := ShaderMaterial.new(); m.shader = _sh_fachada
+	m.set_shader_parameter("tex_pared", fachada(tipo, true)); m.set_shader_parameter("es_ladrillo", 1.0 if tipo == "ladrillo" else 0.0)
+	return m
+
 ## Textura de un modulo de fachada (3,5 m por una planta de 3 m) que se repite: "claro" (pared blanca que tine el color
 ## del vertice, ventana de 2,1 x 1,2 m con marco) o "ladrillo" (caravista rojo con llagas y una ventana alta apaisada,
-## como los talleres del CIFP). La misma que Visor.texturaFachada de visor_real.js.
+## como los talleres del CIFP). sin_ventanas: la pared sola (las ventanas las dibuja SHADER_FACHADA). La misma que
+## Visor.texturaFachada de visor_real.js.
 static var _fachadas := {}
-static func fachada(tipo: String) -> ImageTexture:
-	if _fachadas.has(tipo): return _fachadas[tipo]
+static func fachada(tipo: String, sin_ventanas := false) -> ImageTexture:
+	var clave := tipo + ("_pared" if sin_ventanas else "")
+	if _fachadas.has(clave): return _fachadas[clave]
 	var N := 128; var img := Image.create(N, N, false, Image.FORMAT_RGB8); var r := RandomNumberGenerator.new(); r.seed = 61 if tipo == "ladrillo" else 43
 	var ven: Array = [44, 84, 22, 42] if tipo == "ladrillo" else [26, 102, 36, 87]      # x0, x1, y0, y1 (fila 0 = arriba de la planta)
 	var lad := []
@@ -643,8 +799,10 @@ static func fachada(tipo: String) -> ImageTexture:
 			if tipo == "ladrillo":           # hiladas de 4 px (7 cm), ladrillos de 15 px a soga
 				var f := y >> 2; var xo := (x + (f & 1) * 7) % N; var k := mini(8, xo / 15); var tt: float = lad[f * 9 + k]
 				c = Color8(196, 182, 164) if ((y & 3) == 3 or xo % 15 == 14) else Color8(int(164 * tt), int(85 * tt), int(63 * tt))
-			else:
-				var tt := 0.96 + 0.04 * r.randf(); c = Color8(int(244 * tt), int(241 * tt), int(236 * tt))
+			else:                            # enlucido: grano y manchas suaves (sin costuras)
+				var tt := 0.96 + 0.04 * r.randf() - (0.025 * (1 + sin(TAU * (2.0 * x / N + 0.3)) * sin(TAU * (3.0 * y / N))) if sin_ventanas else 0.0)
+				c = Color8(int(244 * tt), int(241 * tt), int(236 * tt))
+			if sin_ventanas: img.set_pixel(x, y, c); continue
 			if x >= ven[0] and x < ven[1] and y >= ven[2] and y < ven[3]:
 				var marco: bool = x < ven[0] + 2 or x >= ven[1] - 2 or y < ven[2] + 2 or y >= ven[3] - 2 or absf(x - (ven[0] + ven[1]) / 2.0) < 1
 				var fy: float = float(y - ven[2]) / (ven[3] - ven[2])
@@ -652,8 +810,16 @@ static func fachada(tipo: String) -> ImageTexture:
 			if y >= ven[3] and y < ven[3] + 2 and x >= ven[0] - 2 and x < ven[1] + 2: c = Color8(215, 210, 200)      # alfeizar
 			img.set_pixel(x, y, c)
 	img.generate_mipmaps()
-	var t := ImageTexture.create_from_image(img); _fachadas[tipo] = t
+	var t := ImageTexture.create_from_image(img); _fachadas[clave] = t
 	return t
+
+## Especie de un arbol de una zona por su copa (radio rc) y su sitio (E, N): 0 almendro, 1 olivo, 2 pino carrasco,
+## 3 algarrobo. La misma que especieArbol de visor_real.js. COLOR_ESPECIE: [tono, saturacion, luz] como [base, variacion].
+static func especie_arbol(e: float, n: float, rc: float) -> int:
+	var k := fposmod(e * 0.731 + n * 0.419, 1.0)
+	return (0 if k < 0.5 else 1) if rc < 2.2 else (2 if k < 0.55 else 3)
+const COLOR_ESPECIE := [[[0.24, 0.03], [0.12, 0.05], [0.36, 0.06]], [[0.2, 0.03], [0.07, 0.04], [0.42, 0.06]],
+						[[0.3, 0.03], [0.28, 0.06], [0.17, 0.04]], [[0.24, 0.03], [0.3, 0.06], [0.21, 0.05]]]
 
 static func _hsl(h: float, s: float, l: float) -> Color:
 	var q := l * (1 + s) if l < 0.5 else l + s - l * s; var p := 2 * l - q
@@ -726,19 +892,23 @@ func _arboles_zona(z: Dictionary) -> void:
 		if A[i + 2] < 1.3: matas.append(it)
 		else: arboles.append(it)
 	ent.poner_arboles("zona:" + String(z["meta"]["id"]), solidos)     # solidos (Entorno.choca_arbol)
+	# cuatro especies del Campo de Cartagena (especie_arbol): almendro y olivo los pequenos, pino carrasco (copa en
+	# sombrilla sobre un tronco mas alto) y algarrobo los grandes. Como _arbolesZona de visor_real.js
 	var copa := func(it: Array) -> Array:
-		var rc: float = it[2]; var ht := 0.9 + 0.45 * rc
-		var b := Basis(Vector3.UP, it[3] * TAU).scaled_local(Vector3(rc, rc * (0.7 + 0.25 * it[4]), rc))
-		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + ht + rc * 0.55, -it[1])), lin(_hsl(0.19 + 0.05 * it[5], 0.2 + 0.1 * it[6], 0.24 + 0.08 * it[4]))]
-	var mat := _mat_copas()
-	_instanciar(padre, _esfera(12, 7), mat, arboles, copa, 500.0, 0.0, 450.0)
+		var rc: float = it[2]; var ht := 0.9 + 0.45 * rc; var sp := especie_arbol(it[0], it[1], rc); var pino := sp == 2
+		var b := Basis(Vector3.UP, it[3] * TAU).scaled_local(Vector3(rc, rc * ((0.48 + 0.1 * it[4]) if pino else (0.7 + 0.25 * it[4])), rc))
+		var C: Array = COLOR_ESPECIE[sp]
+		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + ht + rc * (0.8 if pino else 0.55), -it[1])),
+				lin(_hsl(C[0][0] + C[0][1] * it[5], C[1][0] + C[1][1] * it[6], C[2][0] + C[2][1] * it[4]))]
+	var mat: Material = _mat_copas_simple() if minimo else _mat_copas()
+	_instanciar(padre, _esfera(6, 3) if minimo else _esfera(12, 7), mat, arboles, copa, 500.0, 0.0, 450.0)
 	_instanciar(padre, _esfera(6, 3), mat, arboles, copa, 500.0, 450.0, [2500.0, 5000.0, 9000.0][calidad])
 	var mt := StandardMaterial3D.new(); mt.albedo_color = Color.hex(0x5b4632ff); mt.roughness = 1.0
 	var cil := CylinderMesh.new(); cil.top_radius = 0.12; cil.bottom_radius = 0.2; cil.height = 1.0; cil.radial_segments = 5; cil.rings = 0
 	_instanciar(padre, cil, mt, arboles, func(it: Array) -> Array:
-		var rc: float = it[2]; var ht := 0.9 + 0.45 * rc
+		var rc: float = it[2]; var ht := 0.9 + 0.45 * rc + (0.4 * rc if especie_arbol(it[0], it[1], rc) == 2 else 0.0)   # el pino, con mas tronco
 		return [Transform3D(Basis().scaled(Vector3(rc / 2.2, ht, rc / 2.2)), Vector3(it[0], ent.altura(it[1], it[0]) + ht / 2, -it[1])), Color.WHITE], 500.0, 0.0, 450.0)
-	_instanciar(padre, _esfera(5, 3), mat, matas, func(it: Array) -> Array:
+	_instanciar(padre, _esfera(5, 3), mat, [] if minimo else matas, func(it: Array) -> Array:      # rendimiento maximo: sin matas
 		var rc: float = it[2]
 		var b := Basis(Vector3.UP, it[3] * TAU).scaled_local(Vector3(rc, rc * 0.55, rc))
 		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + rc * 0.3, -it[1])), lin(_hsl(0.15 + 0.06 * it[5], 0.16 + 0.1 * it[6], 0.3 + 0.08 * it[4]))], 500.0, 0.0, 4000.0,

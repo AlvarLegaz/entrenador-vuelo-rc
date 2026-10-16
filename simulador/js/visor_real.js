@@ -448,12 +448,12 @@ Object.assign(Visor.prototype, {
    *  exterior, un faldon que baja 30 m para tapar el escalon con el terreno lejano. */
   _terrenoZona(g, z) {
     const Z = z.meta, D = z.dem, n = Z.dem.n, paso = Z.dem.paso_m, h0 = this.mundo.terreno.h0, nt = Z.orto.teselas;
-    const celdas = Math.round(Z.orto.tesela_m / paso), cargador = new THREE.TextureLoader(), aniso = this.renderer.capabilities.getMaxAnisotropy();
+    const kd = this.minimo ? 2 : 1, celdas = Math.round(Z.orto.tesela_m / paso / kd), cargador = new THREE.TextureLoader(), aniso = this.renderer.capabilities.getMaxAnisotropy();
     const yDe = (i, j) => { const v = D[i * n + j]; return (v === -32768 ? -1.5 : Math.max(1, v / 10)) - h0; };
     for (let ti = 0; ti < nt; ti++) for (let tj = 0; tj < nt; tj++) {
-      const pos = [], uv = [], idx = [], i0 = ti * celdas, j0 = tj * celdas, w = celdas + 1;
+      const pos = [], uv = [], idx = [], i0 = ti * celdas * kd, j0 = tj * celdas * kd, w = celdas + 1;      // rendimiento maximo (kd 2): un vertice cada 10 m
       for (let a = 0; a <= celdas; a++) for (let b = 0; b <= celdas; b++) {
-        const i = i0 + a, j = j0 + b;
+        const i = i0 + a * kd, j = j0 + b * kd;
         pos.push(Z.E0 + j * paso, yDe(i, j), -(Z.N0 + i * paso)); uv.push(b / celdas, a / celdas);
       }
       for (let a = 0; a < celdas; a++) for (let b = 0; b < celdas; b++) { const p = a * w + b; idx.push(p, p + 1, p + w, p + 1, p + w + 1, p + w); }
@@ -473,7 +473,7 @@ Object.assign(Visor.prototype, {
       tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
       (g.userData.orto = g.userData.orto || {})[ti + "_" + tj] = tex;
       (this.mapaZonas = this.mapaZonas || []).push({ tex, N0: Z.N0 + ti * Z.orto.tesela_m, E0: Z.E0 + tj * Z.orto.tesela_m, lado: Z.orto.tesela_m });
-      const malla = new THREE.Mesh(geo, conGrano(new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide })));
+      const mS = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }), malla = new THREE.Mesh(geo, this.minimo ? mS : conGrano(mS));   // rendimiento maximo: sin grano
       malla.receiveShadow = true; g.add(malla);
     }
   },
@@ -486,24 +486,51 @@ Object.assign(Visor.prototype, {
     this._edificiosDe(z).then(lista => {
       this.entorno.ponerEdificios("zona:" + z.meta.id, lista.filter(ed => ed.p.length >= 6).map(ed => [ed.p, ed.b - this.mundo.terreno.h0 - 0.4, ed.b - this.mundo.terreno.h0 + ed.pl * 3.0 + 0.5]));
       const Z = z.meta, h0 = this.mundo.terreno.h0, nt = Z.orto.teselas, tm = Z.orto.tesela_m, C = new THREE.Color(), Cw = new THREE.Color(), crema = new THREE.Color(0xeee6d8), r = semilla(5);
-      const fach = { claro: { pos: [], col: [], uv: [] }, ladrillo: { pos: [], col: [], uv: [] } }, tejados = {};
-      for (const ed of lista) {
-        const P = []; for (let i = 0; i < ed.p.length; i += 2) P.push(new THREE.Vector2(ed.p[i], ed.p[i + 1]));
+      const fach = { claro: { pos: [], col: [], uv: [], ed: [] }, ladrillo: { pos: [], col: [], uv: [], ed: [] } }, tejados = {};
+      // paredes en la misma arista que otro edificio (dos paredes en el mismo plano parpadean, y mas con ventanas
+      // distintas): si los edificios quedan a lados opuestos es una medianera, que solo se levanta por encima del tejado
+      // del vecino; si quedan del mismo lado (piezas superpuestas del Catastro: la nave baja y el bloque alto) se dibuja
+      // entera la del mas alto. Con alturas iguales se queda la del primero de la lista
+      const llave = (x, y) => Math.floor(x * 20 + 0.5) + "," + Math.floor(y * 20 + 0.5);
+      const aristas = new Map();
+      lista.forEach((ed, i) => {
+        const p = ed.p, n = p.length >> 1, yt = ed.b - h0 + ed.pl * 3.0 + 0.5;
+        if (n < 3) return;
+        let ar = 0; for (let k = 0; k < n; k++) { const j = (k + 1) % n; ar += p[2 * k] * p[2 * j + 1] - p[2 * j] * p[2 * k + 1]; }
+        for (let k = 0; k < n; k++) {
+          const j = (k + 1) % n, a = llave(p[2 * k], p[2 * k + 1]), b = llave(p[2 * j], p[2 * j + 1]), c = a < b ? a + "|" + b : b + "|" + a;
+          if (!aristas.has(c)) aristas.set(c, []);
+          aristas.get(c).push([i, yt, (a < b ? 1 : -1) * Math.sign(ar)]);      // lado del edificio respecto a la arista
+        }
+      });
+      for (const [i, ed] of lista.entries()) {
+        const P = []; for (let k = 0; k < ed.p.length; k += 2) P.push(new THREE.Vector2(ed.p[k], ed.p[k + 1]));
         if (P.length < 3) continue;
         const y0 = ed.b - h0 - 0.4, y1 = ed.b - h0 + ed.pl * 3.0 + 0.5, alto = (y1 - y0) / 3.0;
         C.set(ed.c).convertSRGBToLinear(); C.multiplyScalar(1.08);
         const F = ed.f ? fach.ladrillo : fach.claro;
         if (ed.f) Cw.setRGB(1, 1, 1).multiplyScalar(0.92 + 0.12 * r());                                  // el color va en la textura
         else Cw.copy(crema).convertSRGBToLinear().lerp(C, 0.12).multiplyScalar(0.93 + 0.1 * r());
+        let ce = 0, cn = 0; for (const v of P) { ce += v.x; cn += v.y; } ce /= P.length; cn /= P.length;
+        const sem = (((ce * 0.6180339 + cn * 0.3711) % 1) + 1) % 1;            // semilla del edificio (la misma en Godot)
         let u = 0;
         for (let k = 0; k < P.length; k++) {                      // fachadas: u en modulos de 3,5 m, v en plantas
           const a = P[k], b = P[(k + 1) % P.length], L = a.distanceTo(b), u0 = u / 3.5, u1 = (u + L) / 3.5; u += L;
-          F.pos.push(a.x, y0, -a.y, b.x, y0, -b.y, b.x, y1, -b.y, a.x, y0, -a.y, b.x, y1, -b.y, a.x, y1, -a.y);
-          F.uv.push(u0, 0, u1, 0, u1, alto, u0, 0, u1, alto, u0, alto);
-          for (let q = 0; q < 6; q++) F.col.push(Cw.r, Cw.g, Cw.b);
+          const la = llave(a.x, a.y), lb = llave(b.x, b.y), lista2 = aristas.get(la < lb ? la + "|" + lb : lb + "|" + la) || [];
+          const lado = (lista2.find(x => x[0] === i) || [0, 0, 0])[2];
+          let yb = y0, tapada = false;
+          for (const [j, yt, ld] of lista2) {
+            if (j === i) continue;
+            const cubre = yt > y1 + 0.01 || (yt >= y1 - 0.01 && j < i);       // el otro es mas alto (o igual y va antes)
+            if (cubre) tapada = true; else if (ld !== lado) yb = Math.max(yb, yt);   // medianera: por encima del vecino
+          }
+          if (tapada || yb >= y1 - 0.01) continue;
+          const vb = (yb - y0) / 3.0;
+          F.pos.push(a.x, yb, -a.y, b.x, yb, -b.y, b.x, y1, -b.y, a.x, yb, -a.y, b.x, y1, -b.y, a.x, y1, -a.y);
+          F.uv.push(u0, vb, u1, vb, u1, alto, u0, vb, u1, alto, u0, alto);
+          for (let q = 0; q < 6; q++) { F.col.push(Cw.r, Cw.g, Cw.b); F.ed.push(sem, alto); }
         }
         let tri; try { tri = THREE.ShapeUtils.triangulateShape(P, []); } catch (e) { tri = []; }
-        let ce = 0, cn = 0; for (const v of P) { ce += v.x; cn += v.y; } ce /= P.length; cn /= P.length;
         const ti = Math.min(nt - 1, Math.max(0, Math.floor((cn - Z.N0) / tm))), tj = Math.min(nt - 1, Math.max(0, Math.floor((ce - Z.E0) / tm)));
         const T = tejados[ti + "_" + tj] = tejados[ti + "_" + tj] || { pos: [], uv: [], N0: Z.N0 + ti * tm, E0: Z.E0 + tj * tm };
         for (const t of tri) for (const v of t) { T.pos.push(P[v].x, y1, -P[v].y); T.uv.push((P[v].x - T.E0) / tm, (P[v].y - T.N0) / tm); }   // tejado: la foto
@@ -512,8 +539,9 @@ Object.assign(Visor.prototype, {
         if (!F.pos.length) continue;
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.Float32BufferAttribute(F.pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(F.col, 3));
-        geo.setAttribute("uv", new THREE.Float32BufferAttribute(F.uv, 2)); geo.computeVertexNormals();
-        const malla = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: Visor.texturaFachada(nombre, this.renderer), side: THREE.DoubleSide }));
+        geo.setAttribute("uv", new THREE.Float32BufferAttribute(F.uv, 2)); geo.setAttribute("ed", new THREE.Float32BufferAttribute(F.ed, 2)); geo.computeVertexNormals();
+        const malla = new THREE.Mesh(geo, this.minimo ? new THREE.MeshLambertMaterial({ vertexColors: true, map: Visor.texturaFachada(nombre, this.renderer), side: THREE.DoubleSide })
+                                                     : materialFachada(nombre, this.renderer));      // rendimiento maximo: la textura con ventanas de siempre
         malla.castShadow = true; malla.receiveShadow = true; g.add(malla);
       }
       const orto = g.userData.orto || {};
@@ -572,7 +600,7 @@ Object.assign(Visor.prototype, {
     esc.userData.arboles = []; this.arbolesNE = [cN, cE];
     const ent = this.entorno, alt = ent.altura, T = m.terreno, Pp = this._ortoPix, W = Pp.w, H = Pp.h, mpx = (T.nE - 1) * T.paso / W;
     const r = semilla(11 + Math.trunc(cN / 97) + Math.trunc(cE / 89)), antes = new Set(esc.children);
-    const arboles = [], paso = 24, R = [2500, 4500, 7000][this.calidad];
+    const arboles = [], paso = 24, R = this.minimo ? 1500 : [2500, 4500, 7000][this.calidad];
     for (let n = -R; n <= R && arboles.length < 60000; n += paso) for (let e = -R; e <= R && arboles.length < 60000; e += paso) {
       const ee = cE + e + (r() - 0.5) * paso, nn = cN + n + (r() - 0.5) * paso;
       if (e * e + n * n > R * R || this._enZonas(nn, ee, 10)) continue;
@@ -607,22 +635,26 @@ Object.assign(Visor.prototype, {
       }
       const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), eje = new THREE.Vector3(0, 1, 0);
       // como _arboles_zona de Godot: copa con el material de copas (esfera de 12 x 7 cerca del piloto y de 6 x 3 lejos),
-      // tronco de 0,9 + 0,45 rc de alto y matas bajas; colores verde oliva
+      // tronco de 0,9 + 0,45 rc de alto y matas bajas. Cuatro especies del Campo de Cartagena segun el tamano de la copa
+      // y el sitio (especieArbol, la misma en Godot): almendro (verde grisaceo) y olivo (plateado) los pequenos, pino
+      // carrasco (copa en sombrilla, oscura, sobre un tronco mas alto) y algarrobo (denso y oscuro) los grandes
       const mat = materialCopas(), mTronco = new THREE.MeshLambertMaterial({ color: 0x5b4632 });
       const antes = new Set(g.children);
       const ht = rc => 0.9 + 0.45 * rc;
       const copa = ([e, n, rc, a0, a1, a2, a3], M, C) => {
-        P.set(e, alt(n, e) + ht(rc) + rc * 0.55, -n); S.set(rc, rc * (0.7 + 0.25 * a1), rc); Q.setFromAxisAngle(eje, a0 * 2 * Math.PI); M.compose(P, Q, S);
-        C.setHSL(0.19 + 0.05 * a2, 0.2 + 0.1 * a3, 0.24 + 0.08 * a1);
+        const sp = especieArbol(e, n, rc), pino = sp === 2;
+        P.set(e, alt(n, e) + ht(rc) + rc * (pino ? 0.8 : 0.55), -n); S.set(rc, rc * (pino ? 0.48 + 0.1 * a1 : 0.7 + 0.25 * a1), rc); Q.setFromAxisAngle(eje, a0 * 2 * Math.PI); M.compose(P, Q, S);
+        const [h, sa, l] = COLOR_ESPECIE[sp]; C.setHSL(h[0] + h[1] * a2, sa[0] + sa[1] * a3, l[0] + l[1] * a1);
       };
       const cerca = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) < 450), lejos = arboles.filter(a => Math.hypot(a[0] - base[1], a[1] - base[0]) >= 450);
-      this._instanciarEn(g, new THREE.SphereGeometry(1, 12, 7), mat, cerca, copa, 500);
+      this._instanciarEn(g, this.minimo ? new THREE.SphereGeometry(1, 6, 3) : new THREE.SphereGeometry(1, 12, 7), mat, cerca, copa, 500);
       this._instanciarEn(g, new THREE.SphereGeometry(1, 6, 3), mat, lejos, copa, 500);
       this._instanciarEn(g, new THREE.CylinderGeometry(0.12, 0.2, 1, 5, 1, true), mTronco, arboles, ([e, n, rc], M, C) => {
-        P.set(e, alt(n, e) + ht(rc) / 2, -n); S.set(rc / 2.2, ht(rc), rc / 2.2); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
+        const h = ht(rc) + (especieArbol(e, n, rc) === 2 ? 0.4 * rc : 0);          // el pino, con mas tronco a la vista
+        P.set(e, alt(n, e) + h / 2, -n); S.set(rc / 2.2, h, rc / 2.2); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
       }, 500);
       const nMatas = g.children.length;
-      this._instanciarEn(g, new THREE.SphereGeometry(1, 5, 3), mat, matas, ([e, n, rc, a0, a1, a2, a3], M, C) => {
+      this._instanciarEn(g, new THREE.SphereGeometry(1, 5, 3), mat, this.minimo ? [] : matas, ([e, n, rc, a0, a1, a2, a3], M, C) => {      // rendimiento maximo: sin matas
         P.set(e, alt(n, e) + rc * 0.3, -n); S.set(rc, rc * 0.55, rc); Q.setFromAxisAngle(eje, a0 * 2 * Math.PI); M.compose(P, Q, S);
         C.setHSL(0.15 + 0.06 * a2, 0.16 + 0.1 * a3, 0.3 + 0.08 * a1);
       }, 500);
@@ -634,12 +666,98 @@ Object.assign(Visor.prototype, {
   },
 });
 
+/** Fachadas de los edificios del Catastro dibujadas en el sombreador, sin geometria ni texturas nuevas (SHADER_FACHADA de
+ *  mundo_3d.gd en Godot, el mismo calculo): cada edificio elige por su semilla un tipo de ventana (sencilla, balconera
+ *  con barandilla, banda de oficinas o doble), el color de sus persianas y de su carpinteria; cada ventana baja la
+ *  persiana a su altura y algunas dejan ver la cortina; la planta baja lleva locales con cierre metalico o escaparate y
+ *  portales; zocalo, cornisa, chorretones bajo los alfeizares y algo mas de suciedad junto al suelo. El cristal refleja
+ *  el cielo segun el angulo (Fresnel). De lejos (un modulo en pocos pixeles) se funde con el color medio y no parpadea.
+ *  uv: x en modulos de 3,5 m, y en plantas de 3 m desde el pie del muro (0,4 m bajo el suelo); ed: (semilla, alto del
+ *  muro en plantas); lad: 1 ladrillo caravista (talleres del CIFP: ventana alta apaisada). */
+const FACHADA_GLSL = `
+float fh1(float n) { return fract(sin(n) * 43758.5453); }
+float fh2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void fachadaProc(vec2 uv, vec2 ed, float lad, vec3 pared, out vec3 col, out float vid) {
+  float s = floor(ed.x * 1000.0 + 0.5), pl = floor(ed.y * 10.0 + 0.5) / 10.0 - 0.3, vv = uv.y - 0.1333;   // redondeadas: llegan interpoladas y el sorteo cambiaria de un pixel a otro
+  float cx = floor(uv.x), cy = floor(vv); vec2 f = vec2(fract(uv.x), fract(vv));
+  col = pared * (0.9 + 0.1 * smoothstep(0.0, 1.2, vv)); vid = 0.0;
+  float tv = lad > 0.5 ? 4.0 : floor(fh1(s * 91.7) * 4.0);
+  if (pl < 2.5 && tv > 1.5 && tv < 2.5) tv = 0.0;
+  vec4 R = tv < 0.5 ? vec4(0.2, 0.8, 0.32, 0.72) : tv < 1.5 ? vec4(0.3, 0.7, 0.05, 0.78) : tv < 2.5 ? vec4(0.04, 0.96, 0.3, 0.82) : tv < 3.5 ? vec4(0.12, 0.88, 0.36, 0.74) : vec4(0.34, 0.66, 0.62, 0.82);
+  bool bajo = cy < 0.5 && lad < 0.5 && pl >= 2.5;
+  float tb = fh2(vec2(cx, s * 37.0));
+  if (bajo) R = tb < 0.55 ? vec4(0.06, 0.94, 0.0, 0.8) : tb < 0.8 ? vec4(0.3, 0.7, 0.0, 0.74) : vec4(0.2, 0.8, 0.32, 0.72);
+  if (vv < 0.28) col = lad > 0.5 ? col * 0.8 : mix(col, vec3(0.42, 0.41, 0.39), 0.65);
+  if (vv > pl - 0.04 && vv < pl) col *= 0.7;
+  else if (vv >= pl && vv < pl + 0.05) col = mix(col, vec3(0.93, 0.92, 0.9), 0.5);
+  if (vv < 0.0 || vv > pl) return;
+  float x0 = R.x, x1 = R.y, y0 = R.z, y1 = R.w;
+  bool doble = tv > 2.5 && tv < 3.5 && !bajo;
+  bool enX = f.x >= x0 && f.x <= x1 && !(doble && f.x > 0.44 && f.x < 0.56);
+  if (!(bajo && y0 < 0.01) && f.y < y0 && f.y > y0 - 0.035 && f.x > x0 - 0.03 && f.x < x1 + 0.03) { col = vec3(0.86, 0.85, 0.82); return; }
+  if (enX && f.y < y0 - 0.035 && f.y > y0 - 0.4)
+    col *= 1.0 - 0.14 * (1.0 - (y0 - 0.035 - f.y) / 0.365) * (0.4 + 0.6 * fh2(vec2(floor(f.x * 18.0) + cx * 31.0, s)));
+  if (!enX || f.y < y0 || f.y > y1) return;
+  float mc = lad > 0.5 ? 0.0 : step(0.7, fh1(s * 13.0));
+  vec3 marcoC = mix(vec3(0.88, 0.88, 0.86), vec3(0.24, 0.22, 0.2), mc);
+  bool marco = f.x < x0 + 0.025 || f.x > x1 - 0.025 || f.y < y0 + 0.03 || f.y > y1 - 0.03
+    || (doble && f.x > 0.415 && f.x < 0.585)
+    || ((tv < 0.5 || (bajo && tb >= 0.8)) && abs(f.x - 0.5) < 0.012)
+    || (tv > 1.5 && tv < 2.5 && !bajo && fract((f.x - x0) / 0.23) < 0.05);
+  if (bajo && tb >= 0.55 && tb < 0.8) { col = vec3(0.3, 0.2, 0.13) * (marco ? 0.75 : 0.9 + 0.1 * step(0.5, fract(f.x * 9.0))); return; }
+  if (marco) { col = marcoC; return; }
+  float h = fh2(vec2(cx * 1.7 + cy * 13.1, s * 57.0));
+  if (bajo && tb < 0.55) {
+    float pf = fh2(vec2(cx + 7.0, s)) < 0.5 ? 1.0 : h * 0.6;
+    if (f.y > y1 - pf * (y1 - y0)) { col = vec3(0.5, 0.51, 0.52) * (0.85 + 0.15 * step(0.4, fract(f.y * 26.0))); return; }
+    col = vec3(0.07, 0.075, 0.08); vid = 1.0; return;
+  }
+  if (tv > 0.5 && tv < 1.5 && f.y < 0.36 && (fract(f.x * 28.0) < 0.3 || f.y > 0.335)) { col = vec3(0.16, 0.16, 0.17); return; }
+  float pc = fh1(s * 7.3);
+  vec3 persiana = pc < 0.45 ? vec3(0.78, 0.72, 0.6) : pc < 0.75 ? vec3(0.86, 0.86, 0.84) : pc < 0.9 ? vec3(0.44, 0.33, 0.24) : vec3(0.34, 0.44, 0.3);
+  if (tv < 1.5 || doble || (bajo && tb >= 0.8)) {
+    float pf = pow(h, 1.8) * 0.95;
+    if (f.y > y1 - pf * (y1 - y0)) { col = persiana * (0.86 + 0.14 * step(0.5, fract(f.y * 40.0))); return; }
+  }
+  col = (tv > 1.5 && tv < 2.5) ? mix(vec3(0.07, 0.09, 0.1), vec3(0.1, 0.09, 0.07), step(0.5, fh1(s * 3.1))) : vec3(0.05, 0.055, 0.06);
+  if (tv < 1.5 && fh2(vec2(cx, cy + s * 11.0)) > 0.6) col = mix(col, vec3(0.55, 0.5, 0.42), 0.55);
+  vid = 1.0;
+}
+float fachadaLejos(float w) { return smoothstep(0.15, 0.5, w); }
+float fachadaFresnel(vec3 n, vec3 v) { return 0.15 + 0.6 * pow(1.0 - abs(dot(n, v)), 3.0); }
+`;
+/** Material de las fachadas con FACHADA_GLSL (Lambert con el color del vertice y la textura de la pared sin ventanas). */
+function materialFachada(tipo, renderer) {
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, map: Visor.texturaFachada(tipo, renderer, true), side: THREE.DoubleSide });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uLad = { value: tipo === "ladrillo" ? 1 : 0 };
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute vec2 ed;\nvarying vec2 vFachUv;\nvarying vec2 vEd;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFachUv = uv; vEd = ed;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uLad;\nvarying vec2 vFachUv;\nvarying vec2 vEd;\n" + FACHADA_GLSL)
+      .replace("#include <color_fragment>", `#include <color_fragment>
+  float fL = fachadaLejos(max(fwidth(vFachUv.x), fwidth(vFachUv.y))); vec3 fCol; float fVid;
+  fachadaProc(vFachUv, vEd, uLad, diffuseColor.rgb, fCol, fVid);
+  diffuseColor.rgb = mix(fCol, diffuseColor.rgb * 0.8, fL); fVid *= 1.0 - fL;`)
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+  totalEmissiveRadiance += fVid * fachadaFresnel(normal, normalize(vViewPosition)) * vec3(0.55, 0.65, 0.78);`);
+  };
+  m.customProgramCacheKey = () => "fachada_" + tipo;
+  return m;
+}
+
+/** Especie de un arbol de una zona por su copa (radio rc) y su sitio (E, N): 0 almendro, 1 olivo, 2 pino carrasco,
+ *  3 algarrobo. La misma que especie_arbol de mundo_3d.gd. COLOR_ESPECIE: [tono, saturacion, luz] como [base, variacion]. */
+function especieArbol(e, n, rc) { const k = (((e * 0.731 + n * 0.419) % 1) + 1) % 1; return rc < 2.2 ? (k < 0.5 ? 0 : 1) : (k < 0.55 ? 2 : 3); }
+const COLOR_ESPECIE = [[[0.24, 0.03], [0.12, 0.05], [0.36, 0.06]], [[0.2, 0.03], [0.07, 0.04], [0.42, 0.06]],
+                       [[0.3, 0.03], [0.28, 0.06], [0.17, 0.04]], [[0.24, 0.03], [0.3, 0.06], [0.21, 0.05]]];
+
 /** Textura de un modulo de fachada (3,5 m de ancho por una planta de 3 m) que se repite: "claro" (pared blanca que tine
  *  el color del vertice, ventana de 2,1 x 1,2 m con su marco) o "ladrillo" (caravista rojo con llagas y una ventana alta
  *  apaisada, como los talleres del CIFP). La misma que fachada() de mundo_3d.gd en Godot. */
-Visor.texturaFachada = function (tipo, renderer) {
+Visor.texturaFachada = function (tipo, renderer, sinVentanas) {
   Visor._fachadas = Visor._fachadas || {};
-  if (Visor._fachadas[tipo]) return Visor._fachadas[tipo];
+  const clave = tipo + (sinVentanas ? "_pared" : "");
+  if (Visor._fachadas[clave]) return Visor._fachadas[clave];
   const N = 128, [c, g] = lienzo(N, N), img = g.createImageData(N, N), r = semilla(tipo === "ladrillo" ? 61 : 43);
   const pon = (x, y, R, G, B) => { const q = 4 * (y * N + x); img.data[q] = R; img.data[q + 1] = G; img.data[q + 2] = B; img.data[q + 3] = 255; };
   const ventana = tipo === "ladrillo" ? [44, 84, 22, 42] : [26, 102, 36, 87];          // x0, x1, y0, y1 (fila 0 = arriba de la planta)
@@ -650,7 +768,11 @@ Visor.texturaFachada = function (tipo, renderer) {
     if (tipo === "ladrillo") {                                        // hiladas de 4 px (7 cm), ladrillos de 15 px a soga
       const f = y >> 2, xo = (x + (f & 1) * 7) % N, k = Math.floor(xo / 15), llaga = (y & 3) === 3 || xo % 15 === 14, t = ladrillos[f * 9 + Math.min(8, k)];
       [R, G, B] = llaga ? [196, 182, 164] : [164 * t, 85 * t, 63 * t];
-    } else { const t = 0.96 + 0.04 * r(); [R, G, B] = [244 * t, 241 * t, 236 * t]; }
+    } else {                                                          // enlucido: grano y manchas suaves (sin costuras)
+      const t = 0.96 + 0.04 * r() - (sinVentanas ? 0.025 * (1 + Math.sin(2 * Math.PI * (2 * x / N + 0.3)) * Math.sin(2 * Math.PI * (3 * y / N))) : 0);
+      [R, G, B] = [244 * t, 241 * t, 236 * t];
+    }
+    if (sinVentanas) { pon(x, y, R, G, B); continue; }              // la pared sola: las ventanas las dibuja FACHADA_GLSL
     const [x0, x1, y0, y1] = ventana;
     if (x >= x0 && x < x1 && y >= y0 && y < y1) {
       const marco = x < x0 + 2 || x >= x1 - 2 || y < y0 + 2 || y >= y1 - 2 || Math.abs(x - (x0 + x1) / 2) < 1;
@@ -663,7 +785,7 @@ Visor.texturaFachada = function (tipo, renderer) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
   // la v va de abajo (0) arriba (plantas): en el lienzo la fila 0 es arriba, y CanvasTexture lo voltea (flipY): bien
-  return (Visor._fachadas[tipo] = t);
+  return (Visor._fachadas[clave] = t);
 };
 function y1Alfeizar(v) { return v[3]; }
 

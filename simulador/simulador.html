@@ -705,7 +705,8 @@
         <h2>Calidad gráfica</h2>
         <div class="fila"><label for="calidad">Calidad</label><select id="calidad" style="flex:1">
           <option value="auto">Automática: alta, y baja sola si no llega a 35 fps</option><option value="2">Alta: sombras, agua con reflejos, vegetación lejana</option>
-          <option value="1">Media: sin vegetación lejana ni reflejos</option><option value="0">Baja: tres cuartos de resolución, sin matas ni nubes</option></select></div>
+          <option value="1">Media: sin vegetación lejana ni reflejos</option><option value="0">Baja: tres cuartos de resolución, sin matas ni nubes</option>
+          <option value="min">Rendimiento máximo: portátiles y tabletas sencillos (media resolución, sin sombras, materiales simples)</option></select></div>
         <p class="sub" id="calidadInfo" style="font-size:13px"></p>
         <h2 style="margin-top:18px">Cámara del piloto</h2>
         <div class="fila"><label for="zoomPiloto">Zoom automático</label><select id="zoomPiloto" style="flex:1">
@@ -2606,7 +2607,7 @@ document.getElementById("btnDatosProfesor").onclick = () => { if (urlAula()) win
 function pintarCalidad() {
   let m = "auto"; try { m = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
   document.getElementById("calidad").value = m;
-  document.getElementById("calidadInfo").textContent = `Ahora: ${["baja", "media", "alta"][visor.calidad]}${m === "auto" ? " (automática)" : ""}. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel.`;
+  document.getElementById("calidadInfo").textContent = `Ahora: ${visor.minimo ? "rendimiento máximo" : ["baja", "media", "alta"][visor.calidad]}${m === "auto" ? " (automática" + (visor.minimo ? ": tableta o móvil)" : ")") : ""}. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel. Con «Rendimiento máximo» (y al quitarlo) la página se recarga.`;
 }
 // zoom de la camara del piloto: fraccion del alto de la pantalla que ocupa la envergadura (0 = sin zoom)
 try {
@@ -2629,7 +2630,11 @@ window.addEventListener("wheel", e => {
   ponerZoomPiloto(z < 0.025 && e.deltaY > 0 ? 0 : +z.toFixed(3));
   toast(visor.zoomPiloto > 0 ? `Zoom del piloto: el avión ocupa un ${(visor.zoomPiloto * 100).toFixed(0)} % de la pantalla` : "Sin zoom: como lo ve el ojo");
 }, { passive: true });
-function aplicarModoCalidad(m) { if (m === "auto") { visor.calidadFija = false; visor.aplicarCalidad(2); } else { visor.calidadFija = true; visor.aplicarCalidad(+m); } }
+function aplicarModoCalidad(m) {
+  if ((m === "min" || (m === "auto" && Visor.esTableta())) !== visor.minimo) { location.reload(); return; }   // rendimiento maximo: los materiales del mundo se rehacen al cargar
+  if (m === "auto") { visor.calidadFija = false; visor.aplicarCalidad(visor.minimo ? 0 : 2); }
+  else { visor.calidadFija = true; visor.aplicarCalidad(m === "min" ? 0 : +m); }
+}
 document.getElementById("calidad").addEventListener("change", e => { const m = e.target.value; try { localStorage.setItem("sim_calidad_modo", m); } catch (er) {} aplicarModoCalidad(m); pintarCalidad(); });
 
 // =====================================================================

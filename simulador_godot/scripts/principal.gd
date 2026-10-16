@@ -120,7 +120,7 @@ func _ready() -> void:
 	ids_aviones = DatosComunes.aviones()
 	_cargar()
 	if _args.has("avion"): sesion["avion"] = _args["avion"]
-	if _args.has("calidad"): aj["calidad_modo"] = str(int(_args["calidad"]))
+	if _args.has("calidad"): aj["calidad_modo"] = "min" if _args["calidad"] == "min" else str(int(_args["calidad"]))
 	if _args.has("dificultad"): sesion["dificultad"] = _args["dificultad"]
 	if not ids_hangar().has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
 	mundo_datos = DatosComunes.mundo(MUNDO)
@@ -211,7 +211,13 @@ func texto_cm() -> String:
 
 func calidad_actual() -> int:
 	var m: String = aj.get("calidad_modo", "auto")
+	if minimo(): return 0
 	return 2 if m == "auto" else int(m)
+## Rendimiento maximo (Ajustes; con la calidad automatica, en una tableta o un movil): la calidad 0, media resolucion
+## y el mundo real con materiales sencillos (Mundo3D.minimo). Visor.minimo de la web.
+func minimo() -> bool:
+	var m: String = aj.get("calidad_modo", "auto")
+	return m == "min" or (m == "auto" and OS.has_feature("mobile"))
 func poner_zoom_piloto(z: float) -> void:
 	aj["zoom_piloto"] = z; _guardar()
 	if pantallas.has("pAjustes"): pantallas["pAjustes"].refrescar()
@@ -854,11 +860,12 @@ func ir_progreso(desde: String, alumno = null) -> void:
 # =====================================================================
 func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
 	var cal := calidad_actual()
+	get_viewport().scaling_3d_scale = 0.5 if minimo() else 1.0          # rendimiento maximo: media resolucion en 3D
 	if es_m:
-		if mundo3d != null and mundo3d.calidad != cal: mundo3d.queue_free(); mundo3d = null; await get_tree().process_frame
+		if mundo3d != null and (mundo3d.calidad != cal or mundo3d.minimo != minimo()): mundo3d.queue_free(); mundo3d = null; await get_tree().process_frame
 		if mundo3d == null:
 			await mostrar_carga(titulo, "Terreno, mar, carreteras y pueblos…", 0.3)
-			mundo3d = Mundo3D.new(); mundo3d.calidad = cal; add_child(mundo3d); mundo3d.construir(ent, mundo_datos, orto)
+			mundo3d = Mundo3D.new(); mundo3d.calidad = cal; mundo3d.minimo = minimo(); add_child(mundo3d); mundo3d.construir(ent, mundo_datos, orto)
 		_poner_vista(mundo3d)
 		await mostrar_carga(titulo, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6)
 		var c := _casa(); var zs := []

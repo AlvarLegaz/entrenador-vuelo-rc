@@ -122,37 +122,43 @@ float ac_ruido(vec3 x) {
              mix(mix(ac_hash(i + vec3(0, 0, 1)), ac_hash(i + vec3(1, 0, 1)), f.x), mix(ac_hash(i + vec3(0, 1, 1)), ac_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }`;
 /** Copas de los arboles del mundo real (SHADER_ARBOL de Godot): la esfera se deforma con ruido (silueta irregular,
- *  distinta en cada arbol), el color lleva manchas de hojas y sombra interior, y la luz que atraviesa las hojas la
- *  aclara a contraluz. Un solo material para todas las copas (el color de cada una es el de su instancia). */
+ *  distinta en cada arbol), el color lleva racimos de hojas y sombra interior (mas oscura abajo, donde no llega el
+ *  cielo, y mas clara arriba), la luz que atraviesa las hojas la aclara a contraluz y la copa se mece con la brisa.
+ *  Un solo material para todas las copas (el color de cada una es el de su instancia). */
 function materialCopas() {
   if (materialCopas.m) return materialCopas.m;
+  if (typeof visor !== "undefined" && visor && visor.minimo)          // rendimiento maximo: copas lisas (el color de cada una)
+    return (materialCopas.m = new THREE.MeshLambertMaterial({ color: new THREE.Color().setRGB(0.34, 0.37, 0.29, THREE.LinearSRGBColorSpace) }));
   // tinte y luz ambiente ajustados midiendo la misma escena en los dos simuladores (la luz de la escena web es mas fuerte
   // y azulada que la de Godot): copas de (70, 93, 20) en Godot, (80, 98, 26) aqui
-  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.31, 0.38, 0.21, THREE.LinearSRGBColorSpace), roughness: 0.92, metalness: 0 });
-  m.userData.u = { uAmb: { value: 0.42 } };
+  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.34, 0.37, 0.29, THREE.LinearSRGBColorSpace), roughness: 0.92, metalness: 0 });
+  m.userData.u = { uAmb: { value: 0.42 }, uTiempo: { value: 0 } };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, m.userData.u);
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vHueco;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float uTiempo;\nvarying float vHueco;\nvarying float vAltoA;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
   float acId = float(gl_InstanceID); vec3 acS = vec3(acId * 1.73, acId * 0.37, 0.0);
   float acN = ac_ruido(transformed * 1.6 + acS) * 0.6 + ac_ruido(transformed * 4.1 + acS) * 0.4;
+  vAltoA = transformed.y;
   transformed += objectNormal * (acN - 0.5) * 2.0 * 0.28; vHueco = acN;
   #ifdef USE_INSTANCING
+  float acF = dot(instanceMatrix[3].xz, vec2(0.37, 0.71));
+  transformed.xz += vec2(sin(uTiempo * 1.6 + acF), cos(uTiempo * 1.3 + acF * 1.7)) * 0.035 * (vAltoA + 1.0);   // la brisa
   vMundoA = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
   #else
   vMundoA = (modelMatrix * vec4(transformed, 1.0)).xyz;
   #endif`);
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uAmb;\nvarying float vHueco;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uAmb;\nvarying float vHueco;\nvarying float vAltoA;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
       .replace("#include <color_fragment>", `#include <color_fragment>
-  float acF = ac_ruido(vMundoA * 2.7) * 0.55 + ac_ruido(vMundoA * 8.3) * 0.45;
-  diffuseColor.rgb *= (0.6 + 0.75 * acF) * (0.7 + 0.5 * vHueco);`)
+  float acF = ac_ruido(vMundoA * 1.8) * 0.6 + ac_ruido(vMundoA * 5.5) * 0.4;
+  diffuseColor.rgb *= (0.6 + 0.75 * acF) * (0.7 + 0.5 * vHueco) * mix(0.7, 1.25, smoothstep(-0.9, 0.85, vAltoA));`)
       .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
   reflectedLight.indirectDiffuse *= uAmb;                 // la luz ambiente de las copas (la de Godot es mas debil y neutra)
   #if NUM_DIR_LIGHTS > 0
   reflectedLight.directDiffuse += diffuseColor.rgb * 0.35 * directionalLights[0].color * max(0.0, -dot(normal, directionalLights[0].direction)) * RECIPROCAL_PI;
   #endif`);
   };
-  m.customProgramCacheKey = () => "copas_godot";
+  m.customProgramCacheKey = () => "copas_godot2";
   return (materialCopas.m = m);
 }
 /** Grano fino del suelo (el NoiseTexture2D de Godot: ruido fractal de 5 octavas, 512 px, sin costuras). */
@@ -174,18 +180,44 @@ function texturaGrano() {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
   return (texturaGrano.t = t);
 }
-/** Suelo con la ortofoto y, cerca de la camara, el grano fino (piedras, matas, tierra) que rompe los pixeles de 0,5 m
- *  (SHADER_SUELO de Godot). */
+/** Suelo con la ortofoto (SHADER_SUELO de Godot, el mismo calculo). Cerca de la camara, un grano fino que rompe los
+ *  pixeles de 0,5 m segun lo que hay en la foto: fuerte con piedras claras en la tierra, mas en la vegetacion y muy
+ *  suave en el asfalto y el hormigon (grises); con relieve (la luz del sol saca los terrones). Las sombras que trae la
+ *  foto (oscuras y azuladas) se aclaran: las que se ven son las de los arboles y edificios en 3D. */
+const SUELO_GLSL = `
+vec3 sueloSinSombra(vec3 c) {
+  float lum = dot(c, vec3(0.3, 0.59, 0.11));
+  float m = (1.0 - smoothstep(0.16, 0.3, lum)) * smoothstep(-0.01, 0.05, c.b - c.r);
+  return mix(c, c * 1.55 + 0.03, m * 0.55);
+}
+float sueloGrano(vec3 c, float g1, float g2, out float alto) {
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float gris = 1.0 - smoothstep(0.04, 0.12, mx - mn), veg = smoothstep(0.0, 0.04, c.g - max(c.r, c.b) * 0.98);
+  float A = mix(mix(0.32, 0.12, gris), 0.42, veg), g = g1 * 0.55 + g2 * 0.45;
+  float piedra = smoothstep(0.74, 0.8, g2) * (1.0 - gris) * (1.0 - veg);
+  alto = (g - 0.5) * mix(0.06, 0.015, gris) + piedra * 0.02;
+  return (1.0 + A * (2.0 * g - 1.0)) * (1.0 + 0.25 * piedra);
+}
+vec3 sueloRelieve(vec3 N, vec3 pv, float h) {
+  vec3 dpx = dFdx(pv), dpy = dFdy(pv); float dhx = dFdx(h), dhy = dFdy(h);
+  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);
+  return normalize(abs(det) * N - sign(det) * (dhx * r1 + dhy * r2));
+}
+`;
 function conGrano(m) {
   m.onBeforeCompile = sh => {
     sh.uniforms.uGrano = { value: texturaGrano() };
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vMundoS;").replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvMundoS = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uGrano;\nvarying vec3 vMundoS;")
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uGrano;\nvarying vec3 vMundoS;\n" + SUELO_GLSL)
       .replace("#include <map_fragment>", `#include <map_fragment>
-  float acG = texture2D(uGrano, vMundoS.xz / 3.7).r * 0.55 + texture2D(uGrano, vMundoS.xz / 0.83).r * 0.45;
-  diffuseColor.rgb *= mix(0.68 + 0.64 * acG, 1.0, smoothstep(20.0, 160.0, length(vViewPosition)));`);
+  float sCerca = 1.0 - smoothstep(20.0, 160.0, length(vViewPosition)), sAlto;
+  diffuseColor.rgb = sueloSinSombra(diffuseColor.rgb);
+  float sK = sueloGrano(diffuseColor.rgb, texture2D(uGrano, vMundoS.xz / 3.7).r, texture2D(uGrano, vMundoS.xz / 0.83).r, sAlto);
+  diffuseColor.rgb *= mix(1.0, sK, sCerca);`)
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+  normal = sueloRelieve(normal, -vViewPosition, sAlto * sCerca);`);
   };
-  m.customProgramCacheKey = () => "suelo_grano";
+  m.customProgramCacheKey = () => "suelo_grano2";
   return m;
 }
 // color del mundo real como el de Godot (adjustment: contraste 1,18 y saturacion 1,2 despues del tonemapping ACES)
@@ -354,6 +386,8 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
 }
 
 class Visor {
+  /** Tableta o movil (solo pantalla tactil, sin raton): con la calidad automatica, rendimiento maximo. */
+  static esTableta() { try { return matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches; } catch (e) { return false; } }
   constructor(lienzo, entorno) {
     this.entorno = entorno;
     this.renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true, logarithmicDepthBuffer: false });
@@ -366,6 +400,12 @@ class Visor {
     // calidad 2 (todo), 1 (sin vegetacion lejana, 1 px por pixel) o 0 (ademas sin matas ni nubes, 3/4 de resolucion).
     // Baja sola si el ordenador no llega a 35 fps durante 3 s, y se recuerda en este navegador
     let q = 2; try { q = +localStorage.getItem("sim_calidad"); if (!(q >= 0 && q <= 2)) q = 2; } catch (e) {}
+    // rendimiento maximo (Ajustes; con "automatica", en una tableta o un movil): la calidad baja y ademas media
+    // resolucion, sin sombras y, en el mundo real, materiales sencillos (fachadas con su textura de siempre, suelo sin
+    // grano, copas lisas y de pocos triangulos, sin matas) y arboles solo hasta 1,5 km. Se fija al crear el visor
+    let modo = "auto"; try { modo = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
+    this.minimo = modo === "min" || (modo === "auto" && Visor.esTableta());
+    if (this.minimo) q = 0;
     this.calidad = q; this._frames = []; this.lejanos = []; this.prescindibles = [];
     this.escena.fog = new THREE.Fog(0xd3dfe9, 450, 2700);           // calima: el cerro y la autopista se difuminan
     this.cam = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);        // mas lejos todo es calima; con mas alcance el mar parpadea sobre el suelo (z-fighting)
@@ -384,6 +424,10 @@ class Visor {
     window.addEventListener("resize", () => this.redimensionar()); this.aplicarCalidad(this.calidad);
   }
 
+  /** Alto de la imagen en pixeles de la calidad alta (los rotulos y las luces tienen un alto fijo en pixeles: no crecen
+   *  cuando se dibuja a menos resolucion, p. ej. con el rendimiento maximo). */
+  _altoPx() { return this.renderer.domElement.height / this.renderer.getPixelRatio() * Math.min(1.5, window.devicePixelRatio); }
+
   /** Aplica un nivel de calidad (ver el constructor) y lo guarda. */
   aplicarCalidad(q) {
     this.calidad = q;
@@ -393,7 +437,8 @@ class Visor {
     }
     for (const a of this.aguas) if (a.water !== a.plano) { a.water.visible = q >= 2; a.plano.visible = q < 2; }
     this._aguaCerca = undefined;
-    this.renderer.setPixelRatio(Math.min(q === 2 ? 1.5 : q === 1 ? 1 : 0.75, window.devicePixelRatio));
+    this.renderer.setPixelRatio(Math.min(this.minimo ? 0.5 : q === 2 ? 1.5 : q === 1 ? 1 : 0.75, window.devicePixelRatio));
+    this.renderer.shadowMap.enabled = !this.minimo;
     for (const m of this.lejanos) m.visible = q >= 2;
     for (const m of this.prescindibles) m.visible = q >= 1;
     try { localStorage.setItem("sim_calidad", String(q)); } catch (e) {}
@@ -480,7 +525,7 @@ class Visor {
     for (let r = 0; r < nN; r++) for (let j = 0; j < nE; j++) {                          // fila 0 de la imagen = norte
       const i = nN - 1 - r, N = T.N0 + i * paso, E = T.E0 + j * paso, k = Math.round(i / F) * T.nE + Math.round(j / F);
       let v = Lg && Lg[k] ? Visor.ALFA_LAGUNA : 255;
-      for (const b of Z) if (N > b[0] && N < b[1] && E > b[2] && E < b[3]) { v = 0; break; }
+      for (const b of Z) if (N > b[0] - 160 && N < b[1] + 160 && E > b[2] - 160 && E < b[3] + 160) { v = 0; break; }   // y una celda del terreno lejano alrededor: la que baja hacia la zona hundida
       const q = 4 * (r * nE + j); img.data[q] = img.data[q + 1] = img.data[q + 2] = v; img.data[q + 3] = 255;
     }
     g.putImageData(img, 0, 0);
@@ -493,8 +538,12 @@ class Visor {
 
   /** Cupula de cielo con degradado, el sol y unas nubes lejanas. radio: el de la cupula (la isla, 2850 m; un mundo
    *  real, mucho mas, y las nubes se escalan con el). Con THREE.Sky, cielo fisico (dispersion de Rayleigh y Mie). */
-  _cielo(posSol, esc, radio) {
+  _cielo(posSol, esc0, radio) {
     const k = radio / 2850;
+    // en un mapa real la cupula, el sol y las nubes van con la camara (dibujar): centradas en el origen, a 6 km de el la
+    // cupula quedaba en parte mas alla del plano lejano (16 km) y se veia el fondo como una mancha clara en el cielo
+    const esc = radio > 5000 ? new THREE.Group() : esc0;
+    if (esc !== esc0) { esc0.add(esc); esc0.userData.cieloMovil = esc; }
     if (radio > 5000) {             // mapa real: el cielo de Godot (ProceduralSkyMaterial: degradado de horizonte a cenit, curva 0,12),
       // con los colores que Godot muestra en pantalla tras su tonemapping (el de la web es un cielo fisico, mas palido)
       esc.add(new THREE.Mesh(new THREE.SphereGeometry(radio, 32, 16), new THREE.ShaderMaterial({
@@ -524,11 +573,11 @@ class Visor {
     if (!THREE.Sky || radio > 5000) esc.add(solSprite);     // con el cielo de Godot (mapa real), tambien el sol
     const [cn, gn] = lienzo(256, 128), r = semilla(5);
     for (let i = 0; i < 26; i++) {
-      const x = 40 + r() * 176, y = 50 + r() * 40, rad = 18 + r() * 26, gg = gn.createRadialGradient(x, y, 0, x, y, rad);
+      const x = 40 + r() * 176, y = 50 + r() * 40, rad = Math.min(18 + r() * 26, 126 - y), gg = gn.createRadialGradient(x, y, 0, x, y, rad);   // sin cortarse en el borde de abajo
       gg.addColorStop(0, "rgba(255,255,255,0.75)"); gg.addColorStop(0.6, "rgba(250,250,252,0.35)"); gg.addColorStop(1, "rgba(245,245,250,0)");
       gn.fillStyle = gg; gn.fillRect(0, 0, 256, 128);
     }
-    const mn = new THREE.SpriteMaterial({ map: texSRGB(cn), transparent: true, depthWrite: false, opacity: 0.9 });
+    const mn = new THREE.SpriteMaterial({ map: texSRGB(cn), transparent: true, depthWrite: false, opacity: 0.9, fog: false });   // son cielo: sin calima (con ella salian como manchas grises)
     for (let i = 0; i < 14; i++) {
       const a = r() * Math.PI * 2, d = (900 + r() * 1400) * k, s = (260 + r() * 420) * k, nube = new THREE.Sprite(mn);
       nube.position.set(d * Math.cos(a), (420 + r() * 380) * Math.min(k, 3), d * Math.sin(a)); nube.scale.set(s, s * 0.42, 1); esc.add(nube); this.prescindibles.push(nube);
@@ -914,7 +963,7 @@ class Visor {
    *  arboles en el campo hasta 9 km del origen y rotulos de los pueblos. Todo instanciado por celdas. */
   _construirMundo(m) {
     const esc = new THREE.Scene(), alt = this.entorno.altura, ent = this.entorno, h0 = m.terreno.h0;
-    esc.background = new THREE.Color(0xcfdbe6); esc.fog = new THREE.Fog(0xcfdbe6, 2500, 10500);
+    esc.background = new THREE.Color(0xcfdbe6); esc.fog = this.minimo ? new THREE.Fog(0xcfdbe6, 1500, 6000) : new THREE.Fog(0xcfdbe6, 2500, 10500);   // rendimiento maximo: la calima mas cerca
     esc.add(new THREE.HemisphereLight(0xd9e8ff, 0x8a6a4a, 0.75 * 2 * Math.PI));
     const sol = new THREE.DirectionalLight(0xfff1dc, 1.0 * 2 * Math.PI); sol.position.set(-3500, 5200, 2600); esc.add(sol);
     this._configurarSol(sol, esc);
@@ -1090,7 +1139,7 @@ class Visor {
       a.helice.visible = av.gases > 0.05;
       // luces: en el suelo con los motores parados, apagadas; "lento" (navegacion) 1 Hz, "estrobo" dos destellos por segundo
       // el sprite sin atenuacion se proyecta a scale / tan(fov/2) del semialto de la pantalla: se reescala a unos 12 px sea cual sea el zoom
-      const tl = (ahora / 1000) % 1, enc = av.estado !== "en mano", sc = 16 * 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
+      const tl = (ahora / 1000) % 1, enc = av.estado !== "en mano", sc = 16 * 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this._altoPx();
       for (const l of a.luces) { l.visible = enc && (l.patron === "lento" ? tl < 0.5 : l.patron === "estrobo" ? tl < 0.06 || (tl > 0.15 && tl < 0.21) : true); l.children[0].scale.set(sc, sc, 1); }
       if (a.animar) a.animar(av, dt, this);           // dron FPV: rotores, luces y oculto con su camara
       const suelo = this.entorno.altura ? this.entorno.altura(av.p[0], av.p[1]) : 0;
@@ -1119,8 +1168,10 @@ class Visor {
       m.rotation.set(0, 0, 0); m.lookAt(m.position.x + vw[0], m.position.y, m.position.z + vw[2]); m.rotateX(Math.PI / 2);
     }
     this._camara(av);
+    const cm = this.escena.userData.cieloMovil; if (cm) cm.position.set(this.cam.position.x, 0, this.cam.position.z);
+    if (materialCopas.m && materialCopas.m.userData.u) materialCopas.m.userData.u.uTiempo.value = performance.now() / 1000;       // la brisa en las copas
     if (this.rotulos) {           // rotulos de los pueblos: alto fijo en pixeles sea cual sea el zoom (ver las luces del avion)
-      const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this.renderer.domElement.height;
+      const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this._altoPx();
       for (const sp of this.rotulos) { const h = sp.userData.px * k; sp.scale.set(h * 4, h, 1); }
     }
     if (this.termica && this.camara === 3 && this.avion && (this.avion.dron || this.avion.torreta)) this._renderTermico();
