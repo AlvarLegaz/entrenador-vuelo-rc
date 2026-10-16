@@ -736,6 +736,8 @@ func _enviar_sala() -> void:
 		e["bip"] = [av["cintura"], av["brazos"], av["fase"], av["amp"], av["angCanones"], av["disparos"], av["puno"]]
 		if juego_bip != null: e["golpes"] = juego_bip.golpes
 	if carrera_mejor != null and ev != null and ev.op != null and ev.op.carr != null: e["carrera"] = snappedf(carrera_mejor["t"], 0.01)   # carrera: el mejor de la sesion
+	var cm_e := cam_dji(); e["cam"] = camara; e["zoom"] = float(cm_e["zoom"]); e["ter"] = bool(cm_e["termica"])            # lo que ve el piloto (vista del alumno del profesor)
+	if av.has("torreta"): e["tor"] = [float(av["torreta"]["pan"]), float(av["torreta"]["tilt"])]
 	var cod: String = sala["codigo"]
 	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
 	_multi_enviando = false

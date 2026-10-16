@@ -49,6 +49,10 @@
   #mSup { display: grid; grid-template-columns: minmax(340px, 520px) minmax(0, 1fr); gap: 14px; align-items: start; }
   #mSup .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   #mMapa { width: 100%; height: auto; display: block; }
+  #mSup.conVista { grid-template-columns: minmax(480px, 1.7fr) minmax(0, 1fr); }      /* la vista del alumno, mas ancha que el mapa */
+  #mVista { width: 100%; aspect-ratio: 16 / 10; border: 0; border-radius: 12px; display: none; background: #0b0f14; }
+  .vistaSel { display: flex; gap: 6px; align-items: center; margin: 0 0 8px; flex-wrap: wrap; }
+  .vistaSel button.activo { background: var(--acento, #ffc83d); color: #111; font-weight: 700; }
   #tJugadores td { padding: 8px 8px; } #tJugadores .sub2 { color: var(--suave); font-size: 12px; }
   @media (max-width: 1000px) { #mSup { grid-template-columns: 1fr; } }
   #cDetalles summary { font-weight: 600; font-size: 16px; color: var(--acento); list-style: none; }
@@ -119,7 +123,10 @@
           <select id="mRutas"><option value="">Ninguno</option><option value="*">Todos</option></select>
           <button id="mCerrar">Cerrar la sala</button></div>
         <div id="mSup">
+          <div><div class="vistaSel"><button id="vMapa" class="activo">Mapa</button><button id="vAlumno" title="Lo que ve el piloto elegido (su cámara), reconstruido con lo que manda su simulador">Vista del alumno</button>
+            <span class="sub" id="vQuien">Elige un piloto con «👁 Ver»</span></div>
           <canvas id="mMapa" width="560" height="560" class="tarjeta" style="padding:0"></canvas>
+          <iframe id="mVista" title="Vista del alumno"></iframe></div>
           <div class="col">
           <div class="tarjeta tabla"><table id="tJugadores"></table></div>
         <div class="tarjeta" id="mOrdenes">
@@ -538,6 +545,23 @@ function zonaTrabajo(O) {
   return { R, A, G };
 }
 const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
+/** Vista del alumno: el simulador en modo espectador (espectador.html) siguiendo a ese piloto, en lugar del mapa. */
+function verAlumno(cod, id, nombre) {
+  const cambio = !MP.alumnoVisto || MP.alumnoVisto.cod !== cod || MP.alumnoVisto.id !== id;
+  MP.alumnoVisto = { cod, id, nombre };
+  if (cambio) $("mVista").src = `espectador.html?sala=${encodeURIComponent(cod)}&piloto=${encodeURIComponent(id)}`;
+  $("mMapa").style.display = "none"; $("mVista").style.display = "block"; $("mSup").classList.add("conVista");
+  $("vAlumno").classList.add("activo"); $("vMapa").classList.remove("activo"); $("vQuien").textContent = "Viendo a " + nombre;
+  MP.firma = ""; cargarSalas();
+}
+function verMapa() {
+  $("mVista").style.display = "none"; $("mVista").src = "about:blank"; $("mMapa").style.display = "block"; $("mSup").classList.remove("conVista");
+  $("vMapa").classList.add("activo"); $("vAlumno").classList.remove("activo");
+  $("vQuien").textContent = MP.alumnoVisto ? `Última vista: ${MP.alumnoVisto.nombre} (pulsa «Vista del alumno» para volver)` : "Elige un piloto con «👁 Ver»";
+  MP.alumnoUltimo = MP.alumnoVisto; MP.alumnoVisto = null;
+}
+$("vMapa").onclick = verMapa;
+$("vAlumno").onclick = () => { const u = MP.alumnoVisto || MP.alumnoUltimo; if (u) verAlumno(u.cod, u.id, u.nombre); else $("vQuien").textContent = "Primero elige un piloto con «👁 Ver» en la tabla"; };
 async function cargarSalas() {
   if (cargarSalas.ocupado) return; cargarSalas.ocupado = true;
   try { await pintarSalas(); } finally { cargarSalas.ocupado = false; }
@@ -586,8 +610,11 @@ async function pintarSalas() {
       <td style="white-space:nowrap">${esc(j.estado || "")}${j.final ? " · " + esc(j.final) : ""}<br><span class="sub2">${Math.max(0, j.agl || 0).toFixed(0)} m · ${(Math.hypot(...(j.vn || [0, 0, 0])) * 3.6).toFixed(0)} km/h</span></td>
       <td style="white-space:nowrap" title="cumplidos · fallados · en curso o pendientes">${j.objs && +j.objs[1] ? `<span style="color:#66d36e">${+j.objs[0] || 0} ✔</span>` + (+j.objs[2] ? ` <span style="color:#ff6e66">${+j.objs[2] || 0} ✘</span>` : "") + ` <span class="sub">de ${+j.objs[1] || 0}</span>` : "—"}</td>
       <td>${Math.floor((j.tvuelo || 0) / 60)}:${String(Math.floor((j.tvuelo || 0) % 60)).padStart(2, "0")}</td>
-      <td><button class="peligro" data-expulsar="${esc(j.id)}" data-nombre="${esc(j.nombre)}" title="Sacarlo de la sala; no podrá volver a entrar">Expulsar</button></td></tr>`).join("") ||
+      <td style="white-space:nowrap"><button data-ver="${esc(j.id)}" data-nombre="${esc(j.nombre)}" class="${MP.alumnoVisto && MP.alumnoVisto.id === j.id && MP.alumnoVisto.cod === s.codigo ? "prim" : ""}" title="Ver lo que ve este piloto">👁 Ver</button>
+        <button class="peligro" data-expulsar="${esc(j.id)}" data-nombre="${esc(j.nombre)}" title="Sacarlo de la sala; no podrá volver a entrar">Expulsar</button></td></tr>`).join("") ||
     '<tr><td colspan="6" class="sub">Nadie en la sala ahora mismo</td></tr>';
+  $("tJugadores").querySelectorAll("button[data-ver]").forEach(b => b.onclick = () => verAlumno(s.codigo, b.dataset.ver, b.dataset.nombre));
+  if (MP.alumnoVisto && MP.alumnoVisto.cod !== s.codigo) verMapa();
   $("tJugadores").querySelectorAll("button[data-expulsar]").forEach(b => b.onclick = async () => {
     if (!(await modal("Expulsar a " + b.dataset.nombre, `<p>Sale de la sala ${esc(s.nombre)} y no puede volver a entrar (ni con otra pestaña ni con otro ordenador con su perfil o su nombre). Sus vuelos se guardan como siempre.</p>`,
       [["Cancelar", false], ["Expulsar", true, "peligro"]]))) return;

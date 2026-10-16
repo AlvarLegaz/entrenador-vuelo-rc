@@ -373,6 +373,11 @@ def validar_estado(e):
     if isinstance(e.get("objs"), list) and all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in e["objs"][:3]):
         s["objs"] = [int(x) for x in e["objs"][:3]]
     if isinstance(e.get("bip"), list) and len(e["bip"]) >= 7: s["bip"] = _vector(e["bip"][:7], 7)
+    # lo que ve el piloto (la vista del alumno del panel): camara, zoom, termica y torreta (pan, inclinacion) del UAV
+    if e.get("cam") in (1, 2, 3): s["cam"] = int(e["cam"])
+    if e.get("zoom") is not None: s["zoom"] = _num_estado(e["zoom"], 100)
+    if isinstance(e.get("ter"), bool): s["ter"] = e["ter"]
+    if isinstance(e.get("tor"), list) and len(e["tor"]) == 2: s["tor"] = _vector(e["tor"], 2)
     return s
 
 
@@ -397,14 +402,14 @@ class Manejador(BaseHTTPRequestHandler):
             sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
 
     # ---- respuestas ----
-    def enviar(self, codigo, cuerpo, tipo="application/json; charset=utf-8", extra=None):
+    def enviar(self, codigo, cuerpo, tipo="application/json; charset=utf-8", extra=None, marco="DENY"):
         datos = cuerpo if isinstance(cuerpo, bytes) else json.dumps(cuerpo, ensure_ascii=False).encode()
         self.send_response(codigo)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(datos)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Frame-Options", marco)          # en ningun marco; la vista del alumno, solo en el panel del aula (SAMEORIGIN)
         self.send_header("Referrer-Policy", "no-referrer")
         self.cabeceras_cors()
         for k, v in (extra or {}).items(): self.send_header(k, v)
@@ -494,7 +499,9 @@ class Manejador(BaseHTTPRequestHandler):
     def estatico(self, ruta):
         if ruta in ("", "/", "/simulador.html"):         # el aula solo administra: el simulador lo tiene cada alumno en su ordenador
             self.send_response(302); self.send_header("Location", "/profesor.html"); self.end_headers(); return
-        if not (ruta == "/profesor.html" or ruta == "/escenarios.js" or ruta.startswith(("/mundos/", "/zonas/", "/aviones/"))):
+        marco = "DENY"
+        if ruta == "/espectador.html": ruta = "/simulador.html"; marco = "SAMEORIGIN"   # la vista del alumno del panel del profesor: el simulador en modo espectador
+        elif not (ruta == "/profesor.html" or ruta in ("/escenarios.js", "/singulares.js") or ruta.startswith(("/mundos/", "/zonas/", "/aviones/", "/js/", "/lib/", "/operaciones/"))):
             raise Error(404, "El servidor del aula solo tiene el panel del profesor: el simulador se abre en cada ordenador")
         if ruta == "/aviones/indice.js":       # la carpeta de aviones se lee al momento: un avion nuevo aparece al copiarlo
             dav = os.path.join(DIR_SIM, "aviones")
@@ -505,7 +512,7 @@ class Manejador(BaseHTTPRequestHandler):
             raise Error(404, "no existe")
         tipo = mimetypes.guess_type(f)[0] or "application/octet-stream"
         if tipo.startswith("text/") or tipo.endswith("javascript"): tipo += "; charset=utf-8"
-        with open(f, "rb") as fh: self.enviar(200, fh.read(), tipo)
+        with open(f, "rb") as fh: self.enviar(200, fh.read(), tipo, marco=marco)
 
     # ---- multijugador ----
     @staticmethod
