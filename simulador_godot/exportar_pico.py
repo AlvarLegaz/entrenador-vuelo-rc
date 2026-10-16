@@ -55,8 +55,13 @@ def ajustes_editor():
 def exportar():
     if APK.exists(): APK.unlink()
     plantilla = [] if (PROY / "android" / "build").exists() else ["--install-android-build-template"]     # la de Gradle, la primera vez
-    r = subprocess.run([str(GODOT), "--headless", "--path", str(PROY), *plantilla, "--export-debug", "Pico (Android)", str(APK)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
-    for l in (r.stdout + r.stderr).splitlines():
+    # la salida a un fichero y no a tuberias: si queda vivo el proceso de fondo de Gradle, las tuberias no se cierran y
+    # esto se quedaria esperando aunque el APK ya este hecho (por eso tambien sin el daemon de Gradle)
+    os.environ["GRADLE_OPTS"] = (os.environ.get("GRADLE_OPTS", "") + " -Dorg.gradle.daemon=false").strip()
+    log = H / "exportar_pico.log"
+    with open(log, "w", encoding="utf-8") as f:
+        subprocess.run([str(GODOT), "--headless", "--path", str(PROY), *plantilla, "--export-debug", "Pico (Android)", str(APK)], stdout=f, stderr=subprocess.STDOUT, timeout=3600)
+    for l in log.read_text(encoding="utf-8", errors="replace").splitlines():
         if re.search(r"error|warning|aviso|export", l, re.I): print("  " + l)
     if not APK.exists(): sys.exit("No se ha generado el APK")
     print("APK: %s (%.1f MB)" % (APK, APK.stat().st_size / 1e6))
