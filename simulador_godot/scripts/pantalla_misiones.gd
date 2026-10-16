@@ -273,7 +273,7 @@ class Operaciones extends Control:
 		if O.has("elegir"):                                                # carrera: se puede volar con cualquier dron del hangar
 			elegir_box.add_child(Tema.etiqueta("VUELA CON", 12, Tema.SUAVE, true))
 			for a in p.ids_hangar():
-				if not (O["elegir"] as Array).has(Escenarios.vehiculo_de(a)): continue
+				if not p.op_permite(O, a): continue
 				var aa: String = a
 				var b := Tema.boton(String(DatosComunes.avion(a)["nombre"]), "BotonPrim" if a == p.veh_op(sel) else "", func(): p.op_vehiculo[sel] = aa; refrescar())
 				b.add_theme_font_size_override("font_size", 13); elegir_box.add_child(b)

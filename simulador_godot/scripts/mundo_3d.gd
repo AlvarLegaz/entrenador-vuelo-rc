@@ -1179,7 +1179,18 @@ func poner_operacion(d: Dictionary, casa: Array) -> void:
 				var mt := StandardMaterial3D.new(); mt.albedo_color = Color(q[1], q[2]); mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.roughness = 0.12; mt.metallic = 0.35
 				mt.cull_mode = BaseMaterial3D.CULL_DISABLED; mt.render_priority = 2
 				var mi := MeshInstance3D.new(); mi.mesh = mancha_vertido(V, q[0], q[3]); mi.material_override = mt; G.add_child(mi)
-	if d.has("racks") or d.has("calientes") or d.get("vertidos") is Array: _termicos(G, Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 }), d)
+	if d.has("recon"):                                                 # reconocimiento: la zona de busqueda y los camiones
+		if d["recon"].has("zona"): esquinas.call(d["recon"]["zona"], Color.html("#fdd835"))
+		var rr: float = Operacion.CAMION["radio"]
+		for V in d.get("vehiculos", []):
+			var C := Node3D.new(); C.position = Vector3(V[1], alt.call(V[0], V[1]), -V[0]); C.rotation.y = PI / 2 - float(V[2]) * PI / 180; G.add_child(C)   # x del camion hacia su rumbo
+			for q in Operacion.CAMION["piezas"]:
+				var bm := BoxMesh.new(); bm.size = Vector3(q[0], q[2], q[1]); var mi := MeshInstance3D.new(); mi.mesh = bm
+				mi.material_override = std.call(Color.hex(int(q[5]) * 256 + 255)); mi.position = Vector3(q[3], q[4], 0); C.add_child(mi)
+			for w in Operacion.CAMION["ruedas"]:
+				var cm := CylinderMesh.new(); cm.top_radius = rr; cm.bottom_radius = rr; cm.height = 0.35; cm.radial_segments = 14
+				var mi := MeshInstance3D.new(); mi.mesh = cm; mi.material_override = std.call(Color.hex(0x111111ff)); mi.rotation.x = PI / 2; mi.position = Vector3(w[0], rr, w[1]); C.add_child(mi)
+	if d.has("racks") or d.has("calientes") or d.get("vertidos") is Array or d.has("recon"): _termicos(G, Operacion.new(d, func(_a, _b): pass, func(_a, _b): pass, { "casa": casa, "suelo": alt, "h0": h0 }), d)
 
 ## Lo que solo se ve con la camara termica (capa 2: la camara normal no la dibuja) en colores clave para el sombreador
 ## de la termica (principal.gd, _termica): caliente en rojo puro con el calor en el azul, frio en verde puro. Y lo que se

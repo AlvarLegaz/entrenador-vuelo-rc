@@ -97,6 +97,7 @@ var hud_uav: HudUav                 # estacion de control del UAV (hud_uav.gd)
 var hud_carrera: HudCarrera         # carrera de drones: barra de arriba e indicador del siguiente obstaculo (hud_carrera.gd)
 var carrera_mejor = null            # carrera: el mejor tiempo de esta sesion { t, avion } (CARRERA_MEJOR de la web)
 var destino_prueba = null           # pruebas: tras la fisica de cada paso, el dron se pone aqui (prueba_carrera.gd)
+var mira_recon: Control             # reconocimiento con un avion: la mira de la camara de a bordo
 var op_vehiculo := {}               # operaciones que dejan elegir el vehiculo (la carrera): el elegido por trabajo
 var briefing: PanelContainer; var briefing_img: TextureRect
 var hud_fpv: HudFPV                 # OSD de Betaflight del dron FPV
@@ -491,6 +492,14 @@ func _construir_ui() -> void:
 	hud_fpv = HudFPV.new(self); raiz.add_child(hud_fpv); hud_fpv.visible = false; raiz.move_child(hud_fpv, 0)
 	hud_uav = HudUav.new(self); raiz.add_child(hud_uav); hud_uav.visible = false; raiz.move_child(hud_uav, 0); hud.uav = hud_uav
 	hud_carrera = HudCarrera.new(self); raiz.add_child(hud_carrera); hud_carrera.visible = false
+	mira_recon = Control.new(); mira_recon.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira_recon.visible = false      # reconocimiento con un avion: la mira de la camara 3, con el centro libre
+	mira_recon.anchor_left = 0.5; mira_recon.anchor_right = 0.5; mira_recon.anchor_top = 0.5; mira_recon.anchor_bottom = 0.5
+	mira_recon.offset_left = -45; mira_recon.offset_right = 45; mira_recon.offset_top = -15; mira_recon.offset_bottom = 15
+	mira_recon.draw.connect(func():
+		for capa in [[Color.BLACK, 5.0], [Color.WHITE, 2.5]]:
+			mira_recon.draw_line(Vector2(8, 15), Vector2(36, 15), capa[0], capa[1]); mira_recon.draw_line(Vector2(54, 15), Vector2(82, 15), capa[0], capa[1])
+			mira_recon.draw_line(Vector2(45, 2), Vector2(45, 8), capa[0], capa[1]); mira_recon.draw_line(Vector2(45, 22), Vector2(45, 28), capa[0], capa[1]))
+	raiz.add_child(mira_recon)
 	condiciones = PantallaMisiones.Condiciones.new(self)
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
@@ -882,10 +891,13 @@ func _pintar_sala_info() -> void:
 func ir_operaciones() -> void:
 	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
 ## Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
+## Si el trabajo deja volarlo con el vehiculo a (operacion.elegir: clases de vehiculo o ids, como el reconocimiento).
+func op_permite(O: Dictionary, a: String) -> bool:
+	return O.has("elegir") and ((O["elegir"] as Array).has(Escenarios.vehiculo_de(a)) or (O["elegir"] as Array).has(a))
 ## El vehiculo con el que se vuela el trabajo id (vehOp de la web): el que pide o, si deja elegir, el elegido.
 func veh_op(id: String) -> String:
 	var O: Dictionary = Escenarios.datos()[id]["operacion"]; var a: String = op_vehiculo.get(id, "")
-	if O.has("elegir") and ids_aviones.has(a) and (O["elegir"] as Array).has(Escenarios.vehiculo_de(a)): return a
+	if O.has("elegir") and ids_aviones.has(a) and op_permite(O, a): return a
 	return String(O.get("avion", ""))
 func volar_operacion(id: String) -> void:
 	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
@@ -1089,6 +1101,8 @@ func _orientar_lanzamiento() -> void:
 	var c := _casa()
 	var rumbo: float = (float(c["rumbo"]) * D2R if c.has("rumbo") else (float(sesion["lanz"].get("rumbo", 0)) * D2R if not sesion["lanz"].is_empty() else 0.0)) if es_m else PI
 	av["q"] = Cuat.desde_euler(e[0], e[1], rumbo)
+	# operaciones: el avion lanzado a mano (reconocimiento) sale de cara al viento, como se lanza de verdad
+	if Escenarios.datos()[sesion["escenario"]].has("operacion") and modelo is ModeloAvion and not con_tren() and float(ent.viento["base"]) > 1: av["q"] = Cuat.desde_euler(e[0], e[1], float(ent.viento["rumbo"]) + PI)
 
 func lanzar() -> void:
 	if es_bipode() and av.get("estado", "") == "volando":     # bipode en marcha: L lo aparca (si esta parado) y acaba
@@ -1183,7 +1197,7 @@ func paso(dt: float) -> void:
 		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
 		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
 	if ev.op != null:                         # operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-		var cam_op := { "gimbal": av["torreta"]["tilt"] * R2D, "pan": av["torreta"]["pan"], "grabando": false } if (es_uav() and av.has("torreta")) else { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }   # UAV: la torreta
+		var cam_op := camara_op().merged({ "grabando": false }) if ((es_uav() and av.has("torreta")) or (not es_dron() and ev.op.d.has("recon"))) else { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }   # UAV: la torreta o el morro fijo; avion: la camara de a bordo
 		for t in ev.op.paso(p_ant, av, dt, cam_op.merged(cam_dji())): poner_toast(t)
 		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
 		var C = ev.op.carr
@@ -1215,7 +1229,7 @@ func paso(dt: float) -> void:
 ## el profesor ha puesto en vuelo (sala multijugador). Se guarda en el aula (o en el ordenador). Como desgasteTrasVuelo.
 func desgaste_tras_vuelo(v: Dictionary, final: String) -> void:
 	var A := DatosComunes.avion(sesion["avion"])
-	if Desgaste.clase(A) == "": return
+	if Desgaste.clase(A) == "" or vr != null: return             # en las gafas aun no hay Taller donde repararlo: sin desgaste
 	var R = v.get("reg")
 	var col := func(n: String) -> Array:
 		var i: int = (R["columnas"] as Array).find(n) if R != null else -1
@@ -1721,6 +1735,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		if k == KEY_V and morro_de(sesion["avion"]) == "fijo": cambiar_vista_fija()
 		if k == KEY_F: uav_foto()
 	elif k == KEY_H and not dron: mostrar_hud = not mostrar_hud
+	if k == KEY_F and not es_uav() and not dron and ev != null and ev.op != null and ev.op.d.has("recon"): avion_foto()     # reconocimiento con el Poli-1 o el Entrenador 1
 	if k == KEY_G and libre: vto["rachas"] = not vto["rachas"]
 	var tecla: int = e.keycode
 	if libre and (tecla == KEY_PLUS or tecla == KEY_KP_ADD or (e.unicode == 43)): vto["base"] = minf(10, vto["base"] + 1)
@@ -1858,7 +1873,8 @@ func cambiar_vista_fija() -> void:
 	UAV["vista"] = "frontal" if UAV.get("vista", "frontal") == "lateral" else "lateral"; poner_vista_fija()
 	poner_toast("Cámara lateral (izquierda)" if UAV["vista"] == "lateral" else "Cámara frontal")
 func mover_torreta(dt: float) -> void:
-	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto" or morro_de(sesion["avion"]) == "fijo": return   # el morro fijo no se mueve
+	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto": return
+	if morro_de(sesion["avion"]) == "fijo": UAV["cruz"] = punto_cruz(); return      # el morro fijo no se mueve: la cruz, donde mire el avion
 	var tr: Dictionary = av["torreta"]; var z: float = cam_dji()["zoom"]; var k := TORRETA_VEL / pow(z, 0.7) * dt; var fl := torreta_con_flechas()
 	var T := func(kk: int) -> float: return 1.0 if Input.is_physical_key_pressed(kk) else 0.0
 	var dp: float = ((T.call(KEY_RIGHT) - T.call(KEY_LEFT)) if fl else 0.0) + (_mando_torreta[0] if not _mando_torreta.is_empty() else 0.0)
@@ -1884,11 +1900,21 @@ func coord_txt(N: float, E: float) -> String:
 	var gm := func(x: float, pos: String, neg: String) -> String: return "%d°%s' %s" % [int(floor(absf(x))), ("%.3f" % (fmod(absf(x), 1.0) * 60)).pad_zeros(2), pos if x >= 0 else neg]
 	return "%s %s" % [gm.call(lat, "N", "S"), gm.call(lon, "E", "W")]
 ## F: foto de la torreta (en un trabajo, lo que vale para el; si no, la foto con las coordenadas del punto de la cruz).
+## Foto con la camara de a bordo de un avion (reconocimiento): mira al frente, con el cabeceo del avion.
+func avion_foto() -> void:
+	if av["estado"] != "volando" or rep_activa: return
+	var co := camara_op(); poner_toast(" · ".join(ev.op.foto(av, co["gimbal"], { "pan": co["pan"], "zoom": 1.0 })))
+## La camara de las operaciones como gimbal (grados) y giro respecto al rumbo del avion (rad) (camaraOp de la web): la
+## torreta, tal cual; el morro fijo del UAV y la camara de a bordo de los aviones (al frente), con su direccion real.
+func camara_op() -> Dictionary:
+	if es_uav() and av.has("torreta") and not (avion3d != null and avion3d.cam_fija != null): return { "gimbal": av["torreta"]["tilt"] * R2D, "pan": av["torreta"]["pan"] }
+	var dd: Array = eje_torreta()[1] if (es_uav() and av.has("torreta")) else Cuat.rot(av["q"], [1.0, 0.0, 0.0])
+	return { "gimbal": -asin(clampf(dd[2], -1, 1)) * R2D, "pan": PilotoUAV.envolver(atan2(dd[1], dd[0]) - Cuat.euler(av["q"])[2]) }
 func uav_foto() -> void:
 	if not es_uav() or av["estado"] != "volando": return
 	UAV["fotos"] += 1
-	var cm := cam_dji(); cm["pan"] = av["torreta"]["pan"]
-	var Tt: Array = ev.op.foto(av, av["torreta"]["tilt"] * R2D, cm) if (ev != null and ev.op != null) else []
+	var co := camara_op(); var cm := cam_dji(); cm["pan"] = co["pan"]
+	var Tt: Array = ev.op.foto(av, co["gimbal"], cm) if (ev != null and ev.op != null) else []
 	var c = UAV["cruz"]; var txt := "Foto %d" % UAV["fotos"]
 	if c != null and en_mundo(): txt += " · %s · a %s" % [coord_txt(c[0], c[1]), ("%d m" % int(round(c[3]))) if c[3] < 1000 else ("%s km" % ("%.1f" % (c[3] / 1000)).replace(".", ","))]
 	poner_toast(" · ".join(Tt) if not Tt.is_empty() else txt)
@@ -2157,6 +2183,7 @@ func _hud() -> void:
 	if es_fpv(): hud_fpv.pintar(h, vn)
 	hud_uav.visible = es_uav() and not sin_instrumentos
 	if es_uav(): hud.estado.visible = false; hud_uav.pintar(vn, dist, yaw)
+	mira_recon.visible = camara == 3 and not dron and not es_uav() and ev != null and ev.op != null and ev.op.d.has("recon")
 
 ## Lecturas del bipode (hudBip de la web): velocidad, rumbo, cintura, brazos, pendiente y distancia; sin instrumentos de avion.
 func _hud_bip(dist: float, yaw: float) -> void:

@@ -19,7 +19,7 @@ func _ok(nombre: String, cond: bool, detalle := "") -> void:
 
 func _vuelo(v: Dictionary) -> Dictionary:
 	var E: Dictionary = Escenarios.datos()[v["mision"]]; var obj := {}; var orden := []
-	for o in E["objetivos"]: obj[o[0]] = { "texto": o[1], "estado": "curso" if o[0] in ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura"] else "pend" }; orden.append(o[0])
+	for o in E["objetivos"]: obj[o[0]] = { "texto": o[1], "estado": "curso" if o[0] in ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura", "minima", "ruido"] else "pend" }; orden.append(o[0])
 	var marcar := func(k: String, e: String) -> void:
 		if obj.has(k) and obj[k]["estado"] != "mal": obj[k]["estado"] = e
 	var anotar := func(k: String, t: String) -> void:
@@ -28,6 +28,8 @@ func _vuelo(v: Dictionary) -> Dictionary:
 	if v["persona"] != null: d["persona"] = v["persona"]
 	if v.get("calientes") != null: d["calientes"] = v["calientes"]
 	if v.get("vertidos") != null: d["vertidos"] = v["vertidos"]; d["sectores"] = v["sectores"]
+	if v.get("vehiculos") != null: d["vehiculos"] = v["vehiculos"]
+	if v.get("conVehiculo") != null: d["conVehiculo"] = v["conVehiculo"]
 	var suelo := func(N: float, Ee: float) -> float: return 3 * sin(N * 0.01) + 2 * cos(Ee * 0.013)
 	var op := Operacion.new(d, marcar, anotar, { "casa": [E["operacion"]["salida"]["n"], E["operacion"]["salida"]["e"]], "suelo": suelo, "h0": 0.0 })
 	var avisos := []; var ahora := []; var p_ant = null; var av := {}; var choque = null
@@ -88,13 +90,13 @@ func _initialize() -> void:
 		var s := [int(x["semilla"])]
 		var rnd := func() -> float: s[0] = (s[0] * 48271) % 2147483647; return s[0] / 2147483647.0
 		var dd := Operacion.sortear(Escenarios.datos()[x["mision"]]["operacion"], rnd); var dif := []
-		for k in ["puntos", "defectos", "manchas", "persona", "calientes", "puntosCalientes", "fuga", "placaTxt", "piloto", "vertidos", "sectores"]:
+		for k in ["puntos", "defectos", "manchas", "persona", "calientes", "puntosCalientes", "fuga", "placaTxt", "piloto", "vertidos", "sectores", "vehiculos", "conVehiculo"]:
 			var gv = dd.get(k) if not (k in ["calientes", "vertidos"] and not dd.get(k) is Array) else null     # en la fabrica, "calientes" es cuantos
 			if not _igual(gv, x[k]):
 				dif.append("%s: %s / %s" % [k, JSON.stringify(gv).left(160), JSON.stringify(x[k]).left(160)])
 		_ok("%s, semilla %d" % [x["mision"], x["semilla"]], dif.is_empty(), "" if dif.is_empty() else "\n      " + "\n      ".join(dif))
 	print("Las operaciones no son entrenamientos:")
 	_ok("el dron comercial tiene sus 6 entrenamientos", Escenarios.misiones_de("dron").size() == 6, str(Escenarios.misiones_de("dron")))
-	_ok("y 9 operaciones", Escenarios.operaciones().size() == 9, str(Escenarios.operaciones()))
+	_ok("y 12 operaciones", Escenarios.operaciones().size() == 12, str(Escenarios.operaciones()))
 	print("RESULTADO: " + ("todo igual" if fallos == 0 else "%d fallos" % fallos))
 	quit(1 if fallos else 0)

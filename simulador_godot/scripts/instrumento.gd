@@ -352,6 +352,20 @@ func _gps_mundo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 			var rr := maxf(6, float(OPv.d["radio_sector"]) * k); var nseg := 48
 			for s in range(0, nseg, 2): draw_arc(qs, rr, s * TAU / nseg, (s + 1) * TAU / nseg, 4, col, 2)
 			_txt(qs + Vector2(0, 4), str(i + 1), 11 * k0, col, true)
+	var OPr = p.ev.op if (p.ev != null and p.ev.op != null and p.ev.op.d.has("recon")) else null
+	if OPr != null:                               # reconocimiento: puntos de control (verdes los hechos), objetivo y zona
+		var R: Dictionary = OPr.d["recon"]; var PP: Array = R.get("puntos", [])
+		for i in PP.size():
+			var col := Color("#66bb6a") if OPr.hechos[i] else Color("#ff9800"); var qs := Vector2(X.call(PP[i]["e"]), Y.call(PP[i]["n"]))
+			draw_arc(qs, maxf(6, 60 * k), 0, TAU, 48, col, 2); _txt(qs + Vector2(0, 4), str(i + 1), 11 * k0, col, true)
+		if R.has("objetivo"):
+			var col := Color("#66bb6a") if OPr.foto_obj else Color("#e53935"); var qs := Vector2(X.call(R["objetivo"]["e"]), Y.call(R["objetivo"]["n"]))
+			var rr := maxf(6, float(R["ruido_r"]) * k); var nseg := 48
+			for s in range(0, nseg, 2): draw_arc(qs, rr, s * TAU / nseg, (s + 1) * TAU / nseg, 4, col, 2)
+		if R.has("zona"):
+			var Z: Dictionary = R["zona"]
+			var q := [Vector2(X.call(Z["e0"]), Y.call(Z["n1"])), Vector2(X.call(Z["e1"]), Y.call(Z["n1"])), Vector2(X.call(Z["e1"]), Y.call(Z["n0"])), Vector2(X.call(Z["e0"]), Y.call(Z["n0"]))]
+			for i in 4: draw_dashed_line(q[i], q[(i + 1) % 4], Color("#fdd835"), 2, 6)
 	if p.piloto != null:                          # UAV: la pista y lo que pide el piloto automatico
 		var PS = p.piloto.pista
 		if PS != null:

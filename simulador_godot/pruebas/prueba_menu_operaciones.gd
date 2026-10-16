@@ -29,7 +29,7 @@ func _initialize() -> void:
 	var filas := 0
 	for c in O.lista.get_children():
 		if c is ScrollContainer and not c.is_queued_for_deletion(): filas += 1
-	_ok("una fila por vehiculo (Mini Dron HQ, Inspector HQ-3T, Cernicalo XM-7 y el FPV de la carrera)", filas == 4, str(filas))
+	_ok("una fila por vehiculo (Mini Dron HQ, Inspector HQ-3T, Cernicalo XM-7, Grajo MX-2 y el FPV de la carrera)", filas == 5, str(filas))
 	await _foto("operaciones")
 	_ok("sin la ventana hasta pulsar Volar", not O.check.visible)
 	O.b_volar.pressed.emit(); await process_frame

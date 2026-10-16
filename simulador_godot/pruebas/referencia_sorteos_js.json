@@ -51,7 +51,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -66,7 +68,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -84,7 +88,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -125,7 +131,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -178,7 +186,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -193,7 +203,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -237,7 +249,86 @@
   "placaTxt": "A-96",
   "piloto": true,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_rec_itinerario",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16881,
+    3177,
+    348
+   ],
+   [
+    17704,
+    3200,
+    143
+   ]
+  ],
+  "conVehiculo": [
+   0,
+   1
+  ]
+ },
+ {
+  "semilla": 1,
+  "mision": "op_rec_vigilancia",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16064,
+    4935,
+    216
+   ]
+  ],
+  "conVehiculo": null
+ },
+ {
+  "semilla": 1,
+  "mision": "op_rec_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    14960,
+    1552,
+    216
+   ]
+  ],
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -290,7 +381,9 @@
     14270,
     19282
    ]
-  ]
+  ],
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 1,
@@ -305,7 +398,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -359,7 +454,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -374,7 +471,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -392,7 +491,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -433,7 +534,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -486,7 +589,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -501,7 +606,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -545,7 +652,86 @@
   "placaTxt": "A-78",
   "piloto": true,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_rec_itinerario",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16903,
+    3203,
+    279
+   ],
+   [
+    17693,
+    1528,
+    283
+   ]
+  ],
+  "conVehiculo": [
+   0,
+   2
+  ]
+ },
+ {
+  "semilla": 7,
+  "mision": "op_rec_vigilancia",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16073,
+    4935,
+    75
+   ]
+  ],
+  "conVehiculo": null
+ },
+ {
+  "semilla": 7,
+  "mision": "op_rec_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    14960,
+    2103,
+    75
+   ]
+  ],
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -598,7 +784,9 @@
     7667,
     20231
    ]
-  ]
+  ],
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 7,
@@ -613,7 +801,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -667,7 +857,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -682,7 +874,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -700,7 +894,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -741,7 +937,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -794,7 +992,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -809,7 +1009,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -853,7 +1055,86 @@
   "placaTxt": "A-63",
   "piloto": true,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_rec_itinerario",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16899,
+    3208,
+    235
+   ],
+   [
+    17721,
+    1507,
+    258
+   ]
+  ],
+  "conVehiculo": [
+   0,
+   2
+  ]
+ },
+ {
+  "semilla": 42,
+  "mision": "op_rec_vigilancia",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16073,
+    4935,
+    92
+   ]
+  ],
+  "conVehiculo": null
+ },
+ {
+  "semilla": 42,
+  "mision": "op_rec_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    14961,
+    2077,
+    92
+   ]
+  ],
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -906,7 +1187,9 @@
     7761,
     22861
    ]
-  ]
+  ],
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 42,
@@ -921,7 +1204,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -975,7 +1260,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -990,7 +1277,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1008,7 +1297,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1049,7 +1340,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1102,7 +1395,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1117,7 +1412,9 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1161,7 +1458,86 @@
   "placaTxt": "A-41",
   "piloto": false,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_rec_itinerario",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16891,
+    3204,
+    28
+   ],
+   [
+    17691,
+    3197,
+    131
+   ]
+  ],
+  "conVehiculo": [
+   0,
+   1
+  ]
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_rec_vigilancia",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    16068,
+    4938,
+    123
+   ]
+  ],
+  "conVehiculo": null
+ },
+ {
+  "semilla": 2026,
+  "mision": "op_rec_busqueda",
+  "puntos": null,
+  "defectos": null,
+  "manchas": null,
+  "persona": null,
+  "calientes": null,
+  "puntosCalientes": null,
+  "fuga": null,
+  "placaTxt": null,
+  "piloto": null,
+  "vertidos": null,
+  "sectores": null,
+  "vehiculos": [
+   [
+    15009,
+    1758,
+    123
+   ]
+  ],
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1214,7 +1590,9 @@
     11347,
     19508
    ]
-  ]
+  ],
+  "vehiculos": null,
+  "conVehiculo": null
  },
  {
   "semilla": 2026,
@@ -1229,6 +1607,8 @@
   "placaTxt": null,
   "piloto": null,
   "vertidos": null,
-  "sectores": null
+  "sectores": null,
+  "vehiculos": null,
+  "conVehiculo": null
  }
 ]

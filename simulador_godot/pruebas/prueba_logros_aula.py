@@ -71,7 +71,7 @@ def pruebas(sa):
        and K["clase"].get("BIPODE") is None, str(K["clase"]))
     ok("catalogo: tambien por el nombre y por las palabras de los nombres de antes", sa.clase_vehiculo(K, "Dron FPV de 5 pulgadas") == "dron" and sa.clase_vehiculo(K, "Cuadricóptero DJI Mini 4K") == "dron"
        and sa.clase_vehiculo(K, "Entrenador E2") == "ala" and sa.clase_vehiculo(K, "Cernícalo XM-7") == "ala")
-    ok("catalogo: entrenamientos de ala fija y de dron, y 9 operaciones", len(K["ala"]) >= 4 and "primer_vuelo" in K["dron"] and len(K["operaciones"]) == 9,
+    ok("catalogo: entrenamientos de ala fija y de dron, y 12 operaciones", len(K["ala"]) >= 4 and "primer_vuelo" in K["dron"] and len(K["operaciones"]) == 12,
        "%d / %d / %d" % (len(K["ala"]), len(K["dron"]), len(K["operaciones"])))
     c, a = pedir("POST", "/api/entrar", {"usuario": "Piloto de logros", "clave": "abcd", "crear": True})
     pase, aid = a["pase"], a["alumno"]["id"]

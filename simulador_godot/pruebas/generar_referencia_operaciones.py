@@ -14,7 +14,7 @@ ESC = json.loads(t[m.end():t.rindex("}") + 1])
 DT = 0.1
 suelo = lambda N, E: 3 * math.sin(N * 0.01) + 2 * math.cos(E * 0.013)      # el mismo suelo de prueba en los dos lados
 
-def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, calientes=None, vertidos=None, automatico=False):
+def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, calientes=None, vertidos=None, automatico=False, vehiculos=None, con_vehiculo=None):
     """piezas: lista de (N, E, altura sobre el suelo, rumbo, gimbal, grabando, foto, posado[, termica, zoom[, pan]]). Estados:
     [N, E, arriba, rumbo, posado, gimbal, grabando, foto, t, termica, zoom, pan]. calientes: los modulos con el diodo averiado
     (paneles); vertidos: (vertidos, sectores) de la patrulla; pan: el giro de la torreta del UAV (rad); automatico: el UAV
@@ -24,7 +24,8 @@ def vuelo(nombre, mision, piezas, final="aterrizado", bateria=60, persona=None, 
         N, E, h, y, g, rec, foto, pos = pz[:8]; ter, zoom = pz[8:10] if len(pz) > 8 else (0, 1); pan = pz[10] if len(pz) > 10 else 0
         est.append([round(N, 3), round(E, 3), round(suelo(N, E) + h, 3), round(y, 3), int(pos), round(g, 3), int(rec), int(foto), round(k * DT, 2), int(ter), zoom, round(pan, 4)])
     return {"nombre": nombre, "mision": mision, "estados": est, "final": final, "bateria": bateria, "persona": persona, "calientes": calientes,
-            "vertidos": vertidos[0] if vertidos else None, "sectores": vertidos[1] if vertidos else None, "automatico": automatico}
+            "vertidos": vertidos[0] if vertidos else None, "sectores": vertidos[1] if vertidos else None, "automatico": automatico,
+            "vehiculos": vehiculos, "conVehiculo": con_vehiculo}
 
 def tramo(a, b, v=8.0, y=None, g=-10, rec=0):
     """de a a b (N, E, h) a v m/s; y None = mirando hacia donde va."""
@@ -190,13 +191,46 @@ V.append(vuelo("carrera completa", "op_carrera", carrera(range(len(OB))), final=
 V.append(vuelo("carrera saltandose el 5", "op_carrera", carrera([0, 1, 2, 3, 5, 6]), final="descalificado"))
 V.append(vuelo("carrera contra un poste del 3", "op_carrera", carrera([0, 1, 2], choque_en=2), final="roto"))
 V.append(vuelo("carrera con el 2 al reves", "op_carrera", carrera([0, ("reves", 1), 1, 2, 3]), final="aterrizado"))
+# ---- reconocimiento (con un avion: la camara al frente, gimbal = cabeceo): itinerario, vigilancia y busqueda ----
+def mirar(q, dist, h, ang=math.pi, alto=1.0):
+    """el avion a dist m del punto q (N, E) hacia ang (rad, desde el norte), a h m sobre el suelo, mirandolo: (N, E, h), rumbo, gimbal."""
+    p = (q[0] + dist * math.cos(ang), q[1] + dist * math.sin(ang)); y, g = apuntar((p[0], p[1], suelo(*p) + h), (q[0], q[1], suelo(*q) + alto))
+    return (p[0], p[1], h), y, g
+def ver(q, dist, h, ang=math.pi, alto=1.0, s=1.0, f=True):
+    """quieto s segundos mirando q y, con f, una foto."""
+    p, y, g = mirar(q, dist, h, ang, alto); r = quieto(p, s, y, g)
+    return r + (foto(p, y, g) if f else [])
+O = ESC["op_rec_itinerario"]["operacion"]; R = O["recon"]; C = (O["salida"]["n"], O["salida"]["e"]); PQ = [(q["n"], q["e"]) for q in R["puntos"]]
+VEH = [[PQ[1][0] + 12, PQ[1][1] - 8, 40], [PQ[3][0] - 5, PQ[3][1] + 15, 200]]
+def lanzar(c): return [(c[0], c[1], 1.5, 0, 0, 0, 0, True)] * 3 + tramo((c[0], c[1], 1.6), (c[0] + 200, c[1], 60), v=12, y=0)
+def a_casa(desde, c): return tramo(desde, (c[0] - 300, c[1], 40), v=14) + tramo((c[0] - 300, c[1], 40), (c[0] + 20, c[1], 0.3), v=10) + [(c[0] + 20, c[1], 0, 0, -10, 0, 0, True)] * 5
+pz, ant = lanzar(C), (C[0] + 200, C[1], 60)
+for i, q in enumerate(PQ):
+    p = mirar(q, 200, 100)[0]; pz += tramo(ant, p, v=14) + (ver(q, 450, 100, f=True) if i == 2 else []) + ver(q, 200, 100); ant = p
+V.append(vuelo("reconocimiento de itinerario ok", "op_rec_itinerario", pz + a_casa(ant, C), vehiculos=VEH, con_vehiculo=[1, 3]))
+pz, ant = lanzar(C), (C[0] + 200, C[1], 60)
+for i, q in enumerate(PQ[:3]):
+    p = mirar(q, 200, 20 if i == 1 else 100)[0]; pz += tramo(ant, p, v=14) + ver(q, 200, 20 if i == 1 else 100, ang=math.pi + (0.6 if i == 0 else 0)); ant = p
+pz += tramo(ant, (ant[0], ant[1], 170), v=6); ant = (ant[0], ant[1], 170)
+V.append(vuelo("itinerario incompleto, bajo y alto, lejos de casa", "op_rec_itinerario", pz + a_casa(ant, (C[0] + 200, C[1] + 200)), vehiculos=VEH, con_vehiculo=[1, 3]))
+O = ESC["op_rec_vigilancia"]["operacion"]; R = O["recon"]; Q = (R["objetivo"]["n"] + 10, R["objetivo"]["e"] - 6); VEH = [[Q[0], Q[1], 120]]
+p = mirar(Q, 400, 120)[0]; pz = lanzar(C) + tramo((C[0] + 200, C[1], 60), p, v=14) + ver(Q, 400, 120, alto=1.5, s=95, f=False) + ver(Q, 200, 120, alto=1.5)
+V.append(vuelo("vigilancia ok", "op_rec_vigilancia", pz + a_casa(p, C), vehiculos=VEH))
+p = mirar(Q, 200, 60)[0]; pz = (lanzar(C) + tramo((C[0] + 200, C[1], 60), p, v=14) + ver(Q, 200, 60, alto=1.5, s=20) + ver(Q, 700, 120, alto=1.5, s=40)
+      + ver(Q, 1000, 120, alto=1.5, s=1))
+V.append(vuelo("vigilancia corta, oido y foto lejos", "op_rec_vigilancia", pz + a_casa(mirar(Q, 1000, 120)[0], C), vehiculos=VEH))
+O = ESC["op_rec_busqueda"]["operacion"]; R = O["recon"]; Z = R["zona"]; Q = (Z["n0"] + 420, Z["e0"] + 610); VEH = [[Q[0], Q[1], 300]]
+p = mirar(Q, 150, 110, alto=1.5)[0]; pz = lanzar(C) + tramo((C[0] + 200, C[1], 60), (Z["n1"], Z["e1"], 110), v=14) + tramo((Z["n1"], Z["e1"], 110), p, v=14)
+V.append(vuelo("busqueda ok", "op_rec_busqueda", pz + ver(Q, 150, 110, alto=1.5) + a_casa(p, C), vehiculos=VEH))
+p = mirar(Q, 280, 30, alto=1.5)[0]; pz = lanzar(C) + tramo((C[0] + 200, C[1], 60), p, v=14) + ver(Q, 280, 30, ang=math.pi + 0.15, alto=1.5) + ver(Q, 280, 30, alto=1.5)
+V.append(vuelo("busqueda con la camara casi horizontal", "op_rec_busqueda", pz + a_casa(p, C), vehiculos=VEH))
 
 JS = r"""V => V.map(v => {
-  const E = ESCENARIOS[v.mision], obj = {}, CURSO = ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura"];
+  const E = ESCENARIOS[v.mision], obj = {}, CURSO = ["techo", "vlos", "zona", "baja", "distancia", "suave", "altura", "minima", "ruido"];
   for (const [id, t] of E.objetivos) obj[id] = { texto: t, estado: CURSO.includes(id) ? "curso" : "pend" };
   const marcar = (k, e) => { if (obj[k] && obj[k].estado !== "mal") obj[k].estado = e; };
   const anotar = (k, t) => { if (obj[k]) obj[k].texto += ` (${t})`; };
-  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona; if (v.calientes) d.calientes = v.calientes; if (v.vertidos) { d.vertidos = v.vertidos; d.sectores = v.sectores; }
+  const d = Object.assign({}, E.operacion); if (v.persona) d.persona = v.persona; if (v.calientes) d.calientes = v.calientes; if (v.vertidos) { d.vertidos = v.vertidos; d.sectores = v.sectores; } if (v.vehiculos) d.vehiculos = v.vehiculos; if (v.conVehiculo) d.conVehiculo = v.conVehiculo;
   const suelo = (N, E) => 3 * Math.sin(N * 0.01) + 2 * Math.cos(E * 0.013);
   const op = new Operacion(d, marcar, anotar, { casa: [E.operacion.salida.n, E.operacion.salida.e], suelo, h0: 0 });
   const avisos = [], ahora = []; let pAnt = null, av = null, choque = null;
@@ -230,7 +264,7 @@ with sync_playwright() as p:
       return { semilla: s, mision: k, puntos: d.puntos || null, defectos: d.defectos || null, manchas: d.manchas || null, persona: d.persona || null,
                calientes: Array.isArray(d.calientes) ? d.calientes : null, puntosCalientes: d.puntosCalientes || null, fuga: d.fuga || null,
                placaTxt: d.placaTxt || null, piloto: d.piloto === undefined ? null : d.piloto,
-               vertidos: Array.isArray(d.vertidos) ? d.vertidos : null, sectores: d.sectores || null };
+               vertidos: Array.isArray(d.vertidos) ? d.vertidos : null, sectores: d.sectores || null, vehiculos: d.vehiculos || null, conVehiculo: d.conVehiculo || null };
     }))""", SEMILLAS); b.close()
 assert not err, err
 # lo sorteado tiene que estar dentro de su zona y sin repetirse
@@ -245,6 +279,11 @@ for x in S:
         Vs = x["vertidos"]; assert len(Vs) == O["vertidos"] and all([v[0], v[1]] in O["candidatos_vertido"] for v in Vs), x
         assert all(math.dist(a[:2], b[:2]) >= O["separacion"] for i, a in enumerate(Vs) for b in Vs[i + 1:]), x
         assert all(math.dist(v[:2], s) <= O["radio_sector"] for v, s in zip(Vs, x["sectores"])), x
+    if "recon" in O:                                       # reconocimiento: los camiones junto a sus puntos, el objetivo o dentro de la zona
+        R = O["recon"]; Vs = x["vehiculos"]
+        if "puntos" in R: assert len(Vs) == R["con_vehiculo"] == len(set(x["conVehiculo"])) and all(math.dist(v[:2], (R["puntos"][i]["n"], R["puntos"][i]["e"])) <= 26 for v, i in zip(Vs, x["conVehiculo"])), x
+        if "objetivo" in R: assert len(Vs) == 1 and math.dist(Vs[0][:2], (R["objetivo"]["n"], R["objetivo"]["e"])) <= 21, x
+        if "zona" in R: Z = R["zona"]; assert len(Vs) == 1 and Z["n0"] + 59 < Vs[0][0] < Z["n1"] - 59 and Z["e0"] + 59 < Vs[0][1] < Z["e1"] - 59, x
 json.dump(S, open(RAIZ / "simulador_godot" / "pruebas" / "referencia_sorteos_js.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print(len(S), "sorteos; inspeccion con la semilla 1:", [q["nombre"] for q in S[0]["puntos"]] if S[0]["puntos"] else S[0])
 for v, x in zip(V, r): v["web"] = x

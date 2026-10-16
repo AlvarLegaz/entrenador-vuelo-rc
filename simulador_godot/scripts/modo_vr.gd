@@ -9,7 +9,8 @@ class_name ModoVR extends Node3D
 ##  - las demas (persecucion, FPV, a bordo), la camara de la pantalla con la cabeza libre.
 ## Mandos de las gafas como emisora en modo 2: izquierda gas (o subir y bajar) y guinada, derecha cabeceo y alabeo.
 ## A: armar o despegar · B: cambiar de camara · gatillo derecho: foto · X: volver a casa · Y: empezar de nuevo ·
-## agarre izquierdo: poner la vista de frente. Un panel en la mano izquierda da altura, distancia, velocidad y avisos.
+## agarre izquierdo: poner la vista de frente. Un panel en la mano izquierda da altura, distancia, velocidad, bateria y
+## avisos (los de la app: bateria, averias, fotos...). En las gafas el vehiculo no se desgasta: aun no hay Taller en VR.
 
 var p                                  # principal.gd
 var origen: Node3D                     # XROrigin3D
@@ -132,6 +133,7 @@ func _pintar_panel() -> void:
 	if _sigue_cabeza(): txt += "\nGimbal %.0f°" % float(av["gimbal"])
 	if p.modelo.has_method("bateria_pct") and av.has("Wh"): txt += " · batería %.0f %%" % p.modelo.bateria_pct(av)
 	if p.hud != null and p.hud.aviso.text != "": txt += "\n" + p.hud.aviso.text
+	if p.hud != null and p.hud.toast.text != "": txt += "\n" + p.hud.toast.text          # los avisos de la app (bateria, averias, fotos)
 	txt += "\nA armar/despegar · B cámara · gatillo foto · X casa · Y empezar"
 	panel.text = txt
 

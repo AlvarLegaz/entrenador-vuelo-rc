@@ -391,6 +391,29 @@ El modelo 3D es procedural y común a los dos simuladores: `analisis/bipode/gene
   - en el Taller: «Comprobar el montaje» y «Montar y asegurar…».
 - **Pruebas:** `prueba_piloto_uav.gd` (lanzamiento y toma, y vuelo con los sensores averiados) y `prueba_averias.gd`, ambas iguales en la web y en Godot.
 
+**Reconocimiento con el Grajo, el Poli-1 o el Entrenador 1** (2026-10-17, modo Operaciones, web y Godot iguales). Son tres trabajos que salen de Los Halcones de la Rambla. En la orden de trabajo se elige el vehículo (`operacion.elegir` admite clases o ids). Los camiones se sortean en cada vuelo, se dibujan en 3D (`CAMION` de `js/operaciones.js` / `operaciones.gd`) y llevan el motor caliente, que se ve con la cámara térmica.
+- **Reconocimiento de itinerario:**
+  - fotografiar los 4 puntos de control desde menos de 300 m, con la cruz encima;
+  - la foto dice si en el punto hay un vehículo (2 de los 4, al azar);
+  - tiempo máximo: 20 minutos.
+- **Vigilancia de un punto:**
+  - tener el vehículo en la imagen 90 s (en total) desde menos de 500 m;
+  - al acabar, hacerle una foto;
+  - sin bajar de 80 m a menos de 250 m de él, porque se oye el avión.
+- **Localizar un vehículo:**
+  - buscar el camión dentro de una zona de 1,2 × 1,2 km marcada con jalones amarillos;
+  - la foto centrada envía su posición: hacen falta menos de 25 m de error, y cuanto más inclinada hacia abajo esté la cámara, menos error;
+  - tiempo máximo: 15 minutos.
+- **Normas comunes:** volar entre 30 y 150 m sobre el suelo (por debajo de 30 m solo a menos de 300 m del lanzamiento) y aterrizar a menos de 50 m del punto de lanzamiento.
+- **Cámaras:**
+  - el Grajo usa la de su morro (fija u orientable);
+  - el Poli-1 y el Entrenador 1 usan, como cámara 3, la de a bordo: mira al frente con una mira de centro libre, y F hace la foto;
+  - el morro fijo y la cámara de a bordo evalúan la foto con la dirección real de la cámara, que se inclina con el avión.
+- **Lanzamiento:** en las operaciones, el avión lanzado a mano sale de cara al viento.
+- **Pruebas:**
+  - `prueba_operaciones.gd`: sorteos y seis vuelos guionados, con paridad web-Godot;
+  - `prueba_reconocimiento_web.py` / `prueba_reconocimiento.gd`: los tres trabajos con los tres vehículos.
+
 ## Física del simulador: qué tiene en cuenta
 
 Además del modelo lineal del VLM de cada avión (`simulador/js/modelos.js`, `ModeloAvion.paso()`), revisado en `analisis/REVISION_REALISMO.md`:

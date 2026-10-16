@@ -23,6 +23,13 @@ const OPS = {
   RETICULA: 0.6,                                  // radio de la cruz del medidor puntual de la termica (grados con zoom 1x)
   AMBIENTE: 29.5,                                 // lo que mide la termica en el suelo y lo que no esta caliente ni frio (grados C)
 };
+/** Un camion militar (el de los trabajos de reconocimiento): piezas [largo, ancho, alto, x, arriba, color] en ejes del
+ *  camion (x hacia delante, desde el centro) y las ruedas [x, y]. Lo dibujan visor_real.js y mundo_3d.gd. */
+const CAMION = {
+  piezas: [[6.6, 2.3, 0.45, 0, 0.95, 0x2c2f22], [1.9, 2.3, 1.75, 2.25, 1.95, 0x4b5320], [0.08, 2.0, 0.7, 3.22, 2.3, 0x101418],
+           [4.2, 2.4, 2.1, -1.05, 2.25, 0x5a5f3a], [4.3, 2.45, 0.12, -1.05, 3.35, 0x4a4e30]],
+  ruedas: [[2.4, 1.05], [-0.6, 1.05], [-2.0, 1.05], [2.4, -1.05], [-0.6, -1.05], [-2.0, -1.05]], radio: 0.52,
+};
 /** Temperatura (grados C) -> "calor" de la imagen termica (0 frio, 1 lo mas caliente): la que usan visor.js y mundo_3d.gd
  *  para pintar lo caliente y lo frio de un trabajo encima de la imagen (el resto sale de la luz de la escena). */
 const opCalor = T => T >= 40 ? 0.55 + 0.45 * Math.min(1, (T - 40) / 110) : T <= 10 ? 0.15 * Math.max(0, (T + 20) / 30) : 0.15 + 0.4 * (T - 10) / 30;
@@ -125,6 +132,12 @@ class Operacion {
       d.manchas = r;
     }
     if (O.zona) d.persona = [O.zona.n0 + 20 + rnd() * (O.zona.n1 - O.zona.n0 - 40), O.zona.e0 + 20 + rnd() * (O.zona.e1 - O.zona.e0 - 40)];   // busqueda
+    if (O.recon) {                                    // reconocimiento (Grajo, Poli-1, Entrenador 1): los vehiculos al azar
+      const R = O.recon, veh = (n, e, dist) => { const a = 2 * Math.PI * rnd(), r = dist * Math.sqrt(rnd()); return [Math.round(n + r * Math.cos(a)), Math.round(e + r * Math.sin(a)), Math.round(360 * rnd())]; };
+      if (R.puntos) { d.conVehiculo = tomar(R.puntos.map((q, i) => ({ n: q.n, e: q.e, i })), R.con_vehiculo).map(q => q.i).sort((a, b) => a - b); d.vehiculos = d.conVehiculo.map(i => veh(R.puntos[i].n, R.puntos[i].e, 25)); }
+      if (R.objetivo) d.vehiculos = [veh(R.objetivo.n, R.objetivo.e, 20)];
+      if (R.zona) { const Z = R.zona; d.vehiculos = [[Math.round(Z.n0 + 60 + rnd() * (Z.n1 - Z.n0 - 120)), Math.round(Z.e0 + 60 + rnd() * (Z.e1 - Z.e0 - 120)), Math.round(360 * rnd())]]; }
+    }
     if (O.candidatos_vertido) {                       // patrulla: los vertidos en sitios separados y su sector (el aviso), desplazado al azar
       const C = O.candidatos_vertido.map(([n, e]) => ({ n, e })), V = tomar(C, O.vertidos, O.separacion), R = O.radio_sector;
       d.vertidos = V.map(q => { const L = Math.round(90 + 110 * rnd()); return [q.n, q.e, L, Math.round(L * (0.35 + 0.25 * rnd())), Math.round(360 * rnd()), azar(1000)]; });
@@ -173,7 +186,12 @@ class Operacion {
     if (d.racks) this._fabrica();
     if (Array.isArray(d.vertidos)) this._patrulla();
     if (d.carrera) this._carrera();
-    this.encontrado = false; this.error = null;                                 // busqueda
+    if (d.recon && d.vehiculos) d.vehiculos.forEach(([n, e, r], i) => {        // reconocimiento: el motor de cada camion, caliente
+      const a = r * D2R, P = [n + 2.3 * Math.cos(a), e + 2.3 * Math.sin(a), this.suelo(n, e) + 1.3];
+      this.termicos.push({ tipo: "motor", i, nombre: "motor del camión", T: 55, P0: P, P1: P.slice(), r: 0.9 });
+    });
+    this.encontrado = false; this.error = null;                                 // busqueda (y localizar el vehiculo)
+    this.vig = 0; this.vigHecho = false; this.fotoObj = false;                  // reconocimiento: vigilancia
     this.orb = null; this.yawAnt = null; this.giro = 0;                         // video
   }
 
@@ -335,6 +353,12 @@ class Operacion {
         if (lejos && agl < d.h_min) { m("altura", "mal"); this._aviso("altura", `¡Por debajo de ${d.h_min} m lejos de la pista! Sube`, T); }
         if (agl > d.techo) { m("techo", "mal"); this._aviso("techo", `¡Por encima de ${d.techo} m! Baja`, T); }
       }
+    } else if (d.recon) {                            // reconocimiento: entre la minima y el techo (salvo junto al lanzamiento)
+      if (this.t0 !== null && !av.posado && !av.enTierra) {
+        const R = d.recon, lejos = Math.hypot(N - this.casa[0], E - this.casa[1]) > R.radio_despegue;
+        if (agl > R.techo) { m("techo", "mal"); this._aviso("techo", `¡Por encima de ${R.techo} m! Baja`, T); }
+        if (lejos && agl < R.minima) { m("minima", "mal"); this._aviso("minima", `¡Por debajo de ${R.minima} m lejos del lanzamiento! Sube`, T); }
+      }
     } else if (!d.carrera) {
     if (agl > OPS.TECHO) { m("techo", "mal"); this._aviso("techo", "¡Por encima de 120 m de altura! Baja", T); }
     if (Math.hypot(N - this.casa[0], E - this.casa[1]) > OPS.VLOS) { m("vlos", "mal"); this._aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T); }
@@ -383,6 +407,20 @@ class Operacion {
         if (!av.posado && Operacion.dentro(U.poligono, N, E) && agl < U.alto + d.sobre_unidades) { m("unidades", "mal"); this._aviso("unidades", `¡A menos de ${d.sobre_unidades} m por encima de la unidad ${U.nombre}! Sube`, T); }
       if (this.t0 !== null && t - this.t0 > d.limite_s && !this.tTodo) { m("tiempo", "mal"); this._aviso("tiempo", "Se han acabado los 30 minutos: termina lo que puedas y vuelve", T); }
     }
+    // ---- reconocimiento: la vigilancia (el objetivo en la imagen), el ruido y el tiempo ----
+    if (d.recon) {
+      const R = d.recon;
+      if (R.objetivo && d.vehiculos) {
+        const [vn, ve] = d.vehiculos[0], c = Operacion.camara(av, info.gimbal, [vn, ve, this.suelo(vn, ve) + 1.5], info.pan || 0);
+        if (this.t0 !== null && !av.posado && Math.hypot(N - vn, E - ve) < R.ruido_r && agl < R.ruido_h) { m("ruido", "mal"); this._aviso("ruido", `¡Te pueden oír! A menos de ${R.ruido_r} m del objetivo no bajes de ${R.ruido_h} m`, T); }
+        if (!this.vigHecho && Operacion.enFoto(c, 0.7, zoom) && c.d / zoom <= R.dist_vigilar) {
+          const antes = Math.floor(this.vig / 30); this.vig += dt;
+          if (this.vig >= R.vigilar_s) { this.vigHecho = true; m("vigilar", "ok"); T.push(`¡Vigilancia completa (${R.vigilar_s} s)! Haz una foto del vehículo con la cruz encima (F)`); }
+          else if (Math.floor(this.vig / 30) > antes) T.push(`Vigilando: ${Math.floor(this.vig)} s de ${R.vigilar_s}`);
+        }
+      }
+      if (R.limite_s && this.t0 !== null && t - this.t0 > R.limite_s && !this.tTodo && !this.encontrado) { m("tiempo", "mal"); this._aviso("tiempo", "Se ha acabado el tiempo: termina lo que puedas y vuelve", T); }
+    }
     // ---- busqueda: el tiempo ----
     if (d.zona && !this.encontrado && this.t0 !== null && t - this.t0 > d.limite_s) { m("tiempo", "mal"); this._aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T); }
     // ---- video: giro suave y orbita ----
@@ -417,6 +455,40 @@ class Operacion {
     const d = this.d, T = [], N = av.p[0], E = av.p[1], up = -av.p[2], agl = up - this.suelo(N, E), m = this.marcar, zoom = cam.zoom || 1, ter = !!cam.termica;
     this.fotos++;
     if (av.estado !== "volando" || av.posado) return T;
+    if (d.recon) {                                     // reconocimiento: con la cruz encima y no demasiado lejos para su zoom
+      const R = d.recon, pan = cam.pan || 0, y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R;
+      const cruz = () => { if (Math.sin(g) > -0.02) return null; const s = (up - this.suelo(N, E)) / -Math.sin(g); return [N + s * Math.cos(g) * Math.cos(y), E + s * Math.cos(g) * Math.sin(y)]; };
+      let motivo = null;
+      if (R.puntos) {
+        R.puntos.forEach((q, i) => {
+          if (this.hechos[i]) return;
+          const c = Operacion.camara(av, gimbal, [q.n, q.e, this.suelo(q.n, q.e) + 1], pan);
+          if (!Operacion.enFoto(c, 1, zoom)) return;
+          if (c.d / zoom > R.dist_foto) { motivo = motivo || `el punto ${i + 1} está demasiado lejos (${c.d.toFixed(0)} m): acércate o usa más zoom`; return; }
+          if (!Operacion.enFoto(c, 0.5, zoom)) { motivo = motivo || `el punto ${i + 1} sale en el borde: ponle la cruz encima`; return; }
+          this.hechos[i] = true; const k = this.hechos.filter(Boolean).length, hay = (d.conVehiculo || []).includes(i);
+          T.push(`Punto ${i + 1} (${q.nombre}) ✓ ${hay ? "· HAY UN VEHÍCULO en el punto" : "· sin vehículos"} (${k}/${R.puntos.length})`);
+          if (k === R.puntos.length) { m("puntos", "ok"); m("vehiculos", "ok"); this.tTodo = this.tTodo || av.t; m("tiempo", this.tTodo - this.t0 <= R.limite_s ? "ok" : "mal"); T.push("¡Itinerario reconocido! Vuelve al punto de lanzamiento"); }
+        });
+      }
+      if (R.objetivo && d.vehiculos && !this.fotoObj) {
+        const [vn, ve] = d.vehiculos[0], c = Operacion.camara(av, gimbal, [vn, ve, this.suelo(vn, ve) + 1.5], pan);
+        if (Operacion.enFoto(c, 0.5, zoom) && c.d / zoom <= R.dist_foto) {
+          if (this.vigHecho) { this.fotoObj = true; m("foto", "ok"); T.push("Foto del vehículo ✓ · vuelve al punto de lanzamiento"); }
+          else T.push(`Foto del vehículo; la vigilancia sigue: ${Math.floor(this.vig)} s de ${R.vigilar_s}`);
+        } else if (Operacion.enFoto(c, 1, zoom)) motivo = motivo || (c.d / zoom > R.dist_foto ? "el vehículo está demasiado lejos para la foto" : "el vehículo sale en el borde: ponle la cruz encima");
+      }
+      if (R.zona && d.vehiculos && !this.encontrado) {
+        const [vn, ve] = d.vehiculos[0], c = Operacion.camara(av, gimbal, [vn, ve, this.suelo(vn, ve) + 1.5], pan);
+        if (Operacion.enFoto(c, 0.3, zoom) && c.d / zoom <= R.dist_foto) {
+          const est = cruz() || [N, E]; this.error = Math.hypot(est[0] - vn, est[1] - ve); this.encontrado = true; this.tTodo = this.tTodo || av.t;
+          m("localizar", "ok"); m("posicion", this.error <= R.error ? "ok" : "mal"); m("tiempo", this.t0 !== null && av.t - this.t0 <= R.limite_s ? "ok" : "mal");
+          T.push(`¡Camión localizado! Posición enviada a ${this.error.toFixed(0)} m de la real` + (this.error <= R.error ? "" : ": demasiado error (con la cámara más inclinada hacia abajo sale mejor)"));
+        } else if (Operacion.enFoto(c, 1, zoom) && c.d / zoom <= 2 * R.dist_foto) motivo = motivo || "el camión sale en la foto, pero no en el centro: céntralo y acércate";
+      }
+      if (!T.length) T.push(motivo ? "Foto no válida: " + motivo : `Foto ${this.fotos}`);
+      return T;
+    }
     if (Array.isArray(d.vertidos)) {                   // patrulla: la cruz de la torreta sobre la mancha, no demasiado lejos para su zoom
       const pan = cam.pan || 0, y = Cuat.euler(av.q)[2] + pan, g = gimbal * D2R;
       let motivo = null;
@@ -557,10 +629,16 @@ class Operacion {
     const d = this.d, a = this.anotar, n = this.hechos.filter(Boolean).length;
     if (final === "aterrizado") {
       const dc = Math.hypot(av.p[0] - this.casa[0], av.p[1] - this.casa[1]);
-      this.marcar("casa", dc <= OPS.CASA ? "ok" : "mal"); a("casa", `a ${dc.toFixed(1)} m`);
+      this.marcar("casa", dc <= (d.recon ? d.recon.casa_m : OPS.CASA) ? "ok" : "mal"); a("casa", `a ${dc.toFixed(1)} m`);
       this.marcar("reserva", info.bateria >= OPS.RESERVA ? "ok" : "mal"); a("reserva", `${info.bateria.toFixed(0)} %`);
     }
     if (d.puntos) a("puntos", `${n} de ${d.puntos.length}`);
+    if (d.recon) {
+      const R = d.recon;
+      if (R.puntos) { a("puntos", `${n} de ${R.puntos.length}`); if (this.tTodo) a("tiempo", opMMSS(this.tTodo - this.t0)); }
+      if (R.objetivo) a("vigilar", `${Math.floor(Math.min(this.vig, R.vigilar_s))} s de ${R.vigilar_s}`);
+      if (R.zona && this.error !== null) a("posicion", `error ${this.error.toFixed(0)} m`);
+    }
     if (d.solape) a("cobertura", `${(this.cobertura() * 100).toFixed(0)} %`);
     if (d.zona && this.error !== null) a("posicion", `error ${this.error.toFixed(1)} m`);
     if (d.manchas) a("manchas", `${n} de ${d.manchas.length}`);
@@ -710,6 +788,22 @@ class Operacion {
       const sig = `obstáculo <b>${s.i + 1} de ${this.obst.length}</b> (${CARRERA.NOMBRE[s.o.tipo]}) a ${s.d.toFixed(0)} m`;
       return c.t0 === null ? `Ahora: <b>despega y cruza el obstáculo 1</b> (${CARRERA.NOMBRE[s.o.tipo]}, a ${s.d.toFixed(0)} m): ahí empieza el cronómetro`
         : `Tiempo: <b>${opCrono(av.t - c.t0)}</b> · siguiente: ${sig}`;
+    }
+    if (d.recon) {
+      const R = d.recon;
+      if (this.t0 === null) return "Ahora: <b>lánzalo</b> (L), de cara al viento";
+      if (R.puntos) {
+        const i = R.puntos.findIndex((_, k) => !this.hechos[k]);
+        if (i < 0) return volver;
+        const q = R.puntos[i], rumbo = ((Math.atan2(q.e - E, q.n - N) * R2D) + 360) % 360;
+        return `Tiempo: <b>${opMMSS(Math.max(0, R.limite_s - (av.t - this.t0)))}</b> · puntos <b>${n} de ${R.puntos.length}</b> · siguiente: punto ${i + 1} (${q.nombre}) a ${(Math.hypot(N - q.n, E - q.e) / 1000).toFixed(1).replace(".", ",")} km, rumbo ${String(Math.round(rumbo) % 360).padStart(3, "0")}°`;
+      }
+      if (R.objetivo) {
+        if (this.fotoObj) return volver;
+        const o = R.objetivo, dd = Math.hypot(N - o.n, E - o.e);
+        return this.vigHecho ? "Ahora: <b>foto del vehículo con la cruz encima</b> (F)" : `Vigilancia: <b>${Math.floor(this.vig)} s de ${R.vigilar_s}</b> · objetivo a ${dd < 1000 ? dd.toFixed(0) + " m" : (dd / 1000).toFixed(1).replace(".", ",") + " km"}`;
+      }
+      if (R.zona) return this.encontrado ? volver : `Tiempo: <b>${opMMSS(Math.max(0, R.limite_s - (av.t - this.t0)))}</b> · busca el camión dentro de los jalones amarillos`;
     }
     if (this.t0 === null) return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo";
     if (d.puntos) {

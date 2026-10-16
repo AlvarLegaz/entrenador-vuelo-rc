@@ -21,6 +21,13 @@ const CASA := 10.0
 const RESERVA := 20.0
 const RETICULA := 0.6               # radio de la cruz del medidor puntual de la termica (grados con zoom 1x)
 const AMBIENTE := 29.5              # lo que mide la termica en el suelo (grados C)
+## Un camion militar (el de los trabajos de reconocimiento): piezas [largo, ancho, alto, x, arriba, color] en ejes del
+## camion (x hacia delante, desde el centro) y las ruedas [x, y]. Lo dibuja mundo_3d.gd (CAMION de operaciones.js).
+const CAMION := {
+	"piezas": [[6.6, 2.3, 0.45, 0.0, 0.95, 0x2c2f22], [1.9, 2.3, 1.75, 2.25, 1.95, 0x4b5320], [0.08, 2.0, 0.7, 3.22, 2.3, 0x101418],
+		[4.2, 2.4, 2.1, -1.05, 2.25, 0x5a5f3a], [4.3, 2.45, 0.12, -1.05, 3.35, 0x4a4e30]],
+	"ruedas": [[2.4, 1.05], [-0.6, 1.05], [-2.0, 1.05], [2.4, -1.05], [-0.6, -1.05], [-2.0, -1.05]], "radio": 0.52,
+}
 ## Temperatura (grados C) -> "calor" de la imagen termica (0 frio, 1 lo mas caliente): opCalor de operaciones.js.
 static func calor(T: float) -> float:
 	if T >= 40: return 0.55 + 0.45 * minf(1, (T - 40) / 110)
@@ -193,6 +200,20 @@ static func sortear(O: Dictionary, azar = null) -> Dictionary:
 		var Z: Dictionary = O["zona"]
 		var pn: float = Z["n0"] + 20 + rnd.call() * (Z["n1"] - Z["n0"] - 40); var pe: float = Z["e0"] + 20 + rnd.call() * (Z["e1"] - Z["e0"] - 40)
 		dd["persona"] = [pn, pe]
+	if O.has("recon"):                                # reconocimiento (Grajo, Poli-1, Entrenador 1): los vehiculos al azar
+		var R: Dictionary = O["recon"]
+		var veh := func(n: float, e: float, dist: float) -> Array:
+			var a: float = TAU * rnd.call(); var r: float = dist * sqrt(rnd.call())
+			return [roundf(n + r * cos(a)), roundf(e + r * sin(a)), roundf(360 * rnd.call())]
+		if R.has("puntos"):
+			var lista := []
+			for i in (R["puntos"] as Array).size(): lista.append({ "n": float(R["puntos"][i]["n"]), "e": float(R["puntos"][i]["e"]), "i": i })
+			var cv: Array = _tomar(lista, int(R["con_vehiculo"]), rnd).map(func(q): return int(q["i"])); cv.sort()
+			dd["conVehiculo"] = cv; dd["vehiculos"] = cv.map(func(i): return veh.call(float(R["puntos"][i]["n"]), float(R["puntos"][i]["e"]), 25.0))
+		if R.has("objetivo"): dd["vehiculos"] = [veh.call(float(R["objetivo"]["n"]), float(R["objetivo"]["e"]), 20.0)]
+		if R.has("zona"):
+			var Z: Dictionary = R["zona"]
+			dd["vehiculos"] = [[roundf(Z["n0"] + 60 + rnd.call() * (Z["n1"] - Z["n0"] - 120)), roundf(Z["e0"] + 60 + rnd.call() * (Z["e1"] - Z["e0"] - 120)), roundf(360 * rnd.call())]]
 	if O.has("candidatos_vertido"):                   # patrulla: los vertidos en sitios separados y su sector (el aviso), desplazado al azar
 		var C: Array = (O["candidatos_vertido"] as Array).map(func(q): return { "n": float(q[0]), "e": float(q[1]) })
 		var V := _tomar(C, int(O["vertidos"]), rnd, float(O["separacion"])); var R: float = O["radio_sector"]; var vs := []; var ss := []
@@ -216,6 +237,7 @@ const CARRERA := {
 }
 var obst := []
 var carr = null
+var vig := 0.0; var vig_hecho := false; var foto_obj := false       # reconocimiento: la vigilancia
 func _cuenta() -> int: return hechos.filter(func(x): return x).size()
 
 func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dictionary) -> void:
@@ -235,6 +257,12 @@ func _init(datos: Dictionary, marcar_: Callable, anotar_: Callable, mundo: Dicti
 	if d.has("racks"): _fabrica()
 	if d.get("vertidos") is Array: _patrulla()
 	if d.has("carrera"): _carrera()
+	if d.has("recon"):                                         # reconocimiento: los puntos de control y el motor caliente de cada camion
+		for _i in (d["recon"].get("puntos", []) as Array).size(): hechos.append(false)
+		var VV: Array = d.get("vehiculos", [])
+		for i in VV.size():
+			var a: float = float(VV[i][2]) * D2R; var P := [float(VV[i][0]) + 2.3 * cos(a), float(VV[i][1]) + 2.3 * sin(a), suelo.call(VV[i][0], VV[i][1]) + 1.3]
+			termicos.append({ "tipo": "motor", "i": i, "nombre": "motor del camión", "T": 55, "P0": P, "P1": P.duplicate(), "r": 0.9 })
 
 ## Punto de un objetivo: con cota (m sobre el mar) o h (m sobre el suelo).
 func z(n: float, e: float, q: Dictionary) -> float:
@@ -404,6 +432,11 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 			var cp := centro_pista(); var lejos: bool = Vector2(N - cp[0], E - cp[1]).length() > d["radio_pista"]
 			if lejos and agl < d["h_min"]: m.call("altura", "mal"); _aviso("altura", "¡Por debajo de %s m lejos de la pista! Sube" % _n(d["h_min"]), T)
 			if agl > d["techo"]: m.call("techo", "mal"); _aviso("techo", "¡Por encima de %s m! Baja" % _n(d["techo"]), T)
+	elif d.has("recon"):                               # reconocimiento: entre la minima y el techo (salvo junto al lanzamiento)
+		if t0 != null and not av.get("posado", false) and not av.get("enTierra", false):
+			var R: Dictionary = d["recon"]; var lejos: bool = Vector2(N - casa[0], E - casa[1]).length() > R["radio_despegue"]
+			if agl > R["techo"]: m.call("techo", "mal"); _aviso("techo", "¡Por encima de %s m! Baja" % _n(R["techo"]), T)
+			if lejos and agl < R["minima"]: m.call("minima", "mal"); _aviso("minima", "¡Por debajo de %s m lejos del lanzamiento! Sube" % _n(R["minima"]), T)
 	elif not d.has("carrera"):
 		if agl > TECHO: m.call("techo", "mal"); _aviso("techo", "¡Por encima de 120 m de altura! Baja", T)
 		if Vector2(N - casa[0], E - casa[1]).length() > VLOS: m.call("vlos", "mal"); _aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T)
@@ -446,6 +479,20 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 		for U in d["unidades"]:
 			if not av.get("posado", false) and dentro(U["poligono"], N, E) and agl < U["alto"] + d["sobre_unidades"]: m.call("unidades", "mal"); _aviso("unidades", "¡A menos de %s m por encima de la unidad %s! Sube" % [_n(d["sobre_unidades"]), U["nombre"]], T)
 		if t0 != null and t - t0 > d["limite_s"] and t_todo == null: m.call("tiempo", "mal"); _aviso("tiempo", "Se han acabado los 30 minutos: termina lo que puedas y vuelve", T)
+	# ---- reconocimiento: la vigilancia (el objetivo en la imagen), el ruido y el tiempo ----
+	if d.has("recon"):
+		var R: Dictionary = d["recon"]
+		if R.has("objetivo") and d.has("vehiculos"):
+			var vn: float = d["vehiculos"][0][0]; var ve: float = d["vehiculos"][0][1]
+			var c := camara(av, info["gimbal"], [vn, ve, suelo.call(vn, ve) + 1.5], float(info.get("pan", 0.0)))
+			if t0 != null and not av.get("posado", false) and Vector2(N - vn, E - ve).length() < R["ruido_r"] and agl < R["ruido_h"]:
+				m.call("ruido", "mal"); _aviso("ruido", "¡Te pueden oír! A menos de %s m del objetivo no bajes de %s m" % [_n(R["ruido_r"]), _n(R["ruido_h"])], T)
+			if not vig_hecho and en_foto(c, 0.7, zoom) and c["d"] / zoom <= R["dist_vigilar"]:
+				var antes := int(floor(vig / 30)); vig += dt
+				if vig >= R["vigilar_s"]: vig_hecho = true; m.call("vigilar", "ok"); T.append("¡Vigilancia completa (%s s)! Haz una foto del vehículo con la cruz encima (F)" % _n(R["vigilar_s"]))
+				elif int(floor(vig / 30)) > antes: T.append("Vigilando: %d s de %s" % [int(floor(vig)), _n(R["vigilar_s"])])
+		if R.has("limite_s") and t0 != null and t - t0 > R["limite_s"] and t_todo == null and not encontrado:
+			m.call("tiempo", "mal"); _aviso("tiempo", "Se ha acabado el tiempo: termina lo que puedas y vuelve", T)
 	# ---- busqueda: el tiempo ----
 	if d.has("zona") and not encontrado and t0 != null and t - t0 > d["limite_s"]:
 		m.call("tiempo", "mal"); _aviso("tiempo", "Se ha acabado el tiempo: el equipo de tierra sigue buscando", T)
@@ -479,6 +526,45 @@ func foto(av: Dictionary, gimbal: float, cam := {}) -> Array:
 	var zoom: float = float(cam.get("zoom", 1.0)); var ter: bool = bool(cam.get("termica", false))
 	fotos += 1
 	if av["estado"] != "volando" or av.get("posado", false): return T
+	if d.has("recon"):                                 # reconocimiento: con la cruz encima y no demasiado lejos para su zoom
+		var R: Dictionary = d["recon"]; var pan: float = float(cam.get("pan", 0.0)); var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R
+		var motivo := ""
+		if R.has("puntos"):
+			var PP: Array = R["puntos"]
+			for i in PP.size():
+				if hechos[i]: continue
+				var q: Dictionary = PP[i]; var c := camara(av, gimbal, [float(q["n"]), float(q["e"]), suelo.call(q["n"], q["e"]) + 1], pan)
+				if not en_foto(c, 1, zoom): continue
+				if c["d"] / zoom > R["dist_foto"]:
+					if motivo == "": motivo = "el punto %d está demasiado lejos (%d m): acércate o usa más zoom" % [i + 1, int(round(c["d"]))]
+					continue
+				if not en_foto(c, 0.5, zoom):
+					if motivo == "": motivo = "el punto %d sale en el borde: ponle la cruz encima" % (i + 1)
+					continue
+				hechos[i] = true; var k := _cuenta(); var hay: bool = (d.get("conVehiculo", []) as Array).any(func(x): return int(x) == i)
+				T.append("Punto %d (%s) ✓ %s (%d/%d)" % [i + 1, q["nombre"], "· HAY UN VEHÍCULO en el punto" if hay else "· sin vehículos", k, PP.size()])
+				if k == PP.size():
+					m.call("puntos", "ok"); m.call("vehiculos", "ok"); if t_todo == null: t_todo = av["t"]
+					m.call("tiempo", "ok" if t_todo - t0 <= R["limite_s"] else "mal"); T.append("¡Itinerario reconocido! Vuelve al punto de lanzamiento")
+		if R.has("objetivo") and d.has("vehiculos") and not foto_obj:
+			var vn: float = d["vehiculos"][0][0]; var ve: float = d["vehiculos"][0][1]; var c := camara(av, gimbal, [vn, ve, suelo.call(vn, ve) + 1.5], pan)
+			if en_foto(c, 0.5, zoom) and c["d"] / zoom <= R["dist_foto"]:
+				if vig_hecho: foto_obj = true; m.call("foto", "ok"); T.append("Foto del vehículo ✓ · vuelve al punto de lanzamiento")
+				else: T.append("Foto del vehículo; la vigilancia sigue: %d s de %s" % [int(floor(vig)), _n(R["vigilar_s"])])
+			elif en_foto(c, 1, zoom) and motivo == "": motivo = "el vehículo está demasiado lejos para la foto" if c["d"] / zoom > R["dist_foto"] else "el vehículo sale en el borde: ponle la cruz encima"
+		if R.has("zona") and d.has("vehiculos") and not encontrado:
+			var vn: float = d["vehiculos"][0][0]; var ve: float = d["vehiculos"][0][1]; var c := camara(av, gimbal, [vn, ve, suelo.call(vn, ve) + 1.5], pan)
+			if en_foto(c, 0.3, zoom) and c["d"] / zoom <= R["dist_foto"]:
+				var est := [N, E]
+				if sin(g) <= -0.02:
+					var s: float = (up - suelo.call(N, E)) / -sin(g); est = [N + s * cos(g) * cos(y), E + s * cos(g) * sin(y)]
+				error = Vector2(est[0] - vn, est[1] - ve).length(); encontrado = true
+				if t_todo == null: t_todo = av["t"]
+				m.call("localizar", "ok"); m.call("posicion", "ok" if error <= R["error"] else "mal"); m.call("tiempo", "ok" if t0 != null and av["t"] - t0 <= R["limite_s"] else "mal")
+				T.append("¡Camión localizado! Posición enviada a %d m de la real" % int(round(error)) + ("" if error <= R["error"] else ": demasiado error (con la cámara más inclinada hacia abajo sale mejor)"))
+			elif en_foto(c, 1, zoom) and c["d"] / zoom <= 2 * R["dist_foto"] and motivo == "": motivo = "el camión sale en la foto, pero no en el centro: céntralo y acércate"
+		if T.is_empty(): T.append(("Foto no válida: " + motivo) if motivo != "" else "Foto %d" % fotos)
+		return T
 	if d.get("vertidos") is Array:                     # patrulla: la cruz de la torreta sobre la mancha, no demasiado lejos para su zoom
 		var pan: float = float(cam.get("pan", 0.0)); var y: float = Cuat.euler(av["q"])[2] + pan; var g := gimbal * D2R
 		var motivo := ""; var VV: Array = d["vertidos"]
@@ -623,9 +709,16 @@ func final(fin: String, av: Dictionary, info: Dictionary) -> void:
 	var a := anotar; var n := _cuenta()
 	if fin == "aterrizado":
 		var dc := Vector2(av["p"][0] - casa[0], av["p"][1] - casa[1]).length()
-		marcar.call("casa", "ok" if dc <= CASA else "mal"); a.call("casa", "a %.1f m" % dc)
+		marcar.call("casa", "ok" if dc <= (float(d["recon"]["casa_m"]) if d.has("recon") else CASA) else "mal"); a.call("casa", "a %.1f m" % dc)
 		marcar.call("reserva", "ok" if info["bateria"] >= RESERVA else "mal"); a.call("reserva", "%d %%" % int(round(info["bateria"])))
 	if d.has("puntos"): a.call("puntos", "%d de %d" % [n, (d["puntos"] as Array).size()])
+	if d.has("recon"):
+		var R: Dictionary = d["recon"]
+		if R.has("puntos"):
+			a.call("puntos", "%d de %d" % [n, (R["puntos"] as Array).size()])
+			if t_todo != null: a.call("tiempo", mmss(t_todo - t0))
+		if R.has("objetivo"): a.call("vigilar", "%d s de %s" % [int(floor(minf(vig, R["vigilar_s"]))), _n(R["vigilar_s"])])
+		if R.has("zona") and error != null: a.call("posicion", "error %d m" % int(round(error)))
 	if d.has("solape"): a.call("cobertura", "%d %%" % int(round(cobertura() * 100)))
 	if d.has("zona") and error != null: a.call("posicion", "error %.1f m" % error)
 	if d.has("manchas"): a.call("manchas", "%d de %d" % [n, (d["manchas"] as Array).size()])
@@ -764,6 +857,21 @@ func ahora(obj: Dictionary, av: Dictionary) -> String:
 		var sig := "obstáculo <b>%d de %d</b> (%s) a %d m" % [s["i"] + 1, obst.size(), nom, int(round(s["d"]))]
 		return ("Ahora: <b>despega y cruza el obstáculo 1</b> (%s, a %d m): ahí empieza el cronómetro" % [nom, int(round(s["d"]))]) if carr["t0"] == null \
 			else "Tiempo: <b>%s</b> · siguiente: %s" % [crono(av["t"] - carr["t0"]), sig]
+	if d.has("recon"):
+		var R: Dictionary = d["recon"]
+		if t0 == null: return "Ahora: <b>lánzalo</b> (L), de cara al viento"
+		if R.has("puntos"):
+			var i := hechos.find(false)
+			if i < 0: return volver
+			var q: Dictionary = R["puntos"][i]; var rumbo := fposmod(atan2(float(q["e"]) - E, float(q["n"]) - N) * R2D + 360, 360)
+			return "Tiempo: <b>%s</b> · puntos <b>%d de %d</b> · siguiente: punto %d (%s) a %s km, rumbo %03d°" % [mmss(maxf(0, R["limite_s"] - (av["t"] - t0))), n, (R["puntos"] as Array).size(), i + 1, q["nombre"],
+				("%.1f" % (Vector2(N - float(q["n"]), E - float(q["e"])).length() / 1000)).replace(".", ","), int(round(rumbo)) % 360]
+		if R.has("objetivo"):
+			if foto_obj: return volver
+			var dd := Vector2(N - float(R["objetivo"]["n"]), E - float(R["objetivo"]["e"])).length()
+			return "Ahora: <b>foto del vehículo con la cruz encima</b> (F)" if vig_hecho else "Vigilancia: <b>%d s de %s</b> · objetivo a %s" % [int(floor(vig)), _n(R["vigilar_s"]),
+				("%d m" % int(round(dd))) if dd < 1000 else ("%s km" % ("%.1f" % (dd / 1000)).replace(".", ","))]
+		if R.has("zona"): return volver if encontrado else "Tiempo: <b>%s</b> · busca el camión dentro de los jalones amarillos" % mmss(maxf(0, R["limite_s"] - (av["t"] - t0)))
 	if t0 == null: return "Ahora: <b>despega</b> (botón de despegue o L) y ve a la zona de trabajo"
 	if d.has("puntos"):
 		var i := hechos.find(false)

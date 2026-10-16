@@ -174,6 +174,7 @@
               text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px #000; }
   #fpv .osd.c { transform: translateX(-50%); } #fpv .osd.rojo { color: #ff5252; } #fpv .osd.ambar { color: #ffd740; }
   #fpv .osd.grande { font-size: 30px; } #fpv .osd:empty { display: none; }
+  #reconMira { position: fixed; left: 50%; top: 50%; width: 90px; height: 30px; margin: -15px 0 0 -45px; pointer-events: none; display: none; z-index: 4; }
   #fpvMira { position: absolute; left: 50%; top: 50%; width: 90px; height: 30px; margin: -15px 0 0 -45px; }
 
   /* ---------- pantallas ---------- */
@@ -840,6 +841,7 @@
     <div><span>HS</span><b id="djiHS">0,0 m/s</b></div><div><span>VS</span><b id="djiVS">0,0 m/s</b></div></div></div>
   <div id="djiFlash"></div>
 </div>
+<svg id="reconMira" viewBox="0 0 90 30" aria-hidden="true"><path d="M8 15H36M54 15H82M45 2V8M45 22V28" stroke="#000" stroke-width="5" stroke-linecap="square"/><path d="M8 15H36M54 15H82M45 2V8M45 22V28" stroke="#fff" stroke-width="2.5" stroke-linecap="square"/></svg>
 <div id="fpv" class="hudCapa">
   <svg id="fpvMira" viewBox="0 0 90 30" aria-hidden="true"><path d="M8 15H34M56 15H82M45 9V21" stroke="#000" stroke-width="5" stroke-linecap="square"/><path d="M8 15H34M56 15H82M45 9V21" stroke="#fff" stroke-width="2.5" stroke-linecap="square"/></svg>
   <div class="osd" id="fpvModo" style="left:30%;top:9%" title="Modo de vuelo: ANGLE / HORIZON / ACRO (M, LB)"></div>
@@ -1435,7 +1437,7 @@ function nuevoEvaluador() {
          contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
          pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
-  for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades", "altura"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
+  for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades", "altura", "minima", "ruido"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
   const O = ESCENARIOS[sesion.escenario].operacion;
   ev.op = null;
   if (O && entorno.mundo) {                    // operaciones: el trabajo, con los desperfectos, las manchas o el senderista en sitios al azar de la zona
@@ -1769,6 +1771,8 @@ function orientarLanzamiento() {
   const [roll, pitch] = Cuat.euler(av.q);
   const c = casa();
   av.q = Cuat.desdeEuler(roll, pitch, mundo ? (c.rumbo !== undefined ? c.rumbo : mundo.rumbo_despegue || 0) * D2R : Math.PI);
+  // operaciones: el avion lanzado a mano (reconocimiento) sale de cara al viento, como se lanza de verdad
+  if (ESCENARIOS[sesion.escenario].operacion && !modelo.tren && !modelo.esCuadricoptero && !modelo.esTerrestre && entorno.viento.base > 1) av.q = Cuat.desdeEuler(roll, pitch, entorno.viento.rumbo + Math.PI);
 }
 function lanzar() {
   if (modelo.esTerrestre && av.estado === "volando") {        // bipode en marcha: L lo aparca (si esta parado) y acaba
@@ -1837,7 +1841,8 @@ function paso(dt) {
     if (ev.fpv.choque) { terminarVuelo("roto (" + ev.fpv.choque + ")", vn); return; }
   }
   if (ev && ev.op) {                          // operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-    const camOp = modelo.uav && av.torreta ? { gimbal: av.torreta.tilt * R2D, pan: av.torreta.pan, grabando: false } : { gimbal: av.gimbal, grabando: DJI.grabando };   // UAV: la torreta
+    const camOp = (modelo.uav && av.torreta) || (!modelo.esCuadricoptero && ev.op.d.recon) ? Object.assign(camaraOp(), { grabando: false })   // UAV: la torreta o el morro fijo; avion: la camara de a bordo
+      : { gimbal: av.gimbal, grabando: DJI.grabando };
     for (const t of ev.op.paso(pAnt, av, dt, Object.assign(camOp, camDJI()))) toast(t);
     if (ev.op.choque) { terminarVuelo("roto (" + ev.op.choque + ")", vn); return; }
     const C = ev.op.carr;
@@ -2577,7 +2582,9 @@ const RUMBOS_VIENTO = ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste"
 let opSel = null; const opVehiculo = {};
 /** El vehiculo con el que se vuela el trabajo id: el que pide (operacion.avion) o, si deja elegir (operacion.elegir: clases
  *  de vehiculo), el que haya elegido el piloto en la orden de trabajo. */
-function vehOp(id) { const O = ESCENARIOS[id].operacion, a = opVehiculo[id]; return O.elegir && a && Modelos.datos(a) && O.elegir.includes(vehiculoDe(a)) ? a : O.avion; }
+/** Si el trabajo deja volarlo con el vehiculo a (operacion.elegir: clases de vehiculo o ids, como el reconocimiento). */
+function opPermite(O, a) { return !!(O.elegir && (O.elegir.includes(vehiculoDe(a)) || O.elegir.includes(a))); }
+function vehOp(id) { const O = ESCENARIOS[id].operacion, a = opVehiculo[id]; return O.elegir && a && Modelos.datos(a) && opPermite(O, a) ? a : O.avion; }
 function operacionesLista() { return Object.keys(ESCENARIOS).filter(id => ESCENARIOS[id].operacion); }
 function irOperaciones() {
   const lista = operacionesLista(), el = document.getElementById("listaOperaciones"); el.innerHTML = "";
@@ -2606,7 +2613,7 @@ function irOperaciones() {
     ${fila("Viento previsto", `${v.vel} m/s del ${RUMBOS_VIENTO[Math.round(v.desde / 45) % 8]}${v.rachas ? ", con rachas" : ""}`)}${fila(O.elegir ? "Vehículo" : "Dron", (D => D ? `${D.nombre} (${D.categoria})` : O.avion)(Modelos.datos(vehOp(opSel))))}</table>
     <b style="font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.08em">Se evalúa</b><ul>${E.objetivos.map(o => `<li>${esc(o[1])}</li>`).join("")}</ul>`;
   if (O.elegir) {                                                    // carrera: se puede volar con cualquier dron del hangar
-    const ids = idsHangar().filter(a => O.elegir.includes(vehiculoDe(a))), sel = vehOp(opSel), div = document.createElement("div"); div.className = "elegirVeh";
+    const ids = idsHangar().filter(a => opPermite(O, a)), sel = vehOp(opSel), div = document.createElement("div"); div.className = "elegirVeh";
     div.innerHTML = "<b>Vuela con</b>" + ids.map(a => `<button class="btn${a === sel ? " prim" : ""}" data-av="${esc(a)}">${esc(Modelos.datos(a).nombre)}</button>`).join("");
     div.querySelectorAll("button").forEach(b => b.onclick = () => { opVehiculo[opSel] = b.dataset.av; irOperaciones(); });
     document.getElementById("fichaOperacion").insertBefore(div, document.getElementById("fichaOperacion").querySelector("table"));
@@ -2999,6 +3006,7 @@ window.addEventListener("keydown", e => {
     if (e.code === "KeyV" && morroDe(sesion.avion) === "fijo") cambiarVistaFija();
     if (e.code === "KeyF") uavFoto();
   } else if (e.code === "KeyH" && !dron) mostrarHud = !mostrarHud;
+  if (e.code === "KeyF" && !modelo.uav && !dron && ev && ev.op && ev.op.d.recon) avionFoto();      // reconocimiento con el Poli-1 o el Entrenador 1
   if (e.code === "KeyI") { sinInstrumentos = !sinInstrumentos; toast(modelo.esFPV ? (sinInstrumentos ? "Sin OSD" : "OSD") : dron ? (sinInstrumentos ? "Sin la pantalla de la app" : "Pantalla de la app") : sinInstrumentos ? "Sin instrumentos (como en el campo)" : "Instrumentos"); }
   if (e.code === "KeyT") { const a = document.getElementById("ayuda"); a.style.display = a.style.display === "block" ? "none" : "block"; }
   if (e.code === "KeyG" && libre) vto.rachas = !vto.rachas;
@@ -3255,7 +3263,8 @@ function puntoCruz() {
 function ponerVistaFija() { const F = Modelos.datos(sesion.avion).malla.cam_fija[UAV.vista || "frontal"]; av.torreta = { pan: F[0] * D2R, tilt: F[1] * D2R }; }
 function cambiarVistaFija() { UAV.vista = UAV.vista === "lateral" ? "frontal" : "lateral"; ponerVistaFija(); toast(UAV.vista === "lateral" ? "Cámara lateral (izquierda)" : "Cámara frontal"); }
 function moverTorreta(dt) {
-  if (!modelo || !modelo.uav || !av.torreta || av.estado === "roto" || morroDe(sesion.avion) === "fijo") return;   // el morro fijo no se mueve
+  if (!modelo || !modelo.uav || !av.torreta || av.estado === "roto") return;
+  if (morroDe(sesion.avion) === "fijo") { UAV.cruz = puntoCruz(); return; }       // el morro fijo no se mueve: la cruz, donde mire el avion
   const tr = av.torreta, z = camDJI().zoom, k = TORRETA.vel / Math.pow(z, 0.7) * dt, fl = torretaConFlechas();
   const dp = (fl ? (teclas["ArrowRight"] ? 1 : 0) - (teclas["ArrowLeft"] ? 1 : 0) : 0) + (MANDO.torreta ? MANDO.torreta[0] : 0);
   const dtl = (fl ? (teclas["ArrowUp"] ? 1 : 0) - (teclas["ArrowDown"] ? 1 : 0) : 0) + (teclas["KeyE"] ? 1 : 0) - (teclas["KeyQ"] ? 1 : 0) + (MANDO.torreta ? -MANDO.torreta[1] : 0) + (MANDO.gimbal || 0);
@@ -3267,6 +3276,18 @@ function moverTorreta(dt) {
   UAV.cruz = puntoCruz();
 }
 /** K: fija la torreta en el punto de la cruz (o la suelta). */
+/** Foto con la camara de a bordo de un avion (reconocimiento): mira al frente, con el cabeceo del avion. */
+function avionFoto() {
+  if (av.estado !== "volando" || Repeticion.activa) return;
+  const co = camaraOp(), T = ev.op.foto(av, co.gimbal, { pan: co.pan, zoom: 1 }); toast(T.join(" · "));
+}
+/** La camara de las operaciones como gimbal (grados) y giro respecto al rumbo del avion (rad): la torreta, tal cual; el
+ *  morro fijo del UAV y la camara de a bordo de los aviones (al frente), con su direccion real: se inclinan con el avion. */
+function camaraOp() {
+  if (modelo.uav && av.torreta && !(visor.avion && visor.avion.camFija)) return { gimbal: av.torreta.tilt * R2D, pan: av.torreta.pan };
+  const d = modelo.uav && av.torreta ? ejeTorreta()[1] : Cuat.rot(av.q, [1, 0, 0]);
+  return { gimbal: -Math.asin(Math.max(-1, Math.min(1, d[2]))) * R2D, pan: PilotoUAV.envolver(Math.atan2(d[1], d[0]) - Cuat.euler(av.q)[2]) };
+}
 function uavFijar() {
   if (!modelo.uav) return;
   if (morroDe(sesion.avion) === "fijo") { toast("Con el morro fijo no hay torreta: apunta con el avión"); return; }
@@ -3284,7 +3305,7 @@ function coordTxt(N, E) {
 function uavFoto() {
   if (!modelo.uav || av.estado !== "volando") return;
   UAV.fotos++;
-  const cm = Object.assign(camDJI(), { pan: av.torreta.pan }), T = ev && ev.op ? ev.op.foto(av, av.torreta.tilt * R2D, cm) : [];
+  const co = camaraOp(), cm = Object.assign(camDJI(), { pan: co.pan }), T = ev && ev.op ? ev.op.foto(av, co.gimbal, cm) : [];
   const c = UAV.cruz;
   toast(T.length ? T.join(" · ") : `Foto ${UAV.fotos}` + (c && entorno.mundo ? ` · ${coordTxt(c[0], c[1])} · a ${c[3] < 1000 ? c[3].toFixed(0) + " m" : (c[3] / 1000).toFixed(1).replace(".", ",") + " km"}` : ""));
 }
@@ -3680,6 +3701,14 @@ function pintarGPSMundo(cv, rumbo, N, E) {
     });
     g.restore();
   }
+  const OPr = ev && ev.op && ev.op.d.recon ? ev.op : null;
+  if (OPr) {                                                          // reconocimiento: puntos de control (verdes los hechos), objetivo y zona
+    const R = OPr.d.recon; g.save(); g.lineWidth = 2; g.font = "bold 11px sans-serif"; g.textAlign = "center";
+    (R.puntos || []).forEach((q, i) => { const col = OPr.hechos[i] ? "#66bb6a" : "#ff9800"; g.strokeStyle = col; g.fillStyle = col; g.beginPath(); g.arc(X(q.e), Y(q.n), Math.max(6, 60 * k), 0, 2 * Math.PI); g.stroke(); g.fillText(String(i + 1), X(q.e), Y(q.n) + 4); });
+    if (R.objetivo) { g.strokeStyle = OPr.fotoObj ? "#66bb6a" : "#e53935"; g.setLineDash([6, 4]); g.beginPath(); g.arc(X(R.objetivo.e), Y(R.objetivo.n), Math.max(6, R.ruido_r * k), 0, 2 * Math.PI); g.stroke(); g.setLineDash([]); }
+    if (R.zona) { const Z = R.zona; g.strokeStyle = "#fdd835"; g.setLineDash([6, 4]); g.strokeRect(X(Z.e0), Y(Z.n1), (Z.e1 - Z.e0) * k, (Z.n1 - Z.n0) * k); g.setLineDash([]); }
+    g.restore();
+  }
   if (piloto) {                                                       // UAV: la pista y lo que pide el piloto automatico
     const P = piloto.pista;
     if (P) { const r = P.rumbo * D2R, a = P.ancho / 2, c = [[0, -a], [P.largo, -a], [P.largo, a], [0, a]].map(([d, t]) => [P.n + d * Math.cos(r) - t * Math.sin(r), P.e + d * Math.sin(r) + t * Math.cos(r)]);
@@ -3825,6 +3854,7 @@ function hud() {
   } else ponerTxt(lejos, av.estado === "en mano" ? avisoLanzamiento() : "");
   ponerEstilo($h("gasesBarra"), "height", (av.gases * 100) + "%");
   pintarHorizonte(roll, pitch, yaw); pintarInstrumentos(av.V, vs); pintarGPS(yaw);
+  ponerEstilo($h("reconMira"), "display", visor.camara === 3 && !modelo.esCuadricoptero && !modelo.uav && ev && ev.op && ev.op.d.recon ? "block" : "none");   // reconocimiento con un avion: la mira de la camara de a bordo
   if (modelo.esFPV) { hudFpv(h, vn); ponerEstilo($h("fpv"), "display", sinInstrumentos ? "none" : ""); }
   else if (modelo.esCuadricoptero) { hudDji(h, vn, vs, dist); ponerEstilo($h("dji"), "display", sinInstrumentos ? "none" : ""); }
   else if (modelo.uav) { hudUav(h, vn, vs, dist, yaw); ponerEstilo($h("gcs"), "display", sinInstrumentos ? "none" : ""); }

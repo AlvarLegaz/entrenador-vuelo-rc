@@ -318,7 +318,16 @@ Object.assign(Visor.prototype, {
         m.renderOrder = 2; G.add(m);
       }
     }
-    if (d.racks || d.calientes || Array.isArray(d.vertidos)) this._termicos(G, new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), d);
+    if (d.recon) {                                                      // reconocimiento: la zona de busqueda y los camiones
+      if (d.recon.zona) esquinas(d.recon.zona, "#fdd835");
+      for (const [N, E, r] of d.vehiculos || []) {
+        const C = new THREE.Group(), y = alt(N, E);
+        for (const [l, a, h, x, u, col] of CAMION.piezas) { const m = new THREE.Mesh(new THREE.BoxGeometry(l, h, a), std(col)); m.position.set(x, u, 0); m.castShadow = true; C.add(m); }
+        for (const [x, z] of CAMION.ruedas) { const w = new THREE.Mesh(new THREE.CylinderGeometry(CAMION.radio, CAMION.radio, 0.35, 14), std(0x111111)); w.rotation.x = Math.PI / 2; w.position.set(x, CAMION.radio, z); C.add(w); }
+        C.rotation.y = Math.PI / 2 - r * D2R; en(C, N, E, y);         // x del camion hacia el rumbo r (N = -z de Three)
+      }
+    }
+    if (d.racks || d.calientes || Array.isArray(d.vertidos) || d.recon) this._termicos(G, new Operacion(d, () => {}, () => {}, { casa, suelo: alt, h0 }), d);
     this.operacion = G; this.escena.add(G);
   },
 

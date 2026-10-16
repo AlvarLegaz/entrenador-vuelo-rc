@@ -2743,6 +2743,269 @@ window.ESCENARIOS = {
    ]
   }
  },
+ "op_rec_itinerario": {
+  "nombre": "Reconocimiento de itinerario",
+  "vehiculos": [
+   "uav",
+   "avion"
+  ],
+  "mundo": "cartagena",
+  "zona": 3,
+  "dificultad": 2,
+  "viento": {
+   "vel": 3,
+   "desde": 0,
+   "rachas": true
+  },
+  "desc": "Antes de que pase un convoy, reconoce el itinerario: fotografía los 4 puntos de control (cruces de caminos) con la cruz de la cámara y avisa de si hay vehículos en ellos. Lanzamiento a mano desde Los Halcones.",
+  "objetivos": [
+   [
+    "puntos",
+    "Fotografiar los 4 puntos de control con la cruz sobre el cruce, a menos de 300 m"
+   ],
+   [
+    "vehiculos",
+    "Informar de los vehículos que hay en los puntos (se ve en la foto)"
+   ],
+   [
+    "tiempo",
+    "Los 4 puntos en 20 minutos desde el lanzamiento"
+   ],
+   [
+    "techo",
+    "Sin pasar de 150 m sobre el suelo"
+   ],
+   [
+    "minima",
+    "Sin bajar de 30 m sobre el suelo lejos del lanzamiento (a más de 300 m)"
+   ],
+   [
+    "casa",
+    "Aterrizar a menos de 50 m del punto de lanzamiento"
+   ],
+   [
+    "reserva",
+    "Aterrizar con más del 20 % de batería"
+   ],
+   [
+    "aterrizar",
+    "Aterrizar sin daños"
+   ]
+  ],
+  "operacion": {
+   "avion": "GRAJO",
+   "elegir": [
+    "GRAJO",
+    "G1",
+    "E3"
+   ],
+   "cliente": "Unidad de reconocimiento · jefe de la sección",
+   "lugar": "Campo de Cartagena, al norte y al oeste de El Jimenado. Lanzamiento desde el campo de Los Halcones de la Rambla.",
+   "trabajo": "Recorre el itinerario de los puntos de control 1 a 4 (círculos en el mapa) y fotografía cada cruce con la cruz de la cámara encima, desde menos de 300 m. En la foto se ve si hay vehículos en el punto: se informa solo. Vuela entre 30 y 150 m sobre el suelo. Con el Grajo, la cámara 3 es la del morro (fija: V cambia de la frontal a la lateral; orientable: flechas con Mayúsculas) y F hace la foto con la cruz; con el Poli-1 o el Entrenador 1, la cámara 3 es la de a bordo, que mira al frente: apunta con el avión y F hace la foto.",
+   "entrega": "Una foto de cada punto de control y los vehículos que hay en ellos.",
+   "salida": {
+    "n": 16428.0,
+    "e": 3290.0,
+    "rumbo": 0.0
+   },
+   "recon": {
+    "techo": 150,
+    "minima": 30,
+    "radio_despegue": 300,
+    "casa_m": 50,
+    "dist_foto": 300,
+    "limite_s": 1200,
+    "con_vehiculo": 2,
+    "puntos": [
+     {
+      "n": 16900,
+      "e": 3191,
+      "nombre": "cruce de caminos al norte"
+     },
+     {
+      "n": 17697,
+      "e": 3183,
+      "nombre": "cruce con la carretera"
+     },
+     {
+      "n": 17702,
+      "e": 1511,
+      "nombre": "cruce del noroeste"
+     },
+     {
+      "n": 15460,
+      "e": 1756,
+      "nombre": "cruce del suroeste"
+     }
+    ]
+   }
+  }
+ },
+ "op_rec_vigilancia": {
+  "nombre": "Vigilancia de un punto",
+  "vehiculos": [
+   "uav",
+   "avion"
+  ],
+  "mundo": "cartagena",
+  "zona": 3,
+  "dificultad": 2,
+  "viento": {
+   "vel": 4,
+   "desde": 300,
+   "rachas": true
+  },
+  "desc": "Hay un vehículo sospechoso junto a un cortijo, 1,7 km al este. Vigílalo durante 90 segundos con la cámara sin que te oigan (sin bajar de 80 m cerca de él), hazle una foto al acabar y vuelve.",
+  "objetivos": [
+   [
+    "vigilar",
+    "Tener el vehículo en la imagen 90 segundos (en total), a menos de 500 m"
+   ],
+   [
+    "foto",
+    "Hacerle una foto con la cruz encima al acabar la vigilancia"
+   ],
+   [
+    "ruido",
+    "Que no te oigan: a menos de 250 m de él, no bajar de 80 m sobre el suelo"
+   ],
+   [
+    "techo",
+    "Sin pasar de 150 m sobre el suelo"
+   ],
+   [
+    "minima",
+    "Sin bajar de 30 m sobre el suelo lejos del lanzamiento (a más de 300 m)"
+   ],
+   [
+    "casa",
+    "Aterrizar a menos de 50 m del punto de lanzamiento"
+   ],
+   [
+    "reserva",
+    "Aterrizar con más del 20 % de batería"
+   ],
+   [
+    "aterrizar",
+    "Aterrizar sin daños"
+   ]
+  ],
+  "operacion": {
+   "avion": "GRAJO",
+   "elegir": [
+    "GRAJO",
+    "G1",
+    "E3"
+   ],
+   "cliente": "Unidad de reconocimiento · jefe de la sección",
+   "lugar": "Cortijo junto al cruce, 1,7 km al este de Los Halcones de la Rambla (círculo rojo en el mapa).",
+   "trabajo": "Llega al cortijo, ponte en órbita (con el Grajo: clic en el mapa sobre el objetivo, y la cámara lateral o la torreta mirándolo) y mantenlo en la imagen. Cuenta el tiempo que está en la imagen a menos de 500 m. Cerca de él (250 m), no bajes de 80 m: un avión bajo se oye. Con el Grajo, la cámara 3 es la del morro (fija: V cambia de la frontal a la lateral; orientable: flechas con Mayúsculas) y F hace la foto con la cruz; con el Poli-1 o el Entrenador 1, la cámara 3 es la de a bordo, que mira al frente: apunta con el avión y F hace la foto.",
+   "entrega": "Noventa segundos de vigilancia y una foto del vehículo.",
+   "salida": {
+    "n": 16428.0,
+    "e": 3290.0,
+    "rumbo": 0.0
+   },
+   "recon": {
+    "techo": 150,
+    "minima": 30,
+    "radio_despegue": 300,
+    "casa_m": 50,
+    "dist_foto": 300,
+    "vigilar_s": 90,
+    "dist_vigilar": 500,
+    "ruido_r": 250,
+    "ruido_h": 80,
+    "objetivo": {
+     "n": 16058,
+     "e": 4935,
+     "nombre": "cortijo del cruce"
+    }
+   }
+  }
+ },
+ "op_rec_busqueda": {
+  "nombre": "Localizar un vehículo",
+  "vehiculos": [
+   "uav",
+   "avion"
+  ],
+  "mundo": "cartagena",
+  "zona": 3,
+  "dificultad": 3,
+  "viento": {
+   "vel": 5,
+   "desde": 270,
+   "rachas": true
+  },
+  "desc": "Un camión se ha escondido entre los campos al suroeste de El Jimenado. Búscalo dentro de la zona marcada, hazle una foto centrada y envía su posición. Tienes 15 minutos.",
+  "objetivos": [
+   [
+    "localizar",
+    "Encontrar el camión y hacerle una foto con él en el centro, a menos de 300 m"
+   ],
+   [
+    "posicion",
+    "Enviar su posición con menos de 25 m de error"
+   ],
+   [
+    "tiempo",
+    "En menos de 15 minutos desde el lanzamiento"
+   ],
+   [
+    "techo",
+    "Sin pasar de 150 m sobre el suelo"
+   ],
+   [
+    "minima",
+    "Sin bajar de 30 m sobre el suelo lejos del lanzamiento (a más de 300 m)"
+   ],
+   [
+    "casa",
+    "Aterrizar a menos de 50 m del punto de lanzamiento"
+   ],
+   [
+    "reserva",
+    "Aterrizar con más del 20 % de batería"
+   ],
+   [
+    "aterrizar",
+    "Aterrizar sin daños"
+   ]
+  ],
+  "operacion": {
+   "avion": "GRAJO",
+   "elegir": [
+    "GRAJO",
+    "G1",
+    "E3"
+   ],
+   "cliente": "Unidad de reconocimiento · jefe de la sección",
+   "lugar": "Campos al suroeste de El Jimenado: zona de 1,2 × 1,2 km marcada con jalones amarillos.",
+   "trabajo": "Barre la zona en pasadas paralelas mirando al suelo. El camión va pintado de camuflaje: con el infrarrojo (C) el motor caliente se ve mejor. Al verlo, foto con el camión en el centro: la posición se calcula con el centro de la foto (cuanto más inclinada hacia abajo esté la cámara, mejor). Con el Grajo, la cámara 3 es la del morro (fija: V cambia de la frontal a la lateral; orientable: flechas con Mayúsculas) y F hace la foto con la cruz; con el Poli-1 o el Entrenador 1, la cámara 3 es la de a bordo, que mira al frente: apunta con el avión y F hace la foto.",
+   "entrega": "La foto del camión y su posición.",
+   "salida": {
+    "n": 16428.0,
+    "e": 3290.0,
+    "rumbo": 0.0
+   },
+   "recon": {
+    "techo": 150,
+    "minima": 30,
+    "radio_despegue": 300,
+    "casa_m": 50,
+    "dist_foto": 300,
+    "limite_s": 900,
+    "error": 25,
+    "zona": {
+     "n0": 14900,
+     "n1": 16100,
+     "e0": 1400,
+     "e1": 2600
+    }
+   }
+  }
+ },
  "op_patrulla": {
   "nombre": "Patrulla del Mar Menor: vertidos",
   "vehiculos": [
