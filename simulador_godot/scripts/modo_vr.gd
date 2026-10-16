@@ -47,17 +47,20 @@ static func _crear(principal, o: Node3D, c: Node3D, i: Node3D, d: Node3D) -> Mod
 	v.origen = o; v.cabeza = c; v.izq = i; v.der = d
 	v.add_child(o); o.add_child(c); o.add_child(i); o.add_child(d)
 	for m in [i, d]: m.add_child(v._mando_visible())
-	v.panel = Label3D.new(); v.panel.font_size = 40; v.panel.pixel_size = 0.0007; v.panel.outline_size = 10
-	v.panel.no_depth_test = true; v.panel.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	v.panel.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; v.panel.position = Vector3(0.02, 0.07, -0.08); v.panel.rotation = Vector3(-0.6, 0, 0)
+	v.panel = Label3D.new(); v.panel.font_size = 40; v.panel.pixel_size = 0.0005; v.panel.outline_size = 12
+	v.panel.no_depth_test = true; v.panel.billboard = BaseMaterial3D.BILLBOARD_ENABLED      # siempre de cara: se lee alzando la mano
+	v.panel.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; v.panel.position = Vector3(0.0, 0.09, -0.02)
 	i.add_child(v.panel)
 	v.activo = true
 	return v
 
-func _mando_visible() -> MeshInstance3D:      # un mando sencillo (caja oscura con la punta clara) para ver las manos
-	var m := MeshInstance3D.new(); var b := BoxMesh.new(); b.size = Vector3(0.04, 0.03, 0.12); m.mesh = b
-	var mt := StandardMaterial3D.new(); mt.albedo_color = Color(0.15, 0.15, 0.17); m.material_override = mt
-	return m
+func _mando_visible() -> Node3D:      # un mando como los de Pico: empunadura gris oscura y el anillo de seguimiento
+	var n := Node3D.new(); var mt := StandardMaterial3D.new(); mt.albedo_color = Color(0.13, 0.13, 0.15); mt.roughness = 0.6
+	var e := MeshInstance3D.new(); var c := CapsuleMesh.new(); c.radius = 0.018; c.height = 0.11; e.mesh = c; e.material_override = mt
+	e.rotation = Vector3(deg_to_rad(-60), 0, 0); e.position = Vector3(0, -0.035, 0.03); n.add_child(e)
+	var a := MeshInstance3D.new(); var t := TorusMesh.new(); t.inner_radius = 0.034; t.outer_radius = 0.044; a.mesh = t; a.material_override = mt
+	a.rotation = Vector3(deg_to_rad(20), 0, 0); a.position = Vector3(0, 0.015, -0.01); n.add_child(a)
+	return n
 
 ## Rumbo NED (radianes, 0 norte, + hacia el este) de un vector de Godot (x este, z sur).
 static func rumbo_de(f: Vector3) -> float: return atan2(f.x, -f.z)
