@@ -475,6 +475,15 @@ python aula/servidor_aula.py
 - **Sin duplicados:** cada vuelo lleva un identificador único. Si se envía dos veces, se guarda una.
 - **Sin pérdidas:** si un ordenador pierde la conexión, guarda el vuelo y lo reenvía solo cuando vuelve.
 
+**En Ubuntu (o Debian)**, los `.bat` tienen su `.sh` con lo mismo: `./SERVIDOR_AULA.sh`, `./SERVIDOR_WEB.sh` (el puerto 80 pide `sudo`; sin él, `./SERVIDOR_WEB.sh 8000`) y `./DESCARGAR_ZONAS.sh` (lee la versión y la huella de `simulador/descargar_zonas.ps1`; necesita `curl` o `wget`). Para un servidor del aula que se quede siempre en marcha:
+
+```
+git clone https://github.com/AlvarLegaz/uxs-trainer.git && cd uxs-trainer
+./DESPLEGAR_UBUNTU.sh
+```
+
+descarga las zonas, pide el PIN del profesor si aún no hay y deja dos servicios de systemd que arrancan con el ordenador y se reinician si fallan: `uxs-aula` (puerto 8080) y `uxs-web` (el simulador en el puerto 80). Corren con el usuario que lanza el script (sin `sudo`: lo pide él cuando hace falta), los datos siguen en `aula/datos` y, si `ufw` está activo, abre los dos puertos. Al pararse, el aula hace su copia de cierre. Otros puertos: `--puerto-web 8000 --puerto-aula 8081`; sin las zonas: `--sin-zonas`; quitar los servicios: `--quitar` (no toca los datos). Tras un `git pull`: `sudo systemctl restart uxs-aula uxs-web`. Estado y registro: `systemctl status uxs-aula` y `journalctl -u uxs-aula -f`. El simulador v2 (Godot) sigue siendo para Windows.
+
 **Lo que puede hacer cada uno:**
 
 - **Alumnos, sin contraseña:** elegirse, darse de alta, quitarse de la lista (con confirmación; solo se archiva y se puede restaurar) y guardar sus vuelos.
