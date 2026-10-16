@@ -14,7 +14,7 @@ Proteccion: elegir alumno, darlo de alta, archivarlo (con confirmacion; se puede
 guardar vuelos no piden nada. Editar, borrar definitivamente, exportar, copias y autorizar el
 avion real piden el PIN del profesor (sesion de 8 h; 5 fallos seguidos bloquean 2 minutos).
 """
-import argparse, csv, datetime as dt, getpass, hashlib, hmac, io, json, math, mimetypes, os, re, secrets, socket
+import argparse, csv, datetime as dt, getpass, gzip, hashlib, hmac, io, json, math, mimetypes, os, re, secrets, socket, zlib
 import sqlite3, sys, threading, time, unicodedata, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -24,6 +24,7 @@ DIR_SIM = os.path.normpath(os.path.join(AQUI, "..", "simulador"))
 DIR_DATOS = os.path.join(AQUI, "datos")
 DB = os.path.join(DIR_DATOS, "aula.db")
 DIR_COPIAS = os.path.join(DIR_DATOS, "copias")
+DIR_REGISTROS = os.path.join(DIR_DATOS, "registros")     # registros de vuelo (como los de un dron comercial), comprimidos
 MAX_COPIAS = 60
 
 # el certificado de pilotaje que concede el profesor: lo define el mismo en su panel (nombre, horas de vuelo y pruebas
@@ -64,9 +65,10 @@ CAMBIOS = {"desde_copia": 0}
 
 # ======================= base de datos =======================
 def usar_datos(carpeta):
-    global DIR_DATOS, DB, DIR_COPIAS
+    global DIR_DATOS, DB, DIR_COPIAS, DIR_REGISTROS
     DIR_DATOS = os.path.abspath(carpeta)
     DB, DIR_COPIAS = os.path.join(DIR_DATOS, "aula.db"), os.path.join(DIR_DATOS, "copias")
+    DIR_REGISTROS = os.path.join(DIR_DATOS, "registros")
 
 
 def conectar():
@@ -97,6 +99,11 @@ def crear_bd():
     CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS registro (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
         accion TEXT NOT NULL, detalle TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS registros (
+        id TEXT PRIMARY KEY, alumno_id TEXT NOT NULL REFERENCES alumnos(id) ON DELETE CASCADE, avion TEXT NOT NULL,
+        avion_nombre TEXT, inicio TEXT NOT NULL, escenario TEXT, escenario_nombre TEXT, final TEXT, duracion_s REAL,
+        muestras INTEGER NOT NULL, bytes INTEGER NOT NULL, recibido TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS registros_alumno ON registros(alumno_id, inicio);
     """)
     if "clave" not in [c[1] for c in con.execute("PRAGMA table_info(alumnos)")]:      # clave de acceso de cada alumno (2026-10-14)
         con.execute("ALTER TABLE alumnos ADD COLUMN clave TEXT")
@@ -107,6 +114,82 @@ def crear_bd():
 
 def ahora():
     return dt.datetime.now().isoformat(timespec="seconds")
+
+
+# ======================= registros de vuelo =======================
+REG_MAX_GZ = 10_000_000          # bytes comprimidos que se aceptan
+REG_MAX_JSON = 80_000_000        # y descomprimidos
+REG_MAX_FILAS = 200_000          # 5,5 h a 10 Hz
+
+
+def validar_registro(d):
+    """El registro de vuelo que envia el simulador (js/registro.js, registro_vuelo.gd), comprobado campo a campo: lo que se
+    guarda es lo que sale de aqui, no lo que llega."""
+    if not isinstance(d, dict): raise Error(400, "registro no valido")
+    try: rid = str(uuid.UUID(str(d.get("id"))))
+    except ValueError: raise Error(400, "id no valido")
+    txt = lambda k, n: (str(d[k])[:n] if d.get(k) is not None else None)
+    avion = str(d.get("avion") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,40}", avion): raise Error(400, "avion no valido")
+    esc = str(d.get("escenario") or "")
+    if not re.fullmatch(r"[a-z0-9_]{1,60}", esc): raise Error(400, "escenario no valido")
+    cols = d.get("columnas")
+    if not isinstance(cols, list) or not 1 <= len(cols) <= 80 or not all(isinstance(c, str) and re.fullmatch(r"[A-Za-z0-9_]{1,40}", c) for c in cols):
+        raise Error(400, "columnas no validas")
+    filas = d.get("filas")
+    if not isinstance(filas, list) or len(filas) > REG_MAX_FILAS: raise Error(400, "muestras no validas")
+    limpias = []
+    for f in filas:
+        if not isinstance(f, list) or len(f) != len(cols): raise Error(400, "muestra no valida")
+        fila = []
+        for x in f:
+            if x is None or isinstance(x, bool): fila.append(None)
+            elif isinstance(x, (int, float)): fila.append(x if math.isfinite(x) else None)
+            elif isinstance(x, str): fila.append(x[:30])
+            else: raise Error(400, "dato no valido")
+        limpias.append(fila)
+    ev = d.get("eventos") or []
+    if not isinstance(ev, list) or len(ev) > 5000: raise Error(400, "avisos no validos")
+    eventos = []
+    for e in ev:
+        if not (isinstance(e, list) and len(e) == 2 and isinstance(e[0], (int, float)) and math.isfinite(e[0])): raise Error(400, "aviso no valido")
+        eventos.append([e[0], str(e[1])[:300]])
+    b = d.get("bateria")
+    bat = None
+    if isinstance(b, dict):
+        bat = dict(quimica=str(b.get("quimica", ""))[:10], celdas=numero(b.get("celdas"), 1, 14, "celdas", 1), capacidad_mAh=numero(b.get("capacidad_mAh"), 1, 1e6, "capacidad", 1))
+    dur = d.get("duracion_s")
+    return dict(id=rid, avion=avion, avion_nombre=txt("avion_nombre", 80), inicio=str(d.get("inicio") or "")[:40] or ahora(),
+                escenario=esc, escenario_nombre=txt("escenario_nombre", 120), alumno=txt("alumno", 60), final=txt("final", 120),
+                duracion_s=numero(dur, 0, 86400, "duracion"), bateria=bat, columnas=cols, filas=limpias, eventos=eventos)
+
+
+def ruta_registro(rid):
+    return os.path.join(DIR_REGISTROS, str(uuid.UUID(rid)) + ".json.gz")
+
+
+def leer_registro(rid):
+    try:
+        with gzip.open(ruta_registro(rid), "rt", encoding="utf-8") as f: return json.load(f)
+    except (OSError, ValueError): raise Error(404, "registro no encontrado")
+
+
+def registro_csv(reg):
+    """El registro en CSV (como el de js/registro.js): las columnas y, al final, los avisos en su momento."""
+    out = io.StringIO(); w = csv.writer(out)
+    w.writerow(list(reg["columnas"]) + ["aviso"])
+    ev = list(reg.get("eventos") or [])
+    for f in reg["filas"]:
+        avisos = []
+        while ev and f[0] is not None and ev[0][0] <= f[0] + 1e-9: avisos.append(ev.pop(0)[1])
+        w.writerow(["" if x is None else x for x in f] + [" | ".join(avisos)])
+    return out.getvalue()
+
+
+def registro_meta(r):
+    return dict(id=r["id"], alumno_id=r["alumno_id"], avion=r["avion"], avion_nombre=r["avion_nombre"], inicio=r["inicio"],
+                escenario=r["escenario"], escenario_nombre=r["escenario_nombre"], final=r["final"], duracion_s=r["duracion_s"],
+                muestras=r["muestras"], bytes=r["bytes"], recibido=r["recibido"])
 
 
 def normalizar(nombre):
@@ -428,6 +511,19 @@ class Manejador(BaseHTTPRequestHandler):
         if not isinstance(d, dict): raise Error(400, "JSON no valido")
         return d
 
+    def cuerpo_gzip(self):
+        """El cuerpo de la peticion, comprimido con gzip (los registros de vuelo): JSON de hasta REG_MAX_JSON bytes."""
+        try: n = int(self.headers.get("Content-Length") or 0)
+        except ValueError: raise Error(400, "Content-Length no valido")
+        if n < 0: raise Error(400, "Content-Length no valido")
+        if n > REG_MAX_GZ: raise Error(413, "demasiado grande")
+        datos = self.rfile.read(n)
+        try:
+            z = zlib.decompressobj(16 + zlib.MAX_WBITS); crudo = z.decompress(datos, REG_MAX_JSON)
+            if z.unconsumed_tail: raise Error(413, "demasiado grande")
+            return json.loads(crudo, parse_constant=lambda k: (_ for _ in ()).throw(ValueError(k)))
+        except (zlib.error, ValueError, UnicodeDecodeError): raise Error(400, "registro no valido (gzip con JSON)")
+
     def intento(self, clave, espera):
         """Cuenta un intento de PIN o de clave ANTES de comprobarlo, bajo cerrojo: 5 seguidos bloquean `espera` segundos
         (tambien si llegan todos a la vez: solo cinco llegan a calcular el hash)."""
@@ -742,6 +838,20 @@ class Manejador(BaseHTTPRequestHandler):
             CAMBIOS["desde_copia"] += 1
             return dict(ok=True, nuevo=cur.rowcount == 1, progreso=progreso(con, v["alumno_id"]))
 
+        # --- registros de vuelo (como los de un dron comercial): el alumno con su pase los envia, lista y lee los suyos ---
+        if p == ["registros"] and m == "POST":
+            d = self.cuerpo_gzip(); reg = validar_registro(d)
+            return self.guardar_registro(con, reg, str(d.get("alumno_id") or ""))
+        if p and p[0] == "registros" and m == "GET" and not self.es_profesor():
+            aid = q.get("alumno", [""])[0]
+            ra = con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone()
+            if not ra: raise Error(404, "alumno no encontrado")
+            if not ra["clave"] or not self.pase_ok(con, ra): raise Error(401, "Hace falta la clave del alumno")
+            if len(p) == 1: return [registro_meta(r) for r in con.execute("SELECT * FROM registros WHERE alumno_id = ? ORDER BY inicio DESC", (aid,))]
+            r = con.execute("SELECT * FROM registros WHERE id = ? AND alumno_id = ?", (p[1], aid)).fetchone()
+            if not r: raise Error(404, "registro no encontrado")
+            return leer_registro(r["id"])
+
         # --- profesor ---
         if p == ["profesor", "certificado"] and m == "POST":     # el profesor define el certificado
             self.profesor(); b = self.cuerpo()
@@ -771,6 +881,24 @@ class Manejador(BaseHTTPRequestHandler):
             self.profesor()
             return self.api_profesor(m, p[1:], q, con)
         raise Error(404, "ruta desconocida")
+
+    def guardar_registro(self, con, reg, aid):
+        """Guarda un registro de vuelo del alumno aid, con su pase (idempotente: el id es el del vuelo)."""
+        ra = con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone()
+        if not ra: raise Error(404, "alumno no encontrado")
+        if not self.pase_ok(con, ra): raise Error(401, "Hace falta la clave del alumno")
+        os.makedirs(DIR_REGISTROS, exist_ok=True)
+        ya = con.execute("SELECT id FROM registros WHERE id = ?", (reg["id"],)).fetchone()
+        if ya: return dict(ok=True, nuevo=False)
+        datos = gzip.compress(json.dumps(reg, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        with open(ruta_registro(reg["id"]), "wb") as f: f.write(datos)
+        with con:
+            con.execute("""INSERT OR IGNORE INTO registros (id, alumno_id, avion, avion_nombre, inicio, escenario, escenario_nombre,
+                final, duracion_s, muestras, bytes, recibido) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (reg["id"], ra["id"], reg["avion"], reg["avion_nombre"], reg["inicio"], reg["escenario"], reg["escenario_nombre"],
+                 reg["final"], reg["duracion_s"], len(reg["filas"]), len(datos), ahora()))
+        CAMBIOS["desde_copia"] += 1
+        return dict(ok=True, nuevo=True)
 
     def pase_ok(self, con, row):
         """El pase del alumno (cabecera X-Alumno) es el suyo; si aun no tiene clave, no hace falta."""
@@ -865,6 +993,19 @@ class Manejador(BaseHTTPRequestHandler):
             return [vuelo_dict(v) for v in rows]
         if p == ["exportar"] and m == "GET":
             return self.exportar(con, q.get("tipo", ["vuelos"])[0])
+        if p == ["registros"] and m == "GET":          # registros de vuelo de un alumno (o de todos)
+            aid = q.get("alumno", [None])[0]
+            sql = "SELECT r.*, a.nombre AS alumno FROM registros r JOIN alumnos a ON a.id = r.alumno_id"
+            rows = con.execute(sql + (" WHERE r.alumno_id = ?" if aid else "") + " ORDER BY r.inicio DESC", (aid,) if aid else ())
+            return [dict(registro_meta(r), alumno=r["alumno"]) for r in rows]
+        if len(p) in (2, 3) and p[0] == "registros" and m == "GET":
+            r = con.execute("SELECT r.*, a.nombre AS alumno FROM registros r JOIN alumnos a ON a.id = r.alumno_id WHERE r.id = ?", (p[1],)).fetchone()
+            if not r: raise Error(404, "registro no encontrado")
+            reg = leer_registro(r["id"])
+            if len(p) == 2: return reg
+            if p[2] != "csv": raise Error(404, "ruta desconocida")
+            limpio = re.sub(r"[^A-Za-z0-9_.-]+", "_", "%s_%s_%s" % (r["alumno"], r["avion"], (r["inicio"] or "")[:16]))
+            return ("csv", "registro_%s.csv" % limpio, registro_csv(reg))
         if p == ["copias"] and m == "GET":
             fs = sorted((f for f in os.listdir(DIR_COPIAS) if f.endswith(".db")), reverse=True)
             return [dict(nombre=f, kb=round(os.path.getsize(os.path.join(DIR_COPIAS, f)) / 1024, 1)) for f in fs]

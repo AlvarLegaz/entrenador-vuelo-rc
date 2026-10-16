@@ -213,9 +213,10 @@ async function api(metodo, ruta, cuerpo, crudo) {
 function fallo(e) { $("err").textContent = e.message; setTimeout(() => { if ($("err").textContent === e.message) $("err").textContent = ""; }, 6000); }
 
 // ---------- modal ----------
-function modal(titulo, html, botones) {
+function modal(titulo, html, botones, alAbrir) {
   return new Promise(res => {
     $("mTitulo").textContent = titulo; $("mCuerpo").innerHTML = html;
+    if (alAbrir) alAbrir($("mCuerpo"));                 // p. ej. los botones de dentro (descargar un registro)
     const b = $("mBotones"); b.innerHTML = "";
     for (const [txt, val, clase] of botones) {
       const x = document.createElement("button"); x.textContent = txt; if (clase) x.className = clase;
@@ -351,10 +352,22 @@ const CAB_VUELOS = c => `<tr>${c ? "<th>Alumno</th>" : ""}<th>Fecha</th><th>Equi
 
 async function verAlumno(al) {
   const vs = await api("GET", "profesor/vuelos?alumno=" + encodeURIComponent(al.id)), g = al.progreso;
+  const rg = await api("GET", "profesor/registros?alumno=" + encodeURIComponent(al.id)).catch(() => []);
   await modal(al.nombre, `<p>${fmtHoras(g.horas)} de vuelo · ${g.vuelos} vuelos · ${g.aterrizajes} aterrizajes · ${g.accidentes} accidentes</p>
     <table>${Object.keys(g.escenarios).map(e => `<tr><td class="${g.escenarios[e].superado ? "ok" : "sub"}">${g.escenarios[e].superado ? "✔ superado" : "○ pendiente"}</td><td>${esc(nombreEsc(e))}</td><td>${g.escenarios[e].intentos} intentos</td></tr>`).join("")}</table>
-    <h2>Historial</h2><div class="tabla"><table>${CAB_VUELOS(false)}${vs.map(v => filaVuelo(v, false)).join("") || '<tr><td colspan="9" class="sub">Sin vuelos</td></tr>'}</table></div>`,
-    [["Cerrar", true]]);
+    <h2>Historial</h2><div class="tabla"><table>${CAB_VUELOS(false)}${vs.map(v => filaVuelo(v, false)).join("") || '<tr><td colspan="9" class="sub">Sin vuelos</td></tr>'}</table></div>
+    <h2>Registros de vuelo</h2><p class="sub">Como los que se descargan de un dron: 10 muestras por segundo con la batería (tensión, corriente, temperatura y cada celda), alturas, velocidades, mandos y avisos.</p>
+    <div class="tabla"><table id="tRegAlumno"><tr><th>Fecha</th><th>Vehículo</th><th>Vuelo</th><th>Duración</th><th>Muestras</th><th>Final</th><th></th></tr>${rg.map(r =>
+      `<tr><td>${fmtFecha(r.inicio)}</td><td>${esc(r.avion_nombre || r.avion)}</td><td>${esc(r.escenario_nombre || r.escenario)}</td><td>${((r.duracion_s || 0) / 60).toFixed(1)} min</td><td>${r.muestras}</td><td>${esc(r.final)}</td>
+       <td><button data-reg="${esc(r.id)}">CSV</button></td></tr>`).join("") || '<tr><td colspan="7" class="sub">Sin registros</td></tr>'}</table></div>`,
+    [["Cerrar", true]], d => d.querySelectorAll("button[data-reg]").forEach(b => b.onclick = () => descargarRegistro(b.dataset.reg).catch(fallo)));
+}
+/** Descarga el registro de vuelo de un alumno en CSV. */
+async function descargarRegistro(id) {
+  const r = await api("GET", "profesor/registros/" + encodeURIComponent(id) + "/csv", null, true);
+  const nombre = ((r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/) || [])[1] || "registro.csv";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ---------- historial ----------
@@ -546,7 +559,7 @@ function zonaTrabajo(O) {
 }
 const nombreEsc = id => (window.ESCENARIOS && ESCENARIOS[id] && ESCENARIOS[id].nombre) || ESC[id] || id;
 /** Vista del alumno: el simulador en modo espectador (espectador.html) siguiendo a ese piloto, en lugar del mapa. */
-function verAlumno(cod, id, nombre) {
+function verPilotoEnDirecto(cod, id, nombre) {
   const cambio = !MP.alumnoVisto || MP.alumnoVisto.cod !== cod || MP.alumnoVisto.id !== id;
   MP.alumnoVisto = { cod, id, nombre };
   if (cambio) $("mVista").src = `espectador.html?sala=${encodeURIComponent(cod)}&piloto=${encodeURIComponent(id)}`;
@@ -561,7 +574,7 @@ function verMapa() {
   MP.alumnoUltimo = MP.alumnoVisto; MP.alumnoVisto = null;
 }
 $("vMapa").onclick = verMapa;
-$("vAlumno").onclick = () => { const u = MP.alumnoVisto || MP.alumnoUltimo; if (u) verAlumno(u.cod, u.id, u.nombre); else $("vQuien").textContent = "Primero elige un piloto con «👁 Ver» en la tabla"; };
+$("vAlumno").onclick = () => { const u = MP.alumnoVisto || MP.alumnoUltimo; if (u) verPilotoEnDirecto(u.cod, u.id, u.nombre); else $("vQuien").textContent = "Primero elige un piloto con «👁 Ver» en la tabla"; };
 async function cargarSalas() {
   if (cargarSalas.ocupado) return; cargarSalas.ocupado = true;
   try { await pintarSalas(); } finally { cargarSalas.ocupado = false; }
@@ -613,7 +626,7 @@ async function pintarSalas() {
       <td style="white-space:nowrap"><button data-ver="${esc(j.id)}" data-nombre="${esc(j.nombre)}" class="${MP.alumnoVisto && MP.alumnoVisto.id === j.id && MP.alumnoVisto.cod === s.codigo ? "prim" : ""}" title="Ver lo que ve este piloto">👁 Ver</button>
         <button class="peligro" data-expulsar="${esc(j.id)}" data-nombre="${esc(j.nombre)}" title="Sacarlo de la sala; no podrá volver a entrar">Expulsar</button></td></tr>`).join("") ||
     '<tr><td colspan="6" class="sub">Nadie en la sala ahora mismo</td></tr>';
-  $("tJugadores").querySelectorAll("button[data-ver]").forEach(b => b.onclick = () => verAlumno(s.codigo, b.dataset.ver, b.dataset.nombre));
+  $("tJugadores").querySelectorAll("button[data-ver]").forEach(b => b.onclick = () => verPilotoEnDirecto(s.codigo, b.dataset.ver, b.dataset.nombre));
   if (MP.alumnoVisto && MP.alumnoVisto.cod !== s.codigo) verMapa();
   $("tJugadores").querySelectorAll("button[data-expulsar]").forEach(b => b.onclick = async () => {
     if (!(await modal("Expulsar a " + b.dataset.nombre, `<p>Sale de la sala ${esc(s.nombre)} y no puede volver a entrar (ni con otra pestaña ni con otro ordenador con su perfil o su nombre). Sus vuelos se guardan como siempre.</p>`,

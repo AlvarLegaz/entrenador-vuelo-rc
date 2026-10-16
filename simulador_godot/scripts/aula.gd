@@ -85,6 +85,17 @@ func api(metodo: String, ruta: String, cuerpo = null, con_pase = null) -> Dictio
 		return { "ok": false, "status": status, "datos": d, "error": (d.get("error", "error %d" % status) if d is Dictionary else "error %d" % status) }
 	return { "ok": true, "status": status, "datos": d, "error": "" }
 
+## Envia un registro de vuelo comprimido con gzip (registro_vuelo.gd) a /api/registros con el pase de su alumno.
+func subir_registro(gz: PackedByteArray, con_pase: String) -> Dictionary:
+	if url == "": return { "ok": false, "status": 0, "error": "no hay servidor del aula" }
+	var req := HTTPRequest.new(); req.timeout = 30; req.max_redirects = 0; add_child(req)
+	var cab := PackedStringArray(["Content-Type: application/gzip", "X-Alumno: " + con_pase])
+	if req.request_raw(url.trim_suffix("/") + "/api/registros", cab, HTTPClient.METHOD_POST, gz) != OK: req.queue_free(); return { "ok": false, "status": 0, "error": "sin conexión" }
+	var res: Array = await req.request_completed
+	req.queue_free()
+	if res[0] != HTTPRequest.RESULT_SUCCESS: return { "ok": false, "status": 0, "error": "sin conexión con el aula" }
+	return { "ok": res[1] >= 200 and res[1] < 300, "status": res[1], "error": "" }
+
 # ---- cola de vuelos sin enviar ----
 func _leer_cola() -> Array:
 	var t := FileAccess.get_file_as_string(F_COLA)
@@ -97,6 +108,7 @@ func _guardar_cola(c: Array) -> void:
 
 var pendientes := 0
 func vaciar_cola() -> void:
+	RegistroVuelo.subir_pendientes(self)            # y los registros de vuelo (registro_vuelo.gd)
 	if not activo: return
 	var quedan := []
 	for v in _leer_cola():

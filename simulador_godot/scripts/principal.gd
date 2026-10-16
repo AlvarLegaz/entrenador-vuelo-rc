@@ -432,10 +432,20 @@ func _lanz_por_defecto() -> void:
 ## Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"; destacadosLanz de la web).
 func destacados_lanz() -> Array:
 	return Escenarios.datos().get(sesion["escenario"], {}).get("destacados", [])
+## El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San
+## Javier). Como necesitaPista() y destacadoConPista() de la web.
+func necesita_pista() -> bool: return DatosComunes.avion(sesion["avion"]).get("uav", false)
+func destacado_con_pista() -> Dictionary:
+	for d in destacados_lanz():
+		if d.has("pista"): return d
+	return {}
 func elegir_destacado(d: Dictionary) -> void:
+	if necesita_pista() and not d.has("pista") and not destacado_con_pista().is_empty():
+		d = destacado_con_pista(); poner_toast_menu(String(DatosComunes.avion(sesion["avion"]).get("nombre", "")) + " despega de pista: sale de " + String(d["nombre"]))
 	var ne := lat_lon_a_ne(mundo_datos, d["lat"], d["lon"])
 	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": float(d["rumbo"]), "destacado": d["nombre"] }; _guardar()
 func elegir_punto(N: float, E: float) -> void:
+	if necesita_pista() and not destacado_con_pista().is_empty(): elegir_destacado(destacado_con_pista()); return     # un avion de pista no sale del campo
 	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(N), "E": round(E), "rumbo": rumbo_despejado(N, E) }; _guardar()
 func colocar_en_base(a: Dictionary, m = null) -> void:
 	if m == null: m = modelo
@@ -533,6 +543,7 @@ var _t_toast := 0
 var toasts_registro = null          # pruebas: si es una lista, cada aviso de poner_toast se apunta en ella
 func poner_toast(txt: String) -> void:
 	if toasts_registro != null: toasts_registro.append(txt)
+	if vuelo != null and not av.is_empty() and av["estado"] == "volando": RegistroVuelo.evento(self, vuelo, txt)
 	hud.toast.text = txt; _t_toast += 1; var n := _t_toast
 	await get_tree().create_timer(1.5).timeout
 	if n == _t_toast: hud.toast.text = ""
@@ -859,6 +870,9 @@ func ir_ajustes(seccion := "") -> void:
 	mostrar("pAjustes")
 func ir_lanzamiento() -> void:
 	ent.poner_mundo(mundo_datos); _lanz_por_defecto()
+	if necesita_pista() and not destacado_con_pista().is_empty() and sesion["lanz"].get("destacado", "") != destacado_con_pista()["nombre"]:
+		var dp: Dictionary = destacado_con_pista(); var ne := lat_lon_a_ne(mundo_datos, dp["lat"], dp["lon"])
+		sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": float(dp["rumbo"]), "destacado": dp["nombre"] }
 	mostrar("pLanzamiento"); pantallas["pLanzamiento"].preparar()
 func ir_progreso(desde: String, alumno = null) -> void:
 	pantallas["pProgreso"].desde = desde; pantallas["pProgreso"].alumno = alumno if alumno != null else sesion["alumno"]
@@ -1013,7 +1027,7 @@ func reiniciar() -> void:
 func _nuevo_vuelo(h0: float) -> void:
 	vuelo = { "id": Aula.uuid4(), "inicio": Aula.ahora_iso(), "inicio_local": Time.get_datetime_dict_from_system(), "tVuelo": 0.0, "filas": [], "final": "",
 			  "escenario": sesion["escenario"], "dificultad": sesion["dificultad"], "gasLanz": av["gases"], "hmax": h0, "otraCamara": false }
-	cn_contador = 0; grabar_muestra()
+	cn_contador = 0; RegistroVuelo.empezar(self, vuelo); grabar_muestra()
 
 ## Coloca el avion en vuelo (escenarios con enVuelo), como si acabara de lanzarse y subir.
 func _empezar_en_vuelo() -> void:
@@ -1311,7 +1325,7 @@ func terminar_vuelo(final: String, vn = null) -> void:
 	av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["rpm"] = 0.0
 	hud.guia.visible = false
 	if vuelo == null: return
-	vuelo["final"] = final; grabar_muestra()
+	vuelo["final"] = final; grabar_muestra(); RegistroVuelo.cerrar(self, vuelo)
 	ev.evaluar_final(sesion["escenario"], final, av, vn)
 	hud.aviso.text = ("LANZAMIENTO FALLIDO: " + String(vuelo["lanzamiento"]["corto"])) if vuelo.has("lanzamiento") else \
 		(("¡ROTO!  (" + final.substr(6, final.length() - 7) + ")") if final.begins_with("roto") else ("Aterrizado" if final == "aterrizado" else ("Aparcado" if final == "aparcado" else "") if final == "aparcado" else
@@ -1383,6 +1397,7 @@ func grabar_muestra() -> void:
 		r.call(av["gases"] * 100, 1), r.call(av["rpm"], 0), r.call(av["T"], 3), r.call(av["Wh"], 4), r.call(modelo.bateria_pct(av), 1),
 		r.call(mando["pitch"], 3), r.call(mando["yaw"], 3), r.call(mando["trim"], 2), r.call(av["de"] * R2D, 2), r.call(av["dr"] * R2D, 2), r.call(av.get("da", 0.0) * R2D, 2),
 		r.call(w[0], 2), r.call(w[1], 2), r.call(av["perdida"], 2)])
+	RegistroVuelo.muestra(self, vuelo)                 # el registro de vuelo del vehiculo (registro_vuelo.gd), a 10 Hz
 
 func nombre_csv(v: Dictionary) -> String:
 	var d: Dictionary = v["inicio_local"]

@@ -832,6 +832,7 @@
 <script src="js/pista_fpv.js?v=1"></script>
 <script src="js/operaciones.js?v=8"></script>
 <script src="js/piloto_uav.js?v=2"></script>
+<script src="js/registro.js?v=1"></script>
 <script src="js/visor.js?v=38"></script>
 <script src="js/industria.js?v=4"></script>
 <script src="js/visor_real.js?v=44"></script>
@@ -910,6 +911,7 @@ const esDefinitivo = e => e.status >= 400 && e.status < 500 && e.status !== 401 
 function cola() { try { return JSON.parse(localStorage.getItem("sim_cola_vuelos") || "[]"); } catch (e) { return []; } }
 function guardarCola(c) { try { localStorage.setItem("sim_cola_vuelos", JSON.stringify(c)); } catch (e) {} }
 async function vaciarCola() {
+  RegistroDB.subirPendientes();                    // y los registros de vuelo (js/registro.js)
   if (!sesion.aula) return;
   const quedan = [];
   for (const v of cola()) { const { _pase, ...cuerpo } = v; try { await api("POST", "vuelos", cuerpo, _pase); } catch (e) { if (!esDefinitivo(e)) quedan.push(v); } }
@@ -1292,6 +1294,7 @@ async function irLanzamiento() {
     const b = document.createElement("button"); b.className = "btn destacado"; b.textContent = "📍 " + d.nombre; b.title = "Despegar desde " + d.nombre;
     b.onclick = () => elegirDestacado(d); cont.appendChild(b);
   }
+  if (necesitaPista() && destacadoConPista() && sesion.lanz.destacado !== destacadoConPista().nombre) { const dp = destacadoConPista(), [N, E] = latLonANE(mundo, dp.lat, dp.lon); sesion.lanz = { mundo: mundo.id, N: Math.round(N), E: Math.round(E), rumbo: dp.rumbo, destacado: dp.nombre }; }
   mostrar("pLanzamiento"); pintarMapaLanz();
 }
 window.addEventListener("resize", () => { if (pantallaActual === "pLanzamiento") pintarMapaLanz(); });
@@ -1349,12 +1352,17 @@ document.getElementById("mapaLanz").addEventListener("click", e => {
   if (E < T.E0 || E > T.E0 + (T.nE - 1) * T.paso || N < T.N0 || N > T.N0 + altoM) return;
   const d = destacadosLanz().find(q => q._xy && (Math.hypot(x - q._xy[0], y - q._xy[1]) < 18 || Math.hypot(x - q._xy[0], y - q._xy[1] + 26) < 14));
   if (d) { elegirDestacado(d); return; }
+  if (necesitaPista() && destacadoConPista()) { elegirDestacado(destacadoConPista()); return; }    // un avion de pista no sale del campo
   sesion.lanz = { mundo: entorno.mundo.id, N: Math.round(N), E: Math.round(E), rumbo: rumboDespejado(N, E) };
   pintarMapaLanz();
 });
 /** Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"). */
 function destacadosLanz() { return (ESCENARIOS[sesion.escenario] || {}).destacados || []; }
+/** El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San Javier). */
+const necesitaPista = () => !!(Modelos.datos(sesion.avion) || {}).uav;
+const destacadoConPista = () => destacadosLanz().find(d => d.pista);
 function elegirDestacado(d) {
+  if (necesitaPista() && !d.pista && destacadoConPista()) { d = destacadoConPista(); toast(Modelos.datos(sesion.avion).nombre + " despega de pista: sale de " + d.nombre); }
   const M = entorno.mundo, [N, E] = latLonANE(M, d.lat, d.lon);
   sesion.lanz = { mundo: M.id, N: Math.round(N), E: Math.round(E), rumbo: d.rumbo, destacado: d.nombre };
   pintarMapaLanz();
@@ -1476,7 +1484,7 @@ function empezarEnVuelo() {
   av.gases = C.gas; av.estado = "volando";
   if (modelo.armarEnVuelo) modelo.armarEnVuelo(av);           // dron FPV: armado y con el gas que lo sostiene
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: C.h };
-  cnContador = 0; grabarMuestra();
+  cnContador = 0; RegistroVuelo.empezar(vuelo); grabarMuestra();
   ev.guia = { i: 0, vs, vmin: Math.round(1.3 * vs * 10) / 10, avisado: false };
   aviso(""); guiar();
 }
@@ -1729,7 +1737,7 @@ function lanzar() {
     av.v[0] *= 1 + 0.08 * gauss(); av.q = Cuat.desdeEuler(r + 4 * D2R * gauss(), p + 2.5 * D2R * gauss(), y + 3 * D2R * gauss());
   }
   vuelo = { id: uuid4(), inicio: new Date(), tVuelo: 0, filas: [], final: null, escenario: sesion.escenario, dificultad: sesion.dificultad, gasLanz: av.gases, hmax: 0 };
-  cnContador = 0; grabarMuestra();
+  cnContador = 0; RegistroVuelo.empezar(vuelo); grabarMuestra();
 }
 function paso(dt) {
   aplicarRecorridos();
@@ -1884,7 +1892,7 @@ function terminarVuelo(final, vn) {
   av.v = [0, 0, 0]; av.w = [0, 0, 0]; av.rpm = 0;
   document.getElementById("guia").innerHTML = "";
   if (!vuelo) return;
-  vuelo.final = final; grabarMuestra();
+  vuelo.final = final; grabarMuestra(); RegistroVuelo.cerrar(vuelo);
   evaluarFinal(final, vn || [0, 0, 0]);
   aviso(vuelo.lanzamiento ? "LANZAMIENTO FALLIDO: " + vuelo.lanzamiento.corto
         : final.startsWith("roto") ? "¡ROTO!  (" + final.slice(6, -1) + ")" : final === "aterrizado" ? "Aterrizado"
@@ -2067,6 +2075,7 @@ function grabarMuestra() {
     r(-vn[2], 2), r(roll, 1), r(pitch, 1), r((yaw + 360) % 360, 1), r(av.alfa, 2), r(av.beta, 2), r(av.g_carga, 2),
     r(av.gases * 100, 1), r(av.rpm, 0), r(av.T, 3), r(av.Wh, 4), r(modelo.bateriaPct(av), 1),
     r(mando.pitch, 3), r(mando.yaw, 3), r(mando.trim, 2), r(av.de * R2D, 2), r(av.dr * R2D, 2), r((av.da || 0) * R2D, 2), r(w[0], 2), r(w[1], 2), r(av.perdida, 2)]);
+  RegistroVuelo.muestra(vuelo);                     // el registro de vuelo del vehiculo (js/registro.js), a 10 Hz
 }
 function descargarVuelo(v) {
   const d = v.inicio, z = n => String(n).padStart(2, "0"), f = v.filas;
@@ -3633,7 +3642,7 @@ function pintarHorizonte(roll, pitch, rumbo) {
   ponerTxt($h("hzRumbo"), `${String(Math.round((rumbo + 360) % 360) % 360).padStart(3, "0")}°`);
 }
 function aviso(txt) { document.getElementById("aviso").textContent = txt; }
-function toast(txt) { const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
+function toast(txt) { if (typeof RegistroVuelo !== "undefined" && typeof vuelo !== "undefined" && av && av.estado === "volando") RegistroVuelo.evento(vuelo, txt); const el = document.getElementById("toast"); el.textContent = txt; clearTimeout(tToast); tToast = setTimeout(() => el.textContent = "", 1500); }
 let CARRERA_MEJOR = null;                                            // carrera: el mejor tiempo de esta sesion {t, avion}
 /** Carrera: la barra de arriba (el mejor de la sala o de la sesion, el cronometro y el obstaculo que toca) y el
  *  indicador del siguiente obstaculo: un rombo con su numero y la distancia encima de el o, si no esta a la vista, una

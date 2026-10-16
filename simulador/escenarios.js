@@ -3317,6 +3317,15 @@ window.ESCENARIOS = {
     "contorno": [[37.761587, -1.013745], [37.762469, -1.011307], [37.761791, -1.010939], [37.760977, -1.013462]]
    },
    {
+    "nombre": "Base aérea de San Javier",
+    "nota": "Cabecera 05R de la pista 05R/23L de la base aérea de San Javier (2.311 × 45 m, junto al Mar Menor): despegue hacia el 46. Los aviones de pista, como el Cernícalo XM-7, solo salen de aquí. Zona de detalle a 0,5 m (mm_n18_e20).",
+    "lat": 37.768008,
+    "lon": -0.821115,
+    "rumbo": 46,
+    "pista": "San Javier 05R/23L",
+    "contorno": [[37.76789, -0.821919], [37.782445, -0.803112], [37.781925, -0.80248], [37.76737, -0.821287]]
+   },
+   {
     "nombre": "SABIC (La Aljorra)",
     "nota": "Solar despejado junto a la fábrica de SABIC de La Aljorra, entre las plantas fotovoltaicas (las filas de paneles de la ortofoto son reales): despegue hacia el sudeste, sobre la fábrica. Zona de detalle a 0,25 m (fotovoltaica).",
     "lat": 37.711444,
