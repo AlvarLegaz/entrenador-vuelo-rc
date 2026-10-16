@@ -7,6 +7,7 @@ config_version=5
 config/name="Entrenador Vuelo RC v2 (Godot)"
 run/main_scene="res://escenas/principal.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icono.png"
 
 [display]
 window/size/viewport_width=1600
@@ -15,8 +16,20 @@ window/stretch/mode="disabled"
 
 [rendering]
 renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=2
 lights_and_shadows/directional_shadow/size=8192
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 textures/default_filters/anisotropic_filtering_level=4
 environment/defaults/default_clear_color=Color(0.78, 0.84, 0.9, 1)
+
+[xr]
+; gafas de realidad virtual autonomas (Pico 4, Pico Neo 3...): OpenXR solo en Android, con el mapa de mandos de Godot
+; (openxr_action_map.tres) y foveacion media para ganar rendimiento; en el PC sigue apagado. Ver scripts/modo_vr.gd y
+; exportar_pico.py
+openxr/enabled.android=true
+openxr/reference_space=1
+openxr/foveation_level.android=2
+openxr/foveation_dynamic.android=true
+shaders/enabled.android=true

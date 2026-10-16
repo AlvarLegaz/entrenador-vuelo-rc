@@ -84,6 +84,7 @@ var campo3d: Campo3D
 var vista: Node3D                   # el mundo puesto (mundo3d o campo3d)
 var avion3d: Avion3D
 var cam: Camera3D
+var vr: ModoVR                     # gafas de realidad virtual (modo_vr.gd), si las hay
 
 # ---- interfaz ----
 var aula: Aula
@@ -131,6 +132,12 @@ func _ready() -> void:
 	aula = Aula.new(); add_child(aula)
 	sonido = Sonido.new(); add_child(sonido); sonido.cargar_cfg()
 	_construir_ui()
+	vr = ModoVR.iniciar(self)
+	if vr != null:                     # en unas gafas: directamente a volar el dron en el campo del club (sin menus en VR todavia)
+		ui.visible = false; sesion["escenario"] = "libre"; sesion["sin_registrar"] = true
+		sesion["avion"] = "DJI_MINI"
+		call_deferred("empezar")
+		return
 	if _args.has("auto"):
 		sesion["escenario"] = _args.get("escenario", "libre_cartagena"); sesion["sin_registrar"] = true
 		var O: Dictionary = Escenarios.datos()[sesion["escenario"]].get("operacion", {})       # pruebas: un trabajo, desde su punto de despegue
@@ -860,7 +867,7 @@ func ir_progreso(desde: String, alumno = null) -> void:
 # =====================================================================
 func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
 	var cal := calidad_actual()
-	get_viewport().scaling_3d_scale = 0.5 if minimo() else 1.0          # rendimiento maximo: media resolucion en 3D
+	get_viewport().scaling_3d_scale = 1.0 if vr != null else (0.5 if minimo() else 1.0)          # rendimiento maximo: media resolucion en 3D (en las gafas, la suya)
 	if es_m:
 		if mundo3d != null and (mundo3d.calidad != cal or mundo3d.minimo != minimo()): mundo3d.queue_free(); mundo3d = null; await get_tree().process_frame
 		if mundo3d == null:
@@ -1624,6 +1631,7 @@ static func _expo(x: float, e: float) -> float: return (1 - e) * x + e * x * x *
 #  MANDO: palanca derecha = avion, izquierda = gas (o el mando del dron comercial). Ejes segun Ajustes › Controles (MandoCfg).
 # =====================================================================
 func _leer_mando(dt: float) -> bool:
+	if vr != null: return vr.leer_mandos(dt)       # gafas de VR: sus mandos son la emisora
 	var M := mando_cfg; var dev := MandoCfg.conectado()
 	if dev < 0: return false
 	var rx := _zona_muerta(M.eje(dev, "rx"), M.zona); var ry := _zona_muerta(M.eje(dev, "ry"), M.zona)
@@ -1830,6 +1838,7 @@ func _process(dt_real: float) -> void:
 	if pantalla_actual != "" or av.is_empty() or modelo == null:
 		_acum = 0.0
 		if pantalla_actual != "": _leer_mando_en_menu()
+		if vr != null and pantalla_actual != "": vr.en_pantalla(dt_real)
 		if _args.has("auto") and modelo != null and not av.is_empty(): _auto(dt_real)      # pruebas: la captura puede ser del resultado
 		return
 	var t_us := Time.get_ticks_usec()
@@ -1851,6 +1860,7 @@ func _process(dt_real: float) -> void:
 	if not sala.is_empty() or not _fantasmas.is_empty(): _poner_fantasmas()
 	vista.actualizar_manga(ent.viento["actual"])
 	_camara()
+	if vr != null: vr.actualizar(dt_real)
 	_termica(cam_dji()["termica"] and camara == 3 and ((es_dron() and not es_fpv()) or es_uav()))
 	_hud()
 	if _args.has("auto") and _t_auto > 1.5: _us.append([t_fis, Time.get_ticks_usec() - t_us])

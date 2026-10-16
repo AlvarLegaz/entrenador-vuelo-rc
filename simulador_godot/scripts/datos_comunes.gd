@@ -6,13 +6,35 @@ class_name DatosComunes
 ## El cuadricoptero (aviones/DJI_MINI.js) lleva sus datos como JSON en "const DATOS = {...}" y su malla la calcula
 ## el codigo JS que la sigue: aqui se lee ese JSON y la malla se calcula igual (_malla_cuadricoptero).
 
+static var _carpeta_android := ""
 static func carpeta() -> String:
+	if OS.has_feature("android"): return _datos_android()
 	# simulador_godot/ esta junto a simulador/; si se exporta, se busca junto al ejecutable
 	var cand := [ProjectSettings.globalize_path("res://").path_join("../simulador"), OS.get_executable_path().get_base_dir().path_join("simulador"),
 				 OS.get_executable_path().get_base_dir().path_join("../simulador")]
 	for c in cand:
 		if DirAccess.dir_exists_absolute(c): return c.simplify_path()
 	return cand[0].simplify_path()
+
+## En Android (las gafas de VR) no hay carpeta simulador/: va en el APK como res://datos_android.zip (lo prepara
+## exportar_pico.py) y se descomprime en la carpeta de datos de la app la primera vez, o cuando cambia su version.
+static func _datos_android() -> String:
+	if _carpeta_android != "": return _carpeta_android
+	var dest := OS.get_user_data_dir().path_join("simulador"); _carpeta_android = dest
+	var zr := ZIPReader.new()
+	if zr.open("res://datos_android.zip") != OK: push_error("Falta res://datos_android.zip"); return dest
+	var ver := zr.read_file("version.txt").get_string_from_utf8().strip_edges()
+	var marca := dest.path_join("version.txt")
+	if FileAccess.file_exists(marca) and FileAccess.get_file_as_string(marca).strip_edges() == ver: zr.close(); return dest
+	for f in zr.get_files():
+		if f.ends_with("/") or f == "version.txt": continue      # la version, la ultima: si se corta a medias, se repite
+		DirAccess.make_dir_recursive_absolute(dest.path_join(f.get_base_dir()))
+		var fa := FileAccess.open(dest.path_join(f), FileAccess.WRITE)
+		if fa: fa.store_buffer(zr.read_file(f)); fa.close()
+	var fv := FileAccess.open(marca, FileAccess.WRITE)
+	if fv: fv.store_string(ver); fv.close()
+	zr.close()
+	return dest
 
 static func _json_de_registrar(ruta: String, marca: String) -> Dictionary:
 	return _json_tras_marca(FileAccess.get_file_as_string(ruta), marca, ruta)

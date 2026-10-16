@@ -19,3 +19,7 @@ herramientas/
 simulador/zonas/
 # cache de importacion de Godot (se regenera al abrir el proyecto)
 simulador_godot/.godot/
+# datos comunes empaquetados para el APK de las gafas (los genera simulador_godot/exportar_pico.py)
+simulador_godot/datos_android.zip
+# plantilla de compilacion de Android de Godot (la instala exportar_pico.py)
+simulador_godot/android/

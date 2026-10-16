@@ -419,6 +419,22 @@ herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path simul
 
 Para pruebas sin menú: `-- --auto --escenario=libre --avion=E3 --camara=2 --esperar=10 --captura=foto.png` (despega con un piloto automático que nivela las alas, mide el tiempo por cuadro y guarda la pantalla; con `--avion=FPV` arma con el gas abajo, sube a 30 m y da vueltas despacio en ANGLE); con `--terminar=S` acaba el vuelo y la captura es del resultado (`--repeticion` abre la repetición), `--pausa=S` y `--ayuda=S` abren la pausa o los controles, y sin `--auto`, `--pantalla=pHangar` (o `pInicio`, `pEntrenamientos`, `pVolar`, `pLanzamiento`, `pAjustes`, `pAlumno`) captura esa pantalla.
 
+### Gafas de realidad virtual (Pico y otras autónomas con OpenXR)
+
+Prototipo (2026-10-16): la v2 en un APK de Android para gafas autónomas (Pico 4, Pico Neo 3…). En las gafas empieza directamente a volar el **Mini Dron HQ en el campo del club** (todavía sin menús en VR) y la física, los datos y el aula son los mismos que en el PC (`scripts/modo_vr.gd`):
+
+- **Cámara 1**: el piloto de pie en el campo, con seguimiento real de la cabeza para buscar al dron en el cielo.
+- **Cámara 3 del dron** (como las gafas de dron con seguimiento de cabeza): la imagen sigue a la cabeza al instante; el cabeceo de la cabeza inclina el gimbal (+10° a −89°) y el dron gira, a su velocidad, hasta mirar adonde mira la cabeza, así que las fotos valen igual que en la pantalla. La palanca izquierda de lado gira la vista y el dron la sigue.
+- **Mandos de las gafas como emisora en modo 2**: izquierda subir/bajar (o gas) y guiñada, derecha cabeceo y alabeo. **A** armar o despegar, **B** cambiar de cámara, **gatillo derecho** foto, **X** volver a casa, **Y** empezar de nuevo, **agarre izquierdo** poner la vista de frente. Un panel en la mano izquierda da altura, distancia, velocidad, gimbal, batería y avisos.
+
+Para generar el APK e instalarlo (las gafas en modo desarrollador y conectadas por USB):
+
+```
+python simulador_godot/exportar_pico.py --instalar
+```
+
+Usa sus propias herramientas en `herramientas/` (no van al repositorio): el JDK 17, el SDK de Android (platform-tools, build-tools 35.0.1 y la plataforma 35) y una copia autocontenida de Godot con las plantillas de exportación (`herramientas/godot_android`, para no tocar los ajustes de Godot del usuario). Compila con Gradle (la plantilla de Android se instala en `simulador_godot/android/` la primera vez), que añade el cargador de OpenXR. Los datos comunes de `simulador/` van dentro del APK en `datos_android.zip` y la app los descomprime la primera vez (`--zonas` añade las zonas de detalle, unos 330 MB). OpenXR solo se activa en Android (`xr/openxr/enabled.android` en `project.godot`), con el renderizador móvil y el rendimiento máximo; en el PC todo sigue igual. Prueba sin gafas: `pruebas/prueba_vr.gd` (cabeza y mandos simulados).
+
 ### Zonas de detalle (`simulador/zonas/<id>/`, no van al repositorio)
 
 Un cuadrado de 3 × 3 km alrededor de un punto de salida con: ortofoto PNOA del IGN a ~0,5 m/píxel (36 teselas de 500 m), MDT del IGN a 5 m (suavizado, porque viene en metros enteros), edificios del Catastro con su huella y su número de plantas real, árboles detectados en la ortofoto (copas oscuras y verdosas; los de menos de 1,3 m de radio se dibujan como matorral) y el agua según la línea de costa de OSM. El suelo físico dentro de la zona es el del MDT a 5 m. Se generan con:
