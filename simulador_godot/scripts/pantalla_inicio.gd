@@ -1,7 +1,7 @@
 class_name PantallaInicio
 extends Control
 ## Pantalla de inicio (#pInicio de simulador/simulador.html): la ortofoto de Cartagena de fondo con el degradado, el
-## titulo, el menu (Vuelo libre, Entrenamientos, Hangar, Ajustes), el avion elegido girando a la derecha y el pie con
+## titulo, el menu (Vuelo libre, Entrenamientos, Multijugador, Operaciones, Hangar, Taller, Perfil, Ajustes), el avion elegido girando a la derecha y el pie con
 ## el piloto y el aula.
 
 const ICONOS := {
@@ -11,6 +11,7 @@ const ICONOS := {
 	"volar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg>',
 	"entrenar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="#ffc83d"/></svg>',
 	"hangar": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg>',
+	"taller": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.5-.5-.5-2.5z"/></svg>',
 	"ajustes": '<svg viewBox="0 0 24 24" fill="none" stroke="#ffc83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
 }
 
@@ -46,6 +47,7 @@ func _init(p_: Node) -> void:
 	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.ir_multi()))
 	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.ir_operaciones()))
 	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))
+	izq.add_child(_boton_menu("taller", "Taller", "Conecta el vehículo, descarga sus registros de vuelo y mira cómo varían la batería y lo demás", func(): p.ir_taller()))
 	izq.add_child(_boton_menu("perfil", "Perfil", "Tu progreso y tu sesión en el aula", func(): p.ir_perfil()))
 	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.ir_ajustes("")))
 	# derecha: el avion girando y su nombre

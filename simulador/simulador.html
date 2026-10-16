@@ -192,6 +192,26 @@
   .capa h2 { margin: 0 0 10px; font-size: 15px; color: var(--acento); text-transform: uppercase; letter-spacing: .08em; }
   .dos { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
   @media (max-width: 900px) { .dos { grid-template-columns: 1fr; } }
+  /* modo Taller (js/taller.js) */
+  .tallerGrid { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .tallerGrid { grid-template-columns: 1fr; } }
+  .tallerVeh { display: block; width: 100%; text-align: left; margin-bottom: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+               border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .tallerVeh b { display: block; font-size: 15px; } .tallerVeh span { color: var(--suave); font-size: 12px; }
+  .tallerVeh.sel { border-color: var(--acento); background: rgba(255,200,40,.12); }
+  .barraTaller { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); margin-top: 14px; overflow: hidden; }
+  .barraTaller i { display: block; height: 100%; background: var(--acento); transition: width .4s; }
+  .tablaTaller table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .tablaTaller th { text-align: left; color: var(--suave); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .tablaTaller td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .tablaTaller tr[data-i] { cursor: pointer; } .tablaTaller tr[data-i]:hover { background: rgba(255,255,255,.06); }
+  .resumenTaller { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 12px 0; }
+  .resumenTaller div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 7px 10px; }
+  .resumenTaller span { display: block; color: var(--suave); font-size: 12px; } .resumenTaller b { font-size: 15px; }
+  .graficasTaller { display: flex; gap: 12px; align-items: flex-start; } .graficasTaller > canvas { flex: 1; min-width: 0; border-radius: 8px; }
+  .graficasTaller > div { width: 260px; flex: none; } #tallerTraza { border-radius: 8px; display: block; }
+  .eventosTaller { max-height: 300px; overflow: auto; font-size: 13px; margin-top: 8px; } .eventosTaller div { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  @media (max-width: 900px) { .graficasTaller { flex-direction: column; } }
   .btn { background: rgba(255,255,255,.08); color: var(--texto); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 10px 18px; font-size: 15px;
          cursor: pointer; transition: background .12s, transform .08s; }
   .btn:hover { background: rgba(255,255,255,.14); } .btn:active { transform: translateY(1px); }
@@ -520,6 +540,7 @@
       <button class="menu-btn" id="mnMulti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg><div><b>Multijugador</b><span>Vuela con tus compañeros en la misma sala del aula: os veis unos a otros</span></div></button>
       <button class="menu-btn" id="mnOperaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><div><b>Operaciones</b><span>Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo</span></div></button>
       <button class="menu-btn" id="mnHangar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg><div><b>Hangar</b><span>Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora</span></div></button>
+      <button class="menu-btn" id="mnTaller"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.5-.5-.5-2.5z"/></svg><div><b>Taller</b><span>Conecta el vehículo, descarga sus registros de vuelo y mira cómo varían la batería y lo demás</span></div></button>
       <button class="menu-btn" id="mnPerfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><div><b>Perfil</b><span>Tu progreso y tu sesión en el aula</span></div></button>
       <button class="menu-btn" id="mnAjustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><div><b>Ajustes</b><span>Mando, gráficos, sonido, dificultad y registro de vuelos</span></div></button>
     </div>
@@ -624,6 +645,15 @@
       <div class="capa" id="fichaOperacion"></div>
       <button class="btn prim grande" id="btnOpVolar" style="width:100%;margin-top:12px">Volar →</button>
     </div>
+  </div></div>
+</div>
+
+<!-- ============ TALLER (registros de vuelo de cada vehiculo: js/taller.js) ============ -->
+<div class="pantalla" id="pTaller">
+  <div class="cabecera"><div><h1>Taller</h1><p class="sub">Conecta el vehículo y descarga sus registros de vuelo: batería, celdas, corriente, temperatura, altura y velocidad</p></div><div class="esp"></div><button class="btn" id="btnTallerVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="tallerGrid">
+    <div id="tallerLista"></div>
+    <div id="tallerCentro"></div>
   </div></div>
 </div>
 
@@ -2110,6 +2140,7 @@ document.getElementById("mnMulti").onclick = irMulti;
 const irPerfil = () => sesion.alumno ? irProgreso("pInicio") : irAcceso();
 document.getElementById("mnPerfil").onclick = irPerfil;
 document.getElementById("mnHangar").onclick = irHangar;
+document.getElementById("mnTaller").onclick = () => Taller.abrir();
 document.getElementById("mnAjustes").onclick = () => irAjustes();
 document.getElementById("inicioPerfil").onclick = irPerfil;
 
@@ -3890,5 +3921,6 @@ function bucle(ahora) {
   requestAnimationFrame(bucle);
 })();
 </script>
+<script src="js/taller.js?v=1"></script>
 </body>
 </html>

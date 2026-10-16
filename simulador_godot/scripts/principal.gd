@@ -159,6 +159,7 @@ func _ready() -> void:
 			"pEntrenamientos": ir_entrenamientos()
 			"pVolar": ir_volar()
 			"pOperaciones": ir_operaciones()
+			"pTaller": ir_taller()
 			"pAjustes": ir_ajustes(_args.get("seccion", ""))
 			"pAlumno": ir_acceso()
 			"pLanzamiento":
@@ -476,7 +477,7 @@ func _construir_ui() -> void:
 	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
 				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
 				  "pOperaciones": PantallaMisiones.Operaciones.new(self), "pMulti": PantallaMisiones.Multijugador.new(self),
-				  "pLanzamiento": PantallaLanzamiento.new(self), "pAjustes": PantallaAjustes.new(self),
+				  "pLanzamiento": PantallaLanzamiento.new(self), "pAjustes": PantallaAjustes.new(self), "pTaller": PantallaTaller.new(self),
 				  "pResultado": PantallaResultado.Resultado.new(self), "pProgreso": PantallaResultado.Progreso.new(self) }
 	for k in pantallas: pantallas[k].visible = false; raiz.add_child(pantallas[k])
 	# multijugador: quien hay en la sala (#salaInfo de la web), abajo a la derecha
@@ -572,6 +573,8 @@ func ir_inicio() -> void:
 	pantallas["pInicio"].refrescar(); mostrar("pInicio")
 func elegir_avion(id: String) -> void:
 	sesion["avion"] = id; _guardar()
+## El modo Taller (pantalla_taller.gd): los registros de vuelo de cada vehiculo.
+func ir_taller() -> void: pantallas["pTaller"].abrir()
 func ir_hangar() -> void:
 	vehiculo_permitido(); pantallas["pHangar"].refrescar(); mostrar("pHangar")
 func ir_entrenamientos() -> void:
