@@ -114,7 +114,7 @@ function iconoMision(id) {
       avion(140, 55, -70) + `<path d="M140 80 L140 100" stroke="${tr}" stroke-width="2" stroke-dasharray="4 3"/>` + fin;
     case "emergencia": return ini + `<path d="M40 25 C80 30 120 55 170 90" fill="none" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/><path d="M10 92h180" stroke="#6b4a1e" stroke-width="3"/>` +
       avion(40, 25, 20) + `<g stroke="#ff5252" stroke-width="3" stroke-linecap="round"><path d="M58 12l10 10M68 12l-10 10"/></g>` + fin;
-    case "puerta": return ini + `<rect x="70" y="20" width="6" height="70" fill="#ff8f00"/><rect x="124" y="20" width="6" height="70" fill="#ff8f00"/>` +
+    case "puerta": return ini + `<rect x="44" y="20" width="6" height="70" fill="#ff8f00"/><rect x="84" y="20" width="6" height="70" fill="#ff8f00"/><rect x="118" y="32" width="5" height="52" fill="#43a047"/><rect x="152" y="32" width="5" height="52" fill="#43a047"/>` +
       `<path d="M20 60 H180" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` + flecha(170, 60, 0) + flecha(30, 72, 180) + avion(100, 60, 0) + fin;
     case "pasada_baja": return ini + `<rect x="20" y="78" width="160" height="12" fill="#8d6e63" rx="2"/><path d="M15 60 H185" stroke="${tr}" stroke-width="2" stroke-dasharray="6 4"/>` +
       `<path d="M30 48 H60" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><text x="64" y="51" fill="#fff" font-size="9">2–8 m</text>` + avion(100, 60, 0) + flecha(175, 60, 0) + fin;

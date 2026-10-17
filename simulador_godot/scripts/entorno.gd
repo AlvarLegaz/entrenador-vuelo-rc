@@ -31,6 +31,8 @@ var zona2 := {
 	"pista": { "n": -45.0, "e0": -35.0, "e1": 35.0, "ancho": 10.0, "margen": 5.0, "hmin": 2.0, "hmax": 8.0 },
 	"diana": { "n": -45.0, "e": 0.0, "anillos": [[5.0, 100], [10.0, 50], [20.0, 20]] },
 	"puerta": { "e": 60.0, "n0": -123.0, "n1": -107.0, "color": { "nombre": "naranja", "hex": "#ef6c00" } },
+	# girada 90 grados respecto a la naranja: se cruza de norte a sur o al reves (la mision de la puerta: naranja, verde, naranja, verde)
+	"puertaVerde": { "n": -135.0, "e0": -31.0, "e1": -15.0, "color": { "nombre": "verde", "hex": "#2e7d32" } },
 	"despejado": { "n0": -150.0, "n1": -14.0, "e0": -60.0, "e1": 95.0 },
 }
 var mundo := {}             # mundo real activo ({} = la isla del campo de pilones)
@@ -215,8 +217,11 @@ static func _hypot(x: float, y: float) -> float:
 func pilones() -> Array:
 	return circuito["pilones"]
 
-## Los dos pilones de la puerta de la zona 2, (N, E).
-func pilones_puerta() -> Array:
+## Los dos pilones de una puerta de la zona 2 ("naranja" o "verde"), (N, E).
+func pilones_puerta(cual := "naranja") -> Array:
+	if cual == "verde":
+		var V: Dictionary = zona2["puertaVerde"]
+		return [[V["n"], V["e0"]], [V["n"], V["e1"]]]
 	var P: Dictionary = zona2["puerta"]
 	return [[P["n0"], P["e"]], [P["n1"], P["e"]]]
 
@@ -309,7 +314,7 @@ func choca_pilon(p: Array, semi: float) -> bool:
 	var h: float = -p[2]; var P := pilon
 	if h > P["alto"] + 0.3: return false
 	var r: float = P["r0"] + (P["r1"] - P["r0"]) * maxf(0, h) / P["alto"]
-	if _pilones_de != circuito: _pilones_de = circuito; _pilones_todos = pilones() + pilones_puerta()   # la misma lista en cada paso
+	if _pilones_de != circuito: _pilones_de = circuito; _pilones_todos = pilones() + pilones_puerta() + pilones_puerta("verde")   # la misma lista en cada paso
 	for s in _pilones_todos:
 		if _hypot(p[0] - s[0], p[1] - s[1]) < r + semi * 0.8: return true
 	return false
@@ -329,15 +334,20 @@ func orden_pilones(sentido: int) -> String:
 	if sentido < 0: n.reverse()
 	return " → ".join(n)
 
-## Cruce de la linea de la puerta entre dos pasos: {} (no cruza), {tipo: "puerta", sentido: "este" | "oeste", h},
-## {tipo: "alta", h} (por encima de los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon).
-func cruza_puerta(p_ant: Array, p: Array) -> Dictionary:
-	var P: Dictionary = zona2["puerta"]; var a: float = p_ant[1] - P["e"]; var b: float = p[1] - P["e"]
+## Cruce de la linea de una puerta ("naranja": de este a oeste o al reves; "verde": de norte a sur o al reves) entre dos
+## pasos: {} (no cruza), {tipo: "puerta", sentido: "este" | "oeste" | "norte" | "sur", h}, {tipo: "alta", h} (por encima de
+## los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon).
+func cruza_puerta(p_ant: Array, p: Array, cual := "naranja") -> Dictionary:
+	var V := cual == "verde"; var P: Dictionary = zona2["puertaVerde"] if V else zona2["puerta"]
+	var k := 0 if V else 1; var j := 1 - k                     # k: el eje que se cruza
+	var c: float = P["n"] if V else P["e"]; var lo: float = P["e0"] if V else P["n0"]; var hi: float = P["e1"] if V else P["n1"]
+	var a: float = p_ant[k] - c; var b: float = p[k] - c
 	if (a < 0) == (b < 0): return {}
-	var t := a / (a - b); var n: float = p_ant[0] + t * (p[0] - p_ant[0]); var h: float = -(p_ant[2] + t * (p[2] - p_ant[2]))
-	if n > P["n0"] and n < P["n1"]:
-		return { "tipo": "puerta", "sentido": "este" if b > a else "oeste", "h": h } if h < pilon["alto"] else { "tipo": "alta", "h": h }
-	if n > P["n0"] - 30 and n < P["n1"] + 30 and h < 40: return { "tipo": "fuera" }
+	var t := a / (a - b); var x: float = p_ant[j] + t * (p[j] - p_ant[j]); var h: float = -(p_ant[2] + t * (p[2] - p_ant[2]))
+	var sentido := ("norte" if b > a else "sur") if V else ("este" if b > a else "oeste")
+	if x > lo and x < hi:
+		return { "tipo": "puerta", "sentido": sentido, "h": h } if h < pilon["alto"] else { "tipo": "alta", "h": h }
+	if x > lo - 30 and x < hi + 30 and h < 40: return { "tipo": "fuera" }
 	return {}
 
 ## Pasadas bajas por la pista 2: un objeto por vuelo, con actualizar(p) en cada paso.

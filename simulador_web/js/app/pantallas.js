@@ -128,7 +128,7 @@ function irEntrenamientos() {
   for (const id of lista) {
     const E = ESCENARIOS[id];
     if (E.titulo_grupo) { const t = document.createElement("div"); t.className = "zonaTitulo"; t.textContent = E.titulo_grupo; el.appendChild(t); }
-    const st = g && g.escenarios[id], dif = E.dificultad || 1;
+    const st = g && ((g.entrenamientos || {})[id] || g.escenarios[id]), dif = E.dificultad || 1;     // cuente o no para el certificado
     const d = document.createElement("div"); d.className = "mision" + (id === misionSel ? " sel" : "");
     d.innerHTML = `<div class="img">${iconoMision(id)}</div><div class="txt"><h3>${esc(E.nombre.replace(/^\d · /, ""))}${st && st.superado ? ' <span class="hecha" title="superado">✔</span>' : ""}</h3>
       <p>${esc(E.desc)}</p><div class="meta"><span class="estrellas">${"★".repeat(dif)}${"☆".repeat(3 - dif)}</span>${st && st.intentos ? `<span>· ${st.intentos} intento${st.intentos > 1 ? "s" : ""}</span>` : ""}</div></div>`;

@@ -113,6 +113,14 @@ def main():
     for _ in range(300):
         n, e, h = rnd.uniform(-170, -60), rnd.uniform(40, 80), rnd.uniform(0, 50)
         puerta.append([[n, e, -h], [n + rnd.uniform(-3, 3), e + rnd.uniform(-12, 12), -(h + rnd.uniform(-2, 2))]])
+    # la puerta verde (girada: se cruza de norte a sur en N = -135, entre E -31 y -15)
+    puerta_verde = [[[-125, -23, -10], [-145, -23, -10]], [[-145, -20, -5], [-125, -22, -6]], [[-125, -23, -25], [-145, -23, -25]],
+                    [[-125, -40, -10], [-145, -40, -10]], [[-125, 20, -10], [-145, 20, -10]], [[-125, -23, -50], [-145, -23, -50]],
+                    [[-134, -23, -10], [-135, -23, -10]], [[-135, -23, -10], [-136, -23, -10]], [[-130, -23, -10], [-133, -23, -10]],
+                    [[-115, 50, -10], [-115, 70, -10]]]
+    for _ in range(300):
+        n, e, h = rnd.uniform(-150, -120), rnd.uniform(-70, 30), rnd.uniform(0, 50)
+        puerta_verde.append([[n, e, -h], [n + rnd.uniform(-12, 12), e + rnd.uniform(-3, 3), -(h + rnd.uniform(-2, 2))]])
     diana = [[-45, 0], [-45, 5], [-45, 5.0001], [-35, 0], [-45, 20], [-45, 21]] + [[rnd.uniform(-80, -10), rnd.uniform(-30, 30)] for _ in range(300)]
     en_pista = [[10, 0, None], [5, 8, None], [4.9, 0, None], [85, 0, None], [85.1, 0, None], [40, 8.1, None], [40, 8, 3], [40, 6, 0]]
     en_pista += [[rnd.uniform(-20, 100), rnd.uniform(-15, 15), rnd.choice([None, 0, 1.5, 5])] for _ in range(400)]
@@ -127,7 +135,7 @@ def main():
              "th": [rnd.uniform(-4, 8) for _ in range(200)],
              "en": [[rnd.uniform(-1800, 1800), rnd.uniform(-1800, 1800)] for _ in range(300)] + [[-109.9, 3], [-110.1, 3], [-600, 10]],
              "n": [rnd.uniform(-1700, 1700) for _ in range(200)]}
-    entrada = {"decor": decor, "contacto": contacto, "circuito": trayectoria_circuito(), "pasadas": pasadas(), "puerta": puerta,
+    entrada = {"decor": decor, "contacto": contacto, "circuito": trayectoria_circuito(), "pasadas": pasadas(), "puerta": puerta, "puerta_verde": puerta_verde,
                "diana": diana, "en_pista": en_pista, "choca": choca, "fuera": fuera}
 
     js = """(d) => {
@@ -160,6 +168,7 @@ def main():
       d.pasadas.forEach((p, k) => { const e = pb.actualizar(p); if (e) pas.push({ k, e }); });
       r.pasadas = { resultados: pas, validas: pb.validas };
       r.puerta = d.puerta.map(([a, b]) => ent.cruzaPuerta(a, b));
+      r.puerta_verde = d.puerta_verde.map(([a, b]) => ent.cruzaPuerta(a, b, "verde"));
       r.diana = d.diana.map(([n, e]) => ent.diana(n, e));
       r.en_pista = d.en_pista.map(([n, e, m]) => m === null ? ent.enPista(n, e) : ent.enPista(n, e, m));
       r.choca = d.choca.map(([p, s]) => ent.chocaPilon(p, s));

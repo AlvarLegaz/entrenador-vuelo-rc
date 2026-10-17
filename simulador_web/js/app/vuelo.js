@@ -211,7 +211,8 @@ function paso(dt) {
     if (finC) { terminarVuelo(finC, vn); return; }
   }
   if (entorno.fueraDeLimites(av.p)) { terminarVuelo("fuera de límites", vn); return; }
-  const su = ev && ev.zona === 1 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
+  // vueltas al circuito de pilones (no en la orientacion: sus avisos se solapaban con los de los ochos)
+  const su = ev && ev.zona === 1 && !ev.obj.ocho1 ? ev.contador.actualizar(pAnt, av.p, av.t) : null;
   if (ev && ev.zona <= 2 && !ev.fpv) zona2(pAnt);
   if (su) {
     const nom = entorno.circuito.colores[su.i].nombre, sen = ESCENARIOS[sesion.escenario].sentido;
@@ -283,13 +284,19 @@ function pasoJuegoBip(dt) {
 }
 /** Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso. */
 function zona2(pAnt) {
-  const pu = entorno.cruzaPuerta(pAnt, av.p);
-  if (pu) {
-    if (pu.tipo === "puerta") {
-      ev.puertas++;
-      if (ev.obj.puertaR && ev.obj.pasada && ev.obj.pasada.estado === "ok") marcar("puertaR", "ok");
-      toast(`¡Puerta ${ev.puertas}!  (hacia el ${pu.sentido}, a ${pu.h.toFixed(0)} m)`);
-    } else toast(pu.tipo === "alta" ? `Por encima de la puerta (${pu.h.toFixed(0)} m): no cuenta` : "Por fuera de la puerta: no cuenta");
+  for (const cual of ["naranja", "verde"]) {
+    const pu = entorno.cruzaPuerta(pAnt, av.p, cual);
+    if (!pu) continue;
+    if (pu.tipo !== "puerta") { toast(pu.tipo === "alta" ? `Por encima de la puerta ${cual} (${pu.h.toFixed(0)} m): no cuenta` : `Por fuera de la puerta ${cual}: no cuenta`); continue; }
+    ev.puertas++;
+    if (cual === "naranja" && ev.obj.puertaR && ev.obj.pasada && ev.obj.pasada.estado === "ok") marcar("puertaR", "ok");
+    if (ev.obj.puerta1) {          // la mision de la puerta: naranja, verde, naranja, verde, en ese orden
+      const toca = PUERTAS_ORDEN[ev.pasoPuerta];
+      if (cual !== toca) { toast(toca ? `Esa es la ${cual}: ahora toca la ${toca}` : `Puerta ${cual}: ya están todas, a aterrizar`); continue; }
+      ev.pasoPuerta++; marcar("puerta" + ev.pasoPuerta, "ok");
+      const sig = PUERTAS_ORDEN[ev.pasoPuerta];
+      toast(`¡Puerta ${cual}! ${ev.pasoPuerta}/${PUERTAS_ORDEN.length} (a ${pu.h.toFixed(0)} m) · ` + (sig ? `ahora la ${sig}` : "ahora, a aterrizar"));
+    } else toast(`¡Puerta ${cual}!  (hacia el ${pu.sentido}, a ${pu.h.toFixed(0)} m)`);
   }
   if (!ev.subido) return;          // el lanzamiento cruza la pista 2: las pasadas cuentan despues de subir
   const pb = ev.pasada.actualizar(av.p);

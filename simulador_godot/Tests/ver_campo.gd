@@ -1,7 +1,7 @@
 extends SceneTree
 ## Comprobacion visual de la isla del campo de vuelo (Campo3D): la construye, espera a que el suelo este pintado y guarda
 ## capturas desde el puesto del piloto (camara 1 del navegador: base + (1,5; 1,7; 2), campo de vision de 50 grados sin
-## zoom) mirando al norte (circuito) y al sur (zona 2), y una vista alta. Para compararlas con las del navegador
+## zoom) mirando al norte (circuito) y al sur (zona 2), una vista alta y otra de cerca de los almendros (sus sombras). Para compararlas con las del navegador
 ## (simulador_web/Tests/captura_campo_web.py hace las mismas). Necesita GPU (no --headless):
 ##   herramientas/godot/Godot_v4.7.2-stable_win64_console.exe --path simulador_godot --script res://Tests/ver_campo.gd -- --salida=C:/ruta/carpeta [--calidad=2]
 
@@ -9,6 +9,7 @@ const VISTAS := {
 	"norte": [Vector3(1.5, 1.7, 2), Vector3(1.5, 1.7, -998)],
 	"sur": [Vector3(1.5, 1.7, 2), Vector3(1.5, 1.7, 1002)],
 	"alto": [Vector3(-60, 140, 260), Vector3(0, 0, -80)],
+	"almendros": [Vector3(60, 9, -150), Vector3(20, 0, -100)],
 }
 
 func _init() -> void:

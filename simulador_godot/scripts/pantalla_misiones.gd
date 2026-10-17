@@ -21,7 +21,7 @@ static func icono(id: String) -> String:
 			avion.call(140, 55, -70) + '<path d="M140 80 L140 100" stroke="%s" stroke-width="2" stroke-dasharray="4 3"/>' % tr + fin
 		"emergencia": return ini + '<path d="M40 25 C80 30 120 55 170 90" fill="none" stroke="%s" stroke-width="2" stroke-dasharray="6 4"/><path d="M10 92h180" stroke="#6b4a1e" stroke-width="3"/>' % tr + \
 			avion.call(40, 25, 20) + '<g stroke="#ff5252" stroke-width="3" stroke-linecap="round"><path d="M58 12l10 10M68 12l-10 10"/></g>' + fin
-		"puerta": return ini + '<rect x="70" y="20" width="6" height="70" fill="#ff8f00"/><rect x="124" y="20" width="6" height="70" fill="#ff8f00"/>' + \
+		"puerta": return ini + '<rect x="44" y="20" width="6" height="70" fill="#ff8f00"/><rect x="84" y="20" width="6" height="70" fill="#ff8f00"/><rect x="118" y="32" width="5" height="52" fill="#43a047"/><rect x="152" y="32" width="5" height="52" fill="#43a047"/>' + \
 			'<path d="M20 60 H180" stroke="%s" stroke-width="2" stroke-dasharray="6 4"/>' % tr + flecha.call(170, 60, 0) + flecha.call(30, 72, 180) + avion.call(100, 60, 0) + fin
 		"pasada_baja": return ini + '<rect x="20" y="78" width="160" height="12" fill="#8d6e63" rx="2"/><path d="M15 60 H185" stroke="%s" stroke-width="2" stroke-dasharray="6 4"/>' % tr + \
 			'<path d="M30 48 H60" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><text x="64" y="51" fill="#fff" font-size="9">2–8 m</text>' + avion.call(100, 60, 0) + flecha.call(175, 60, 0) + fin
@@ -166,7 +166,7 @@ class Entrenamientos extends Control:
 					var fv := FontVariation.new(); fv.base_font = Tema.negrita; fv.spacing_glyph = 1; t.add_theme_font_override("font", fv)
 					lista.add_child(Tema.margen(t, 0, 10 if lista.get_child_count() else 0, 0, 2))
 				rejilla = Tema.rejilla(230, 12); lista.add_child(rejilla)
-			var st = g["escenarios"].get(id) if g != null else null
+			var st = (g.get("entrenamientos", {}).get(id, g["escenarios"].get(id)) if g != null else null)     # cuente o no para el certificado
 			rejilla.add_child(_tarjeta(id, M, st))
 		var M: Dictionary = E[sel]
 		var bb := "[font_size=20][b]%s[/b][/font_size]\n[color=#9fb3c8]%s[/color]\n" % [M["nombre"], M["desc"]]

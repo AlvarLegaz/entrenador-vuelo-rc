@@ -109,6 +109,9 @@ def pruebas(sa):
     for e in K["ala"]: L, rb = vuelo("E3", e, 5)
     ok("todos los entrenamientos del avion, pero sin 2 h: ala fija aun no", not L["ala_fija"]["ok"] and L["ala_fija"]["hechas"] == len(K["ala"]), "%.2f h" % L["ala_fija"]["horas"])
     ok("y primer_vuelo superado con el avion no cuenta para el dron", L["dron"]["hechas"] == 0, str(L["dron"]["hechas"]))
+    c, a = pedir("GET", "/api/alumnos/" + aid); G = a["progreso"]
+    ok("el APTO de un entrenamiento que no es del certificado (la puerta de la zona 2) sale en su tarjeta, sin contar para el certificado",
+       G["entrenamientos"].get("puerta") == {"superado": True, "intentos": 1} and "puerta" not in G["escenarios"], str(G["entrenamientos"].get("puerta")))
     L, rb = vuelo("XM7", "libre", 120 - 5 * len(K["ala"]) - 1)
     ok("con 1 min menos de 2 h, todavia no", not L["ala_fija"]["ok"], "%.3f h" % L["ala_fija"]["horas"])
     L, rb = vuelo("XM7", "libre", 1)

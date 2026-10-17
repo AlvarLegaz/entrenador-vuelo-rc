@@ -104,6 +104,12 @@ func _init() -> void:
 			if dist <= 3: print("    puerta %d: Godot %s, navegador %s" % [k, ent.cruza_puerta(d["puerta"][k][0], d["puerta"][k][1]), js["puerta"][k]])
 	_linea("cruza_puerta", dist, d["puerta"].size())
 	dist = 0
+	for k in d["puerta_verde"].size():
+		if not _igual(ent.cruza_puerta(d["puerta_verde"][k][0], d["puerta_verde"][k][1], "verde"), js["puerta_verde"][k]):
+			dist += 1
+			if dist <= 3: print("    puerta verde %d: Godot %s, navegador %s" % [k, ent.cruza_puerta(d["puerta_verde"][k][0], d["puerta_verde"][k][1], "verde"), js["puerta_verde"][k]])
+	_linea("cruza_puerta (verde)", dist, d["puerta_verde"].size())
+	dist = 0
 	for k in d["diana"].size():
 		if not _igual(ent.diana(d["diana"][k][0], d["diana"][k][1]), js["diana"][k]): dist += 1
 	_linea("diana", dist, d["diana"].size())

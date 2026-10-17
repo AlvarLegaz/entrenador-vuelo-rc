@@ -25,9 +25,9 @@ func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
 		p.ent.poner_zonas(zs); p.mundo3d.poner_zonas(zs); p.mundo3d.poner_base(c["N"], c["E"])
 		await p.app_pantallas.mostrar_carga(titulo, "Listo", 1.0)
 	else:
-		if p.campo3d != null and p.campo3d.calidad != cal: p.campo3d.queue_free(); p.campo3d = null; await p.get_tree().process_frame
+		if p.campo3d != null and (p.campo3d.calidad != cal or p.campo3d.minimo != p.app_avion_ajustes.minimo()): p.campo3d.queue_free(); p.campo3d = null; await p.get_tree().process_frame
 		if p.campo3d == null:
-			p.campo3d = Campo3D.new(); p.campo3d.calidad = cal; p.add_child(p.campo3d); p.campo3d.construir(p.ent)
+			p.campo3d = Campo3D.new(); p.campo3d.calidad = cal; p.campo3d.minimo = p.app_avion_ajustes.minimo(); p.add_child(p.campo3d); p.campo3d.construir(p.ent)
 		_poner_vista(p.campo3d)
 	if p.campo3d != null: p.campo3d.poner_pista_fpv({} if es_m else Escenarios.datos()[p.sesion["escenario"]].get("pista_fpv", {}))
 
@@ -283,7 +283,8 @@ func paso(dt: float) -> void:
 		var fin_c: String = p.ev.op.acabada(p.av["t"])
 		if fin_c != "": terminar_vuelo(fin_c, vn); return
 	if p.ent.fuera_de_limites(p.av["p"]): terminar_vuelo("fuera de límites", vn); return
-	var su = p.ev.contador.actualizar(p_ant, p.av["p"], p.av["t"]) if (p.ev.zona == 1 and p.ev.contador != null) else {}
+	# vueltas al circuito de pilones (no en la orientacion: sus avisos se solapaban con los de los ochos)
+	var su = p.ev.contador.actualizar(p_ant, p.av["p"], p.av["t"]) if (p.ev.zona == 1 and p.ev.contador != null and not p.ev.obj.has("ocho1")) else {}
 	if p.ev.zona <= 2 and not E.has("mundo") and p.ev.fpv == null: _zona2(p_ant)
 	if su != null and not (su as Dictionary).is_empty():
 		var nom: String = p.ent.circuito["colores"][su["i"]]["nombre"]; var sen := int(E.get("sentido", 0))
@@ -447,13 +448,24 @@ func _paso_balas_otros(dt: float) -> void:
 
 ## Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso.
 func _zona2(p_ant: Array) -> void:
-	var pu: Dictionary = p.ent.cruza_puerta(p_ant, p.av["p"])
-	if not pu.is_empty():
-		if pu["tipo"] == "puerta":
-			p.ev.puertas += 1
-			if p.ev.obj.has("puertaR") and p.ev.obj.has("pasada") and p.ev.obj["pasada"]["estado"] == "ok": p.ev.marcar("puertaR", "ok")
-			p.poner_toast("¡Puerta %d!  (hacia el %s, a %d m)" % [p.ev.puertas, pu["sentido"], int(round(pu["h"]))])
-		else: p.poner_toast(("Por encima de la puerta (%d m): no cuenta" % int(round(pu["h"]))) if pu["tipo"] == "alta" else "Por fuera de la puerta: no cuenta")
+	var orden: Array = Escenarios.PUERTAS_ORDEN
+	for cual in ["naranja", "verde"]:
+		var pu: Dictionary = p.ent.cruza_puerta(p_ant, p.av["p"], cual)
+		if pu.is_empty(): continue
+		if pu["tipo"] != "puerta":
+			p.poner_toast(("Por encima de la puerta %s (%d m): no cuenta" % [cual, int(round(pu["h"]))]) if pu["tipo"] == "alta" else "Por fuera de la puerta %s: no cuenta" % cual)
+			continue
+		p.ev.puertas += 1
+		if cual == "naranja" and p.ev.obj.has("puertaR") and p.ev.obj.has("pasada") and p.ev.obj["pasada"]["estado"] == "ok": p.ev.marcar("puertaR", "ok")
+		if p.ev.obj.has("puerta1"):          # la mision de la puerta: naranja, verde, naranja, verde, en ese orden
+			var toca: String = orden[p.ev.paso_puerta] if p.ev.paso_puerta < orden.size() else ""
+			if cual != toca:
+				p.poner_toast(("Esa es la %s: ahora toca la %s" % [cual, toca]) if toca != "" else "Puerta %s: ya están todas, a aterrizar" % cual)
+				continue
+			p.ev.paso_puerta += 1; p.ev.marcar("puerta" + str(p.ev.paso_puerta), "ok")
+			var sig := ("ahora la " + String(orden[p.ev.paso_puerta])) if p.ev.paso_puerta < orden.size() else "ahora, a aterrizar"
+			p.poner_toast("¡Puerta %s! %d/%d (a %d m) · %s" % [cual, p.ev.paso_puerta, orden.size(), int(round(pu["h"])), sig])
+		else: p.poner_toast("¡Puerta %s!  (hacia el %s, a %d m)" % [cual, pu["sentido"], int(round(pu["h"]))])
 	if not p.ev.subido or p.ev.pasada == null: return          # el lanzamiento cruza la pista 2: las pasadas cuentan despues de subir
 	var pb: Dictionary = p.ev.pasada.actualizar(p.av["p"])
 	if not pb.is_empty():

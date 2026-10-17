@@ -26,7 +26,8 @@ var lejanos := []                  # celdas de almendros lejanas: solo con calid
 var prescindibles := []            # nubes y matas: no con calidad 0
 var listo := false                 # true cuando el suelo ya esta pintado
 var _trafico := {}
-var _mat_cerca: StandardMaterial3D
+var minimo := false                # rendimiento maximo (Visor.minimo): suelo sin grano y copas lisas (se fija antes de construir)
+var _mat_cerca: Material           # con grano (ShaderMaterial) salvo con el rendimiento maximo
 var _mat_lejos: StandardMaterial3D
 var _arboles := []                 # almendros [E, N, s] (los devuelve el pintado del suelo, como en el navegador)
 
@@ -125,6 +126,10 @@ static func hsl(h: float, s: float, l: float) -> Color:
 		return q
 	return Color(f.call(h + 1.0 / 3), f.call(h), f.call(h - 1.0 / 3))
 
+## Color HSL de una copa del campo (colorCampo de visor.js): c = [[tono, var], [sat, var], [luz, var]] y a, b, d en [0, 1].
+static func color_campo(c: Array, a: float, b: float, d: float) -> Color:
+	return hsl(c[0][0] + c[0][1] * a, c[1][0] + c[1][1] * b, c[2][0] + c[2][1] * d)
+
 ## Color de un hex de Three (sRGB) en lineal, como THREE.Color.setHex.
 static func lin(c: int) -> Color:
 	return Color.hex((c << 8) | 0xff).srgb_to_linear()
@@ -143,8 +148,15 @@ const CAMPO := {
 		{ "c": [-150, -1100], "l": 500, "a": 700, "giro": 0, "paso": 40, "tono": 2 },
 		{ "c": [700, 800], "l": 600, "a": 600, "giro": 35, "paso": 48, "tono": 3 },
 	],
-	"tonos": [["#b3673f", "#a85d38", "#c07a52", "#9c5431"], ["#a65c38", "#9a5230", "#b56b45", "#8f4a2b"],
-			  ["#bf7a55", "#b26c47", "#c98a66", "#a8633f"], ["#c8906a", "#bb8260", "#d19d78", "#b07655"]],
+	# tierra rojiza del Campo de Cartagena: parda y apagada (con la luz del sol y el ACES, un rojo vivo parecia Marte)
+	"tonos": [["#9c6e52", "#94664b", "#a77a5d", "#8c6046"], ["#93664b", "#8a5e45", "#9f7055", "#82593f"],
+			  ["#a57a5d", "#9b7054", "#ae8568", "#94694e"], ["#ae8a6d", "#a48064", "#b79579", "#9a785d"]],
+	"tierra": "#9c6e52",
+	# copas y matas: [tono, saturacion, luz] como [base, variacion] (HSL de Three); almendro, pino y algarrobo, los
+	# COLOR_ESPECIE del mundo real, con el mismo tinte y luz ambiente que alli en el navegador
+	"colores": { "almendro": [[0.24, 0.03], [0.12, 0.05], [0.36, 0.06]], "pino": [[0.3, 0.03], [0.28, 0.06], [0.17, 0.04]],
+				 "algarrobo": [[0.24, 0.03], [0.3, 0.06], [0.21, 0.05]], "monte": [[0.16, 0.05], [0.14, 0.06], [0.38, 0.08]],
+				 "rambla": [[0.23, 0.05], [0.28, 0.12], [0.3, 0.08]] },
 	"pistas": [[[0, -6], [-9, 15], [-10, 120], [-4, 200], [20, 262], [60, 330], [150, 470], [330, 770]],   # al cortijo y a la autopista
 			   [[0, -6], [6, -40], [-20, -150], [-60, -300], [-70, -620]],
 			   [[-9, 100], [-130, 112]], [[-4, 190], [-210, 232]], [[10, -20], [200, -25], [372, -20]]],
@@ -234,14 +246,14 @@ static func _rgba(r: int, g: int, b: int, a: float) -> Color:
 ## Fondo de un lienzo (depende de su extension): tierra y el pie del cerro con el monte bajo en tres franjas.
 static func trazos_fondo(E0: float, N1: float, ancho: float, alto: float) -> Trazos:
 	var T := Trazos.new()
-	T.rect(E0, N1 - alto, ancho, alto, _c("#b3673f"))
+	T.rect(E0, N1 - alto, ancho, alto, _c(CAMPO["tierra"]))
 	for fr in [[0.0, 1.0], [22.0, 0.5], [45.0, 0.25]]:     # el monte entra en el campo en tres franjas cada vez mas tenues
 		var P := PackedVector2Array([Vector2(E0 - 10, N1 + 10)])
 		var N := N1 + 10
 		while N >= N1 - alto - 10:
 			P.append(Vector2(borde_monte(N) + fr[0], N)); N -= 20
 		P.append(Vector2(E0 - 10, N1 - alto - 10))
-		T.poligono(P, _rgba(179, 171, 145, fr[1]))
+		T.poligono(P, _rgba(152, 140, 112, fr[1]))
 	return T
 
 ## El resto de pintarCampo (igual en los dos lienzos): matas, bancales con sus almendros (que se anaden a arboles:
@@ -252,7 +264,7 @@ static func trazos_campo(z2: Dictionary, arboles: Array) -> Array:
 		var E := -1600 + r.r() * 1620; var N := -1600 + r.r() * 3200; var d := E - borde_monte(N)
 		if d > 0 and r.r() < d / 80: continue
 		var mata := r.r() < 0.7
-		var col := (_c("#5b6a3c") if r.r() < 0.5 else _c("#6f7a48")) if mata else _c("#c2bba5")
+		var col := (_c("#4f5a36") if r.r() < 0.5 else _c("#626a42")) if mata else _c("#b4ab95")
 		var rx := 1 + r.r() * 2.2 if mata else 0.6 + r.r() * 1.5
 		var ry := 1 + r.r() * 1.8 if mata else 0.5 + r.r()
 		T.elipse(E, N, rx, ry, 0, col)
@@ -277,12 +289,12 @@ static func trazos_campo(z2: Dictionary, arboles: Array) -> Array:
 		var v := -l / 2
 		while v < l / 2:
 			T.rect(-a / 2, v, a, minf(paso, l / 2 - v), _c(pal[int(floor(r.r() * pal.size()))]))
-			T.rect(-a / 2, v, a, 1.2, _rgba(110, 58, 34, 0.55))          # sombra del muro
-			T.rect(-a / 2, v + 1.2, a, 1.4, _rgba(226, 190, 150, 0.85))  # muro de piedra seca
+			T.rect(-a / 2, v, a, 1.2, _rgba(92, 66, 48, 0.5))            # sombra del muro
+			T.rect(-a / 2, v + 1.2, a, 1.4, _rgba(196, 180, 156, 0.8))   # muro de piedra seca
 			v += paso
 		var u := -a / 2
 		while u < a / 2:                                                   # surcos
-			T.linea(PackedVector2Array([Vector2(u, -l / 2), Vector2(u, l / 2)]), 0.45, _rgba(120, 60, 35, 0.28), false, false)
+			T.linea(PackedVector2Array([Vector2(u, -l / 2), Vector2(u, l / 2)]), 0.45, _rgba(96, 68, 50, 0.28), false, false)
 			u += 1.25
 		T.xf = Transform2D.IDENTITY
 		v = -l / 2 + 4
@@ -297,8 +309,11 @@ static func trazos_campo(z2: Dictionary, arboles: Array) -> Array:
 				if excluido.call(E, N): continue
 				var s := 0.75 + r.r() * 0.5
 				if arboles != null: arboles.append([E, N, s])
-				T.elipse(E + 1.4 * s, N - 1.1 * s, 1.9 * s, 1.3 * s, 0, _rgba(70, 38, 22, 0.55))
-				T.elipse(E, N, 1.55 * s, 1.55 * s, 0, _c("#4f6a2d") if s > 1.05 else _c("#5d7a36"))
+				if Vector2(E, N - 110).length() < 500:     # donde hay almendros en 3D: solo la tierra mas oscura bajo la copa (la sombra la da el sol)
+					T.elipse(E, N, 1.5 * s, 1.5 * s, 0, _rgba(70, 50, 36, 0.32))
+				else:                                       # mas lejos, la copa vista desde arriba y su sombra (al noreste: el sol esta al suroeste)
+					T.elipse(E + 1.4 * s, N + 1.1 * s, 1.9 * s, 1.3 * s, 0, _rgba(60, 44, 32, 0.5))
+					T.elipse(E, N, 1.55 * s, 1.55 * s, 0, _c("#56633f") if s > 1.05 else _c("#626f48"))
 			v += 7.5
 	# rambla: vegetacion de las orillas, cauce de arena y el canal
 	var cauce := PackedVector2Array()
@@ -315,7 +330,7 @@ static func trazos_campo(z2: Dictionary, arboles: Array) -> Array:
 	# pistas de tierra
 	for p in pistas:
 		var P := PackedVector2Array(); for q in p: P.append(Vector2(q[0], q[1]))
-		T.linea(P, 4.2, _c("#dcc9a8"))
+		T.linea(P, 4.2, _c("#c9b393"))
 	for p in pistas:
 		var P := PackedVector2Array(); for q in p: P.append(Vector2(q[0], q[1]))
 		T.linea(P, 0.9, _rgba(170, 140, 105, 0.55))
@@ -353,6 +368,9 @@ static func trazos_campo(z2: Dictionary, arboles: Array) -> Array:
 	var Np: float = Pu["n0"] + 2
 	while Np < Pu["n1"] - 1.5:
 		T.rect(Pu["e"] - 0.2, Np, 0.4, 1.4, cal2); Np += 2.4                                          # linea de la puerta
+	var Pv: Dictionary = z2["puertaVerde"]; var Ev: float = Pv["e0"] + 2
+	while Ev < Pv["e1"] - 1.5:
+		T.rect(Ev, Pv["n"] - 0.2, 1.4, 0.4, cal2); Ev += 2.4                                          # y la de la verde
 	# la costa (solo en la textura lejana): agua somera, playa y espuma
 	var K := Trazos.new()
 	K.linea(poligono_costa(35), 70, _c("#4f9fb8"), true); K.linea(poligono_costa(-42), 84, _c("#e3d5b2"), true)
@@ -417,8 +435,9 @@ func _pintar_suelos(cuerpo: Array, costa_: Array, fondo_cerca: Trazos, fondo_lej
 	for i in 2:
 		var img: Image = imgs[i]; img.convert(Image.FORMAT_RGB8); img.generate_mipmaps()
 		img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_SRGB)      # 8 veces menos memoria de video
-		var mat := _mat_cerca if i == 0 else _mat_lejos
-		mat.albedo_texture = ImageTexture.create_from_image(img); mat.albedo_color = Color.WHITE
+		var mat: Material = _mat_cerca if i == 0 else _mat_lejos; var t_suelo := ImageTexture.create_from_image(img)
+		if mat is ShaderMaterial: (mat as ShaderMaterial).set_shader_parameter("tex", t_suelo)
+		else: (mat as StandardMaterial3D).albedo_texture = t_suelo; (mat as StandardMaterial3D).albedo_color = Color.WHITE
 	listo = true
 	suelo_listo.emit()
 
@@ -493,6 +512,75 @@ static func icosaedro(radio: float, detalle: int) -> ArrayMesh:
 		else: nor.append_array([a.normalized(), c.normalized(), b.normalized()])
 	return _malla(pos, nor, PackedInt32Array())
 
+## Suelo del campo con el grano fino y el relieve del suelo del mundo real (conGrano de visor.js con campo = true: las
+## piedras del grano no levantan relieve, que con la tierra clara salian motas oscuras de un pixel). La textura pintada o,
+## con color_vertices, el color de los vertices (el cerro). Difuso Lambert sin brillo, como lambert().
+const SHADER_SUELO_CAMPO := """
+shader_type spatial;
+render_mode diffuse_lambert, specular_disabled;
+uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform sampler2D grano : filter_linear_mipmap, repeat_enable;
+uniform bool color_vertices = false;
+varying vec3 pm;
+vec3 sueloSinSombra(vec3 c) {
+  float lum = dot(c, vec3(0.3, 0.59, 0.11));
+  float m = (1.0 - smoothstep(0.16, 0.3, lum)) * smoothstep(-0.01, 0.05, c.b - c.r);
+  return mix(c, c * 1.55 + 0.03, m * 0.55);
+}
+float sueloGrano(vec3 c, float g1, float g2, out float alto) {
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float gris = 1.0 - smoothstep(0.04, 0.12, mx - mn), veg = smoothstep(0.0, 0.04, c.g - max(c.r, c.b) * 0.98);
+  float A = mix(mix(0.32, 0.12, gris), 0.42, veg), g = g1 * 0.55 + g2 * 0.45;
+  float piedra = smoothstep(0.74, 0.8, g2) * (1.0 - gris) * (1.0 - veg);
+  alto = (g - 0.5) * mix(0.06, 0.015, gris) + piedra * 0.0;
+  return (1.0 + A * (2.0 * g - 1.0)) * (1.0 + 0.25 * piedra);
+}
+vec3 sueloRelieve(vec3 N, vec3 pv, float h) {
+  vec3 dpx = dFdx(pv), dpy = dFdy(pv); float dhx = dFdx(h), dhy = dFdy(h);
+  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);
+  return normalize(abs(det) * N - sign(det) * (dhx * r1 + dhy * r2));
+}
+void vertex() { pm = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	vec3 c = sueloSinSombra(color_vertices ? COLOR.rgb : texture(tex, UV).rgb);
+	float cerca = 1.0 - smoothstep(20.0, 160.0, length(VERTEX)), alto;
+	float k = sueloGrano(c, texture(grano, pm.xz / 3.7).r, texture(grano, pm.xz / 0.83).r, alto);
+	ALBEDO = c * mix(1.0, k, cerca); ROUGHNESS = 1.0;
+	NORMAL = sueloRelieve(NORMAL, VERTEX, alto * cerca);
+}
+"""
+static var _sh_suelo: Shader
+static var _grano_campo: NoiseTexture2D
+
+## Material del suelo con grano (tex: la textura pintada; null con color_vertices).
+static func suelo_grano(tex: Texture2D, color_vertices := false) -> ShaderMaterial:
+	if _sh_suelo == null: _sh_suelo = Shader.new(); _sh_suelo.code = SHADER_SUELO_CAMPO
+	if _grano_campo == null:          # el grano del mundo real (Mundo3D._mat_suelo; texturaGrano en el navegador)
+		_grano_campo = NoiseTexture2D.new(); _grano_campo.width = 512; _grano_campo.height = 512; _grano_campo.seamless = true; _grano_campo.generate_mipmaps = true
+		var fn := FastNoiseLite.new(); fn.frequency = 0.05; fn.fractal_octaves = 5; fn.seed = 3; _grano_campo.noise = fn
+	var m := ShaderMaterial.new(); m.shader = _sh_suelo; m.set_shader_parameter("grano", _grano_campo)
+	m.set_shader_parameter("color_vertices", color_vertices)
+	if tex != null: m.set_shader_parameter("tex", tex)
+	return m
+
+## Material de las copas del campo: el de las copas del mundo real (Mundo3D.SHADER_ARBOL: silueta irregular, racimos de
+## hojas, sombra interior, contraluz y brisa) con el tinte y la luz ambiente de crearMaterialCopas del navegador. Con el
+## rendimiento maximo, copas lisas del color de cada instancia por el tinte.
+func _mat_copas() -> Material:
+	var tinte := Color(0.34, 0.37, 0.29)
+	if minimo:
+		var ms := lambert(Color.WHITE, null, true); ms.albedo_color = tinte
+		return ms
+	var sh := Shader.new(); sh.code = Mundo3D.SHADER_ARBOL
+	var m := ShaderMaterial.new(); m.shader = sh
+	m.set_shader_parameter("tinte", Vector3(tinte.r, tinte.g, tinte.b)); m.set_shader_parameter("amb", 0.42)
+	return m
+
+## THREE.SphereGeometry(radio, ancho, alto) (sin sus mismos vertices: la copa se deforma con ruido igual).
+static func _esfera(radio: float, ancho: int, alto: int) -> SphereMesh:
+	var e := SphereMesh.new(); e.radius = radio; e.height = 2 * radio; e.radial_segments = ancho; e.rings = alto
+	return e
+
 ## Material Lambert de Three: difuso sin brillo (sin reflejos del cielo).
 static func lambert(c: Color, tex: Texture2D = null, color_vertices := false, doble := false) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new(); m.albedo_color = c; m.roughness = 1.0; m.metallic_specular = 0.0
@@ -503,9 +591,10 @@ static func lambert(c: Color, tex: Texture2D = null, color_vertices := false, do
 	if doble: m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
-func _mi(mesh: Mesh, mat: Material, pos := Vector3.ZERO) -> MeshInstance3D:
+func _mi(mesh: Mesh, mat: Material, pos := Vector3.ZERO, sombra := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mat; mi.position = pos
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # en el navegador solo el avion da sombra
+	# dan sombra (como en el navegador) el avion, los almendros cercanos, los arboles grandes, el cortijo, los pilones y el aparcamiento
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if sombra else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	return mi
 
@@ -732,7 +821,7 @@ func _mar() -> void:
 # ---------------------------------------------------------------- el campo (Visor._campo)
 ## Mallas instanciadas por celdas de 300 m (Visor._instanciar). lista: [E, N, ...]; colocar(item) -> [Transform3D, Color
 ## lineal]. Las celdas a mas de lejos_m del campo van a lejanos. Devuelve los nodos creados.
-func _instanciar(mesh: Mesh, mat: Material, lista: Array, colocar: Callable, lejos_m := 520.0) -> Array:
+func _instanciar(mesh: Mesh, mat: Material, lista: Array, colocar: Callable, lejos_m := 520.0, sombra := false) -> Array:
 	var celdas := {}
 	for it in lista:
 		var k := Vector2i(floori(it[0] / 300.0), floori(it[1] / 300.0))
@@ -750,7 +839,7 @@ func _instanciar(mesh: Mesh, mat: Material, lista: Array, colocar: Callable, lej
 			cx += items[i][0]; cz -= items[i][1]
 		cx /= items.size(); cz /= items.size()
 		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.material_override = mat
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if sombra else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mmi); nodos.append(mmi)
 		if Vector2(cx, cz + 110).length() > lejos_m: lejanos.append(mmi)
 	return nodos
@@ -764,8 +853,14 @@ func _campo() -> void:
 	_arboles = []
 	var tz := trazos_campo(ent.zona2, _arboles)
 	var cuerpo: Array = tz[0].cerrar(); var costa_: Array = tz[1].cerrar()
-	_mat_cerca = lambert(Color.html("#b3673f")); _mat_lejos = lambert(Color.html("#b3673f"))
-	for m in [_mat_cerca, _mat_lejos]: m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	# cerca de la camara, el grano fino y el relieve del suelo del mundo real: sin el, a 1,7 m la tierra se veia como un
+	# borron (la textura da 34 cm por pixel). Hasta que se pinta, del color de la tierra
+	_mat_lejos = lambert(Color.html(CAMPO["tierra"])); _mat_lejos.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	if minimo:
+		_mat_cerca = lambert(Color.html(CAMPO["tierra"])); (_mat_cerca as StandardMaterial3D).texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	else:
+		var img_t := Image.create(1, 1, false, Image.FORMAT_RGB8); img_t.fill(Color.html(CAMPO["tierra"]))
+		_mat_cerca = suelo_grano(ImageTexture.create_from_image(img_t))
 	# cerca: 1400 x 1400 m, de E -700 a 700 y de N 900 a -500, a 1 cm
 	var pos := PackedVector3Array([Vector3(-700, 0.01, -900), Vector3(700, 0.01, -900), Vector3(700, 0.01, 500), Vector3(-700, 0.01, 500)])
 	var nor := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
@@ -787,19 +882,23 @@ func _campo() -> void:
 	_mi(_malla(pos, nor, idx, uv), _mat_lejos)
 	_mar()
 	_cerro()
-	# almendros en reticula (instancias): tronco y copa; los de cerca con mas detalle que los lejanos
-	var m_tronco := lambert(Color.hex(0x5b4330ff), null, true); var m_copa := lambert(Color.WHITE, null, true)
-	for banda in [[0.0, 150.0, 1], [150.0, 680.0, 0]]:      # solo cerca del campo las copas llevan mas caras
+	# almendros en reticula (instancias): tronco y copa; los de cerca con mas detalle que los lejanos. Las copas llevan el
+	# material de las del mundo real y los cercanos dan sombra (el mapa de sombras solo cubre los alrededores del avion)
+	var m_tronco := lambert(Color.hex(0x4f3d2eff), null, true); var m_copa := _mat_copas()
+	var col_copas: Dictionary = CAMPO["colores"]
+	for banda in [[0.0, 150.0, [8, 5]], [150.0, 680.0, [5, 3]]]:      # solo cerca del campo las copas llevan mas caras
 		var lista := _arboles.filter(func(a): var d := Vector2(a[0], a[1] - 110).length(); return d >= banda[0] and d < banda[1])
+		var cerca: bool = banda[0] == 0.0
 		_instanciar(cilindro(0.08, 0.14, 1.0, 5), m_tronco, lista, func(it: Array) -> Array:
 			var s: float = it[2]
-			return [_tr(Vector3(it[0], 0.5 * s, -it[1]), r.r() * 6.28, Vector3(s, s, s)), Color.WHITE])
-		_instanciar(icosaedro(1.3, banda[2]), m_copa, lista, func(it: Array) -> Array:
+			return [_tr(Vector3(it[0], 0.5 * s, -it[1]), r.r() * 6.28, Vector3(s, s, s)), Color.WHITE], 520.0, cerca)
+		var g_copa: Array = [5, 3] if minimo else banda[2]
+		_instanciar(_esfera(1.3, g_copa[0], g_copa[1]), m_copa, lista, func(it: Array) -> Array:
 			var s: float = it[2]
 			var S := Vector3(s * (0.85 + 0.35 * r.r()), s * 0.68, 0); S.z = s * (0.85 + 0.35 * r.r())
 			var tr := _tr(Vector3(it[0], 1.55 * s, -it[1]), r.r() * 6.28, S)
-			var hh := 0.22 + 0.06 * r.r(); var ss := 0.26 + 0.16 * r.r(); var ll := 0.2 + 0.09 * r.r()
-			return [tr, hsl(hh, ss, ll)])
+			var a := r.r(); var b := r.r(); var d := r.r()
+			return [tr, color_campo(col_copas["almendro"], a, b, d)], 520.0, cerca)       # verde grisaceo del almendro
 	# arboles grandes (algarrobos y pinos) sueltos, matorral de la rambla y matas del cerro
 	var grandes := []
 	var Z: Dictionary = ent.zona2["despejado"]
@@ -821,17 +920,19 @@ func _campo() -> void:
 		var hg := altura_terreno(a[0], a[1]); var sg: float = a[2]
 		solidos.append([a[0], a[1], 0.9 * sg, hg, hg + (3.2 * sg / 2.5 + 2.2 * sg if a[3] else 1.1 * sg / 2.5 + 1.4 * sg)])
 	ent.poner_arboles("campo", solidos)
-	_instanciar(cilindro(0.2, 0.32, 1, 6), lambert(Color.hex(0x5a4634ff), null, true), grandes, func(it: Array) -> Array:
+	_instanciar(cilindro(0.2, 0.32, 1, 6), lambert(Color.hex(0x4a3b2dff), null, true), grandes, func(it: Array) -> Array:
 		var s: float = it[2]; var ht: float = 3.2 * s / 2.5 if it[3] else 1.1 * s / 2.5; var h := altura_terreno(it[0], it[1])
-		return [_tr(Vector3(it[0], h + ht / 2, -it[1]), 0, Vector3(s / 2.5, ht, s / 2.5)), Color.WHITE], 1e9)
-	_instanciar(icosaedro(1, 2), lambert(Color.WHITE, null, true), grandes, func(it: Array) -> Array:
+		return [_tr(Vector3(it[0], h + ht / 2, -it[1]), 0, Vector3(s / 2.5, ht, s / 2.5)), Color.WHITE], 1e9, true)
+	# pino carrasco (copa en sombrilla, oscura) y algarrobo (denso y oscuro), con el material de las copas
+	_instanciar(_esfera(1, 8, 5) if minimo else _esfera(1, 12, 7), m_copa, grandes, func(it: Array) -> Array:
 		var s: float = it[2]; var pino: bool = it[3]; var ht: float = 3.2 * s / 2.5 if pino else 1.1 * s / 2.5; var h := altura_terreno(it[0], it[1])
-		var tr := _tr(Vector3(it[0], h + ht + s * (0.95 if pino else 0.6), -it[1]), 0, Vector3(s, s * (1.25 if pino else 0.8), s * (0.9 + 0.2 * r.r())))
+		var tr := _tr(Vector3(it[0], h + ht + s * (0.95 if pino else 0.6), -it[1]), 0, Vector3(s, s * (0.75 if pino else 0.8), s * (0.9 + 0.2 * r.r())))
 		var c: Color
-		if pino: c = hsl(0.27, 0.35, 0.2 + 0.05 * r.r())
+		if pino:
+			var k := r.r(); c = color_campo(col_copas["pino"], k, k, k)
 		else:
-			var hh := 0.22 + 0.04 * r.r(); c = hsl(hh, 0.3, 0.25 + 0.06 * r.r())
-		return [tr, c], 1e9)
+			var a := r.r(); var d := r.r(); c = color_campo(col_copas["algarrobo"], a, 0.5, d)
+		return [tr, c], 1e9, true)
 	var matas := []
 	for i in 4600:
 		var Ex := -900 + r.r() * 900; var Nn := -800 + r.r() * 1600; var d := Ex - borde_monte(Nn)
@@ -840,32 +941,33 @@ func _campo() -> void:
 	for i in 700:
 		var Nn := -1000 + r.r() * 2000; var lado := -1 if r.r() < 0.5 else 1; var dd := 16 + r.r() * 15
 		matas.append([rambla(Nn) + lado * dd, Nn, 1.2 + r.r() * 2.2, 1])
-	prescindibles.append_array(_instanciar(icosaedro(1, 0), lambert(Color.WHITE, null, true), matas, func(it: Array) -> Array:
+	# matas (romero, esparto y lentisco del monte; carrizo y tarays en la rambla), tambien con el material de las copas
+	prescindibles.append_array(_instanciar(_esfera(1, 5, 3), m_copa, matas, func(it: Array) -> Array:
 		var s: float = it[2]
 		var S := Vector3(s, s * 0.6, s * (0.8 + 0.4 * r.r()))
-		var tr := _tr(Vector3(it[0], altura_terreno(it[0], it[1]) + s * 0.45, -it[1]), r.r() * 6.28, S)
+		var tr := _tr(Vector3(it[0], altura_terreno(it[0], it[1]) + s * 0.3, -it[1]), r.r() * 6.28, S)
 		var c: Color
 		if it[3]:
-			var hh := 0.25 + 0.05 * r.r(); var ss := 0.3 + 0.2 * r.r(); c = hsl(hh, ss, 0.22 + 0.1 * r.r())
+			var a := r.r(); var b := r.r(); var d := r.r(); c = color_campo(col_copas["rambla"], a, b, d)
 		else:
-			var hh := 0.2 + 0.05 * r.r(); c = hsl(hh, 0.22, 0.3 + 0.08 * r.r())
+			var a := r.r(); var d := r.r(); c = color_campo(col_copas["monte"], a, 0.5, d)
 		return [tr, c], 1e9))         # las matas sobran en calidad 0
 	# cortijo y naves: cajas blancas con azotea; una con tejado
 	for cj in CAMPO["cortijo"]:
 		var Ex: float = cj[0]; var Nn: float = cj[1]; var a: float = cj[2]; var b: float = cj[3]; var h: float = cj[4]; var nave := a > 20
-		_mi(_caja(a, h, b), lambert(Color.hex((0xd9d6cf if nave else 0xeae4d8) << 8 | 0xff)), Vector3(Ex, h / 2, -Nn))
+		_mi(_caja(a, h, b), lambert(Color.hex((0xd9d6cf if nave else 0xeae4d8) << 8 | 0xff)), Vector3(Ex, h / 2, -Nn), true)
 		if not nave and a > 10:
-			var tej := _mi(cilindro(0, a * 0.75, 2.2, 4), lambert(Color.hex(0xb0563bff)), Vector3(Ex, h + 1.1, -Nn))
+			var tej := _mi(cilindro(0, a * 0.75, 2.2, 4), lambert(Color.hex(0xb0563bff)), Vector3(Ex, h + 1.1, -Nn), true)
 			tej.rotation.y = PI / 4; tej.scale.z = b / a
-		else: _mi(_caja(a + 0.4, 0.3, b + 0.4), lambert(Color.hex((0x9a9a98 if nave else 0xc7b9a1) << 8 | 0xff)), Vector3(Ex, h, -Nn))
-	_mi(_caja(70, 1.6, 0.4), lambert(Color.hex(0xe0d7c6ff)), Vector3(85, 0.8, -248))     # tapia
+		else: _mi(_caja(a + 0.4, 0.3, b + 0.4), lambert(Color.hex((0x9a9a98 if nave else 0xc7b9a1) << 8 | 0xff)), Vector3(Ex, h, -Nn), true)
+	_mi(_caja(70, 1.6, 0.4), lambert(Color.hex(0xe0d7c6ff)), Vector3(85, 0.8, -248), true)     # tapia
 	_autopista(r)
 	# estacas blancas cada 50 m para juzgar distancias
 	var estaca := cilindro(0.05, 0.05, 1.5, 5); var m_est := lambert(Color.hex(0xf2f2f2ff))
 	for x in range(-200, 201, 50):
 		for z in range(-200, 201, 50):
 			if (x == 0 and z == 0) or (x > Z["e0"] and x < Z["e1"] and -z > Z["n0"] and -z < Z["n1"]): continue
-			_mi(estaca, m_est, Vector3(x, 0.75, z))
+			_mi(estaca, m_est, Vector3(x, 0.75, z), true)
 	# pilones hinchables tipo Red Bull, cada uno de su color (Entorno.circuito.colores; la puerta de la zona 2, naranja):
 	# banda de cuadros arriba y franja blanca abajo
 	var Pi: Dictionary = ent.pilon; var colores: Array = ent.circuito["colores"]
@@ -875,29 +977,30 @@ func _campo() -> void:
 	var lp := ent.pilones()
 	for i in lp.size(): pilones.append([lp[i], colores[i % colores.size()]["hex"]])
 	for s in ent.pilones_puerta(): pilones.append([s, ent.zona2["puerta"]["color"]["hex"]])
+	for s in ent.pilones_puerta("verde"): pilones.append([s, ent.zona2["puertaVerde"]["color"]["hex"]])
 	for pc in pilones:
 		var s: Array = pc[0]; var hex: String = pc[1]
 		var img := Image.create(64, 512, false, Image.FORMAT_RGB8); img.fill(Color.html(hex))
 		for y in 3:
 			for x in 8: img.fill_rect(Rect2i(x * 8, 40 + y * 8, 8, 8), Color.WHITE if (x + y) % 2 else Color.html("#111111"))
 		img.fill_rect(Rect2i(0, 430, 64, 14), Color.WHITE)
-		_mi(gpil, lambert(Color.WHITE, _tex(img)), Vector3(s[1], Pi["alto"] / 2, -s[0]))
-		_mi(gtapa, lambert(Color.html(hex)), Vector3(s[1], Pi["alto"], -s[0]))
+		_mi(gpil, lambert(Color.WHITE, _tex(img)), Vector3(s[1], Pi["alto"] / 2, -s[0]), true)
+		_mi(gtapa, lambert(Color.html(hex)), Vector3(s[1], Pi["alto"], -s[0]), true)
 	# el aparcamiento: la furgoneta, la mesa del piloto y la manga de viento a rayas (sin carpa: tapaba la vista)
-	_mi(_caja(2.0, 2.1, 4.8), lambert(Color.hex(0xecececff)), Vector3(8, 1.05, 9))
-	_mi(_caja(2.04, 0.7, 3.2), lambert(Color.hex(0x2b3a48ff)), Vector3(8, 1.5, 9.3))
-	_mi(_caja(1.6, 0.05, 0.7), lambert(Color.hex(0xcfcfcfff)), Vector3(-7, 0.78, 7))
-	_mi(cilindro(0.03, 0.03, 4, 6), m_est, Vector3(-14, 2, -10)).name = "mastil"
+	_mi(_caja(2.0, 2.1, 4.8), lambert(Color.hex(0xecececff)), Vector3(8, 1.05, 9), true)
+	_mi(_caja(2.04, 0.7, 3.2), lambert(Color.hex(0x2b3a48ff)), Vector3(8, 1.5, 9.3), true)
+	_mi(_caja(1.6, 0.05, 0.7), lambert(Color.hex(0xcfcfcfff)), Vector3(-7, 0.78, 7), true)
+	_mi(cilindro(0.03, 0.03, 4, 6), m_est, Vector3(-14, 2, -10), true).name = "mastil"
 	var img_m := Image.create(32, 128, false, Image.FORMAT_RGBA8); img_m.fill(Color(0, 0, 0, 0))
 	for i in 5: _rect_img(img_m, 0, i * 25.6, 32, 25.6, Color.WHITE if i % 2 else Color.html("#ff6d00"))
-	manga = _mi(cilindro(0, 0.25, 1.4, 12, true), lambert(Color.WHITE, _tex(img_m), false, true), Vector3(-14, 3.8, -10))
+	manga = _mi(cilindro(0, 0.25, 1.4, 12, true), lambert(Color.WHITE, _tex(img_m), false, true), Vector3(-14, 3.8, -10), true)
 	_pintar_suelos.call_deferred(cuerpo, costa_, trazos_fondo(-700, 900, 1400, 1400), trazos_fondo(-3000, 3000, 6000, 6000))
 
-## Cerro del oeste: malla elevada con bandas de roca (colores por vertice, lineales como en Three).
+## Cerro del oeste: malla elevada con bandas de roca (colores por vertice, lineales como en Three) y el grano del suelo.
 func _cerro() -> void:
 	var nx := 154; var ny := 320; var W := 1540.0; var Hh := 3200.0
 	var pos := PackedVector3Array(); var col := PackedColorArray(); var idx := PackedInt32Array()
-	var c_roca := lin(0xcfc5a8); var c_monte := lin(0xa69e84); var c_verde := lin(0x737a56); var c_pie := lin(0xb3ab91)
+	var c_roca := lin(0xb3ab98); var c_monte := lin(0x9a8d70); var c_verde := lin(0x5d6440); var c_pie := lin(0x988c70)   # caliza gris, pasto seco y matorral
 	for iy in ny + 1:
 		var Nn := Hh / 2 - iy * (Hh / ny); var bm := borde_monte(Nn)
 		for ix in nx + 1:
@@ -921,7 +1024,7 @@ func _cerro() -> void:
 		var A := pos[idx[i]]; var B := pos[idx[i + 1]]; var C := pos[idx[i + 2]]; var n := (C - A).cross(B - A)
 		nor[idx[i]] += n; nor[idx[i + 1]] += n; nor[idx[i + 2]] += n
 	for i in nor.size(): nor[i] = nor[i].normalized()
-	_mi(_malla(pos, nor, idx, PackedVector2Array(), col), lambert(Color.WHITE, null, true))
+	_mi(_malla(pos, nor, idx, PackedVector2Array(), col), lambert(Color.WHITE, null, true) if minimo else suelo_grano(null, true))
 
 ## Autopista AP-7 sobre terraplen, con sus marcas y trafico (44 coches y camiones).
 func _autopista(r: Semilla) -> void:

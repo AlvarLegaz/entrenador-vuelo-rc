@@ -129,12 +129,17 @@ float ac_ruido(vec3 x) {
  *  Un solo material para todas las copas (el color de cada una es el de su instancia). */
 function materialCopas() {
   if (materialCopas.m) return materialCopas.m;
-  if (typeof visor !== "undefined" && visor && visor.minimo)          // rendimiento maximo: copas lisas (el color de cada una)
-    return (materialCopas.m = new THREE.MeshLambertMaterial({ color: new THREE.Color().setRGB(0.34, 0.37, 0.29, THREE.LinearSRGBColorSpace) }));
   // tinte y luz ambiente ajustados midiendo la misma escena en los dos simuladores (la luz de la escena web es mas fuerte
   // y azulada que la de Godot): copas de (70, 93, 20) en Godot, (80, 98, 26) aqui
-  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.34, 0.37, 0.29, THREE.LinearSRGBColorSpace), roughness: 0.92, metalness: 0 });
-  m.userData.u = { uAmb: { value: 0.42 }, uTiempo: { value: 0 } };
+  return (materialCopas.m = crearMaterialCopas([0.34, 0.37, 0.29], 0.42, typeof visor !== "undefined" && visor && visor.minimo));
+}
+/** Un material de copas con su tinte (lineal, multiplica el color de cada instancia) y su luz ambiente (uAmb). minimo:
+ *  rendimiento maximo, copas lisas (el color de cada una). Todos se mecen con la brisa (Visor.dibujar pone uTiempo). */
+function crearMaterialCopas(tinte, amb, minimo) {
+  if (minimo) return new THREE.MeshLambertMaterial({ color: new THREE.Color().setRGB(...tinte, THREE.LinearSRGBColorSpace) });
+  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(...tinte, THREE.LinearSRGBColorSpace), roughness: 0.92, metalness: 0 });
+  m.userData.u = { uAmb: { value: amb }, uTiempo: { value: 0 } };
+  (crearMaterialCopas.todos || (crearMaterialCopas.todos = [])).push(m);
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, m.userData.u);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float uTiempo;\nvarying float vHueco;\nvarying float vAltoA;\nvarying vec3 vMundoA;\n" + GLSL_RUIDO)
@@ -161,7 +166,7 @@ function materialCopas() {
   #endif`);
   };
   m.customProgramCacheKey = () => "copas_godot2";
-  return (materialCopas.m = m);
+  return m;
 }
 /** Grano fino del suelo (el NoiseTexture2D de Godot: ruido fractal de 5 octavas, 512 px, sin costuras). */
 function texturaGrano() {
@@ -206,12 +211,16 @@ vec3 sueloRelieve(vec3 N, vec3 pv, float h) {
   return normalize(abs(det) * N - sign(det) * (dhx * r1 + dhy * r2));
 }
 `;
-function conGrano(m) {
+function conGrano(m, trasColor = false, campo = false) {     // trasColor: el color va en los vertices (el cerro del campo), no en la textura
+  const gancho = trasColor ? "#include <color_fragment>" : "#include <map_fragment>";
+  // campo: en el campo de vuelo las piedras del grano no levantan relieve (con la tierra clara, el escalon de su borde
+  // salia como motas oscuras de un pixel a 2-5 m de la camara)
+  const glsl = campo ? SUELO_GLSL.replace("+ piedra * 0.02;", "+ piedra * 0.0;") : SUELO_GLSL;
   m.onBeforeCompile = sh => {
     sh.uniforms.uGrano = { value: texturaGrano() };
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vMundoS;").replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvMundoS = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uGrano;\nvarying vec3 vMundoS;\n" + SUELO_GLSL)
-      .replace("#include <map_fragment>", `#include <map_fragment>
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uGrano;\nvarying vec3 vMundoS;\n" + glsl)
+      .replace(gancho, gancho + `
   float sCerca = 1.0 - smoothstep(20.0, 160.0, length(vViewPosition)), sAlto;
   diffuseColor.rgb = sueloSinSombra(diffuseColor.rgb);
   float sK = sueloGrano(diffuseColor.rgb, texture2D(uGrano, vMundoS.xz / 3.7).r, texture2D(uGrano, vMundoS.xz / 0.83).r, sAlto);
@@ -219,7 +228,7 @@ function conGrano(m) {
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
   normal = sueloRelieve(normal, -vViewPosition, sAlto * sCerca);`);
   };
-  m.customProgramCacheKey = () => "suelo_grano2";
+  m.customProgramCacheKey = () => "suelo_grano2" + (trasColor ? "c" : "") + (campo ? "k" : "");
   return m;
 }
 // color del mundo real como el de Godot (adjustment: contraste 1,18 y saturacion 1,2 despues del tonemapping ACES)
@@ -245,8 +254,15 @@ const CAMPO = {
     { c: [-150, -1100], l: 500, a: 700, giro: 0, paso: 40, tono: 2 },
     { c: [700, 800], l: 600, a: 600, giro: 35, paso: 48, tono: 3 },
   ],
-  tonos: [["#b3673f", "#a85d38", "#c07a52", "#9c5431"], ["#a65c38", "#9a5230", "#b56b45", "#8f4a2b"],
-          ["#bf7a55", "#b26c47", "#c98a66", "#a8633f"], ["#c8906a", "#bb8260", "#d19d78", "#b07655"]],
+  // tierra rojiza del Campo de Cartagena: parda y apagada (con la luz del sol y el ACES, un rojo vivo parecia Marte)
+  tonos: [["#9c6e52", "#94664b", "#a77a5d", "#8c6046"], ["#93664b", "#8a5e45", "#9f7055", "#82593f"],
+          ["#a57a5d", "#9b7054", "#ae8568", "#94694e"], ["#ae8a6d", "#a48064", "#b79579", "#9a785d"]],
+  tierra: "#9c6e52",
+  // copas y matas: [tono, saturacion, luz] como [base, variacion] (HSL de Three); los almendros, como los del mundo real
+  // (almendro, pino y algarrobo: COLOR_ESPECIE de visor_real.js), con el mismo tinte y luz ambiente que las del mundo real
+  colores: { almendro: [[0.24, 0.03], [0.12, 0.05], [0.36, 0.06]], pino: [[0.3, 0.03], [0.28, 0.06], [0.17, 0.04]],
+             algarrobo: [[0.24, 0.03], [0.3, 0.06], [0.21, 0.05]], monte: [[0.16, 0.05], [0.14, 0.06], [0.38, 0.08]],
+             rambla: [[0.23, 0.05], [0.28, 0.12], [0.3, 0.08]] },
   pistas: [[[0, -6], [-9, 15], [-10, 120], [-4, 200], [20, 262], [60, 330], [150, 470], [330, 770]],   // al cortijo y a la autopista
            [[0, -6], [6, -40], [-20, -150], [-60, -300], [-70, -620]],
            [[-9, 100], [-130, 112]], [[-4, 190], [-210, 232]], [[10, -20], [200, -25], [372, -20]]],
@@ -254,6 +270,9 @@ const CAMPO = {
   autopista: { p0: [330, 790], p1: [1340, 300], ancho: 28, alto: 2.4 },
   cortijo: [[60, 205, 14, 9, 4.5], [78, 222, 9, 7, 3.5], [66, 233, 6, 5, 3], [690, 60, 40, 18, 7], [690, 20, 25, 12, 5]],   // E, N, ancho E, ancho N, alto
 };
+
+/** Color HSL de una copa del campo: c = [[tono, var], [sat, var], [luz, var]] y a, b, d en [0, 1]. */
+function colorCampo(c, a, b, d) { return [c[0][0] + c[0][1] * a, c[1][0] + c[1][1] * b, c[2][0] + c[2][1] * d]; }
 
 /** E donde el campo cultivado deja paso al monte bajo del cerro, segun N (borde irregular). */
 function bordeMonte(N) { return -95 + 100 * (fbm(N / 150 + 5, 3) - 0.5); }
@@ -288,10 +307,10 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
   const r = semilla(11);
   ctx.setTransform(k, 0, 0, -k, -E0 * k, N1 * k);
   const ancho = ctx.canvas.width / k, alto = ctx.canvas.height / k;
-  ctx.fillStyle = "#b3673f"; ctx.fillRect(E0, N1 - alto, ancho, alto);
+  ctx.fillStyle = CAMPO.tierra; ctx.fillRect(E0, N1 - alto, ancho, alto);
   // pie del cerro y monte bajo al oeste, con borde irregular
   for (const [desf, alfa] of [[0, 1], [22, 0.5], [45, 0.25]]) {     // el monte entra en el campo en tres franjas cada vez mas tenues
-    ctx.fillStyle = "rgba(179,171,145," + alfa + ")"; ctx.beginPath(); ctx.moveTo(E0 - 10, N1 + 10);
+    ctx.fillStyle = "rgba(152,140,112," + alfa + ")"; ctx.beginPath(); ctx.moveTo(E0 - 10, N1 + 10);
     for (let N = N1 + 10; N >= N1 - alto - 10; N -= 20) ctx.lineTo(bordeMonte(N) + desf, N);
     ctx.lineTo(E0 - 10, N1 - alto - 10); ctx.closePath(); ctx.fill();
   }
@@ -299,7 +318,7 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
     const E = -1600 + r() * 1620, N = -1600 + r() * 3200, d = E - bordeMonte(N);
     if (d > 0 && r() < d / 80) continue;
     const mata = r() < 0.7;
-    ctx.fillStyle = mata ? (r() < 0.5 ? "#5b6a3c" : "#6f7a48") : "#c2bba5";
+    ctx.fillStyle = mata ? (r() < 0.5 ? "#4f5a36" : "#626a42") : "#b4ab95";
     ctx.beginPath(); ctx.ellipse(E, N, mata ? 1 + r() * 2.2 : 0.6 + r() * 1.5, mata ? 1 + r() * 1.8 : 0.5 + r(), 0, 0, 7); ctx.fill();
   }
   // bancales: tierra, muros, surcos y la sombra de cada almendro
@@ -313,10 +332,10 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
     ctx.save(); ctx.translate(b.c[0], b.c[1]); ctx.rotate(-g);          // el eje v (norte local) gira hacia el este
     for (let v = -b.l / 2; v < b.l / 2; v += b.paso) {
       ctx.fillStyle = pal[Math.floor(r() * pal.length)]; ctx.fillRect(-b.a / 2, v, b.a, Math.min(b.paso, b.l / 2 - v));
-      ctx.fillStyle = "rgba(110,58,34,0.55)"; ctx.fillRect(-b.a / 2, v, b.a, 1.2);          // sombra del muro
-      ctx.fillStyle = "rgba(226,190,150,0.85)"; ctx.fillRect(-b.a / 2, v + 1.2, b.a, 1.4);   // muro de piedra seca
+      ctx.fillStyle = "rgba(92,66,48,0.5)"; ctx.fillRect(-b.a / 2, v, b.a, 1.2);            // sombra del muro
+      ctx.fillStyle = "rgba(196,180,156,0.8)"; ctx.fillRect(-b.a / 2, v + 1.2, b.a, 1.4);    // muro de piedra seca
     }
-    ctx.strokeStyle = "rgba(120,60,35,0.28)"; ctx.lineWidth = 0.45;                          // surcos
+    ctx.strokeStyle = "rgba(96,68,50,0.28)"; ctx.lineWidth = 0.45;                           // surcos
     for (let u = -b.a / 2; u < b.a / 2; u += 1.25) { ctx.beginPath(); ctx.moveTo(u, -b.l / 2); ctx.lineTo(u, b.l / 2); ctx.stroke(); }
     ctx.restore();
     for (let v = -b.l / 2 + 4; v < b.l / 2 - 3; v += 7.5) {
@@ -327,8 +346,12 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
         if (excluido(E, N)) continue;
         const s = 0.75 + r() * 0.5;
         if (arboles) arboles.push([E, N, s]);
-        ctx.fillStyle = "rgba(70,38,22,0.55)"; ctx.beginPath(); ctx.ellipse(E + 1.4 * s, N - 1.1 * s, 1.9 * s, 1.3 * s, 0, 0, 7); ctx.fill();
-        ctx.fillStyle = s > 1.05 ? "#4f6a2d" : "#5d7a36"; ctx.beginPath(); ctx.arc(E, N, 1.55 * s, 0, 7); ctx.fill();
+        if (Math.hypot(E, N - 110) < 500) {      // donde hay almendros en 3D: solo la tierra mas oscura y humeda bajo la copa (la sombra la da el sol)
+          ctx.fillStyle = "rgba(70,50,36,0.32)"; ctx.beginPath(); ctx.arc(E, N, 1.5 * s, 0, 7); ctx.fill();
+        } else {                                 // mas lejos, la copa vista desde arriba y su sombra (hacia el noreste: el sol esta al suroeste)
+          ctx.fillStyle = "rgba(60,44,32,0.5)"; ctx.beginPath(); ctx.ellipse(E + 1.4 * s, N + 1.1 * s, 1.9 * s, 1.3 * s, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = s > 1.05 ? "#56633f" : "#626f48"; ctx.beginPath(); ctx.arc(E, N, 1.55 * s, 0, 7); ctx.fill();
+        }
       }
     }
   }
@@ -342,7 +365,7 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
     ctx.beginPath(); ctx.ellipse(E, N, 2 + r() * 4, 1.5 + r() * 3, r() * 3, 0, 7); ctx.fill();
   }
   // pistas de tierra
-  ctx.strokeStyle = "#dcc9a8"; ctx.lineWidth = 4.2;
+  ctx.strokeStyle = "#c9b393"; ctx.lineWidth = 4.2;
   for (const p of CAMPO.pistas) { ctx.beginPath(); p.forEach(([E, N], i) => i ? ctx.lineTo(E, N) : ctx.moveTo(E, N)); ctx.stroke(); }
   ctx.strokeStyle = "rgba(170,140,105,0.55)"; ctx.lineWidth = 0.9;
   for (const p of CAMPO.pistas) { ctx.beginPath(); p.forEach(([E, N], i) => i ? ctx.lineTo(E, N) : ctx.moveTo(E, N)); ctx.stroke(); }
@@ -373,6 +396,8 @@ function pintarCampo(ctx, k, E0, N1, arboles, z2) {
   for (const [r] of D.anillos) { ctx.beginPath(); ctx.arc(D.e, D.n, r, 0, 7); ctx.stroke(); }
   ctx.fillStyle = "rgba(255,255,255,0.92)"; ctx.beginPath(); ctx.arc(D.e, D.n, 0.8, 0, 7); ctx.fill();
   for (let N = Pu.n0 + 2; N < Pu.n1 - 1.5; N += 2.4) ctx.fillRect(Pu.e - 0.2, N, 0.4, 1.4);                      // linea de la puerta
+  const Pv = z2.puertaVerde;
+  for (let E = Pv.e0 + 2; E < Pv.e1 - 1.5; E += 2.4) ctx.fillRect(E, Pv.n - 0.2, 1.4, 0.4);                      // y la de la verde
   // la costa (solo en la textura lejana): agua somera, playa y espuma
   if (!arboles) {
     const traza = (pts, w, estilo) => { ctx.strokeStyle = estilo; ctx.lineWidth = w; ctx.beginPath(); pts.forEach(([E, N], i) => i ? ctx.lineTo(E, N) : ctx.moveTo(E, N)); ctx.closePath(); ctx.stroke(); };
@@ -613,7 +638,9 @@ class Visor {
     // suelo: una textura de detalle de 1400 m alrededor del campo de vuelo y otra lejana de 6000 m
     const arboles = [];
     const [cc, gc] = lienzo(4096, 4096); pintarCampo(gc, 4096 / 1400, -700, 900, arboles, E.zona2);
-    const cerca = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), lam(0xffffff, { map: tex(cc) }));
+    // cerca de la camara, el grano fino y el relieve del suelo del mundo real (conGrano): sin el, a 1,7 m la tierra se veia
+    // como un borron (la textura da 34 cm por pixel)
+    const mCerca = lam(0xffffff, { map: tex(cc) }), cerca = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), this.minimo ? mCerca : conGrano(mCerca, false, true));
     cerca.rotation.x = -Math.PI / 2; cerca.position.set(0, 0.01, -200); esc.add(cerca);
     const [cl, gl] = lienzo(2048, 2048); pintarCampo(gl, 2048 / 6000, -3000, 3000, null, E.zona2);
     const forma = new THREE.Shape(poligonoCosta(70).map(p => new THREE.Vector2(...p)));
@@ -624,7 +651,7 @@ class Visor {
     this._mar(esc, -1.2, 40000, 0x245f88);                                        // bajo el suelo: nunca parpadea sobre la isla
     // cerro del oeste: malla elevada con bandas de roca (colores por vertice) y una textura de matas repetida
     const gh = new THREE.PlaneGeometry(1540, 3200, 154, 320), ph = gh.getAttribute("position"), col = [];
-    const cRoca = new THREE.Color(0xcfc5a8), cMonte = new THREE.Color(0xa69e84), cVerde = new THREE.Color(0x737a56), cPie = new THREE.Color(0xb3ab91);
+    const cRoca = new THREE.Color(0xb3ab98), cMonte = new THREE.Color(0x9a8d70), cVerde = new THREE.Color(0x5d6440), cPie = new THREE.Color(0x988c70);
     for (let i = 0; i < ph.count; i++) {
       const Ex = ph.getX(i) - 830, Nn = ph.getY(i);               // la malla se tumba: su y es el norte
       const db = bordeMonte(Nn) - Ex, kb = Math.max(0, Math.min(1, db / 90));           // 0 en el borde del monte, 1 a 90 m
@@ -636,20 +663,23 @@ class Visor {
       col.push(c.r, c.g, c.b);
     }
     gh.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); gh.computeVertexNormals();
-    const cerro = new THREE.Mesh(gh, lam(0xffffff, { vertexColors: true }));
+    const mCerro = lam(0xffffff, { vertexColors: true }), cerro = new THREE.Mesh(gh, this.minimo ? mCerro : conGrano(mCerro, true, true));
     cerro.rotation.x = -Math.PI / 2; cerro.position.set(-830, 0.3, 0); esc.add(cerro);
-    // almendros en reticula (instancias): tronco y copa; los de cerca con mas detalle que los lejanos
+    // almendros en reticula (instancias): tronco y copa; los de cerca con mas detalle que los lejanos. Las copas llevan el
+    // material de las del mundo real (silueta irregular, racimos de hojas, sombra interior, contraluz y brisa) y dan sombra
     const Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3();
-    const ejeY = new THREE.Vector3(0, 1, 0), mTronco = lam(0x5b4330), mCopa = lam(0xffffff);
-    for (const [dMin, dMax, detalle] of [[0, 150, 1], [150, 680, 0]]) {      // solo cerca del campo las copas llevan mas caras
+    const ejeY = new THREE.Vector3(0, 1, 0), mTronco = lam(0x4f3d2e), mCopa = crearMaterialCopas([0.34, 0.37, 0.29], 0.42, this.minimo);
+    mCopa.shadowSide = THREE.DoubleSide;           // con las caras de atras (lo de Three) la sombra de la copa salia como un anillo
+    const conSombra = (f, si = true) => { const antes = esc.children.length; f(); for (const o of esc.children.slice(antes)) o.castShadow = si; };
+    for (const [dMin, dMax, gCopa] of [[0, 150, [8, 5]], [150, 680, [5, 3]]]) {      // solo cerca del campo las copas llevan mas caras
       const lista = arboles.filter(a => { const d = Math.hypot(a[0], a[1] - 110); return d >= dMin && d < dMax; });
-      this._instanciar(new THREE.CylinderGeometry(0.08, 0.14, 1.0, 5), mTronco, lista, ([Ex, Nn, s], M, C) => {
+      conSombra(() => this._instanciar(new THREE.CylinderGeometry(0.08, 0.14, 1.0, 5), mTronco, lista, ([Ex, Nn, s], M, C) => {
         P.set(Ex, 0.5 * s, -Nn); S.set(s, s, s); Q.setFromAxisAngle(ejeY, r() * 6.28); M.compose(P, Q, S); C.setHex(0xffffff);
-      });
-      this._instanciar(new THREE.IcosahedronGeometry(1.3, detalle), mCopa, lista, ([Ex, Nn, s], M, C) => {
+      }), dMin === 0);
+      conSombra(() => this._instanciar(new THREE.SphereGeometry(1.3, ...(this.minimo ? [5, 3] : gCopa)), mCopa, lista, ([Ex, Nn, s], M, C) => {
         P.set(Ex, 1.55 * s, -Nn); S.set(s * (0.85 + 0.35 * r()), s * 0.68, s * (0.85 + 0.35 * r())); Q.setFromAxisAngle(ejeY, r() * 6.28);
-        M.compose(P, Q, S); C.setHSL(0.22 + 0.06 * r(), 0.26 + 0.16 * r(), 0.2 + 0.09 * r());
-      });
+        M.compose(P, Q, S); C.setHSL(...colorCampo(CAMPO.colores.almendro, r(), r(), r()));       // verde grisaceo del almendro
+      }), dMin === 0);                    // los lejanos no dan sombra: el mapa de sombras solo cubre 180 m alrededor del avion
     }
     // arboles grandes (algarrobos y pinos) sueltos, matorral de la rambla y matas del cerro
     const grandes = [];
@@ -661,29 +691,32 @@ class Visor {
     }
     for (let i = 0; i < 36; i++) { const Nn = -600 + r() * 1300; grandes.push([CAMPO.rambla(Nn) + (r() < 0.5 ? -1 : 1) * (18 + r() * 12), Nn, 2.6 + r() * 2.4, false]); }
     [[52, 240, 4.2, false], [100, 198, 3.6, false], [-18, 207, 3.4, true], [120, 240, 3.8, false]].forEach(a => grandes.push(a));
-    this._instanciar(new THREE.CylinderGeometry(0.2, 0.32, 1, 6), lam(0x5a4634), grandes, ([Ex, Nn, s, pino], M, C) => {
+    conSombra(() => this._instanciar(new THREE.CylinderGeometry(0.2, 0.32, 1, 6), lam(0x4a3b2d), grandes, ([Ex, Nn, s, pino], M, C) => {
       const ht = pino ? 3.2 * s / 2.5 : 1.1 * s / 2.5, h = alturaTerreno(Ex, Nn);
       P.set(Ex, h + ht / 2, -Nn); S.set(s / 2.5, ht, s / 2.5); Q.identity(); M.compose(P, Q, S); C.setHex(0xffffff);
-    }, 1e9);
-    this._instanciar(new THREE.IcosahedronGeometry(1, 2), lam(0xffffff), grandes, ([Ex, Nn, s, pino], M, C) => {
+    }, 1e9));
+    // pino carrasco (copa en sombrilla, oscura) y algarrobo (denso y oscuro), con el material de las copas
+    conSombra(() => this._instanciar(new THREE.SphereGeometry(1, ...(this.minimo ? [8, 5] : [12, 7])), mCopa, grandes, ([Ex, Nn, s, pino], M, C) => {
       const ht = pino ? 3.2 * s / 2.5 : 1.1 * s / 2.5, h = alturaTerreno(Ex, Nn);
-      P.set(Ex, h + ht + s * (pino ? 0.95 : 0.6), -Nn); S.set(s, s * (pino ? 1.25 : 0.8), s * (0.9 + 0.2 * r())); Q.identity(); M.compose(P, Q, S);
-      if (pino) C.setHSL(0.27, 0.35, 0.2 + 0.05 * r()); else C.setHSL(0.22 + 0.04 * r(), 0.3, 0.25 + 0.06 * r());
-    }, 1e9);
+      P.set(Ex, h + ht + s * (pino ? 0.95 : 0.6), -Nn); S.set(s, s * (pino ? 0.75 : 0.8), s * (0.9 + 0.2 * r())); Q.identity(); M.compose(P, Q, S);
+      if (pino) { const k = r(); C.setHSL(...colorCampo(CAMPO.colores.pino, k, k, k)); } else C.setHSL(...colorCampo(CAMPO.colores.algarrobo, r(), 0.5, r()));
+    }, 1e9));
     const matas = [];
     for (let i = 0; i < 4600; i++) { const Ex = -900 + r() * 900, Nn = -800 + r() * 1600, d = Ex - bordeMonte(Nn); if ((d > 0 && r() < d / 70) || !enIsla(Ex, Nn, 100)) continue; matas.push([Ex, Nn, 0.8 + r() * 1.8, 0]); }
     for (let i = 0; i < 700; i++) { const Nn = -1000 + r() * 2000; matas.push([CAMPO.rambla(Nn) + (r() < 0.5 ? -1 : 1) * (16 + r() * 15), Nn, 1.2 + r() * 2.2, 1]); }
     const antes = this.escena.children.length;
-    this._instanciar(new THREE.IcosahedronGeometry(1, 0), lam(0xffffff), matas, ([Ex, Nn, s, tipo], M, C) => {
-      P.set(Ex, alturaTerreno(Ex, Nn) + s * 0.45, -Nn); S.set(s, s * 0.6, s * (0.8 + 0.4 * r())); Q.setFromAxisAngle(ejeY, r() * 6.28); M.compose(P, Q, S);
-      if (tipo) C.setHSL(0.25 + 0.05 * r(), 0.3 + 0.2 * r(), 0.22 + 0.1 * r()); else C.setHSL(0.2 + 0.05 * r(), 0.22, 0.3 + 0.08 * r());
+    // matas (romero, esparto y lentisco del monte; carrizo y tarays en la rambla), tambien con el material de las copas
+    this._instanciar(new THREE.SphereGeometry(1, 5, 3), mCopa, matas, ([Ex, Nn, s, tipo], M, C) => {
+      P.set(Ex, alturaTerreno(Ex, Nn) + s * 0.3, -Nn); S.set(s, s * 0.6, s * (0.8 + 0.4 * r())); Q.setFromAxisAngle(ejeY, r() * 6.28); M.compose(P, Q, S);
+      if (tipo) C.setHSL(...colorCampo(CAMPO.colores.rambla, r(), r(), r())); else C.setHSL(...colorCampo(CAMPO.colores.monte, r(), 0.5, r()));
     }, 1e9);
     this.prescindibles.push(...this.escena.children.slice(antes));          // las matas sobran en calidad 0
     // arboles solidos de la isla (Entorno.chocaArbol): almendros (copa de 1,1 s de radio hasta 2,4 s) y los grandes
     E.ponerArboles("campo", arboles.map(([Ex, Nn, s]) => [Ex, Nn, 1.1 * s, 0, 2.4 * s]).concat(grandes.map(([Ex, Nn, s, pino]) => {
       const h = alturaTerreno(Ex, Nn); return [Ex, Nn, 0.9 * s, h, h + (pino ? 3.2 * s / 2.5 + 2.2 * s : 1.1 * s / 2.5 + 1.4 * s)];
     })));
-    // cortijo y naves: cajas blancas con azotea; una con tejado
+    // cortijo y naves: cajas blancas con azotea; una con tejado (de aqui a la manga, todo da sombra)
+    const conSombraDesde = esc.children.length;
     for (const [Ex, Nn, a, b, h] of CAMPO.cortijo) {
       const nave = a > 20, caja = new THREE.Mesh(new THREE.BoxGeometry(a, h, b), lam(nave ? 0xd9d6cf : 0xeae4d8));
       caja.position.set(Ex, h / 2, -Nn); esc.add(caja);
@@ -721,7 +754,7 @@ class Visor {
     const Pi = E.pilon, colores = E.circuito.colores;
     const gpil = new THREE.CylinderGeometry(Pi.r1, Pi.r0, Pi.alto, 20, 1, true), gtapa = new THREE.SphereGeometry(Pi.r1, 12, 8);
     const pilones = E.pilones().map((s, i) => [s, colores[i % colores.length].hex])
-      .concat(E.pilonesPuerta().map(s => [s, E.zona2.puerta.color.hex]));
+      .concat(E.pilonesPuerta().map(s => [s, E.zona2.puerta.color.hex]), E.pilonesPuerta("verde").map(s => [s, E.zona2.puertaVerde.color.hex]));
     pilones.forEach(([s, hex]) => {
       const ct = document.createElement("canvas"); ct.width = 64; ct.height = 512;
       const gt = ct.getContext("2d");
@@ -741,6 +774,7 @@ class Visor {
     const [cmg, gmg] = lienzo(32, 128); for (let i = 0; i < 5; i++) { gmg.fillStyle = i % 2 ? "#ffffff" : "#ff6d00"; gmg.fillRect(0, i * 25.6, 32, 25.6); }
     this.manga = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.4, 12, 1, true), new THREE.MeshLambertMaterial({ map: texSRGB(cmg), side: THREE.DoubleSide }));
     this.manga.position.set(-14, 3.8, -10); esc.add(this.manga);
+    for (const o of esc.children.slice(conSombraDesde)) if (o.isMesh && o !== this.trafico.malla) o.castShadow = true;
   }
 
   /** Mueve los coches de la autopista (dt en segundos). */
@@ -1171,7 +1205,7 @@ class Visor {
     }
     this._camara(av);
     const cm = this.escena.userData.cieloMovil; if (cm) cm.position.set(this.cam.position.x, 0, this.cam.position.z);
-    if (materialCopas.m && materialCopas.m.userData.u) materialCopas.m.userData.u.uTiempo.value = performance.now() / 1000;       // la brisa en las copas
+    for (const m of crearMaterialCopas.todos || []) m.userData.u.uTiempo.value = performance.now() / 1000;       // la brisa en las copas
     if (this.rotulos) {           // rotulos de los pueblos: alto fijo en pixeles sea cual sea el zoom (ver las luces del avion)
       const k = 2 * Math.tan(this.cam.fov / 2 * Math.PI / 180) / this._altoPx();
       for (const sp of this.rotulos) { const h = sp.userData.px * k; sp.scale.set(h * 4, h, 1); }

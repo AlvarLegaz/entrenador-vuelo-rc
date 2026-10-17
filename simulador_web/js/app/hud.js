@@ -98,7 +98,8 @@ function pintarGPS(rumbo) {
   g.fillStyle = "#8d6e63"; g.fillRect(X(Z.pista.e0), Y(Z.pista.n + Z.pista.ancho / 2), (Z.pista.e1 - Z.pista.e0) * k, Z.pista.ancho * k);   // pista 2
   g.strokeStyle = "#e0e0e0"; g.lineWidth = 1;
   for (const [r] of Z.diana.anillos) { g.beginPath(); g.arc(X(Z.diana.e), Y(Z.diana.n), Math.max(1.5, r * k), 0, 2 * Math.PI); g.stroke(); }
-  for (const [n, e] of [[Z.puerta.n0, Z.puerta.e], [Z.puerta.n1, Z.puerta.e]]) { g.fillStyle = Z.puerta.color.hex; g.beginPath(); g.arc(X(e), Y(n), 3, 0, 2 * Math.PI); g.fill(); }
+  for (const [P, cual] of [[Z.puerta, "naranja"], [Z.puertaVerde, "verde"]])           // las dos puertas
+    for (const [n, e] of entorno.pilonesPuerta(cual)) { g.fillStyle = P.color.hex; g.beginPath(); g.arc(X(e), Y(n), 3, 0, 2 * Math.PI); g.fill(); }
   entorno.circuito.pilones.forEach(([n, e], i) => { g.fillStyle = entorno.circuito.colores[i].hex; g.beginPath(); g.arc(X(e), Y(n), 4, 0, 2 * Math.PI); g.fill(); g.strokeStyle = "#fff"; g.stroke(); });
   g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Y(0), 3.5, 0, 2 * Math.PI); g.fill();                              // piloto
   if (GPS.estela.length > 1) { g.strokeStyle = "rgba(255,213,79,0.8)"; g.lineWidth = 1.5; g.beginPath(); GPS.estela.forEach(([n, e], i) => i ? g.lineTo(X(e), Y(n)) : g.moveTo(X(e), Y(n))); g.lineTo(X(E), Y(N)); g.stroke(); }

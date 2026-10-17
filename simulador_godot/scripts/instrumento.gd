@@ -271,8 +271,8 @@ func _gps_campo(W: float, k0: float, N: float, E: float, rumbo: float) -> void:
 	rr.call(X.call(P2["e0"]), Y.call(P2["n"] + P2["ancho"] / 2), (P2["e1"] - P2["e0"]) * k, P2["ancho"] * k, Color("#8d6e63"))
 	var D: Dictionary = Z["diana"]
 	for an in D["anillos"]: draw_arc(Vector2(X.call(D["e"]), Y.call(D["n"])), maxf(1.5, an[0] * k), 0, TAU, 32, Color("#e0e0e0"), 1, true)
-	var Pu: Dictionary = Z["puerta"]
-	for q in [[Pu["n0"], Pu["e"]], [Pu["n1"], Pu["e"]]]: draw_circle(Vector2(X.call(q[1]), Y.call(q[0])), 3, Color(Pu["color"]["hex"]))
+	for pc in [[Z["puerta"], "naranja"], [Z["puertaVerde"], "verde"]]:      # las dos puertas
+		for q in ent.pilones_puerta(pc[1]): draw_circle(Vector2(X.call(q[1]), Y.call(q[0])), 3, Color(pc[0]["color"]["hex"]))
 	var pil: Array = ent.circuito["pilones"]
 	for i in pil.size():
 		var q := Vector2(X.call(pil[i][1]), Y.call(pil[i][0]))

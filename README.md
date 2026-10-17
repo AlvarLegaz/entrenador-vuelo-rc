@@ -292,10 +292,10 @@ El VLM es el mismo de los entrenadores (`analisis/vlm_e1.py`), que ahora admite 
 | Escenario | Para ser APTO |
 |---|---|
 | 1 · Primer vuelo | Subir a 20 m, dos vueltas al circuito por fuera de los 4 pilones en orden verde → amarillo → rojo → azul y aterrizar sin daños |
-| 2 · Orientación | Subir a 20 m y hacer dos ochos alrededor de los pilones: por fuera del rojo y el azul, cruzar el centro, por fuera del amarillo y el verde, cruzar y volver al rojo (se sigue por pasos con la posición; el panel dice qué toca), sin pasar de 200 m ni entrar en pérdida, y aterrizar |
+| 2 · Orientación | Subir a 20 m y hacer dos ochos alrededor de los pilones: por fuera del rojo y el azul, cruzar el centro, por fuera del amarillo y el verde, cruzar y volver al rojo (se sigue por pasos con la posición; el panel dice qué toca), sin pasar de 500 m ni entrar en pérdida, y aterrizar |
 | 3 · Viento cruzado | Con 4 m/s del oeste: una vuelta por fuera de los pilones en orden azul → rojo → amarillo → verde (al revés que el primer vuelo) y una toma en la pista, alineada con ella (±25°), sin daños |
 | 4 · Emergencia | Subir a 40 m. El motor se para entre 8 y 20 s después: mantener el control sin pérdida y aterrizar a menos de 100 m del piloto |
-| 5 · Puerta (zona 2) | Cruzar la puerta naranja 3 veces de lado a lado, por debajo de lo alto de los pilones (20 m), y aterrizar |
+| 5 · Puerta (zona 2) | Cruzar las dos puertas una después de la otra, dos veces (naranja, verde, naranja, verde): la naranja de este a oeste o al revés y la verde, girada 90°, de norte a sur o al revés; por debajo de lo alto de los pilones (20 m), y aterrizar. Cruzar la que no toca no cuenta |
 | 6 · Pasada baja (zona 2) | Recorrer la pista 2 de punta a punta entre 2 y 8 m, sin tocar ni salirse por los lados: una pasada hacia cada lado |
 | 7 · Diana (zona 2) | Aterrizar a menos de 10 m del centro de la diana |
 | 8 · Recorrido de precisión (zona 2) | En este orden: pasada baja válida, paso por la puerta y toma a menos de 10 m de la diana |

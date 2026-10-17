@@ -141,7 +141,7 @@ let piloto = null; // UAV: su piloto automatico (js/piloto_uav.js)
 function nuevoEvaluador() {
   ev = { obj: Object.fromEntries(ESCENARIOS[sesion.escenario].objetivos.map(([id, t]) => [id, { texto: t, estado: "pend" }])),
          contador: entorno.contadorVueltas(ESCENARIOS[sesion.escenario].sentido || 0), zona: zonaDe(sesion.escenario),
-         pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
+         pasada: entorno.pasadaBaja(), pasadas: { este: 0, oeste: 0 }, puertas: 0, pasoPuerta: 0, subido: false, toma: null, acumRumbo: 0, rumboPrev: null, giros: [], perdidaT: 0,
          t40: null, tFallo: null, falloHecho: false };
   for (const k of ["cerca", "sinPerdida", "modo", "bateria", "bajo4", "altura13", "techo", "vlos", "zona", "baja", "distancia", "suave", "atex", "unidades", "altura", "minima", "ruido"]) if (ev.obj[k]) ev.obj[k].estado = "curso";
   const O = ESCENARIOS[sesion.escenario].operacion;
@@ -163,14 +163,14 @@ function evaluar(dt) {
   if (h >= 40) { marcar("subir40", "ok"); if (ev.t40 === null) { ev.t40 = t; ev.tFallo = t + 8 + 12 * Math.random(); } }
   // vueltas al circuito por fuera de los 4 pilones (las cuenta el Entorno en cada paso)
   if (ev.contador.vueltas >= 1) marcar("circ1", "ok"); if (ev.contador.vueltas >= 2) marcar("circ2", "ok");
-  // zona 2: puerta y pasadas bajas (las cuentan paso() y el Entorno); en el recorrido, cada cosa despues de la anterior
-  for (let i = 1; i <= 3; i++) if (ev.puertas >= i) marcar("puerta" + i, "ok");
+  // zona 2: puertas y pasadas bajas (las cuentan paso() y el Entorno: zona2(), que marca tambien las puertas de su mision,
+  // en orden); en el recorrido, cada cosa despues de la anterior
   if (ev.pasadas.oeste) marcar("pasadaO", "ok"); if (ev.pasadas.este) marcar("pasadaE", "ok");
   if (ev.pasadas.oeste + ev.pasadas.este) marcar("pasada", "ok");
   // ochos alrededor de los pilones: por fuera del par derecho (rojo y azul), por el centro, por fuera del par izquierdo
   // (amarillo y verde), por el centro y vuelta al rojo. Se sigue por pasos con la posicion (N, E)
   if (ev.obj.ocho1) { const o = pasoOcho(N, E); if (o >= 1) marcar("ocho1", "ok"); if (o >= 2) marcar("ocho2", "ok"); }
-  if (dist > 200) marcar("cerca", "mal");
+  if (dist > 500) marcar("cerca", "mal");
   // perdida: mas de 0,3 s seguidos con perdida > 0,6 (despues del lanzamiento)
   ev.perdidaT = av.perdida > 0.6 && t > 3 ? ev.perdidaT + dt : 0;
   if (ev.perdidaT > 0.3) { marcar("sinPerdida", "mal"); if (ev.falloHecho) marcar("fallo", "mal"); }
@@ -306,12 +306,14 @@ function textoVueltas() {
   if (ev.zona === 2) return z2;
   return sesion.escenario === "libre" && (ev.puertas || ev.pasadas.este + ev.pasadas.oeste || (ev.toma && ev.toma.d <= 40)) ? z1 + "<br>" + z2 : z1;
 }
+// la mision de la puerta: las dos puertas de la zona 2, una despues de la otra, dos veces
+const PUERTAS_ORDEN = ["naranja", "verde", "naranja", "verde"];
 // zona 2: que toca ahora
 function textoZona2() {
   const id = sesion.escenario, o = ev.obj, hecho = k => o[k] && o[k].estado === "ok";
   let sig = "";
   if (!ev.subido) sig = "sube a 20 m";
-  else if (id === "puerta") sig = ev.puertas < 3 ? `cruzar la puerta naranja (${ev.puertas}/3)` : "aterrizar";
+  else if (id === "puerta") sig = ev.pasoPuerta < PUERTAS_ORDEN.length ? `cruzar la puerta ${PUERTAS_ORDEN[ev.pasoPuerta]} (${ev.pasoPuerta}/${PUERTAS_ORDEN.length})` : "aterrizar";
   else if (id === "pasada_baja") sig = !hecho("pasadaO") ? "pasada baja hacia el oeste (de izquierda a derecha)" : !hecho("pasadaE") ? "pasada baja hacia el este (de derecha a izquierda)" : "aterrizar";
   else if (id === "diana") sig = "aterrizar en la diana";
   else if (id === "recorrido") sig = !hecho("pasada") ? "1. pasada baja por la pista 2 (2 a 8 m)" : !hecho("puertaR") ? "2. cruzar la puerta naranja" : "3. aterrizar en la diana";

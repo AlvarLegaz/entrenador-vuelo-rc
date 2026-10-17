@@ -21,7 +21,7 @@ ESCENARIOS["orientacion"] = {
   ],
   [
    "cerca",
-   "No alejarse más de 200 m"
+   "No alejarse más de 500 m"
   ],
   [
    "sinPerdida",

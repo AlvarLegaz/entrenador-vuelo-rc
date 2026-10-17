@@ -42,11 +42,14 @@ class Entorno {
     //    punta a punta entre hmin y hmax, sin salirse por los lados) y con la diana de aterrizaje en el centro
     //  - diana: circulos de cal de 5, 10 y 20 m con sus puntos
     //  - puerta: dos pilones naranjas separados 16 m; se cruza de este a oeste o al reves, por debajo de lo alto
+    //  - puertaVerde: dos pilones verdes separados 16 m, girada 90 grados respecto a la naranja: se cruza de norte a sur
+    //    o al reves (la mision de la puerta: naranja, verde, naranja, verde; hay que girar entre una y otra)
     //  - despejado: rectangulo sin almendros ni estacas
     this.zona2 = {
       pista: { n: -45, e0: -35, e1: 35, ancho: 10, margen: 5, hmin: 2, hmax: 8 },
       diana: { n: -45, e: 0, anillos: [[5, 100], [10, 50], [20, 20]] },
       puerta: { e: 60, n0: -123, n1: -107, color: { nombre: "naranja", hex: "#ef6c00" } },
+      puertaVerde: { n: -135, e0: -31, e1: -15, color: { nombre: "verde", hex: "#2e7d32" } },
       despejado: { n0: -150, n1: -14, e0: -60, e1: 95 },
     };
     this.viento = { base: 2, rumbo: Math.PI, rachas: true, r: [0, 0, 0], actual: [0, 0, 0] };   // rumbo: hacia donde va
@@ -114,8 +117,11 @@ class Entorno {
   }
 
   pilones() { return this.circuito.pilones; }
-  /** Los dos pilones de la puerta de la zona 2, (N, E). */
-  pilonesPuerta() { const P = this.zona2.puerta; return [[P.n0, P.e], [P.n1, P.e]]; }
+  /** Los dos pilones de una puerta de la zona 2 ("naranja" o "verde"), (N, E). */
+  pilonesPuerta(cual = "naranja") {
+    if (cual === "verde") { const V = this.zona2.puertaVerde; return [[V.n, V.e0], [V.n, V.e1]]; }
+    const P = this.zona2.puerta; return [[P.n0, P.e], [P.n1, P.e]];
+  }
 
   /** Distancia horizontal al piloto (m) y si esta fuera del campo. En un mundo real no hay limite. */
   distancia(p) { return Math.hypot(p[0], p[1]); }
@@ -275,7 +281,7 @@ class Entorno {
     const h = -p[2], P = this.pilon;
     if (h > P.alto + 0.3) return false;
     const r = P.r0 + (P.r1 - P.r0) * Math.max(0, h) / P.alto, lim = r + semi * 0.8;
-    if (this._pilonesDe !== this.circuito) { this._pilonesDe = this.circuito; this._pilonesTodos = this.pilones().concat(this.pilonesPuerta()); }   // la misma lista en cada paso
+    if (this._pilonesDe !== this.circuito) { this._pilonesDe = this.circuito; this._pilonesTodos = this.pilones().concat(this.pilonesPuerta(), this.pilonesPuerta("verde")); }   // la misma lista en cada paso
     const T = this._pilonesTodos;
     for (let i = 0; i < T.length; i++) if (Math.hypot(p[0] - T[i][0], p[1] - T[i][1]) < lim) return true;
     return false;
@@ -291,14 +297,18 @@ class Entorno {
     return sentido ? (sentido > 0 ? n : n.slice().reverse()).join(" → ") : "en cualquier sentido";
   }
 
-  /** Cruce de la linea de la puerta entre dos pasos: null, {tipo: "puerta", sentido: "este" | "oeste", h},
-   *  {tipo: "alta", h} (por encima de los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon). */
-  cruzaPuerta(pAnt, p) {
-    const P = this.zona2.puerta, a = pAnt[1] - P.e, b = p[1] - P.e;
+  /** Cruce de la linea de una puerta ("naranja": de este a oeste o al reves; "verde": de norte a sur o al reves) entre
+   *  dos pasos: null, {tipo: "puerta", sentido: "este" | "oeste" | "norte" | "sur", h}, {tipo: "alta", h} (por encima
+   *  de los pilones: no cuenta) o {tipo: "fuera"} (por el lado de un pilon). */
+  cruzaPuerta(pAnt, p, cual = "naranja") {
+    const V = cual === "verde", P = V ? this.zona2.puertaVerde : this.zona2.puerta;
+    const k = V ? 0 : 1, j = 1 - k, c = V ? P.n : P.e, lo = V ? P.e0 : P.n0, hi = V ? P.e1 : P.n1;   // k: el eje que se cruza
+    const a = pAnt[k] - c, b = p[k] - c;
     if ((a < 0) === (b < 0)) return null;
-    const t = a / (a - b), n = pAnt[0] + t * (p[0] - pAnt[0]), h = -(pAnt[2] + t * (p[2] - pAnt[2]));
-    if (n > P.n0 && n < P.n1) return h < this.pilon.alto ? { tipo: "puerta", sentido: b > a ? "este" : "oeste", h } : { tipo: "alta", h };
-    if (n > P.n0 - 30 && n < P.n1 + 30 && h < 40) return { tipo: "fuera" };
+    const t = a / (a - b), x = pAnt[j] + t * (p[j] - pAnt[j]), h = -(pAnt[2] + t * (p[2] - pAnt[2]));
+    const sentido = V ? (b > a ? "norte" : "sur") : (b > a ? "este" : "oeste");
+    if (x > lo && x < hi) return h < this.pilon.alto ? { tipo: "puerta", sentido, h } : { tipo: "alta", h };
+    if (x > lo - 30 && x < hi + 30 && h < 40) return { tipo: "fuera" };
     return null;
   }
 

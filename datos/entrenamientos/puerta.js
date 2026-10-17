@@ -6,7 +6,7 @@ ESCENARIOS["puerta"] = {
  ],
  "nombre": "5 · Puerta",
  "zona": 2,
- "desc": "Cruza la puerta de pilones naranjas tres veces, de lado a lado (de este a oeste o al revés), por debajo de lo alto de los pilones (20 m), y aterriza.",
+ "desc": "Cruza las dos puertas de pilones, una después de la otra y dos veces: naranja, verde, naranja, verde. La naranja se cruza de este a oeste o al revés y la verde, girada, de norte a sur o al revés; siempre por debajo de lo alto de los pilones (20 m). Luego aterriza.",
  "objetivos": [
   [
    "subir",
@@ -14,15 +14,19 @@ ESCENARIOS["puerta"] = {
   ],
   [
    "puerta1",
-   "Primer paso por la puerta"
+   "Cruzar la puerta naranja"
   ],
   [
    "puerta2",
-   "Segundo paso por la puerta"
+   "Después, la puerta verde"
   ],
   [
    "puerta3",
-   "Tercer paso por la puerta"
+   "Otra vez la naranja"
+  ],
+  [
+   "puerta4",
+   "Y otra vez la verde"
   ],
   [
    "aterrizar",

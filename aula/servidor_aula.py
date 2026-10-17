@@ -476,6 +476,9 @@ def progreso(con, alumno_id, C=None):
                         ORDER BY marca LIMIT 1""", (alumno_id,)).fetchone()       # el mejor tiempo historico en la carrera de drones
     return dict(vuelos=r["n"], horas=round(horas, 3), accidentes=r["acc"], aterrizajes=r["att"], ultimo_vuelo=r["ultimo"],
                 escenarios={e: dict(superado=e in sup, intentos=intentos.get(e, 0)) for e in PR},
+                # todos los que ha volado, cuenten o no para el certificado (los de la zona 2, el dron...): el APTO y los
+                # intentos de cada tarjeta de la pantalla de entrenamientos
+                entrenamientos={e: dict(superado=e in sup, intentos=n) for e, n in intentos.items()},
                 escenarios_superados=sum(e in sup for e in PR), escenarios_total=len(PR), horas_minimas=HM,
                 certificado=C["nombre"], requisitos_cumplidos=req, logros=L, robot=robot,
                 carrera=dict(mejor=round(mc["marca"], 2), avion=mc["avion"], fecha=mc["inicio"]) if mc else None)

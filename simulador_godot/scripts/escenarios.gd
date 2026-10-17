@@ -64,6 +64,8 @@ static func orden_bb(ent: Entorno, sentido: int) -> String:
 	for i in idx: partes.append(pilon_bb(ent, i))
 	return " → ".join(partes)
 
+## La mision de la puerta: las dos puertas de la zona 2, una despues de la otra, dos veces (PUERTAS_ORDEN de evaluacion.js).
+const PUERTAS_ORDEN := ["naranja", "verde", "naranja", "verde"]
 const OCHO_PASOS := ["por fuera del rojo y el azul", "cruzar el centro", "por fuera del amarillo y el verde", "cruzar el centro", "volver al pilón rojo"]
 
 ## Tramos del aterrizaje guiado (GUIA_TRAMOS de la web). fin: el tramo esta hecho (s = lo que ve el piloto).
@@ -102,6 +104,7 @@ class Evaluador extends RefCounted:
 	var zona := 1
 	var pasadas := { "este": 0, "oeste": 0 }
 	var puertas := 0
+	var paso_puerta := 0     # la mision de la puerta: cuantas lleva de PUERTAS_ORDEN
 	var subido := false
 	var toma := {}
 	var perdida_t := 0.0
@@ -150,8 +153,6 @@ class Evaluador extends RefCounted:
 		if contador != null:
 			if contador.vueltas >= 1: marcar("circ1", "ok")
 			if contador.vueltas >= 2: marcar("circ2", "ok")
-		for i in range(1, 4):
-			if puertas >= i: marcar("puerta" + str(i), "ok")
 		if pasadas["oeste"]: marcar("pasadaO", "ok")
 		if pasadas["este"]: marcar("pasadaE", "ok")
 		if pasadas["oeste"] + pasadas["este"]: marcar("pasada", "ok")
@@ -159,7 +160,7 @@ class Evaluador extends RefCounted:
 			var o := paso_ocho(N, Ee)
 			if o >= 1: marcar("ocho1", "ok")
 			if o >= 2: marcar("ocho2", "ok")
-		if dist > 200: marcar("cerca", "mal")
+		if dist > 500: marcar("cerca", "mal")
 		perdida_t = perdida_t + dt if (av["perdida"] > 0.6 and t > 3) else 0.0
 		if perdida_t > 0.3:
 			marcar("sinPerdida", "mal")
@@ -263,7 +264,7 @@ class Evaluador extends RefCounted:
 		var hecho := func(k: String) -> bool: return obj.has(k) and obj[k]["estado"] == "ok"
 		var sig := ""
 		if not subido: sig = "sube a 20 m"
-		elif id_esc == "puerta": sig = ("cruzar la puerta naranja (%d/3)" % puertas) if puertas < 3 else "aterrizar"
+		elif id_esc == "puerta": sig = ("cruzar la puerta %s (%d/%d)" % [Escenarios.PUERTAS_ORDEN[paso_puerta], paso_puerta, Escenarios.PUERTAS_ORDEN.size()]) if paso_puerta < Escenarios.PUERTAS_ORDEN.size() else "aterrizar"
 		elif id_esc == "pasada_baja": sig = "pasada baja hacia el oeste (de izquierda a derecha)" if not hecho.call("pasadaO") else ("pasada baja hacia el este (de derecha a izquierda)" if not hecho.call("pasadaE") else "aterrizar")
 		elif id_esc == "diana": sig = "aterrizar en la diana"
 		elif id_esc == "recorrido": sig = "1. pasada baja por la pista 2 (2 a 8 m)" if not hecho.call("pasada") else ("2. cruzar la puerta naranja" if not hecho.call("puertaR") else "3. aterrizar en la diana")

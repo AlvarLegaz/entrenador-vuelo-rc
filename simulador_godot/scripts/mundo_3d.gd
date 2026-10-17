@@ -353,6 +353,8 @@ shader_type spatial;
 // de hojas y sombra interior (mas oscura abajo, donde no llega el cielo, y mas clara arriba); la luz que atraviesa las
 // hojas (BACKLIGHT) la aclara a contraluz y la copa se mece con la brisa. Como materialCopas de visor.js.
 uniform float rugosidad = 0.28;
+uniform vec3 tinte = vec3(1.0);      // el campo de vuelo (Campo3D): el tinte y la luz ambiente de crearMaterialCopas del navegador
+uniform float amb = 1.0;
 varying float hueco;
 varying float alto;
 float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -373,9 +375,10 @@ void vertex() {
 void fragment() {
 	vec3 pm = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float f = ruido(pm * 1.8) * 0.6 + ruido(pm * 5.5) * 0.4;
-	ALBEDO = COLOR.rgb * (0.6 + 0.75 * f) * (0.7 + 0.5 * hueco) * mix(0.7, 1.25, smoothstep(-0.9, 0.85, alto));
+	ALBEDO = COLOR.rgb * tinte * (0.6 + 0.75 * f) * (0.7 + 0.5 * hueco) * mix(0.7, 1.25, smoothstep(-0.9, 0.85, alto));
 	ROUGHNESS = 0.92; SPECULAR = 0.15;
-	BACKLIGHT = COLOR.rgb * 0.35;
+	BACKLIGHT = COLOR.rgb * tinte * 0.35;
+	AO = amb; AO_LIGHT_AFFECT = 0.0;     // solo reduce la luz ambiente
 }
 """
 
