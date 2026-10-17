@@ -5,6 +5,8 @@ vuelos en una base de datos SQLite comun. Solo usa la biblioteca estandar de Pyt
   python servidor_aula.py --puerto 8000
   python servidor_aula.py --cambiar-pin   cambia el PIN del profesor y sale
   python servidor_aula.py --datos OTRA    usa otra carpeta de datos (por ejemplo, para pruebas)
+  python servidor_aula.py --detras-de-proxy   detras del nginx de Docker_web: la IP de cada alumno, de X-Real-IP
+  UXS_PIN_PROFESOR=123456 python servidor_aula.py   el PIN de la primera vez sin consola (Docker_web)
 
 Los demas ordenadores abren en el navegador  http://<IP de este ordenador>:8080
 Datos: aula/datos/aula.db. Copias de seguridad: aula/datos/copias (al arrancar, cada hora si hubo
@@ -119,7 +121,9 @@ def crear_bd():
     for c, tipo in [("correo", "TEXT"), ("nombre_real", "TEXT"), ("apellidos", "TEXT"), ("pendiente", "INTEGER NOT NULL DEFAULT 0")]:
         if c not in cols: con.execute("ALTER TABLE alumnos ADD COLUMN %s %s" % (c, tipo))
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS alumnos_correo_activo ON alumnos(correo) WHERE archivado = 0 AND correo IS NOT NULL")
-    con.commit(); con.close()
+    con.commit()
+    secreto(con)                                    # el de los pases, ya al arrancar: no al entrar el primer alumno (ver secreto)
+    con.close()
 
 
 def ahora():
@@ -188,6 +192,7 @@ def guardar_vehiculo(con, aid, avion, estado, version):
 
 
 # ======================= registros de vuelo =======================
+DETRAS_DE_PROXY = False          # --detras-de-proxy: la IP del alumno viene en X-Real-IP (la pone el nginx de Docker_web)
 REG_MAX_GZ = 10_000_000          # bytes comprimidos que se aceptan
 REG_MAX_JSON = 80_000_000        # y descomprimidos
 REG_MAX_FILAS = 200_000          # 5,5 h a 10 Hz
@@ -295,10 +300,13 @@ def pin_correcto(con, pin):
 # entrar reciben un pase firmado (HMAC con el secreto del aula sobre su id y su clave): el simulador lo guarda y lo manda
 # con cada vuelo en la cabecera X-Alumno. Sirve hasta que cambie su clave; no caduca al reiniciar el servidor.
 def secreto(con):
+    """La clave con la que se firman los pases de los alumnos. Se crea una sola vez: si dos hilos la crean a la vez (una
+    clase entera entrando en un aula nueva), se queda la primera y los dos leen esa; con OR REPLACE ganaba la ultima y los
+    pases firmados con la otra dejaban de valer (vuelos rechazados con 401: lo encontro aula/Tests/prueba_carga_aula.py)."""
     s = config(con, "secreto")
     if not s:
-        s = secrets.token_hex(32)
-        with con: con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('secreto', ?)", (s,))
+        with con: con.execute("INSERT OR IGNORE INTO config (clave, valor) VALUES ('secreto', ?)", (secrets.token_hex(32),))
+        s = config(con, "secreto")
     return s
 
 
@@ -575,7 +583,21 @@ class Error(Exception):
 
 class Manejador(BaseHTTPRequestHandler):
     server_version = "AulaSimulador/1.0"
+    # HTTP/1.1: la conexion (y su hilo) sirve muchas peticiones; antes, una conexion y un hilo nuevos por peticion era lo
+    # que mas costaba con una clase en multijugador. Toda respuesta lleva Content-Length y, si no se leyo el cuerpo de la
+    # peticion (un error antes de leerlo), la conexion se cierra: lo que quedara no se toma por la peticion siguiente.
+    protocol_version = "HTTP/1.1"
     timeout = 20                      # s sin datos en la conexion: un cliente colgado no retiene un hilo para siempre
+
+    def ip_cliente(self):
+        """La IP de quien pide: la del socket o, detras del nginx de Docker_web (--detras-de-proxy), la que este pone en
+        X-Real-IP (si no, todos los alumnos parecerian uno: el nginx, y los limites de intentos los pararian a todos)."""
+        if DETRAS_DE_PROXY:
+            ip = (self.headers.get("X-Real-IP") or "").strip()
+            if ip: return ip[:64]
+        return self.client_address[0]
+
+    def address_string(self): return self.ip_cliente()
 
     def log_message(self, fmt, *args):
         if "/api/" in str(args[0] if args else ""):
@@ -596,25 +618,32 @@ class Manejador(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(datos)
 
-    def cuerpo(self):
-        """El cuerpo JSON de la peticion: un objeto de menos de 1 MB, sin Infinity ni NaN (no son JSON y rompen a los
-        navegadores que lo reciban), leido con el tiempo maximo del socket."""
+    def leer_cuerpo(self, maximo):
+        """Los bytes del cuerpo de la peticion (Content-Length, hasta `maximo`), leidos una sola vez con el tiempo maximo
+        del socket: con HTTP/1.1, leer de mas se comeria la peticion siguiente de la misma conexion."""
+        if self.cuerpo_leido: return self._crudo
         try: n = int(self.headers.get("Content-Length") or 0)
         except ValueError: raise Error(400, "Content-Length no valido")
         if n < 0: raise Error(400, "Content-Length no valido")
-        if n > 1_000_000: raise Error(413, "demasiado grande")
-        try: d = json.loads(self.rfile.read(n) or b"{}", parse_constant=lambda k: (_ for _ in ()).throw(ValueError(k)))
+        if n > maximo: raise Error(413, "demasiado grande")
+        try: self._crudo = self.rfile.read(n)
+        except OSError: raise Error(400, "cuerpo incompleto")
+        if len(self._crudo) < n: raise Error(400, "cuerpo incompleto")
+        self.cuerpo_leido = True
+        return self._crudo
+
+    def cuerpo(self):
+        """El cuerpo JSON de la peticion: un objeto de menos de 1 MB, sin Infinity ni NaN (no son JSON y rompen a los
+        navegadores que lo reciban)."""
+        crudo = self.leer_cuerpo(1_000_000)
+        try: d = json.loads(crudo or b"{}", parse_constant=lambda k: (_ for _ in ()).throw(ValueError(k)))
         except (ValueError, OSError): raise Error(400, "JSON no valido")
         if not isinstance(d, dict): raise Error(400, "JSON no valido")
         return d
 
     def cuerpo_gzip(self):
         """El cuerpo de la peticion, comprimido con gzip (los registros de vuelo): JSON de hasta REG_MAX_JSON bytes."""
-        try: n = int(self.headers.get("Content-Length") or 0)
-        except ValueError: raise Error(400, "Content-Length no valido")
-        if n < 0: raise Error(400, "Content-Length no valido")
-        if n > REG_MAX_GZ: raise Error(413, "demasiado grande")
-        datos = self.rfile.read(n)
+        datos = self.leer_cuerpo(REG_MAX_GZ)
         try:
             z = zlib.decompressobj(16 + zlib.MAX_WBITS); crudo = z.decompress(datos, REG_MAX_JSON)
             if z.unconsumed_tail: raise Error(413, "demasiado grande")
@@ -662,6 +691,14 @@ class Manejador(BaseHTTPRequestHandler):
     def do_DELETE(self): self.despachar("DELETE")
 
     def despachar(self, metodo):
+        self.cuerpo_leido = False
+        try: self._despachar(metodo)
+        finally:
+            try: queda = int(self.headers.get("Content-Length") or 0) > 0 and not self.cuerpo_leido
+            except ValueError: queda = True
+            if queda or self.headers.get("Transfer-Encoding"): self.close_connection = True
+
+    def _despachar(self, metodo):
         url = urlparse(self.path)
         try:
             if url.path.startswith("/api/salas"):       # multijugador: en memoria, sin abrir la base de datos
@@ -691,10 +728,10 @@ class Manejador(BaseHTTPRequestHandler):
 
     def estatico(self, ruta):
         if ruta in ("", "/", "/simulador.html"):         # el aula solo administra: el simulador lo tiene cada alumno en su ordenador
-            self.send_response(302); self.send_header("Location", "/profesor.html"); self.end_headers(); return
+            self.send_response(302); self.send_header("Location", "/profesor.html"); self.send_header("Content-Length", "0"); self.end_headers(); return
         marco = "DENY"
         if ruta == "/espectador.html": ruta = "/simulador.html"; marco = "SAMEORIGIN"   # la vista del alumno del panel del profesor: el simulador en modo espectador
-        elif not (ruta == "/profesor.html" or ruta.startswith(("/datos/", "/js/", "/lib/"))):
+        elif not (ruta in ("/profesor.html", "/config.js") or ruta.startswith(("/datos/", "/js/", "/lib/"))):
             raise Error(404, "El servidor del aula solo tiene el panel del profesor: el simulador se abre en cada ordenador")
         if ruta == "/datos/vehiculos/indice.js":       # la carpeta de vehiculos se lee al momento: uno nuevo aparece al copiarlo
             dav = os.path.join(DIR_COMUNES, "vehiculos")
@@ -746,7 +783,7 @@ class Manejador(BaseHTTPRequestHandler):
 
     def api_salas(self, m, p):
         b = self.cuerpo() if m in ("POST", "PUT") else {}      # el cuerpo se lee ANTES de coger el cerrojo: un cliente lento no para las salas
-        t = time.time(); ip = self.client_address[0]
+        t = time.time(); ip = self.ip_cliente()
         with CERROJO_SALAS:
             for cod in list(SALAS):                      # limpieza: jugadores callados y salas vacias hace mucho
                 sala = SALAS[cod]
@@ -881,7 +918,7 @@ class Manejador(BaseHTTPRequestHandler):
                     con.execute("UPDATE alumnos SET clave = ? WHERE id = ?", (hash_pin(clave), r["id"]))
                     registrar(con, "clave", "%s (%s) desde %s" % (r["nombre"], r["id"], self.address_string()))
             else:
-                ip = (self.client_address[0], r["id"]); self.intento(ip, 60)
+                ip = (self.ip_cliente(), r["id"]); self.intento(ip, 60)
                 sal = r["clave"].split("$", 1)[0]
                 if not hmac.compare_digest(hash_pin(clave, sal), r["clave"]): raise Error(403, "Contraseña incorrecta")
                 self.acierto(ip)
@@ -893,7 +930,7 @@ class Manejador(BaseHTTPRequestHandler):
             if not r: raise Error(404, "alumno no encontrado")
             if not r["clave"]: return dict(sin_clave=True)
             clave = str(self.cuerpo().get("clave", ""))
-            ip = (self.client_address[0], p[1]); self.intento(ip, 60)
+            ip = (self.ip_cliente(), p[1]); self.intento(ip, 60)
             sal = r["clave"].split("$", 1)[0]
             if not hmac.compare_digest(hash_pin(clave, sal), r["clave"]): raise Error(403, "Clave incorrecta")
             self.acierto(ip)
@@ -984,7 +1021,7 @@ class Manejador(BaseHTTPRequestHandler):
         if p == ["profesor", "entrar"] and m == "POST":
             if not config(con, "pin"): raise Error(503, "El PIN no está configurado: arranca el servidor en una consola")
             pin = str(self.cuerpo().get("pin", ""))
-            ip = self.client_address[0]; self.intento(ip, 120)
+            ip = self.ip_cliente(); self.intento(ip, 120)
             if not pin_correcto(con, pin): raise Error(401, "PIN incorrecto")
             self.acierto(ip)
             for k in [k for k, cad in list(SESIONES.items()) if cad < time.time()]: SESIONES.pop(k, None)   # sesiones caducadas fuera
@@ -1023,7 +1060,7 @@ class Manejador(BaseHTTPRequestHandler):
     def registro(self, con, d):
         """Solicitud de un alumno nuevo desde el simulador: usuario, correo del centro, nombre, apellidos y contrasena.
         Queda pendiente (sin pase: no guarda nada) hasta que el profesor la aprueba en el panel."""
-        ip = ("registro", self.client_address[0])
+        ip = ("registro", self.ip_cliente())
         with CERROJO_FALLOS:                                     # 10 solicitudes por hora y equipo
             n, desde = FALLOS.get(ip, (0, time.time()))
             if time.time() - desde > 3600: n, desde = 0, time.time()
@@ -1260,18 +1297,38 @@ def ips_locales():
     return sorted(i for i in ips if not i.startswith("127."))
 
 
+class Servidor(ThreadingHTTPServer):
+    """Con cola de conexiones grande: la de Python es de 5 y cada peticion abre una conexion (HTTP/1.0). Con una clase en
+    multijugador (30 alumnos x 10 estados por segundo) Linux tiraba las que no cabian y el alumno esperaba 1, 2 o 3 s a
+    que se reintentaran (lo encontro aula/Tests/prueba_carga_aula.py en Docker_web)."""
+    request_queue_size = 1024
+    daemon_threads = True
+
+
 def main():
     ap = argparse.ArgumentParser(description="Servidor del aula del simulador")
     ap.add_argument("--puerto", type=int, default=8080)
     ap.add_argument("--cambiar-pin", action="store_true")
     ap.add_argument("--datos", help="carpeta de la base de datos y las copias (por defecto aula/datos)")
+    ap.add_argument("--detras-de-proxy", action="store_true",
+                    help="detras de un nginx que pone X-Real-IP (Docker_web): SOLO si el puerto del aula no se publica")
     a = ap.parse_args()
+    global DETRAS_DE_PROXY
+    DETRAS_DE_PROXY = a.detras_de_proxy
     if a.datos: usar_datos(a.datos)
     crear_bd()
     con = conectar()
+    pin_inicial = os.environ.get("UXS_PIN_PROFESOR", "").strip()
+    if pin_inicial and not a.cambiar_pin and not config(con, "pin"):   # solo la primera vez: luego se cambia en el panel
+        if not re.fullmatch(r"\d{4,12}", pin_inicial):
+            print("UXS_PIN_PROFESOR tiene que ser de 4 a 12 cifras."); sys.exit(1)
+        with con:
+            con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('pin', ?)", (hash_pin(pin_inicial),))
+            registrar(con, "cambiar pin", "PIN inicial de UXS_PIN_PROFESOR")
+        print("PIN inicial del profesor guardado (de UXS_PIN_PROFESOR).")
     if a.cambiar_pin or not config(con, "pin"):
         if not sys.stdin.isatty():
-            print("Falta el PIN del profesor: arranca el servidor en una consola para elegirlo."); sys.exit(1)
+            print("Falta el PIN del profesor: arranca el servidor en una consola para elegirlo (o dalo en UXS_PIN_PROFESOR)."); sys.exit(1)
         print("Configura el PIN del profesor (protege el panel del profesor y la autorización del avión real).")
         with con:
             con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('pin', ?)", (hash_pin(pedir_pin_consola()),))
@@ -1281,7 +1338,7 @@ def main():
     con.close()
     print("Copia de seguridad al arrancar:", hacer_copia("arranque"))
     threading.Thread(target=copias_periodicas, daemon=True).start()
-    srv = ThreadingHTTPServer(("0.0.0.0", a.puerto), Manejador)
+    srv = Servidor(("0.0.0.0", a.puerto), Manejador)
     ips = ips_locales() or ["localhost"]
     print("\nServidor del aula en marcha (solo administra: el simulador se abre en cada ordenador).")
     print("   Panel del profesor:        http://localhost:%d/profesor.html" % a.puerto)

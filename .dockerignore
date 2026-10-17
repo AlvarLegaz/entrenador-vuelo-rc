@@ -1,0 +1,13 @@
+# Lo que necesitan las imagenes de Docker_web (se construyen desde la raiz del repositorio): el aula, los datos comunes
+# sin las zonas de detalle (el nginx las monta) y el simulador web. Nada mas: ni pruebas, ni Godot, ni la base de datos.
+*
+!aula/servidor_aula.py
+!aula/profesor.html
+!datos
+!simulador_web
+!Docker_web
+datos/escenarios/zonas
+**/Tests
+**/__pycache__
+**/*.pyc
+Docker_web/.env

@@ -5,12 +5,17 @@
 // =====================================================================
 //  AULA: API del servidor y cola de vuelos sin enviar
 // =====================================================================
+/** El aula que sale si el alumno no ha escrito otra: la de config.js (Docker_web: la misma direccion, detras de su
+ *  nginx) o, servido por SERVIDOR_WEB.bat (u otro servidor de ficheros), el mismo ordenador en el puerto 8080. */
+function aulaPorDefecto() {
+  if (typeof window.UXS_AULA === "string") return window.UXS_AULA.replace(/\/+$/, "");
+  return location.protocol.startsWith("http") ? `${location.protocol}//${location.hostname}:8080` : "";
+}
 /** Direccion del servidor del aula (pantalla de acceso): el simulador se abre en cada ordenador y el aula solo
- *  administra. Sin direccion guardada y servido por SERVIDOR_WEB.bat, el mismo ordenador en el puerto 8080. */
+ *  administra. Sin direccion guardada, la de por defecto (aulaPorDefecto). */
 function urlAula() {
   let u = ""; try { u = localStorage.getItem("evrc_url_aula") || ""; } catch (e) {}
-  // servido por SERVIDOR_WEB.bat (u otro servidor de ficheros): el aula, en el mismo ordenador y el puerto 8080
-  return (u || (location.protocol.startsWith("http") ? `${location.protocol}//${location.hostname}:8080` : "")).replace(/\/+$/, "");
+  return (u || aulaPorDefecto()).replace(/\/+$/, "");
 }
 async function api(metodo, ruta, cuerpo, pase) {
   const h = cuerpo ? { "Content-Type": "application/json" } : {}, P = pase || sesion.pase;
@@ -50,7 +55,7 @@ function sesionGuardada() { try { return JSON.parse(sessionStorage.getItem("evrc
 function guardarSesion(x) { try { if (x) sessionStorage.setItem("evrc_sesion", JSON.stringify(x)); else sessionStorage.removeItem("evrc_sesion"); } catch (e) {} }
 function usuarioGuardado() { try { return localStorage.getItem("evrc_usuario") || ""; } catch (e) { return ""; } }
 function irAcceso(msg) {
-  document.getElementById("urlAula").value = urlAula();          // servido por SERVIDOR_WEB.bat: ya viene puesta (el mismo PC, puerto 8080)
+  document.getElementById("urlAula").value = urlAula();          // servido por SERVIDOR_WEB.bat o Docker_web: ya viene puesta
   document.getElementById("accUsuario").value = usuarioGuardado();
   document.getElementById("accClave").value = "";
   document.getElementById("errAlumno").textContent = msg || "";
@@ -61,7 +66,7 @@ function irAcceso(msg) {
 /** Guarda la direccion escrita (sin cambios si es la de por defecto) y la devuelve normalizada. */
 function guardarUrl(u) {
   u = (u || "").trim().replace(/\/+$/, ""); if (u && !/^https?:\/\//.test(u)) u = "http://" + u;
-  const defecto = location.protocol.startsWith("http") ? `${location.protocol}//${location.hostname}:8080` : "";
+  const defecto = aulaPorDefecto();
   try { if (u === defecto) localStorage.removeItem("evrc_url_aula"); else localStorage.setItem("evrc_url_aula", u); } catch (e) {}
   return u;
 }

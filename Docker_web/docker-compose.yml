@@ -1,0 +1,52 @@
+# UxS Trainer en Docker: un nginx con HTTPS que sirve el simulador web y, detras, el servidor del aula.
+#
+#   https://SERVIDOR/                el simulador web (los alumnos; la pantalla de acceso ya trae el aula puesta)
+#   https://SERVIDOR/profesor.html   el panel del profesor
+#   http://SERVIDOR:8080             el aula sin cifrar, para el simulador de Godot y las gafas (como antes); quitad esa
+#                                    linea de "ports" si no se usan o si el certificado es de verdad (ver LEEME.md)
+#
+# Se prepara con ./PREPARAR.sh (escribe .env, baja las zonas de detalle y arranca). A mano, desde esta carpeta:
+#   docker compose up -d --build
+services:
+  aula:
+    build:
+      context: ..
+      dockerfile: Docker_web/aula/Dockerfile
+    image: uxs-trainer/aula
+    restart: unless-stopped
+    environment:
+      UXS_PIN_PROFESOR: "${UXS_PIN_PROFESOR:-}"     # solo la primera vez (sin base de datos); luego se cambia en el panel
+      TZ: "${TZ:-Europe/Madrid}"
+    volumes:
+      - aula_datos:/datos                           # aula.db, copias de seguridad y registros de vuelo
+    expose:
+      - "8080"                                      # solo para el nginx: el aula NO se publica directamente
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/estado', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: ..
+      dockerfile: Docker_web/nginx/Dockerfile
+    image: uxs-trainer/web
+    restart: unless-stopped
+    depends_on:
+      - aula
+    environment:
+      UXS_HOST: "${UXS_HOST:-localhost}"            # IP o nombre del servidor: va en el certificado autofirmado
+      PUERTO_HTTPS: "${PUERTO_HTTPS:-443}"          # a donde redirige el 80
+      TZ: "${TZ:-Europe/Madrid}"
+    ports:
+      - "${PUERTO_HTTP:-80}:80"                     # redirige a HTTPS
+      - "${PUERTO_HTTPS:-443}:443"
+      - "${PUERTO_AULA:-8080}:8080"                 # el aula sin cifrar (Godot y gafas)
+    volumes:
+      - certificados:/certs                         # uxs.crt y uxs.key: se crean si no hay (o poned los vuestros)
+      - ../datos/escenarios/zonas:/srv/uxs/datos/escenarios/zonas:ro   # las zonas de detalle (../DESCARGAR_ZONAS.sh)
+
+volumes:
+  aula_datos:
+  certificados:

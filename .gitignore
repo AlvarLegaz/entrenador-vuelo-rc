@@ -23,3 +23,5 @@ simulador_godot/.godot/
 simulador_godot/datos_android.zip
 # plantilla de compilacion de Android de Godot (la instala exportar_pico.py)
 simulador_godot/android/
+# configuracion local de Docker_web (PIN inicial del profesor, IP del servidor): la escribe PREPARAR.sh
+Docker_web/.env

@@ -19,6 +19,7 @@ Avión de aprendizaje impreso en 3D y simulador de vuelo para entrenar con él e
 | `simulador_web/` | Simulador del navegador (v1): `simulador.html` (la página y el arranque), `js/` (física, entorno, visor, operaciones...), `js/app/` (la aplicación por partes: `vuelo.js`, `mandos.js`, `camaras.js`, `hud.js`, `multijugador.js`...), `lib/`, `servidor_web.py` (sirve la web y los datos) y sus pruebas (`simulador_web/Tests/`). |
 | `simulador_godot/` | Simulador de Godot (v2): el proyecto, `scripts/` (con `principal.gd`, el estado de la aplicación, y `scripts/app/`, sus partes con los mismos nombres que `js/app/` de la web) y sus pruebas (`simulador_godot/Tests/`, con las referencias que comparan la física y las reglas con las de la web). |
 | `simulador_pico/` | Versión de las gafas de realidad virtual: el exportador del APK (`exportar_pico.py`) y sus pruebas (`simulador_pico/Tests/`). El código VR (`modo_vr.gd`) va en el proyecto de Godot, que es donde Godot lo necesita. |
+| `Docker_web/` | Despliegue en Docker: nginx con HTTPS que sirve el simulador web y, detrás, el servidor del aula (`PREPARAR.sh`, `docker-compose.yml`, ver su `LEEME.md`). |
 | `scripts/`, `analisis/`, `stl/` | Diseño de los aviones (geometría, VLM, STL) y generadores de mundos, zonas y misiones. |
 
 La web lee los datos con rutas `../datos/...`: funciona abriendo `simulador_web/simulador.html` con doble clic, con `SERVIDOR_WEB` (que sirve `simulador_web` en `/` y `datos` en `/datos/`) y con el servidor del aula.
@@ -608,4 +609,65 @@ descarga las zonas, pide el PIN del profesor si aún no hay y deja dos servicios
 - **Alumnos, sin contraseña:** elegirse, darse de alta, quitarse de la lista (con confirmación; solo se archiva y se puede restaurar) y guardar sus vuelos.
 - **Profesor, con el botón "Profesor" y el PIN:** editar y borrar alumnos, ver estadísticas e historial completo, exportar a CSV (se abre en Excel), hacer copias, **autorizar la maqueta real** y ver y cerrar las salas del multijugador. Solo se puede autorizar con 10 h de vuelo y los 4 escenarios superados. La sesión dura 8 h, y 5 PIN fallidos seguidos bloquean el acceso 2 minutos.
 
-El PIN viaja sin cifrar por la red local del aula: protege frente a los alumnos, no frente a alguien que espíe la red.
+El PIN viaja sin cifrar por la red local del aula: protege frente a los alumnos, no frente a alguien que espíe la red. Para cifrarlo, el despliegue en Docker.
+
+### En Docker, con HTTPS (`Docker_web/`, 2026-10-17)
+
+La alternativa a `DESPLEGAR_UBUNTU.sh` para un servidor del centro: dos contenedores, un **nginx con HTTPS** que sirve el simulador web y los datos y, detrás, el **servidor del aula**, que no se publica directamente:
+
+```
+cd uxs-trainer/Docker_web
+./PREPARAR.sh
+```
+
+`PREPARAR.sh` hace todo lo necesario:
+
+- instala Docker si falta;
+- pregunta la IP o el nombre del servidor y el PIN del profesor, y los guarda en `Docker_web/.env`, fuera de git;
+- baja las zonas de detalle;
+- arranca los contenedores y comprueba que responden.
+
+Para actualizar, `git pull` y otra vez `./PREPARAR.sh`.
+
+Direcciones:
+
+- alumnos: `https://IP/` (la pantalla de acceso ya trae puesta el aula, en la misma dirección);
+- profesor: `https://IP/profesor.html`;
+- Godot y las gafas: `http://IP:8080`, porque no aceptan el certificado autofirmado.
+
+El certificado se crea solo la primera vez y el navegador avisa una vez; se puede poner uno de verdad. Los detalles, tareas habituales y cómo pasar los datos de una instalación con systemd están en [`Docker_web/LEEME.md`](Docker_web/LEEME.md).
+
+Para esto el aula tiene tres cosas nuevas, que también valen fuera de Docker:
+
+- `--detras-de-proxy`: toma la IP de cada alumno de la cabecera `X-Real-IP`, para los límites de intentos y los registros;
+- el PIN de la primera vez en `UXS_PIN_PROFESOR`, para arrancar sin consola;
+- `simulador_web/config.js`: dice dónde está el aula por defecto. Fuera de Docker, en el mismo ordenador y el puerto 8080, como siempre.
+
+### Prueba de carga (`aula/Tests/prueba_carga_aula.py`)
+
+Simula una clase entera a la vez. Cada alumno:
+
+- entra con su clave (todos a la vez);
+- vuela en una sala multijugador mandando su estado 10 veces por segundo;
+- cada 20 s manda un vuelo y su registro de vuelo, y mira su ficha.
+
+Mientras, el panel del profesor refresca alumnos y salas. Con `--pagina`, cada alumno descarga además el simulador entero.
+
+```
+python aula/Tests/prueba_carga_aula.py                     # un aula temporal en este ordenador
+python aula/Tests/prueba_carga_aula.py --base https://192.168.1.20 --pin 123456 --alumnos 30 --duracion 60 --pagina
+```
+
+Los alumnos de la prueba («Carga …») se borran al acabar.
+
+Resultado con 30 alumnos contra Docker en una máquina virtual de 2 CPU y 4 GB, desde otro ordenador de la red:
+
+- 373 peticiones por segundo, sin errores;
+- estado multijugador al 100 % de su ritmo, con p95 de 102 ms y máximo de 286 ms;
+- entrar los 30 a la vez: 2 s;
+- la lista del panel, con un curso entero (30 alumnos, 9.000 vuelos): 46 ms sin carga.
+
+La prueba encontró dos fallos del aula, ya corregidos:
+
+- **Pases que dejaban de valer.** En un aula nueva, si entraban varios alumnos a la vez, cada uno creaba su propio secreto de los pases y solo valía el último: los vuelos de los demás se rechazaban. Ahora el secreto se crea al arrancar.
+- **Esperas de 1 a 3 s en Linux.** La cola de conexiones del servidor era de 5 y cada petición abría una conexión nueva, así que Linux descartaba conexiones. Ahora la cola es de 1024 y el aula habla HTTP/1.1 con conexiones persistentes.
