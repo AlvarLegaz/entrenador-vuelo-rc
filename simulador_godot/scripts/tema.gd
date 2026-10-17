@@ -1,6 +1,6 @@
 class_name Tema
 extends RefCounted
-## Estilo de la interfaz, el MISMO que la hoja de estilos de simulador/simulador.html (variables :root): colores, letra
+## Estilo de la interfaz, el MISMO que la hoja de estilos de simulador_web/simulador.html (variables :root): colores, letra
 ## (Segoe UI, como el navegador en Windows), botones (normal, principal amarillo, peligro, grande), paneles «capa»,
 ## campos, desplegables, casillas, barras deslizantes y barras de desplazamiento. Mas unas funciones para construir
 ## las pantallas con los mismos bloques que el HTML (cabecera, cuerpo, pie, capa, fila, tabla de datos, chips...).

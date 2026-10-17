@@ -1,6 +1,6 @@
 class_name Industria
 ## Instalaciones industriales de singulares.js (tanques, esferas, balas, columnas, estructuras de proceso, racks de
-## tuberias, chimeneas y torres de refrigeracion): traduccion LITERAL de simulador/js/industria.js. Cada pieza se
+## tuberias, chimeneas y torres de refrigeracion): traduccion LITERAL de simulador_web/js/industria.js. Cada pieza se
 ## descompone en primitivas [forma, e, n, y0, sx, sy, sz, rumbo, color] que mundo_3d.gd dibuja con MultiMesh
 ## (0 caja, 1 cilindro de pie, 2 cilindro tumbado hacia rumbo, 3 elipsoide; y0 su base sobre el suelo del punto).
 

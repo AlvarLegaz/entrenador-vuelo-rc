@@ -1,5 +1,5 @@
 class_name ModeloBipode
-## Bipode de asalto HQ-07 (vehiculo secreto): traduccion LITERAL de la clase ModeloBipode de simulador/js/bipode.js.
+## Bipode de asalto HQ-07 (vehiculo secreto): traduccion LITERAL de la clase ModeloBipode de simulador_web/js/bipode.js.
 ## Anda por el terreno: palanca izquierda (mando.vz adelante, mando.guinada giro), derecha (mando.yaw cintura sin tope,
 ## mando.pitch brazos) y gatillos (mando.disparo, mando.puno). El suelo lo pone el simulador (av.agl y av.pendiente).
 

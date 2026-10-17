@@ -1,6 +1,6 @@
 class_name HudDji
 extends Control
-## Pantalla de la app del dron (#dji de simulador/simulador.html): barra de arriba (modo, estado, grabacion, GPS, senal y
+## Pantalla de la app del dron (#dji de simulador_web/simulador.html): barra de arriba (modo, estado, grabacion, GPS, senal y
 ## bateria), botones de despegar/aterrizar y volver a casa a la izquierda, gimbal y disparador a la derecha, y abajo el
 ## mapa (el GPS del HUD, que se mueve aqui) y la telemetria D/H/HS/VS. p es la escena principal.
 
@@ -52,7 +52,7 @@ func _init(p_: Node) -> void:
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE; top.alignment = BoxContainer.ALIGNMENT_CENTER; add_child(top)
 	modo = Button.new(); modo.text = "N"; modo.tooltip_text = "Modo de vuelo: Cine / Normal / Sport (M, LB)"; modo.focus_mode = Control.FOCUS_NONE
 	modo.custom_minimum_size = Vector2(40, 0); modo.add_theme_font_size_override("font_size", 13); modo.add_theme_font_override("font", Tema.negrita)
-	modo.pressed.connect(func(): p.dji_modo()); modo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	modo.pressed.connect(func(): p.app_apps_dron.dji_modo()); modo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(modo); _estilo_modo("N")
 	estado = Tema.etiqueta("", 13, Color("#8be08f"), true); estado.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; estado.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _sombra(estado); top.add_child(estado)
 	rec = Tema.etiqueta("", 13, Color("#ff5252"), true); _sombra(rec); top.add_child(rec)
@@ -68,10 +68,10 @@ func _init(p_: Node) -> void:
 	# ---- botones de la izquierda ----
 	var izq := VBoxContainer.new(); izq.add_theme_constant_override("separation", 10); izq.anchor_top = 0.5; izq.anchor_bottom = 0.5; izq.offset_left = 16
 	izq.grow_vertical = Control.GROW_DIRECTION_BOTH; izq.offset_top = -49; izq.offset_bottom = 49   # el VBox crece por los dos lados con el tercer boton
-	b_despegar = _boton_redondo("", "", func(): p.dji_despegar()); b_despegar.icon = FLECHA_ARRIBA; b_despegar.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b_despegar = _boton_redondo("", "", func(): p.app_apps_dron.dji_despegar()); b_despegar.icon = FLECHA_ARRIBA; b_despegar.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	izq.add_child(b_despegar)
-	b_rth = _boton_redondo("H", "Volver a casa (H, botón B)", func(): p.dji_rth()); izq.add_child(b_rth)
-	b_briefing = _boton_redondo("", "Briefing: mapa de la zona de trabajo (B)", func(): p.ver_briefing()); b_briefing.icon = MAPA; b_briefing.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b_rth = _boton_redondo("H", "Volver a casa (H, botón B)", func(): p.app_apps_dron.dji_rth()); izq.add_child(b_rth)
+	b_briefing = _boton_redondo("", "Briefing: mapa de la zona de trabajo (B)", func(): p.app_vuelo.ver_briefing()); b_briefing.icon = MAPA; b_briefing.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b_briefing.visible = false; izq.add_child(b_briefing)                       # solo en los trabajos
 	add_child(izq)
 	# ---- gimbal ----
@@ -93,16 +93,16 @@ func _init(p_: Node) -> void:
 		var c := disparo.size / 2
 		if _video and _grabando: disparo.draw_style_box(Tema.caja(Color("#ff3d3d"), Color(0, 0, 0, 0), 4), Rect2(c - Vector2(11, 11), Vector2(22, 22)))
 		else: disparo.draw_circle(c, 21, Color("#ff3d3d") if _video else Color.WHITE, true, -1, true))
-	disparo.pressed.connect(func(): p.dji_disparo())
+	disparo.pressed.connect(func(): p.app_apps_dron.dji_disparo())
 	der.add_child(disparo)
-	var bcm := _boton_redondo("⇄", "Cambiar entre foto y vídeo", func(): p.dji_cam_modo()); bcm.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; der.add_child(bcm)
+	var bcm := _boton_redondo("⇄", "Cambiar entre foto y vídeo", func(): p.app_apps_dron.dji_cam_modo()); bcm.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; der.add_child(bcm)
 	cam_txt = Tema.etiqueta("FOTO", 10, Tema.SUAVE); cam_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(cam_txt); der.add_child(cam_txt)
 	# ---- camara de inspeccion: zoom y termica ----
 	zoom_caja = VBoxContainer.new(); zoom_caja.add_theme_constant_override("separation", 6); zoom_caja.visible = false; zoom_caja.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	zoom_caja.add_child(_boton_redondo("+", "Acercar el zoom (Z, cruceta arriba)", func(): p.dji_zoom(1), 36))
+	zoom_caja.add_child(_boton_redondo("+", "Acercar el zoom (Z, cruceta arriba)", func(): p.app_apps_dron.dji_zoom(1), 36))
 	zoom_txt = Tema.etiqueta("1x", 10, Tema.SUAVE); zoom_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(zoom_txt); zoom_caja.add_child(zoom_txt)
-	zoom_caja.add_child(_boton_redondo("−", "Alejar el zoom (X, cruceta abajo)", func(): p.dji_zoom(-1), 36))
-	b_ir = _boton_redondo("IR", "Cámara térmica (C, cruceta derecha)", func(): p.dji_termica(), 36); zoom_caja.add_child(b_ir)
+	zoom_caja.add_child(_boton_redondo("−", "Alejar el zoom (X, cruceta abajo)", func(): p.app_apps_dron.dji_zoom(-1), 36))
+	b_ir = _boton_redondo("IR", "Cámara térmica (C, cruceta derecha)", func(): p.app_apps_dron.dji_termica(), 36); zoom_caja.add_child(b_ir)
 	for bz in zoom_caja.get_children(): bz.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	der.add_child(zoom_caja)
 	add_child(der)
@@ -208,7 +208,7 @@ func pintar(h: float, vn: Array, vs: float, dist: float) -> void:
 	if _video != D["video"] or _grabando != D["grabando"]: _video = D["video"]; _grabando = D["grabando"]; disparo.queue_redraw()
 	cam_txt.text = "VÍDEO" if D["video"] else "FOTO"
 	# camara de inspeccion: zoom, termica, el medidor puntual del centro y la escala de temperaturas
-	var Cm = p.camara_dron(); var cm: Dictionary = p.cam_dji(); var ver_med: bool = cm["termica"] and p.camara == 3
+	var Cm = p.app_apps_dron.camara_dron(); var cm: Dictionary = p.app_apps_dron.cam_dji(); var ver_med: bool = cm["termica"] and p.camara == 3
 	zoom_caja.visible = Cm != null
 	if Cm != null:
 		zoom_txt.text = "%dx" % int(cm["zoom"]); b_ir.visible = bool(Cm.get("termica", false))

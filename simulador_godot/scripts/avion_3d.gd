@@ -1,8 +1,8 @@
 class_name Avion3D
 extends Node3D
-## El avion en 3D a partir de la malla de sus datos (simulador/aviones/<id>.js, la misma que usa el navegador): piezas
+## El avion en 3D a partir de la malla de sus datos (datos/vehiculos/<id>.js, la misma que usa el navegador): piezas
 ## en ejes cuerpo NED (metros, origen en el CG) y superficies moviles que giran sobre su bisagra. Mismo montaje que
-## construirAvion() en simulador/js/visor.js. Un multicoptero (malla.helices) lleva un disco horizontal por rotor y
+## construirAvion() en simulador_web/js/visor.js. Un multicoptero (malla.helices) lleva un disco horizontal por rotor y
 ## puede traer luces (malla.luces) que parpadean y se ven siempre del mismo tamano en pantalla, como en el navegador.
 ## Un cuadricoptero (tipo "cuadricoptero") no usa la malla de cajas de sus datos: lleva el modelo detallado de
 ## modelo_dji_3d.gd (ModeloDJI3D: cuerpo, brazos, motores, helices con disco de desenfoque y gimbal), con las mismas luces.

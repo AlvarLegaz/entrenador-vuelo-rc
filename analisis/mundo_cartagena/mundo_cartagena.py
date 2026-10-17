@@ -1,4 +1,4 @@
-"""Junta terreno.json (SRTM) y los ficheros de OpenStreetMap (Overpass) en simulador/mundos/cartagena.js:
+"""Junta terreno.json (SRTM) y los ficheros de OpenStreetMap (Overpass) en datos/escenarios/mundos/cartagena.js:
 el mundo real del Campo de Cartagena para el vuelo libre. Coordenadas locales NED en metros con origen en el
 corazon de la captura (lat 37.612788, lon -1.049916); alturas sobre el nivel del mar."""
 import json, sys

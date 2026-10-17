@@ -1,6 +1,6 @@
 # Revisión del realismo de la simulación de vuelo (2026-10-11)
 
-Revisión del modelo físico del simulador (`simulador/js/modelos.js`, `entorno.js`) y de los cuatro aviones (E1, E2, E3, T1), con pruebas numéricas ejecutadas en la misma física que usa el simulador, sin viento. Objetivo: que lo que se entrena en el simulador sea lo que va a pasar en el primer y único vuelo real.
+Revisión del modelo físico del simulador (`simulador_web/js/modelos.js`, `entorno.js`) y de los cuatro aviones (E1, E2, E3, T1), con pruebas numéricas ejecutadas en la misma física que usa el simulador, sin viento. Objetivo: que lo que se entrena en el simulador sea lo que va a pasar en el primer y único vuelo real.
 
 ## Qué está bien
 

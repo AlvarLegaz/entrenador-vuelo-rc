@@ -1,5 +1,5 @@
 """El trabajo de operador "Inspección de la fábrica de SABIC" (escenarios.js, op_sabic) con lo que YA hay en la fábrica
-(simulador/singulares.js, entrada de SABIC, generada por sabic_industria.py): no se crea ningún edificio nuevo.
+(datos/escenarios/singulares.js, entrada de SABIC, generada por sabic_industria.py): no se crea ningún edificio nuevo.
 
   - racks: los racks de tuberias de mas de 50 m con su centro a menos de 430 m del despegue; entre ellos se sortean los
     puntos calientes (aislamiento roto) y sus tuberias amarillas son las de vapor (calientes de verdad: distractores);
@@ -15,7 +15,7 @@ edificios a menos de 15 m.
 import json, math, os, re, sys
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-SIM = os.path.join(AQUI, "..", "..", "simulador")
+SIM = os.path.join(AQUI, "..", "..", "datos")             # datos comunes de los simuladores
 sys.path.insert(0, AQUI)
 import sabic_industria as SI
 
@@ -24,10 +24,10 @@ R_RACKS, R_UNIDADES = 430, 450
 
 
 def main():
-    Z = json.load(open(os.path.join(SIM, "zonas", "fotovoltaica", "zona.json")))
+    Z = json.load(open(os.path.join(SIM, "escenarios", "zonas", "fotovoltaica", "zona.json")))
     N0z, E0z = Z["N0"], Z["E0"]
     EN = lambda u, v: (E0z + 2000 + u * SI.SU + v * SI.CU, N0z + 2000 + u * SI.CU - v * SI.SU)
-    s = open(os.path.join(SIM, "singulares.js"), encoding="utf-8").read()
+    s = open(os.path.join(SIM, "escenarios", "singulares.js"), encoding="utf-8").read()
     L = json.loads(s[s.index("window.SINGULARES = ") + 20:s.rindex("]") + 1])
     P = next(q for q in L if q["nombre"] == SI.NOMBRE)["piezas"]
     e_s, n_s = EN(*SALIDA_UV)
@@ -38,7 +38,7 @@ def main():
             return math.hypot(q["e0"] + t * de - e_s, q["n0"] + t * dn - n_s) - q["ancho"] / 2
         return math.hypot(q["e"] - e_s, q["n"] - n_s) - max(q.get("radio", 0), q.get("largo", 0) / 2, q.get("ancho", 0) / 2)
     cerca = min(dist_pieza(q) for q in P)
-    ed = json.load(open(os.path.join(SIM, "zonas", "fotovoltaica", "edificios.json")))
+    ed = json.load(open(os.path.join(SIM, "escenarios", "zonas", "fotovoltaica", "edificios.json")))
     def dist_edif(d):
         p = d["p"]; return min(math.hypot(p[i] - e_s, p[i + 1] - n_s) for i in range(0, len(p), 2))
     cerca_e = min(dist_edif(d) for d in ed)
@@ -113,15 +113,8 @@ def main():
         },
     }
     # ---- a escenarios.js, antes de libre_cartagena (o en su sitio si ya estaba) ----
-    p = os.path.join(SIM, "escenarios.js"); t = open(p, encoding="utf-8").read()
-    bloque = ' "op_sabic": ' + json.dumps(O, indent=1, ensure_ascii=False).replace("\n", "\n ") + ",\n"
-    if '\n "op_sabic": {' in t:
-        i = t.index('\n "op_sabic": {') + 1; j = t.index('\n "', i + 5) + 1; t = t[:i] + bloque + t[j:]
-    else:
-        i = t.index('\n "libre_cartagena": {') + 1; t = t[:i] + bloque + t[i:]
-    m = re.search(r"(?m)^window[.]ESCENARIOS = ", t); json.loads(t[m.end():t.rindex("}") + 1])
-    open(p, "w", encoding="utf-8", newline="\n").write(t)
-    print("escrito op_sabic en escenarios.js")
+    sys.path.insert(0, SIM); from leer_datos import escribir             # datos/operaciones/op_sabic.js y la lista de datos/escenarios.js
+    print("escrito op_sabic en", escribir("op_sabic", O, "operaciones"))
 
 
 if __name__ == "__main__":

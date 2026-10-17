@@ -1,4 +1,4 @@
-"""Sitios posibles de las placas del trabajo de inspeccion del CIFP (op_inspeccion de simulador/escenarios.js,
+"""Sitios posibles de las placas del trabajo de inspeccion del CIFP (op_inspeccion de datos/escenarios.js,
 "candidatos"): en cada vuelo el simulador elige al azar unas cubiertas y unas fachadas de esta lista (Operacion.sortear),
 para que las placas no esten siempre en el mismo sitio.
 Salen de los edificios del Catastro de la zona de detalle cifp_politecnico (los del recinto del CIFP, de mas de 150 m2):
@@ -8,13 +8,13 @@ Salen de los edificios del Catastro de la zona de detalle cifp_politecnico (los 
    suelo no tapa la pared, ni hay un arbol a menos de 5 m delante: es solido y estorbaria la foto), con su
    orientacion (normal, grados desde el norte) y a media altura.
 Escribe la lista en escenarios.js (sustituye "candidatos" si ya esta).
-    python analisis/mundo_cartagena/candidatos_inspeccion.py      (necesita la zona simulador/zonas/cifp_politecnico)
+    python analisis/mundo_cartagena/candidatos_inspeccion.py      (necesita la zona datos/escenarios/zonas/cifp_politecnico)
 """
 import json, math, os, re
 import numpy as np
 
 RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-Z = os.path.join(RAIZ, "simulador", "zonas", "cifp_politecnico")
+Z = os.path.join(RAIZ, "datos", "escenarios", "zonas", "cifp_politecnico")
 CAJA = (40, 260, 6580, 6780)          # N0, N1, E0, E1 del recinto del CIFP (plano del mundo, m)
 
 zona = json.load(open(os.path.join(Z, "zona.json"), encoding="utf-8"))
@@ -88,11 +88,12 @@ for i in recinto:
 print(len(recinto), "edificios:", len(cubiertas), "cubiertas,", len(fachadas), "fachadas")
 C = {"cubiertas": cubiertas, "fachadas": fachadas, "elegir": [4, 2]}
 
-ruta = os.path.join(RAIZ, "simulador", "escenarios.js")
-t = open(ruta, encoding="utf-8", newline="").read()
-i0 = t.index('"op_inspeccion"'); ip = t.index('   "puntos": [', i0)
-texto = "   " + '"candidatos": ' + json.dumps(C, indent=1, ensure_ascii=False).replace("\n", "\n   ") + ",\n"
-ic = t.find('   "candidatos": ', i0, ip)
-t = (t[:ic] if ic >= 0 else t[:ip]) + texto + t[ip:]
-open(ruta, "w", encoding="utf-8", newline="").write(t)
-print("escrito en", ruta)
+import sys
+DATOS = os.path.join(RAIZ, "datos"); sys.path.insert(0, DATOS)
+from leer_datos import escenario, escribir                               # datos/operaciones/op_inspeccion.js
+_, E = escenario(os.path.join(DATOS, "operaciones", "op_inspeccion.js")); O2 = {}
+for k, v in E["operacion"].items():                                      # "candidatos" delante de "puntos"
+    if k == "puntos": O2["candidatos"] = C
+    if k != "candidatos": O2[k] = v
+E["operacion"] = O2
+print("escrito en", escribir("op_inspeccion", E, "operaciones"))

@@ -1,7 +1,7 @@
 class_name PilotoUAV
 extends RefCounted
-## Piloto automatico de un UAV de ala fija (Cernicalo XM-7 y Grajo MX-2): traduccion LITERAL de simulador/js/piloto_uav.js (mismas
-## capas, mismos modos y mismas ganancias, que vienen en datos.piloto). pruebas/prueba_piloto_uav.gd compara los dos.
+## Piloto automatico de un UAV de ala fija (Cernicalo XM-7 y Grajo MX-2): traduccion LITERAL de simulador_web/js/piloto_uav.js (mismas
+## capas, mismos modos y mismas ganancias, que vienen en datos.piloto). simulador_godot/Tests/prueba_piloto_uav.gd compara los dos.
 ## Por capas: el lazo interior lleva el alabeo y el cabeceo con los alerones y la profundidad (y amortigua la guinada con
 ## los timones; con proteccion contra la perdida); encima, el rumbo, la altura y la velocidad (con el gas); y encima, la
 ## navegacion (ir a un punto y dar vueltas sobre el, volver a la base) y el despegue y el aterrizaje en la pista. Sin pista
@@ -27,6 +27,15 @@ var gas_visto = null             # la palanca del gas: en crucero, al moverla ca
 var viento_desde := 0.0          # de donde viene el viento (rad): la toma sin pista se hace contra el
 var viento_vel := 0.0
 
+## Los datos del piloto para el avion con masa k veces la de su ficha (paraMasa de JS): las velocidades, con la raiz de la masa.
+static func para_masa(P_: Dictionary, k: float) -> Dictionary:
+	if not (k > 0) or absf(k - 1) < 1e-6: return P_
+	var s := sqrt(k); var Q := P_.duplicate()
+	for n in ["v_min", "v_alarma", "v_crucero", "v_aprox", "v_max"]:
+		if Q.has(n): Q[n] = float(Q[n]) * s
+	return Q
+var Vf = null                    # con pitot, la velocidad del aire filtrada (1,5 s) para el gas: las rachas no lo mueven
+var _Vg := 0.0
 func _init(P_: Dictionary, pista_, casa_: Array) -> void:
 	P = P_; pista = pista_; casa = casa_; c["vel"] = float(P["v_crucero"])
 
@@ -49,9 +58,9 @@ func poner(m: String, av: Dictionary, punto = null) -> String:
 	if m == "BASE": c["punto"] = punto_base(); c["alt"] = suelo0() + P["h_base"]; c["vel"] = float(P["v_crucero"])
 	if m == "DESPEGUE": fase = "carrera"; automatico = true
 	if m == "ATERRIZAJE":
-		fase = "llegada"; automatico = true; c["vel"] = float(P["v_aprox"])
+		fase = "llegada"; tras_entrada = false; automatico = true; c["vel"] = float(P["v_aprox"])
 		if pista == null: c["punto"] = (punto as Array).duplicate() if punto != null else [casa[0], casa[1]]
-	if m == "LANZAMIENTO": fase = "subida"; automatico = true
+	if m == "LANZAMIENTO": fase = "subida"      # el lanzamiento a mano es el despegue normal del Grajo: no cuenta como automatico
 	av["profToma"] = false
 	return NOMBRE[m]
 
@@ -94,8 +103,8 @@ func _altura(hc: float, vz_max: float, h: float, vz: float) -> float:
 	return lim(atan2(vzc, _V) + P["k_vz"] * (vzc - vz) + P["cabeceo_crucero"] * D2R, P["cabeceo_min"] * D2R, P["cabeceo_max"] * D2R)
 
 func _velocidad(vc: float, vz: float) -> float:          # y mas gas si tiene que subir
-	iV = lim(iV + P["k_i_gas"] * (vc - _V) * _dt, -0.4, 0.4)
-	return 1.0 if _V < P["v_alarma"] else lim(P["gas_crucero"] + P["k_gas"] * (vc - _V) + P["k_gas_vz"] * (_vzc - vz) + iV, 0, 1)
+	iV = lim(iV + P["k_i_gas"] * (vc - _Vg) * _dt, -0.4, 0.4)
+	return 1.0 if _Vg < P["v_alarma"] else lim(P["gas_crucero"] + P["k_gas"] * (vc - _Vg) + P["k_gas_vz"] * (_vzc - vz) + iV, 0, 1)
 
 ## Un paso. pal: palancas {pitch, yaw, guinada}; gas_palanca (0..1): en crucero elige la velocidad. Devuelve
 ## {pitch, yaw, guinada, gas, freno}: gas y freno null si no los lleva.
@@ -112,6 +121,8 @@ func paso(av: Dictionary, dt: float, pal: Dictionary, gas_palanca: float) -> Dic
 		av["profToma"] = ae.get("profToma", false); return r
 	_e = Cuat.euler(av["q"]); _V = maxf(1, float(av["V"]) if P.get("pitot", false) and av.get("V") != null else _norma(av["v"])); _dt = dt; _av = av   # con datos.piloto.pitot (el Grajo), la del aire
 	var e := _e; var V := _V
+	if P.get("pitot", false): Vf = _V if Vf == null else float(Vf) + (_V - float(Vf)) * minf(1.0, dt / 1.5)
+	_Vg = float(Vf) if P.get("pitot", false) else _V          # la del gas: con pitot, filtrada (una racha no lo pone a 0 o a 1)
 	var vn := Cuat.rot(av["q"], av["v"]); var vz: float = -vn[2]; var h: float = -av["p"][2]; var m := modo
 	_vzc = vz
 	_out = { "pitch": pal["pitch"], "yaw": pal["yaw"], "guinada": pal["guinada"], "gas": null, "freno": null }
@@ -182,23 +193,28 @@ func paso(av: Dictionary, dt: float, pal: Dictionary, gas_palanca: float) -> Dic
 ## Toma en perdida profunda en el punto c.punto (sin pista: el Grajo), contra el viento (tomaPerdida de JS): entrada a
 ## d_final m a sotavento a h_entrada; por la final bajando hasta h_perdida; y donde va a caer en el punto, motor parado,
 ## profundidad arriba del todo (av.profToma) y alas niveladas hasta el suelo.
+var tras_entrada := false        # toma en perdida: ya a sotavento de la entrada (va hacia ella contra el viento)
 func _toma_perdida(av: Dictionary, out: Dictionary, e: Array, h: float, vz: float) -> Dictionary:
 	var T: Dictionary = P["toma"]; var tN: float = c["punto"][0]; var tE: float = c["punto"][1]; var hT: float = casa[2]
 	var rf := viento_desde; var cf := cos(rf); var sf := sin(rf)
 	var dn: float = av["p"][0] - tN; var de: float = av["p"][1] - tE; var a := -(dn * cf + de * sf); var t := -dn * sf + de * cf
 	var agl: float = float(av["agl"]) if av.get("agl") != null else h - hT
 	av["profToma"] = false
-	if fase == "llegada":
-		var eN: float = tN - T["d_final"] * cf; var eE: float = tE - T["d_final"] * sf; var d := Vector2(av["p"][0] - eN, av["p"][1] - eE).length()
+	if fase == "llegada":                         # a la entrada, a sotavento, ya contra el viento (como un piloto): si aun no esta a
+		# sotavento de ella, antes a un punto mas alejado (2 d_final), para girar a la altura de entrada y no en la final
+		if a > 1.1 * T["d_final"]: tras_entrada = true
+		elif a < 0.6 * T["d_final"]: tras_entrada = false          # ha pasado la entrada sin alinearse: otra vuelta
+		var k := 1.0 if tras_entrada else 2.0
+		var eN: float = tN - k * T["d_final"] * cf; var eE: float = tE - k * T["d_final"] * sf
 		_actitud(_rumbo(atan2(eE - av["p"][1], eN - av["p"][0])), _altura(maxf(hT, h - agl) + T["h_entrada"], P["vz_max"], h, vz)); out["gas"] = _velocidad(P["v_crucero"], vz)
-		if d < 25 or (a > 0.6 * T["d_final"] and a < 1.3 * T["d_final"] and absf(t) < 25 and absf(envolver(rf - e[2])) < 30 * D2R): fase = "final"
+		if tras_entrada and a > 0.6 * T["d_final"] and a < 1.3 * T["d_final"] and absf(t) < 25 and absf(envolver(rf - e[2])) < 30 * D2R: fase = "final"
 		return out
 	if fase == "final":
 		var hs: float = maxf(hT + T["h_perdida"] + maxf(0.0, a - d_perdida(agl)) * (T["h_entrada"] - T["h_perdida"]) / T["d_final"], h - agl + 0.8 * T["h_perdida"])
 		_actitud(_rumbo(envolver(rf - atan(t / 30.0))), _altura(hs, P["vz_max"], h, vz))
 		out["gas"] = _velocidad(P["v_aprox"], vz)
 		if a <= d_perdida(agl): fase = "perdida"
-		if a < -40: fase = "llegada"
+		if a < -40: fase = "llegada"; tras_entrada = false      # se ha pasado: otra vuelta
 		return out
 	_actitud(0.0, 0.0); out["gas"] = 0.0; out["pitch"] = float(T["prof"]); av["profToma"] = true
 	return out

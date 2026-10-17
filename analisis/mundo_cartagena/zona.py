@@ -1,7 +1,7 @@
 """Zona de detalle de un mundo real, comun a los dos simuladores (v1 navegador y v2 Godot).
 
 Descarga, para un cuadrado de LADO metros centrado en (lat, lon), en el plano local del mundo (el mismo de
-simulador/mundos/<mundo>.js: N y E en metros desde su origen, alturas sobre el nivel del mar):
+datos/escenarios/mundos/<mundo>.js: N y E en metros desde su origen, alturas sobre el nivel del mar):
   - ortofoto PNOA del IGN (WMS, ~0,5 m/px) en teselas JPEG de 500 m (orto_<i>_<j>.jpg, i hacia el norte, j hacia el este)
   - modelo digital del terreno del IGN a 5 m (WCS Elevacion4258_5), suavizado (viene en metros enteros) -> dem.bin (int16, dm)
   - edificios del Catastro (WFS BU:BuildingPart): huella, plantas y color del tejado sacado de la ortofoto -> edificios.json

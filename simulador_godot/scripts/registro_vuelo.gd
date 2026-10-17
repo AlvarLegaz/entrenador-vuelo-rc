@@ -1,6 +1,6 @@
 class_name RegistroVuelo
 ## Registro de vuelo de cada vehiculo, como el que se descarga de un dron comercial: RegistroVuelo de
-## simulador/js/registro.js, con las mismas columnas y el mismo formato. 10 muestras por segundo con la posicion
+## simulador_web/js/registro.js, con las mismas columnas y el mismo formato. 10 muestras por segundo con la posicion
 ## (latitud y longitud), alturas, velocidades, actitud, la bateria (carga, tension, corriente, potencia, temperatura y
 ## cada celda), gas y vueltas, palancas, gimbal, modo y estado, y los avisos del vuelo. Se guarda en la carpeta de datos
 ## (user://registros/<vehiculo>/<id>.json, los ultimos 30 de cada uno) y, con el alumno en el aula, tambien en el

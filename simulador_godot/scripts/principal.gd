@@ -1,11 +1,15 @@
 extends Node3D
-## UxS Trainer (entrenador de sistemas no tripulados), version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador/simulador.html): las
+class_name Principal
+## UxS Trainer (entrenador de sistemas no tripulados), version 2 (Godot 4). Es la MISMA aplicacion que la version 1 (simulador_web/simulador.html): las
 ## mismas pantallas (inicio, pilotos, hangar, entrenamientos, vuelo libre, punto de lanzamiento, ajustes, resultado y
-## progreso), el mismo HUD, las mismas misiones (simulador/escenarios.js), el aula (pantalla de acceso: servidor, usuario y contrasena, o sin conexion), la caja
+## progreso), el mismo HUD, las mismas misiones (datos/escenarios.js), el aula (pantalla de acceso: servidor, usuario y contrasena, o sin conexion), la caja
 ## negra, la repeticion, el sonido y el dron comercial con su app. Los aviones, el mundo y la fisica son comunes (modelo_avion.gd,
-## modelo_cuadricoptero.gd y entorno.gd traducen modelos.js, DJI_MINI.js y entorno.js; ver pruebas/). Este fichero es
-## la parte <script> de simulador.html: sesion, navegacion entre pantallas, vuelo (500 pasos por segundo), teclado,
-## mando, camaras y HUD. Lo que se dibuja esta en las pantallas (pantalla_*.gd), hud_vuelo.gd, hud_dji.gd y capas.gd.
+## modelo_cuadricoptero.gd y entorno.gd traducen modelos.js, DJI_MINI.js y entorno.js; ver Tests/). Este fichero es
+## el estado de la aplicacion (sesion, avion, mando, vuelo...), lo que llama el motor (_ready, _process, _unhandled_input)
+## y lo que se usa desde todas partes (es_dron, en_mundo, poner_toast, mostrar...), como js/app/estado.js de la web. Las
+## funciones de cada parte estan en sus componentes, scripts/app/ (app_vuelo, app_mandos, app_camaras, app_hud...), con
+## los mismos nombres que los modulos de la web (simulador_web/js/app/). Lo que se dibuja esta en las pantallas
+## (pantalla_*.gd), hud_vuelo.gd, hud_dji.gd y capas.gd.
 ##
 ## Opciones de linea de ordenes (tras --), para pruebas: --auto (vuela sin menu), --escenario=ID (libre_cartagena),
 ## --avion=ID, --camara=N, --gases=0..1, --esperar=S, --captura=ruta.png (guarda la pantalla a los S segundos y sale),
@@ -114,17 +118,30 @@ var _t_auto := 0.0
 var _rend := []
 var _us := []                      # pruebas: microsegundos de la fisica y de todo _process de esta escena
 
+# ---- componentes (scripts/app/, como js/app/ de la web): las funciones de cada parte; el estado, aqui ----
+var app_apps_dron := AppAppsDron.new(self)
+var app_avion_ajustes := AppAvionAjustes.new(self)
+var app_camaras := AppCamaras.new(self)
+var app_evaluacion := AppEvaluacion.new(self)
+var app_hud := AppHud.new(self)
+var app_mandos := AppMandos.new(self)
+var app_multijugador := AppMultijugador.new(self)
+var app_pantallas := AppPantallas.new(self)
+var app_repeticion := AppRepeticion.new(self)
+var app_resultado := AppResultado.new(self)
+var app_vuelo := AppVuelo.new(self)
+
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 	get_window().title = "UxS Trainer"
 	ids_aviones = DatosComunes.aviones()
-	_cargar()
+	app_avion_ajustes._cargar()
 	if _args.has("avion"): sesion["avion"] = _args["avion"]
 	if _args.has("calidad"): aj["calidad_modo"] = "min" if _args["calidad"] == "min" else str(int(_args["calidad"]))
 	if _args.has("dificultad"): sesion["dificultad"] = _args["dificultad"]
-	if not ids_hangar().has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
+	if not app_avion_ajustes.ids_hangar().has(sesion["avion"]): sesion["avion"] = "DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_aviones[0]   # por defecto, el dron comercial
 	mundo_datos = DatosComunes.mundo(MUNDO)
 	ent.poner_mundo(mundo_datos); ent.poner_mundo({})      # el terreno del mundo queda guardado (mapa, rumbo despejado)
 	indice_zonas = DatosComunes.indice_zonas().filter(func(z): return z["mundo"] == MUNDO)
@@ -132,40 +149,40 @@ func _ready() -> void:
 	cam = Camera3D.new(); cam.near = 0.05; cam.far = 16000.0; cam.fov = 50; add_child(cam); cam.current = true
 	aula = Aula.new(); add_child(aula)
 	sonido = Sonido.new(); add_child(sonido); sonido.cargar_cfg()
-	_construir_ui()
+	app_pantallas._construir_ui()
 	vr = ModoVR.iniciar(self)
 	if vr != null:                     # en unas gafas: directamente a volar el dron en el campo del club (sin menus en VR todavia)
 		ui.visible = false; sesion["escenario"] = "libre"; sesion["sin_registrar"] = true
 		sesion["avion"] = "DJI_MINI"
-		call_deferred("empezar")
+		app_vuelo.empezar.call_deferred()
 		return
 	if _args.has("auto"):
 		sesion["escenario"] = _args.get("escenario", "libre_cartagena"); sesion["sin_registrar"] = true
 		var O: Dictionary = Escenarios.datos()[sesion["escenario"]].get("operacion", {})       # pruebas: un trabajo, desde su punto de despegue
 		if not O.is_empty(): sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(O["salida"]["n"]), "E": float(O["salida"]["e"]), "rumbo": float(O["salida"]["rumbo"]) }
-		if Escenarios.es_mundo(sesion["escenario"]): _lanz_por_defecto()
-		if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)])      # pruebas: despegar del CIFP
+		if Escenarios.es_mundo(sesion["escenario"]): app_evaluacion._lanz_por_defecto()
+		if _args.has("destacado") and not app_evaluacion.destacados_lanz().is_empty(): app_evaluacion.elegir_destacado(app_evaluacion.destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, app_evaluacion.destacados_lanz().size() - 1)])      # pruebas: despegar del CIFP
 		if _args.has("lat") and _args.has("lon"):      # pruebas: despegar desde (lat, lon) con el rumbo dado o el mas despejado
-			var ne := lat_lon_a_ne(mundo_datos, float(_args["lat"]), float(_args["lon"]))
+			var ne := app_evaluacion.lat_lon_a_ne(mundo_datos, float(_args["lat"]), float(_args["lon"]))
 			sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]),
-							   "rumbo": float(_args["rumbo"]) if _args.has("rumbo") else rumbo_despejado(ne[0], ne[1]) }
-		call_deferred("empezar")
+							   "rumbo": float(_args["rumbo"]) if _args.has("rumbo") else app_evaluacion.rumbo_despejado(ne[0], ne[1]) }
+		app_vuelo.empezar.call_deferred()
 		return
-	if _args.has("pantalla") or _args.has("captura"): ir_inicio()        # capturas: sin conexion
-	else: ir_acceso()                            # lo primero: la pantalla de acceso (aula o sin conexion)
+	if _args.has("pantalla") or _args.has("captura"): app_pantallas.ir_inicio()        # capturas: sin conexion
+	else: app_pantallas.ir_acceso()                            # lo primero: la pantalla de acceso (aula o sin conexion)
 	if _args.has("pantalla"):
 		var id: String = _args["pantalla"]
 		match id:
-			"pHangar": ir_hangar()
-			"pEntrenamientos": ir_entrenamientos()
-			"pVolar": ir_volar()
-			"pOperaciones": ir_operaciones()
-			"pTaller": ir_taller()
-			"pAjustes": ir_ajustes(_args.get("seccion", ""))
-			"pAlumno": ir_acceso()
+			"pHangar": app_pantallas.ir_hangar()
+			"pEntrenamientos": app_pantallas.ir_entrenamientos()
+			"pVolar": app_pantallas.ir_volar()
+			"pOperaciones": app_pantallas.ir_operaciones()
+			"pTaller": app_pantallas.ir_taller()
+			"pAjustes": app_pantallas.ir_ajustes(_args.get("seccion", ""))
+			"pAlumno": app_pantallas.ir_acceso()
 			"pLanzamiento":
-				sesion["escenario"] = "libre_cartagena"; ir_lanzamiento()
-				if _args.has("destacado") and not destacados_lanz().is_empty(): elegir_destacado(destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, destacados_lanz().size() - 1)]); pantallas["pLanzamiento"].pintar()
+				sesion["escenario"] = "libre_cartagena"; app_pantallas.ir_lanzamiento()
+				if _args.has("destacado") and not app_evaluacion.destacados_lanz().is_empty(): app_evaluacion.elegir_destacado(app_evaluacion.destacados_lanz()[clampi(int(_args["destacado"]) - 1, 0, app_evaluacion.destacados_lanz().size() - 1)]); pantallas["pLanzamiento"].pintar()
 	if _args.has("captura"):
 		await get_tree().create_timer(float(_args.get("esperar", "2"))).timeout
 		get_viewport().get_texture().get_image().save_png(_args["captura"]); get_tree().quit()
@@ -173,367 +190,32 @@ func _ready() -> void:
 # =====================================================================
 #  GUARDADO (localStorage de la web)
 # =====================================================================
-func _cargar() -> void:
-	var cf := ConfigFile.new()
-	if cf.load("user://simulador.cfg") != OK: return
-	for k in ["avion", "dificultad", "viento", "lanz"]:
-		if cf.has_section_key("sesion", k): sesion[k] = cf.get_value("sesion", k)
-	for k in aj.keys():
-		if cf.has_section_key("ajustes", k): aj[k] = cf.get_value("ajustes", k)
-	if int(aj.get("zoom_v", 0)) < 2: aj["zoom_piloto"] = 0.03; aj["zoom_v"] = 2      # nuevo por defecto del zoom del piloto: 3 %
-
-func _guardar() -> void:
-	var cf := ConfigFile.new()
-	for k in ["avion", "dificultad", "viento", "lanz"]: cf.set_value("sesion", k, sesion[k])
-	for k in aj.keys(): cf.set_value("ajustes", k, aj[k])
-	cf.save("user://simulador.cfg")
-
-func guardar_sesion() -> void: _guardar()
-func guardar_ajustes() -> void: _guardar()
 
 # ---- centro de gravedad y peso (cmCfg), emisora y calibracion (cfgAvion) ----
-func cm_diseno(A: Dictionary) -> Dictionary:
-	return { "cg": int(round((A["cg_mm"][0] - A["x_le_mm"]) / (A["c_m"] * 1000) * 100)), "masa": int(round(A["masa_kg"] * 100) * 10) }
-func cm_actual(id: String) -> Dictionary:
-	return aj["cm"][id] if aj["cm"].has(id) else cm_diseno(DatosComunes.avion(id))
-func cm_es_diseno(id: String) -> bool:
-	var A := DatosComunes.avion(id)
-	if not A.has("x_le_mm"): return true
-	var a := cm_actual(id); var d := cm_diseno(A)
-	return int(a["cg"]) == d["cg"] and int(a["masa"]) == d["masa"]
-func poner_cm(id: String, cg: int, masa: int) -> void:
-	aj["cm"][id] = { "cg": cg, "masa": masa }; _guardar()
-func borrar_cm(id: String) -> void:
-	aj["cm"].erase(id); _guardar()
-func cfg_de(id: String) -> Dictionary:
-	var c := { "drAlabeo": 100.0, "drProf": 100.0, "empuje": "", "res": 100.0, "temp": 20.0, "lanzReal": true }
-	c.merge(aj["cfg_avion"].get(id, {}), true)
-	return c
-func poner_cfg(id: String, c: Dictionary) -> void:
-	aj["cfg_avion"][id] = c; _guardar()
-func recorrido_mecanico(id: String) -> Dictionary:
-	if RECORRIDO_MECANICO.has(id): return RECORRIDO_MECANICO[id]
-	return DatosComunes.avion(id).get("mandos", {}).get("mecanico", {})
-func texto_cm() -> String:
-	var c := cm_actual(sesion["avion"])
-	return "CG y peso de diseño" if cm_es_diseno(sesion["avion"]) else "CG %d %% de la cuerda · %d g" % [int(c["cg"]), int(c["masa"])]
-
-func calidad_actual() -> int:
-	var m: String = aj.get("calidad_modo", "auto")
-	if minimo(): return 0
-	return 2 if m == "auto" else int(m)
-## Rendimiento maximo (Ajustes; con la calidad automatica, en una tableta o un movil): la calidad 0, media resolucion
-## y el mundo real con materiales sencillos (Mundo3D.minimo). Visor.minimo de la web.
-func minimo() -> bool:
-	var m: String = aj.get("calidad_modo", "auto")
-	return m == "min" or (m == "auto" and OS.has_feature("mobile"))
-func poner_zoom_piloto(z: float) -> void:
-	aj["zoom_piloto"] = z; _guardar()
-	if pantallas.has("pAjustes"): pantallas["pAjustes"].refrescar()
-func sonido_on(x: bool) -> void:
-	sonido.on = x; sonido.guardar_cfg()
-	if x: sonido.iniciar()
-	sonido.silenciar(not x or pantalla_actual != "" or pausado)
-func sonido_volumen(x: float) -> void:
-	sonido.vol = x; sonido.guardar_cfg()
 
 # =====================================================================
 #  MODELO DE VUELO: CG y peso, calibracion, recorridos de la emisora y dificultad
 # =====================================================================
-func crear_modelo(id: String):
-	var A := DatosComunes.avion(id)
-	if A.get("tipo", "") == "fpv": return ModeloFPV.new(A)
-	if A.get("tipo", "") == "bipode": return ModeloBipode.new(A)
-	return ModeloCuadricoptero.new(A) if A.get("tipo", "") == "cuadricoptero" else ModeloAvion.new(A)
 func es_dron() -> bool: return modelo is ModeloCuadricoptero or modelo is ModeloFPV
 func es_fpv() -> bool: return modelo is ModeloFPV
 func es_bipode() -> bool: return modelo is ModeloBipode
 
 # ---- el robot (vehiculo oculto, datos.oculto): solo para el piloto con los tres logros del perfil (robotDesbloqueado de la web) ----
-func robot_desbloqueado() -> bool:
-	var al = sesion["alumno"]
-	return al != null and al.get("progreso") is Dictionary and bool(al["progreso"].get("robot", false))
-## Los vehiculos del hangar: el robot, solo con los logros.
-func ids_hangar() -> Array:
-	var v := robot_desbloqueado()
-	return ids_aviones.filter(func(id): return v or not DatosComunes.avion(id).get("oculto", false))
-## Si el vehiculo elegido es el robot y este piloto no lo tiene, vuelve al dron comercial.
-func vehiculo_permitido() -> void:
-	if ids_aviones.has(sesion["avion"]) and DatosComunes.avion(sesion["avion"]).get("oculto", false) and not robot_desbloqueado():
-		elegir_avion("DJI_MINI" if ids_aviones.has("DJI_MINI") else ids_hangar()[0])
-func poner_toast_menu(txt: String) -> void:
-	var l := Tema.etiqueta(txt, 22, Tema.ACENTO, true); l.set_anchors_preset(Control.PRESET_CENTER_TOP); l.position.y = 90
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85)); l.add_theme_constant_override("shadow_outline_size", 6)
-	ui.get_child(0).add_child(l); l.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	get_tree().create_timer(1.6).timeout.connect(func(): l.queue_free())
-
-func aplicar_cm(m) -> void:
-	var A := DatosComunes.avion(sesion["avion"])
-	if not A.has("x_le_mm") or cm_es_diseno(sesion["avion"]): return     # los valores de diseno exactos (sin redondear)
-	var c := cm_actual(sesion["avion"])
-	m.configurar({ "masa_kg": c["masa"] / 1000.0, "cg_mm": A["x_le_mm"] + c["cg"] / 100.0 * A["c_m"] * 1000 })
-func aplicar_calibracion(m) -> void:
-	var c := cfg_de(sesion["avion"])
-	m.configurar({ "temperatura": float(c["temp"]), "empuje_gf": String(c["empuje"]).to_float() if String(c["empuje"]) != "" else 0.0, "resistencia": float(c["res"]) / 100.0 })
-	sesion["lanz_real"] = c["lanzReal"]
-	m.set_meta("mandos_base", m.mandos.duplicate()); m.set_meta("fuente", "")
-func aplicar_dificultad(m) -> void:
-	m.facil = sesion["dificultad"] == "facil"; ent.facil = m.facil
-## Con mando: recorridos mecanicos por el dual rate y sin la exponencial del simulador. Con teclado: los del simulador.
-func aplicar_recorridos(mod = null, forzar_mando := false) -> void:
-	if mod == null: mod = modelo
-	if mod == null or mod is ModeloCuadricoptero or not mod.has_meta("mandos_base"): return
-	var fuente := "mando" if (_mando_usado or forzar_mando) else "teclado"
-	if mod.get_meta("fuente") == fuente: return
-	mod.set_meta("fuente", fuente)
-	var B: Dictionary = mod.get_meta("mandos_base"); var m := B.duplicate()
-	if fuente == "mando":
-		var c := cfg_de(sesion["avion"]); var mec := recorrido_mecanico(sesion["avion"])
-		m["expo"] = 0.0
-		m["prof_max_grados"] = mec.get("prof", B["prof_max_grados"]) * c["drProf"] / 100.0
-		if B.get("aleron_max_grados", 0): m["aleron_max_grados"] = mec.get("aleron", B["aleron_max_grados"]) * c["drAlabeo"] / 100.0
-		if B.get("timon_max_grados", 0): m["timon_max_grados"] = mec.get("timon", B["timon_max_grados"]) * c["drAlabeo"] / 100.0
-	mod.mandos = m
-
-func _vel_perdida() -> float:
-	if modelo is ModeloBipode: return 0.0
-	var A := DatosComunes.avion(sesion["avion"])
-	for fila in A.get("caracteristicas", []):
-		if String(fila[0]).to_lower().begins_with("velocidad de p"):
-			var v := String(fila[1]).replace(",", ".").to_float()
-			if v > 0: return v
-	return sqrt(2 * modelo.masa_kg * G0 / (RHO * modelo.S_m2 * 1.1))
 
 # =====================================================================
 #  LANZAMIENTO A MANO (pruebaLanzamiento, gasMinimoLanzamiento...)
 # =====================================================================
-func prueba_lanzamiento(gas: float, op: Dictionary) -> bool:
-	var m = crear_modelo(sesion["avion"]); aplicar_cm(m); aplicar_calibracion(m); aplicar_recorridos(m, true); aplicar_dificultad(m)
-	if op.has("masa_kg"): m.configurar({ "masa_kg": op["masa_kg"] })
-	var a: Dictionary = m.estado_inicial(); colocar_en_base(a, m); a["gases"] = gas; m.lanzar(a)
-	var rumbo: float = op.get("rumbo", 0.0)
-	if not ent.mundo.is_empty(): rumbo = float(sesion["lanz"].get("rumbo", 0)) * D2R if not sesion["lanz"].is_empty() else 0.0
-	if rumbo != 0:
-		var e := Cuat.euler(a["q"]); a["q"] = Cuat.desde_euler(e[0], e[1], rumbo)
-	var mm := { "pitch": 0.0, "yaw": 0.0, "trim": op.get("trim", m.compensador_grados) }
-	var viento: Array = op.get("viento", [0.0, 0.0, 0.0])
-	for i in int(LANZ["prueba_s"] / DT):
-		# el piloto no toca la profundidad pero si mantiene las alas niveladas (el par del motor alabea el avion al soltarlo)
-		var roll: float = Cuat.euler(a["q"])[0]; mm["yaw"] = clampf(-roll * 3 - a["w"][0] * 0.4, -1, 1)
-		m.servos(a, mm, DT)
-		if ent.contacto_suelo(a, m.paso(a, viento, DT)) != "": return false
-	return true
-## Gas minimo (0-1) para que salga de la mano, o null si no sale ni con todo el gas.
-func gas_minimo_lanzamiento(op: Dictionary):
-	if DatosComunes.avion(sesion["avion"]).get("tipo", "") in ["cuadricoptero", "fpv"]: return 0.0
-	var clave := str([sesion["avion"], cm_actual(sesion["avion"]), cfg_de(sesion["avion"]), sesion["dificultad"], ent.mundo.is_empty(), sesion["lanz"], op])
-	if _cache_gmin.has(clave): return _cache_gmin[clave]
-	var r = null
-	if prueba_lanzamiento(1, op):
-		var lo := 0.0; var hi := 1.0
-		for i in 7:
-			var g := (lo + hi) / 2
-			if prueba_lanzamiento(g, op): hi = g
-			else: lo = g
-		r = hi
-	_cache_gmin[clave] = r
-	return r
-func masa_maxima_lanzamiento(op: Dictionary):
-	var d: float = DatosComunes.avion(sesion["avion"])["masa_kg"]; var lo := 0.5 * d; var hi := 1.5 * d
-	var o := op.duplicate(); o["masa_kg"] = lo
-	if not prueba_lanzamiento(1, o): return null
-	for i in 7:
-		var mk := (lo + hi) / 2; o["masa_kg"] = mk
-		if prueba_lanzamiento(1, o): lo = mk
-		else: hi = mk
-	return lo
-func pct_gas(g: float) -> int: return int(ceil(g * 100 / 5.0) * 5)
-func lanzamiento_actual() -> Dictionary:
-	var vto: Dictionary = ent.viento; var rumbo := PI if Escenarios.zona_de(sesion["escenario"]) == 2 else 0.0
-	var op := { "viento": [vto["base"] * cos(vto["rumbo"]), vto["base"] * sin(vto["rumbo"]), 0.0], "rumbo": rumbo, "trim": mando["trim"] }
-	var clave := str([sesion["avion"], modelo.masa_kg, modelo.dcg, op])
-	if _cache_lanz["clave"] != clave: _cache_lanz = { "clave": clave, "op": op, "gmin": gas_minimo_lanzamiento(op), "mmax": -1.0, "gminDiseno": -1.0, "sinViento": -1.0 }
-	return _cache_lanz
-func texto_peso_lanz(L: Dictionary) -> String:
-	var d: float = DatosComunes.avion(sesion["avion"])["masa_kg"]; var extra := int(round((modelo.masa_kg - d) * 1000))
-	if modelo.masa_kg < d * 1.05: return ""
-	if typeof(L["gminDiseno"]) == TYPE_FLOAT and L["gminDiseno"] == -1.0:
-		var o: Dictionary = L["op"].duplicate(); o["masa_kg"] = d; L["gminDiseno"] = gas_minimo_lanzamiento(o)
-	return " Es por el peso: lleva %d g de más%s." % [extra, (" (con el peso de diseño bastaría el %d %%)" % pct_gas(L["gminDiseno"])) if L["gminDiseno"] != null else ""]
-## Gas minimo SIN viento (o null): si con todo el gas no sale pero sin viento si, lo tira el viento, no el peso (gasSinViento).
-func gas_sin_viento(L: Dictionary):
-	if typeof(L["sinViento"]) == TYPE_FLOAT and L["sinViento"] == -1.0:
-		var o: Dictionary = L["op"].duplicate(); o["viento"] = [0.0, 0.0, 0.0]; L["sinViento"] = gas_minimo_lanzamiento(o)
-	return L["sinViento"]
 const RUMBOS_TXT := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
-func texto_viento_lanz() -> String:
-	var v: Dictionary = ent.viento; var desde := fposmod(v["rumbo"] * R2D + 180, 360)
-	return "%d m/s del %s" % [int(round(v["base"])), RUMBOS_TXT[int(round(desde / 45)) % 8]]
-func aviso_lanzamiento() -> String:
-	if con_tren(): return ""                 # avion de pista: no se lanza a mano
-	if es_dron(): return ""
-	var L := lanzamiento_actual()
-	if L["gmin"] == null and gas_sin_viento(L) != null:
-		return "⚠ Con este viento (%s) no saldría de la mano sin tocar los mandos: lánzalo de cara al viento o prepárate para corregir con la profundidad nada más soltarlo." % texto_viento_lanz()
-	if L["gmin"] == null: return "⚠ Pesa demasiado para lanzarlo a mano (%d g): no saldría ni con todo el gas. Quítale peso en la pantalla del avión." % int(round(modelo.masa_kg * 1000))
-	if av["gases"] < L["gmin"]: return "⚠ Con el %d %% de gas no saldría de la mano: sube el gas al menos al %d %% (W)." % [int(round(av["gases"] * 100)), pct_gas(L["gmin"])] + texto_peso_lanz(L)
-	return ""
-func causa_lanzamiento_fallido(gas: float) -> Dictionary:
-	var L := lanzamiento_actual(); var masa := int(round(modelo.masa_kg * 1000))
-	if L["gmin"] == null and gas_sin_viento(L) != null:
-		return { "corto": "viento", "texto": "con este viento (%s) no sale de la mano sin tocar los mandos: se encabrita, entra en pérdida y cae. Lánzalo de cara al viento y, al soltarlo, baja un poco el morro." % texto_viento_lanz() }
-	if L["gmin"] == null:
-		if typeof(L["mmax"]) == TYPE_FLOAT and L["mmax"] == -1.0: L["mmax"] = masa_maxima_lanzamiento(L["op"])
-		if L["mmax"] != null: return { "corto": "demasiado peso", "texto": "pesa demasiado para lanzarlo a mano (%d g): no sale ni con todo el gas. Con el 100 %% sale hasta unos %d g." % [masa, int(floor(L["mmax"] * 100) * 10)] }
-		return { "corto": "centro de gravedad", "texto": "no sale de la mano ni con todo el gas ni con poco peso: revisa el centro de gravedad." }
-	if gas < L["gmin"]:
-		var pp := texto_peso_lanz(L)
-		return { "corto": "poco gas para su peso" if pp != "" else "poco gas", "texto": "con el %d %% de gas no tiene empuje para salir de la mano con %d g: lánzalo con al menos el %d %%." % [int(round(gas * 100)), masa, pct_gas(L["gmin"])] + pp }
-	return { "corto": "mandos", "texto": "con el %d %% de gas salía bien sin tocar los mandos: el fallo fue de los mandos (tirar o empujar de más nada más lanzarlo) o una racha." % int(round(gas * 100)) }
 
 # =====================================================================
 #  PUNTO DE LANZAMIENTO EN EL MUNDO REAL
 # =====================================================================
 func en_mundo() -> bool: return not ent.mundo.is_empty()
-func ent_campo() -> Entorno: return _ent_campo
-func _casa() -> Dictionary:
-	if es_uav() and con_tren():           # UAV de pista: en la cabecera
-		var P = pista_actual()
-		if P != null:
-			var r: float = float(P["rumbo"]) * D2R
-			return { "N": P["n"] + 60 * cos(r), "E": P["e"] + 60 * sin(r), "rumbo": float(P["rumbo"]) }
-	return { "N": float(sesion["lanz"]["N"]), "E": float(sesion["lanz"]["E"]) } if (en_mundo() and not sesion["lanz"].is_empty()) else { "N": 0.0, "E": 0.0 }
-## La pista del escenario (escenarios.js "pista" o la de su trabajo), con la altura del suelo en el umbral, o null.
-func pista_actual():
-	var E: Dictionary = Escenarios.datos().get(sesion["escenario"], {}); var P = E.get("pista", E.get("operacion", {}).get("pista"))
-	if P == null or not en_mundo(): return null
-	var r: Dictionary = (P as Dictionary).duplicate(); r["h"] = ent.altura(float(P["n"]), float(P["e"])); return r
 func es_uav() -> bool: return modelo is ModeloAvion and modelo.datos.get("uav", false)
-func rumbo_despejado(N: float, E: float) -> float:
-	var mejor := 0.0; var menos := INF; var r := 0.0
-	while r < 360:
-		var sube := -INF; var d := 100.0
-		while d <= 1500:
-			sube = maxf(sube, ent.altura_mar(N + d * cos(r * D2R), E + d * sin(r * D2R))); d += 50
-		if sube < menos: menos = sube; mejor = r
-		r += 22.5
-	return mejor
-func lat_lon_a_ne(m: Dictionary, lat: float, lon: float) -> Array:
-	var o: Dictionary = m["origen"]
-	return [(lat - o["lat"]) * 110574, (lon - o["lon"]) * 111320 * cos(o["lat"] * D2R)]
-func _lanz_por_defecto() -> void:
-	if not sesion["lanz"].is_empty() and sesion["lanz"].get("mundo", "") == mundo_datos["id"]: return
-	var d: Dictionary = LANZ_DEFECTO.get(mundo_datos["id"], {})
-	if not d.is_empty():
-		var ne := lat_lon_a_ne(mundo_datos, d["lat"], d["lon"])
-		sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": d["rumbo"], "defecto": true }
-	elif not indice_zonas.is_empty():
-		var z: Dictionary = indice_zonas[0]
-		sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(z["centro"]["N"]), "E": round(z["centro"]["E"]), "rumbo": rumbo_despejado(z["centro"]["N"], z["centro"]["E"]) }
-	else: sesion["lanz"] = { "mundo": mundo_datos["id"], "N": 0.0, "E": 0.0, "rumbo": mundo_datos.get("rumbo_despegue", 0) }
-## Puntos de despegue destacados del vuelo libre en el mundo real (escenarios.js: "destacados"; destacadosLanz de la web).
-func destacados_lanz() -> Array:
-	return Escenarios.datos().get(sesion["escenario"], {}).get("destacados", [])
-## El vehiculo elegido despega de pista (el Cernicalo XM-7): solo sale de un destacado con "pista" (la base de San
-## Javier). Como necesitaPista() y destacadoConPista() de la web.
-## ---- morro de camaras (datos.camara.morros: el Grajo): fijo (camaras sujetas al avion) u orientable (torreta, con su
-## peso); se elige en el Hangar y se guarda por vehiculo (morroDe y datosVisor de la web) ----
-func morro_de(id: String):
-	var C = DatosComunes.avion(id).get("camara")
-	if not C is Dictionary or not C.has("morros"): return null
-	var m = aj.get("morro", {}).get(id)
-	return m if (C["morros"] as Array).has(m) else C["morros"][0]
-func poner_morro(id: String, m: String) -> void:
-	if not aj.has("morro"): aj["morro"] = {}
-	aj["morro"][id] = m; _guardar()
-## Los datos del vehiculo para dibujarlo, con el morro elegido.
-func datos_visor(id: String) -> Dictionary:
-	var A := DatosComunes.avion(id); var m = morro_de(id)
-	if m == null or not A.has("malla"): return A
-	var K: Dictionary = (A["malla"] as Dictionary).duplicate(); var B := A.duplicate(); B["malla"] = K
-	if m == "fijo": K.erase("torreta")
-	else: K.erase("cam_fija")
-	return B
-func necesita_pista() -> bool: return DatosComunes.avion(sesion["avion"]).get("tren") != null     # los de tren (el Cernicalo) despegan de pista; el Grajo, a mano
-func destacado_con_pista() -> Dictionary:
-	for d in destacados_lanz():
-		if d.has("pista"): return d
-	return {}
-func elegir_destacado(d: Dictionary) -> void:
-	if necesita_pista() and not d.has("pista") and not destacado_con_pista().is_empty():
-		d = destacado_con_pista(); poner_toast_menu(String(DatosComunes.avion(sesion["avion"]).get("nombre", "")) + " despega de pista: sale de " + String(d["nombre"]))
-	var ne := lat_lon_a_ne(mundo_datos, d["lat"], d["lon"])
-	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": float(d["rumbo"]), "destacado": d["nombre"] }; _guardar()
-func elegir_punto(N: float, E: float) -> void:
-	if necesita_pista() and not destacado_con_pista().is_empty(): elegir_destacado(destacado_con_pista()); return     # un avion de pista no sale del campo
-	sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(N), "E": round(E), "rumbo": rumbo_despejado(N, E) }; _guardar()
-func colocar_en_base(a: Dictionary, m = null) -> void:
-	if m == null: m = modelo
-	if m is ModeloBipode:                 # el bipode, de pie en el suelo, delante del piloto (en el campo, 10 m al norte)
-		if not en_mundo(): a["p"] = [10.0, 0.0, 0.0]; return
-		var c0 := _casa(); a["p"] = [c0["N"], c0["E"], -ent.altura(c0["N"], c0["E"])]; return
-	if m is ModeloAvion and m.tren != null:      # avion de pista: sobre sus ruedas
-		var ct := _casa() if en_mundo() else { "N": 0.0, "E": 0.0 }
-		a["p"] = [ct["N"], ct["E"], -((ent.altura(ct["N"], ct["E"]) if en_mundo() else 0.0) + m.altura_en_tierra())]; return
-	if not en_mundo(): return
-	var c := _casa()
-	a["p"] = [c["N"], c["E"], -(ent.altura(c["N"], c["E"]) + (0.02 if (m is ModeloCuadricoptero or m is ModeloFPV) else 1.6))]   # en la mano (avion) o en el suelo (dron)
 
 # =====================================================================
 #  INTERFAZ: pantallas, HUD y capas
 # =====================================================================
-func _construir_ui() -> void:
-	ui = CanvasLayer.new(); add_child(ui)
-	var raiz := Control.new(); raiz.set_anchors_preset(Control.PRESET_FULL_RECT); raiz.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	raiz.theme = Tema.crear(); ui.add_child(raiz)
-	hud = HudVuelo.new(self); raiz.add_child(hud); hud.visible = false
-	hud_dji = HudDji.new(self); raiz.add_child(hud_dji); hud_dji.visible = false; hud.dji = hud_dji
-	raiz.move_child(hud_dji, 0)
-	hud_fpv = HudFPV.new(self); raiz.add_child(hud_fpv); hud_fpv.visible = false; raiz.move_child(hud_fpv, 0)
-	hud_uav = HudUav.new(self); raiz.add_child(hud_uav); hud_uav.visible = false; raiz.move_child(hud_uav, 0); hud.uav = hud_uav
-	hud_carrera = HudCarrera.new(self); raiz.add_child(hud_carrera); hud_carrera.visible = false
-	mira_recon = Control.new(); mira_recon.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira_recon.visible = false      # reconocimiento con un avion: la mira de la camara 3, con el centro libre
-	mira_recon.anchor_left = 0.5; mira_recon.anchor_right = 0.5; mira_recon.anchor_top = 0.5; mira_recon.anchor_bottom = 0.5
-	mira_recon.offset_left = -45; mira_recon.offset_right = 45; mira_recon.offset_top = -15; mira_recon.offset_bottom = 15
-	mira_recon.draw.connect(func():
-		for capa in [[Color.BLACK, 5.0], [Color.WHITE, 2.5]]:
-			mira_recon.draw_line(Vector2(8, 15), Vector2(36, 15), capa[0], capa[1]); mira_recon.draw_line(Vector2(54, 15), Vector2(82, 15), capa[0], capa[1])
-			mira_recon.draw_line(Vector2(45, 2), Vector2(45, 8), capa[0], capa[1]); mira_recon.draw_line(Vector2(45, 22), Vector2(45, 28), capa[0], capa[1]))
-	raiz.add_child(mira_recon)
-	condiciones = PantallaMisiones.Condiciones.new(self)
-	pantallas = { "pInicio": PantallaInicio.new(self), "pAlumno": PantallaPilotos.new(self), "pHangar": PantallaHangar.new(self),
-				  "pEntrenamientos": PantallaMisiones.Entrenamientos.new(self), "pVolar": PantallaMisiones.Volar.new(self),
-				  "pOperaciones": PantallaMisiones.Operaciones.new(self), "pMulti": PantallaMisiones.Multijugador.new(self),
-				  "pLanzamiento": PantallaLanzamiento.new(self), "pAjustes": PantallaAjustes.new(self), "pTaller": PantallaTaller.new(self),
-				  "pResultado": PantallaResultado.Resultado.new(self), "pProgreso": PantallaResultado.Progreso.new(self) }
-	for k in pantallas: pantallas[k].visible = false; raiz.add_child(pantallas[k])
-	# multijugador: quien hay en la sala (#salaInfo de la web), abajo a la derecha
-	sala_info = PanelContainer.new(); sala_info.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.5), Color(0, 0, 0, 0), 10, 0, 12, 8))
-	sala_info.anchor_left = 1; sala_info.anchor_right = 1; sala_info.anchor_top = 1; sala_info.anchor_bottom = 1
-	sala_info.offset_right = -16; sala_info.offset_bottom = -236; sala_info.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sala_info.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	sala_info.mouse_filter = Control.MOUSE_FILTER_IGNORE; sala_info.visible = false; raiz.add_child(sala_info)
-	sala_info_rt = Tema.rico("", 12); sala_info_rt.fit_content = true; sala_info_rt.autowrap_mode = TextServer.AUTOWRAP_OFF; sala_info.add_child(sala_info_rt)
-	# ordenes del profesor (#ordenesHud de la web): ATERRIZA YA y los NOTAM, arriba en el centro
-	ordenes_hud = VBoxContainer.new(); ordenes_hud.add_theme_constant_override("separation", 6); ordenes_hud.alignment = BoxContainer.ALIGNMENT_BEGIN
-	ordenes_hud.anchor_left = 0.5; ordenes_hud.anchor_right = 0.5; ordenes_hud.offset_top = 64; ordenes_hud.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	ordenes_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE; raiz.add_child(ordenes_hud)
-	# trabajos: el briefing (la imagen de la orden de trabajo) encima del vuelo, con B o el boton del mapa (#briefing de la web)
-	briefing = PanelContainer.new(); briefing.add_theme_stylebox_override("panel", Tema.caja(Color(0, 0, 0, 0.6), Color(1, 1, 1, 0.25), 12, 1, 8, 8))
-	briefing.visible = false; briefing.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND; briefing.tooltip_text = "Pulsa B, Esc o haz clic para cerrarlo"
-	briefing.gui_input.connect(func(ev: InputEvent): if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT: ver_briefing(false))
-	var bv := VBoxContainer.new(); bv.add_theme_constant_override("separation", 6); bv.mouse_filter = Control.MOUSE_FILTER_IGNORE; briefing.add_child(bv)
-	briefing_img = TextureRect.new(); briefing_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; briefing_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	briefing_img.mouse_filter = Control.MOUSE_FILTER_IGNORE; bv.add_child(briefing_img)
-	var bl := Tema.rico("[center][color=#9fb3c8]Briefing de la orden de trabajo · [b]B[/b] o clic para cerrar[/color][/center]", 12); bl.fit_content = true; bl.autowrap_mode = TextServer.AUTOWRAP_OFF; bl.mouse_filter = Control.MOUSE_FILTER_IGNORE; bv.add_child(bl)
-	raiz.add_child(briefing)
-	pausa = Capas.pausa(self); raiz.add_child(pausa["raiz"])
-	carga = Capas.carga(); raiz.add_child(carga["raiz"])
-	modal = Capas.modal(); raiz.add_child(modal["raiz"])
-	modal["si"].pressed.connect(func(): modal["raiz"].visible = false; _modal_resp.emit(true))
-	modal["no"].pressed.connect(func(): modal["raiz"].visible = false; _modal_resp.emit(false))
-	for c in [modal["clave"], modal["clave2"]]: c.text_submitted.connect(func(_t): modal["raiz"].visible = false; _modal_resp.emit(true))
-	dialogo = FileDialog.new(); dialogo.access = FileDialog.ACCESS_FILESYSTEM; dialogo.use_native_dialog = true
-	dialogo.file_mode = FileDialog.FILE_MODE_SAVE_FILE; dialogo.filters = PackedStringArray(["*.csv ; Caja negra CSV"]); raiz.add_child(dialogo)
 
 ## Muestra una pantalla ("" = el vuelo).
 func mostrar(id: String) -> void:
@@ -546,27 +228,9 @@ func mostrar(id: String) -> void:
 	hud_uav.visible = en_vuelo and modelo != null and es_uav() and not sin_instrumentos
 	if not en_vuelo: hud_carrera.visible = false
 	get_viewport().disable_3d = not en_vuelo                  # en las pantallas no se dibuja el mundo
-	if not en_vuelo: hud.ayuda.visible = false; poner_pausa(false); sonido.silenciar(true)
+	if not en_vuelo: hud.ayuda.visible = false; app_repeticion.poner_pausa(false); sonido.silenciar(true)
 	else: sonido.silenciar(not sonido.on); get_viewport().gui_release_focus()
 
-func confirmar(titulo: String, bb: String, texto_si := "Sí") -> bool:
-	modal["titulo"].text = titulo; modal["texto"].text = bb; modal["si"].text = texto_si; modal["raiz"].visible = true
-	return await _modal_resp
-
-## La clave de un perfil online (pedirClave de la web): [clave, repetida o null], o null si cancela.
-func pedir_clave(titulo: String, texto: String, nueva: bool):
-	modal["clave"].text = ""; modal["clave2"].text = ""; modal["clave"].visible = true; modal["clave2"].visible = nueva
-	modal["titulo"].text = titulo; modal["texto"].text = texto; modal["si"].text = "Guardar" if nueva else "Entrar"; modal["raiz"].visible = true
-	modal["clave"].grab_focus.call_deferred()
-	var ok: bool = await _modal_resp
-	modal["clave"].visible = false; modal["clave2"].visible = false
-	return [modal["clave"].text, modal["clave2"].text if nueva else null] if ok else null
-
-func poner_aviso(txt: String, segundos := 0.0) -> void:
-	hud.aviso.text = txt
-	if segundos > 0:
-		await get_tree().create_timer(segundos).timeout
-		if hud.aviso.text == txt: hud.aviso.text = ""
 var _t_toast := 0
 var toasts_registro = null          # pruebas: si es una lista, cada aviso de poner_toast se apunta en ella
 func poner_toast(txt: String) -> void:
@@ -576,39 +240,7 @@ func poner_toast(txt: String) -> void:
 	await get_tree().create_timer(1.5).timeout
 	if n == _t_toast: hud.toast.text = ""
 
-func mostrar_carga(titulo: String, texto: String, frac: float) -> void:
-	carga["raiz"].visible = true; carga["titulo"].text = titulo; carga["texto"].text = texto; carga["barra"].size.x = 358 * frac
-	await get_tree().process_frame; await get_tree().process_frame
-
 # ---- navegacion ----
-## La pantalla de acceso (irAcceso de la web): servidor del aula, usuario y contrasena, o sin conexion.
-func ir_acceso(msg := "") -> void:
-	pantallas["pAlumno"].refrescar(msg); mostrar("pAlumno")
-## Perfil (menu o el recuadro encima del dron): dentro del aula, su progreso (con Cerrar sesion); si no, el acceso.
-func ir_perfil() -> void:
-	if sesion["alumno"] != null: ir_progreso("pInicio")
-	else: ir_acceso()
-func dentro_del_aula(alumno: Dictionary) -> void:
-	sesion["alumno"] = alumno; sesion["sin_registrar"] = false
-	Desgaste.cargar(self)                        # el estado de sus vehiculos (horas, averias): desgaste.gd
-func salir_del_aula() -> void:
-	aula.salir(); sesion["alumno"] = null; sesion["sin_registrar"] = true
-	Desgaste.cargar(self)
-func cerrar_sesion() -> void:
-	var n = sesion["alumno"]["nombre"] if sesion["alumno"] != null else null
-	salir_del_aula(); salir_sala(); ir_acceso(("Sesión de %s cerrada." % n) if n != null else "")
-func ir_inicio() -> void:
-	salir_sala()                                 # al volver al inicio se sale de la sala multijugador
-	Desgaste.cargar(self)                        # el estado de los vehiculos, al dia (el profesor puede haber puesto averias)
-	pantallas["pInicio"].refrescar(); mostrar("pInicio")
-func elegir_avion(id: String) -> void:
-	sesion["avion"] = id; _guardar()
-## El modo Taller (pantalla_taller.gd): los registros de vuelo de cada vehiculo.
-func ir_taller() -> void: pantallas["pTaller"].abrir()
-func ir_hangar() -> void:
-	vehiculo_permitido(); pantallas["pHangar"].refrescar(); mostrar("pHangar")
-func ir_entrenamientos() -> void:
-	mostrar("pEntrenamientos"); pantallas["pEntrenamientos"].refrescar()
 # =====================================================================
 #  MULTIJUGADOR: salas del servidor del aula (MULTI de la web; el mismo protocolo, se puede volar mezclado). Cada
 #  simulador manda su estado 10 veces por segundo y recibe el de los demas de su sala, que se dibujan como "fantasmas"
@@ -630,685 +262,25 @@ var _exclusiones: Node3D
 var ordenes := {}
 const EXCLUSION_TXT := "Respetar las zonas de exclusión que marca el profesor"
 var sala_info_rt: RichTextLabel
-func multi_id() -> String:
-	if _multi_id == "": _multi_id = Aula.uuid4()
-	return _multi_id
-func multi_posible() -> bool: return aula.activo and sesion["alumno"] != null
-func nombre_piloto() -> String: return String(sesion["alumno"]["nombre"]) if sesion["alumno"] != null else "Invitado " + multi_id().substr(0, 4)
-func ir_multi() -> void:
-	mostrar("pMulti"); pantallas["pMulti"].refrescar()
-## Entra en una sala: su escenario, su punto de salida y su viento, con un vehiculo que valga para el; y a volar.
-func entrar_sala(s: Dictionary) -> void:
-	if not Escenarios.datos().has(s["escenario"]): poner_toast("Esta sala es de algo que este simulador no tiene: actualízalo"); return
-	var E: Dictionary = Escenarios.datos()[s["escenario"]]
-	sala = s; multi_otros = {}; reiniciar_ordenes()
-	var veh: Array = (E.get("vehiculos", ["avion", "dron", "fpv"]) as Array).duplicate()
-	if (E["objetivos"] as Array).is_empty() and not E.has("operacion"): veh.append("bipode")     # vuelo libre: tambien el bipode
-	if E.has("operacion") and ids_aviones.has(String(E["operacion"].get("avion", ""))): sesion["avion"] = String(E["operacion"]["avion"])     # trabajos: el dron que piden
-	elif not Escenarios.vehiculo_de(sesion["avion"]) in veh:
-		for a in ids_aviones:
-			if Escenarios.vehiculo_de(a) in veh: sesion["avion"] = a; break
-	sesion["escenario"] = s["escenario"]
-	var lz = s.get("lanz")
-	if lz is Dictionary and _nums_finitos([lz.get("N", INF), lz.get("E", INF), lz.get("rumbo", INF)], 3): sesion["lanz"] = lz
-	elif E.has("operacion"):                     # trabajos: su despegue
-		var S0: Dictionary = E["operacion"]["salida"]; sesion["lanz"] = { "mundo": E["mundo"], "N": float(S0["n"]), "E": float(S0["e"]), "rumbo": float(S0["rumbo"]) }
-	var vt = s.get("viento")
-	if vt is Dictionary and _nums_finitos([vt.get("vel", INF), vt.get("desde", INF)], 2) and not E.has("viento"): sesion["viento"] = vt
-	poner_toast("Sala %s: %s" % [s["codigo"], String(s.get("nombre", ""))]); empezar()
-func salir_sala() -> void:
-	if sala.is_empty(): return
-	var s := sala; sala = {}; multi_otros = {}; _poner_fantasmas(); sala_info.visible = false; _golpes_vistos = {}; _vida_multi = BIP_VIDAS
-	reiniciar_ordenes(); _pintar_ordenes(); _poner_exclusiones()
-	aula.api("POST", "salas/%s/salir" % s["codigo"], { "id": multi_id() })
-func reiniciar_ordenes() -> void:
-	ordenes = { "n": 0, "viento": null, "notam": [], "aterrizar": 0.0, "en_aire": false, "zonas": [], "persona": null, "fuga": null, "t_aviso": 0.0 }
-
-func aplicar_ordenes(lista: Array) -> void:
-	if ordenes.is_empty(): reiniciar_ordenes()
-	var cambio := false
-	for o in lista:
-		if not (o is Dictionary) or int(o.get("n", 0)) <= int(ordenes["n"]): continue
-		ordenes["n"] = int(o.get("n", 0)); cambio = true
-		var para := String(o.get("para", "*"))
-		if para != "*" and para != multi_id(): continue
-		var nueva: bool = float(o.get("edad", 0)) < 30          # las de antes de entrar en la sala se aplican sin anunciarlas
-		match String(o.get("tipo", "")):
-			"viento":
-				ordenes["viento"] = { "vel": float(o.get("vel", 0)), "desde": float(o.get("desde", 0)), "rachas": bool(o.get("rachas", false)) }
-				ent.configurar_viento(float(o.get("vel", 0)), float(o.get("desde", 0)), bool(o.get("rachas", false)))
-				if nueva: poner_toast("Viento: %s m/s del %s%s" % [PasadaBaja._num(float(o.get("vel", 0))), PantallaMisiones.RUMBOS_VIENTO[int(round(float(o.get("desde", 0)) / 45.0)) % 8], ", con rachas" if o.get("rachas", false) else ""])
-			"notam":
-				ordenes["notam"].append(String(o.get("texto", "")))
-				if nueva: poner_toast("Nuevo NOTAM")
-			"quitar_notam": ordenes["notam"] = []
-			"aterrizar":
-				if nueva: ordenes["aterrizar"] = Time.get_ticks_msec() / 1000.0; ordenes["en_aire"] = false
-			"exclusion":
-				ordenes["zonas"].append({ "id": int(o.get("n", 0)), "N": float(o.get("N", 0)), "E": float(o.get("E", 0)), "r": float(o.get("r", 0)) })
-				if nueva: poner_toast("Nueva zona de exclusión: mírala en el mapa")
-			"quitar_exclusion": ordenes["zonas"] = (ordenes["zonas"] as Array).filter(func(z): return z["id"] != int(o.get("id", -1)))
-			"senderista":
-				ordenes["persona"] = [float(o.get("N", 0)), float(o.get("E", 0))]
-				if mover_desaparecido() and nueva: poner_toast("Nueva posición del desaparecido: búscalo")
-			"fuga":
-				ordenes["fuga"] = [float(o.get("N", 0)), float(o.get("E", 0))]
-				if mover_fuga_profesor() and nueva: poner_toast("La fuga de gas ahora está en otra unidad: localízala de nuevo")
-			"averia":                                # averia en vuelo: sin avisar (como en la realidad)
-				if nueva and modelo != null and vuelo != null and not av.is_empty() and av["estado"] == "volando" and not es_bipode():
-					var pide := { "c": String(o.get("c", "")), "tipo": String(o.get("averia", "")) }
-					if o.has("celda"): pide["n"] = int(o["celda"])
-					var a = Desgaste.adaptar(DatosComunes.avion(sesion["avion"]), pide)
-					if a != null:
-						Desgaste.en_vuelo(modelo, a)
-						if not vuelo.has("averiasSala"): vuelo["averiasSala"] = []
-						vuelo["averiasSala"].append(a)
-						var ap := Desgaste.avisos_app([a], DatosComunes.avion(sesion["avion"]))
-						if not ap.is_empty(): poner_toast(" · ".join(PackedStringArray(ap)))
-	if cambio: ordenes_al_evaluador(); _poner_exclusiones()
-	_pintar_ordenes()
-
-## El desaparecido donde lo ha puesto el profesor (en la busqueda): hay que volver a encontrarlo.
-func mover_desaparecido() -> bool:
-	if ordenes.get("persona") == null or ev == null or ev.op == null or not ev.op.d.has("zona"): return false
-	var op = ev.op; op.d["persona"] = (ordenes["persona"] as Array).duplicate(); op.encontrado = false; op.error = null
-	for k in ["localizar", "posicion"]:
-		if ev.obj.has(k) and ev.obj[k]["estado"] != "mal": ev.obj[k]["estado"] = "pend"
-	if mundo3d != null: mundo3d.poner_operacion(op.d, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
-	return true
-
-## La fuga de gas de SABIC en la unidad mas cercana a donde la ha puesto el profesor: hay que volver a localizarla.
-func mover_fuga_profesor() -> bool:
-	if ordenes.get("fuga") == null or ev == null or ev.op == null or not ev.op.d.has("racks"): return false
-	ev.op.mover_fuga(ordenes["fuga"][0], ordenes["fuga"][1]); ev.set_meta("fuga_profesor", true)
-	if ev.obj.has("fuga") and ev.obj["fuga"]["estado"] != "mal": ev.obj["fuga"]["estado"] = "pend"
-	if mundo3d != null: mundo3d.poner_operacion(ev.op.d, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
-	return true
-
-## Al empezar (o empezar de nuevo) un vuelo en la sala: el viento, el desaparecido y el objetivo de las zonas de exclusion.
-func ordenes_al_evaluador() -> void:
-	if sala.is_empty() or ev == null or ordenes.is_empty(): return
-	if ev.op != null and sala.get("ajustes") != null:              # "los 12 modulos..."
-		for k in ev.obj: ev.obj[k]["texto"] = Operacion.texto_objetivo(k, ev.obj[k]["texto"], ev.op.d)
-	var V = ordenes["viento"] if ordenes["viento"] != null else sala.get("viento")   # el viento de la sala (o el que haya mandado el profesor despues)
-	if V != null and not ev.get_meta("viento_profesor", false):
-		ent.configurar_viento(float(V["vel"]), float(V["desde"]), bool(V.get("rachas", false))); ev.set_meta("viento_profesor", true)
-	var P = ordenes["persona"]
-	if P != null and ev.op != null and ev.op.d.has("zona") and (float(ev.op.d["persona"][0]) != P[0] or float(ev.op.d["persona"][1]) != P[1]): mover_desaparecido()
-	if ordenes.get("fuga") != null and ev.op != null and ev.op.d.has("racks") and not ev.get_meta("fuga_profesor", false): mover_fuga_profesor()
-	if not (ordenes["zonas"] as Array).is_empty() and not ev.obj.has("exclusion"):
-		ev.obj["exclusion"] = { "texto": EXCLUSION_TXT, "estado": "curso" }; ev.orden.append("exclusion")
-
-## En cada paso en vuelo: dentro de una zona de exclusion, aviso y objetivo suspendido.
-func vigilar_exclusiones() -> void:
-	if sala.is_empty() or ordenes.is_empty() or (ordenes["zonas"] as Array).is_empty() or ev == null or av["estado"] != "volando" or av.get("posado", false): return
-	for z in ordenes["zonas"]:
-		if Vector2(av["p"][0] - z["N"], av["p"][1] - z["E"]).length() < z["r"]:
-			ev.marcar("exclusion", "mal")
-			var t := Time.get_ticks_msec() / 1000.0
-			if t - float(ordenes["t_aviso"]) > 4: ordenes["t_aviso"] = t; poner_toast("¡Dentro de una zona de exclusión! Sal de ella")
-			return
-
-func _pintar_ordenes() -> void:
-	if not ordenes.is_empty() and float(ordenes["aterrizar"]) > 0 and not av.is_empty():   # hasta que aterrice (si ya estaba en el suelo, 8 s)
-		var en_suelo: bool = av["estado"] != "volando" or av.get("posado", false)
-		if not en_suelo: ordenes["en_aire"] = true
-		elif ordenes["en_aire"] or Time.get_ticks_msec() / 1000.0 - float(ordenes["aterrizar"]) > 8: ordenes["aterrizar"] = 0.0
-	var aterriza: bool = not ordenes.is_empty() and float(ordenes["aterrizar"]) > 0
-	var notam: Array = ordenes.get("notam", [])
-	var firma := "%s|%s" % [aterriza, "|".join(notam)]
-	if aterriza: ordenes_hud.modulate.a = 0.55 + 0.45 * absf(sin(Time.get_ticks_msec() / 1000.0 * PI))
-	else: ordenes_hud.modulate.a = 1.0
-	if firma == _ordenes_firma: return
-	_ordenes_firma = firma
-	for c in ordenes_hud.get_children(): c.queue_free()
-	var caja := func(txt: String, fondo: Color, color: Color, tam: int) -> PanelContainer:
-		var pc := PanelContainer.new(); pc.add_theme_stylebox_override("panel", Tema.caja(fondo, Color(0, 0, 0, 0), 10 if tam > 20 else 8, 0, 22 if tam > 20 else 14, 10 if tam > 20 else 5))
-		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE; pc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		var l := Tema.etiqueta(txt, tam, color, true); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; pc.add_child(l); return pc
-	if aterriza: ordenes_hud.add_child(caja.call("ATERRIZA YA · orden del profesor", Color(0.83, 0.18, 0.18, 0.95), Color.WHITE, 26))
-	for t in notam: ordenes_hud.add_child(caja.call("NOTAM · " + String(t), Color(1, 0.72, 0.3, 0.92), Color("#1a1000"), 14))
-
-## Zonas de exclusion en 3D: cilindros rojos translucidos del suelo a 120 m (ponerExclusiones de la web).
-func _poner_exclusiones() -> void:
-	if _exclusiones != null: _exclusiones.queue_free(); _exclusiones = null
-	if ordenes.is_empty() or (ordenes["zonas"] as Array).is_empty(): return
-	_exclusiones = Node3D.new(); add_child(_exclusiones)
-	var mat := StandardMaterial3D.new(); mat.albedo_color = Color(0.9, 0.22, 0.21, 0.18); mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var borde := mat.duplicate(); borde.albedo_color = Color(0.9, 0.22, 0.21, 0.7)
-	for z in ordenes["zonas"]:
-		var y: float = ent.altura(z["N"], z["E"]) if en_mundo() else 0.0
-		var cm := CylinderMesh.new(); cm.top_radius = z["r"]; cm.bottom_radius = z["r"]; cm.height = 120; cm.cap_top = false; cm.cap_bottom = false; cm.radial_segments = 48
-		var c := MeshInstance3D.new(); c.mesh = cm; c.material_override = mat; c.position = Vector3(z["E"], y + 60, -z["N"]); _exclusiones.add_child(c)
-		for h in [0.5, 120.0]:
-			var tm := TorusMesh.new(); tm.inner_radius = z["r"] - 0.6; tm.outer_radius = z["r"] + 0.6; tm.rings = 64
-			var a := MeshInstance3D.new(); a.mesh = tm; a.material_override = borde; a.position = Vector3(z["E"], y + h, -z["N"]); a.scale = Vector3(1, 0.05, 1); _exclusiones.add_child(a)
-
-## Manda el estado propio y recoge el de los demas (enviarSala de la web).
-func _enviar_sala() -> void:
-	if sala.is_empty() or _multi_enviando or av.is_empty() or modelo == null: return
-	_multi_enviando = true
-	# objetivos: cumplidos, total y fallados (las normas siguen "en curso" hasta aterrizar); y lo que va haciendo en el trabajo
-	var ok := 0; var tot := 0; var mal := 0; var ahora := ""
-	if ev != null:
-		for k in ev.obj:
-			tot += 1
-			if ev.obj[k]["estado"] == "ok": ok += 1
-			elif ev.obj[k]["estado"] == "mal": mal += 1
-		var guia = ev.op if ev.op != null else ev.fpv
-		if guia != null:
-			var re := RegEx.new(); re.compile("<[^>]+>"); ahora = re.sub(guia.ahora(ev.obj, av), "", true).left(160)
-	var e := { "id": multi_id(), "nombre": nombre_piloto(), "alumno": sesion["alumno"]["id"] if sesion["alumno"] != null else null, "avion": sesion["avion"], "p": av["p"], "q": av["q"], "vn": Cuat.rot(av["q"], av.get("v", [0.0, 0.0, 0.0])),
-			   "estado": av["estado"], "gas": av.get("gases", 0.0), "agl": av.get("agl", 0.0), "objs": [ok, tot, mal] if ev != null else null, "ahora": ahora,
-			   "tvuelo": vuelo["tVuelo"] if vuelo != null else 0.0, "final": vuelo["final"] if vuelo != null else null, "gimbal": av.get("gimbal", 0.0) }
-	if es_bipode():
-		e["bip"] = [av["cintura"], av["brazos"], av["fase"], av["amp"], av["angCanones"], av["disparos"], av["puno"]]
-		if juego_bip != null: e["golpes"] = juego_bip.golpes
-	if carrera_mejor != null and ev != null and ev.op != null and ev.op.carr != null: e["carrera"] = snappedf(carrera_mejor["t"], 0.01)   # carrera: el mejor de la sesion
-	var cm_e := cam_dji(); e["cam"] = camara; e["zoom"] = float(cm_e["zoom"]); e["ter"] = bool(cm_e["termica"])            # lo que ve el piloto (vista del alumno del profesor)
-	if av.has("torreta"): e["tor"] = [float(av["torreta"]["pan"]), float(av["torreta"]["tilt"])]
-	var cod: String = sala["codigo"]
-	var r: Dictionary = await aula.api("POST", "salas/%s/estado" % cod, e)
-	_multi_enviando = false
-	if sala.is_empty() or sala["codigo"] != cod: return
-	if r["ok"]:
-		var t := Time.get_ticks_msec() / 1000.0; var vivos := {}
-		for o in r["datos"]["otros"]:
-			if not _estado_valido(o): continue          # posicion u orientacion que no son numeros, o vehiculo que no existe: se ignora
-			o["recibido"] = t; multi_otros[o["id"]] = o; vivos[o["id"]] = true; _impactos_de(o)
-		for k in multi_otros.keys():
-			if not vivos.has(k): multi_otros.erase(k)
-		aplicar_ordenes(r["datos"].get("ordenes", []))
-		var sd = r["datos"].get("sala"); var rec = sd.get("record") if sd is Dictionary else null
-		sala["record"] = rec if (rec is Dictionary and (rec.get("t") is float or rec.get("t") is int)) else null
-	elif r["status"] == 404: poner_toast("La sala se ha cerrado"); salir_sala()
-	elif r["status"] == 403: salir_sala(); ir_inicio(); confirmar("Fuera de la sala", Tema.bb(String(r["error"])), "Vale")   # expulsado por el profesor
-## Un estado de otro jugador que se puede usar (estadoValido de la web): id, p de 3 y q de 4 numeros finitos, vn de 3 si
-## viene, y un vehiculo que exista en aviones/.
-static func _nums_finitos(a, n: int) -> bool:
-	if not (a is Array) or a.size() != n: return false
-	for x in a:
-		if not (x is float or x is int) or (x is float and not is_finite(x)): return false
-	return true
-static func _nums_finitos_min(a, n: int) -> bool:
-	return a is Array and a.size() >= n and _nums_finitos(a.slice(0, n), n)
-func _estado_valido(o) -> bool:
-	if not (o is Dictionary) or not (o.get("id") is String) or not _nums_finitos(o.get("p"), 3) or not _nums_finitos(o.get("q"), 4): return false
-	if o.get("vn") != null and not _nums_finitos(o.get("vn"), 3): return false
-	for k in ["estado", "nombre", "final", "ahora"]:
-		if o.get(k) != null and not (o.get(k) is String): return false
-	for k in ["gas", "agl", "gimbal", "tvuelo"]:
-		var x = o.get(k)
-		if x != null and not (x is int or (x is float and is_finite(x))): return false
-	if o.get("objs") != null and not _nums_finitos_min(o.get("objs"), 2): return false
-	if o.get("bip") != null and not _nums_finitos_min(o.get("bip"), 7): return false
-	if o.get("golpes") != null and not (o.get("golpes") is Dictionary): return false
-	return o.get("avion") is String and ids_aviones.has(o["avion"])
-## Los demas como fantasmas: su modelo y su nombre encima; la posicion, la ultima recibida avanzada con su velocidad (como
-## mucho 0,3 s) y suavizada (ponerFantasmas de la web).
-func _poner_fantasmas() -> void:
-	var ahora := Time.get_ticks_msec() / 1000.0; var vivos := {}
-	for id in multi_otros:
-		var f: Dictionary = multi_otros[id]; vivos[id] = true
-		var g = _fantasmas.get(id)
-		if g == null or g["avion"] != f["avion"] or g["nombre"] != f["nombre"]:
-			if g != null: g["nodo"].queue_free(); g["et"].queue_free()
-			var datos := DatosComunes.avion(String(f["avion"]))
-			if datos.is_empty(): continue
-			var nodo := Avion3D.new(datos); add_child(nodo)
-			var et := Label3D.new(); et.text = String(f["nombre"]); et.billboard = BaseMaterial3D.BILLBOARD_ENABLED; et.fixed_size = true; et.pixel_size = 0.0009
-			et.font_size = 26; et.outline_size = 8; et.modulate = Color("#4fc3f7"); et.no_depth_test = true; et.font = Tema.negrita; add_child(et)
-			g = { "nodo": nodo, "et": et, "p": (f["p"] as Array).duplicate(), "avion": f["avion"], "nombre": f["nombre"] }; _fantasmas[id] = g
-		var dt := minf(0.3, ahora - float(f["recibido"])); var vn: Array = f.get("vn", [0.0, 0.0, 0.0])
-		var obj := [f["p"][0] + vn[0] * dt, f["p"][1] + vn[1] * dt, f["p"][2] + vn[2] * dt]
-		var lejos := Vector3(obj[0] - g["p"][0], obj[1] - g["p"][1], obj[2] - g["p"][2]).length() > 30
-		for i in 3: g["p"][i] = obj[i] if lejos else g["p"][i] + (obj[i] - g["p"][i]) * 0.35
-		var gas: float = f.get("gas", 0.0)
-		var est := { "p": g["p"], "q": f["q"], "de": 0.0, "dr": 0.0, "da": 0.0, "gases": gas, "estado": f.get("estado", "volando"),
-					 "gimbal": f.get("gimbal", 0.0) if f.get("gimbal") != null else 0.0, "motores": [gas, gas, gas, gas] }
-		var bp = f.get("bip")
-		if bp is Array and bp.size() >= 7:            # bipode de otro jugador: paso, cintura, brazos, cañones y puño
-			est.merge({ "cintura": float(bp[0]), "brazos": float(bp[1]), "fase": float(bp[2]), "amp": float(bp[3]), "angCanones": float(bp[4]), "disparos": int(bp[5]), "puno": float(bp[6]) })
-		g["nodo"].actualizar(est)
-		g["et"].position = Avion3D.ned(g["p"]) + Vector3(0, 4.2 if g["nodo"].bipode else 1.2, 0)
-	for id in _fantasmas.keys():
-		if not vivos.has(id): _fantasmas[id]["nodo"].queue_free(); _fantasmas[id]["et"].queue_free(); _fantasmas.erase(id)
-## Panel de la sala en vuelo: quien esta y como va.
-func _pintar_sala_info() -> void:
-	sala_info.visible = not sala.is_empty() and pantalla_actual == ""
-	if briefing.visible and pantalla_actual != "": briefing.visible = false
-	if not sala_info.visible: return
-	var t := "[color=#4fc3f7][b]Sala %s[/b][/color] · %s" % [Tema.bb(String(sala["codigo"])), Tema.bb(String(sala.get("nombre", "")))]
-	if multi_otros.is_empty(): t += "\nTodavía no hay nadie más"
-	for id in multi_otros:
-		var o: Dictionary = multi_otros[id]; var objs = o.get("objs")
-		t += "\n● %s · %s · %s%s" % [Tema.bb(String(o.get("nombre", ""))), Tema.bb(String(DatosComunes.avion(String(o["avion"])).get("nombre", o["avion"]))),
-			("%d m" % int(round(maxf(0, o.get("agl", 0.0))))) if o.get("estado", "") == "volando" else String(o.get("estado", "")),
-			(" · %d✔%s de %d" % [objs[0], (" %d✘" % objs[2]) if objs.size() > 2 and objs[2] > 0 else "", objs[1]]) if objs != null and objs[1] > 0 else ""]
-	sala_info_rt.text = t
-
-func ir_operaciones() -> void:
-	mostrar("pOperaciones"); pantallas["pOperaciones"].refrescar()
-## Empieza el trabajo elegido: con el dron comercial (las operaciones son suyas), desde su punto de despegue (volarOperacion de la web).
-## Si el trabajo deja volarlo con el vehiculo a (operacion.elegir: clases de vehiculo o ids, como el reconocimiento).
-func op_permite(O: Dictionary, a: String) -> bool:
-	return O.has("elegir") and ((O["elegir"] as Array).has(Escenarios.vehiculo_de(a)) or (O["elegir"] as Array).has(a))
-## El vehiculo con el que se vuela el trabajo id (vehOp de la web): el que pide o, si deja elegir, el elegido.
-func veh_op(id: String) -> String:
-	var O: Dictionary = Escenarios.datos()[id]["operacion"]; var a: String = op_vehiculo.get(id, "")
-	if O.has("elegir") and ids_aviones.has(a) and op_permite(O, a): return a
-	return String(O.get("avion", ""))
-func volar_operacion(id: String) -> void:
-	var E: Dictionary = Escenarios.datos()[id]; var S: Dictionary = E["operacion"]["salida"]
-	if ids_aviones.has(veh_op(id)): sesion["avion"] = veh_op(id)     # el dron que pide el trabajo (o el elegido, en la carrera)
-	elif Escenarios.vehiculo_de(sesion["avion"]) != "dron":
-		for a in ids_aviones:
-			if Escenarios.vehiculo_de(a) == "dron": sesion["avion"] = a; break
-	sesion["escenario"] = id; sesion["lanz"] = { "mundo": mundo_datos["id"], "N": float(S["n"]), "E": float(S["e"]), "rumbo": float(S["rumbo"]) }
-	guardar_sesion(); empezar()
-func ir_volar() -> void:
-	vehiculo_permitido()
-	if Escenarios.libre(sesion["escenario"]): sitio_sel = sesion["escenario"]
-	mostrar("pVolar"); pantallas["pVolar"].refrescar()
-func ir_ajustes(seccion := "") -> void:
-	pantallas["pAjustes"].refrescar()
-	if seccion != "": pantallas["pAjustes"].seleccionar(seccion)
-	mostrar("pAjustes")
-func ir_lanzamiento() -> void:
-	ent.poner_mundo(mundo_datos); _lanz_por_defecto()
-	if necesita_pista() and not destacado_con_pista().is_empty() and sesion["lanz"].get("destacado", "") != destacado_con_pista()["nombre"]:
-		var dp: Dictionary = destacado_con_pista(); var ne := lat_lon_a_ne(mundo_datos, dp["lat"], dp["lon"])
-		sesion["lanz"] = { "mundo": mundo_datos["id"], "N": round(ne[0]), "E": round(ne[1]), "rumbo": float(dp["rumbo"]), "destacado": dp["nombre"] }
-	mostrar("pLanzamiento"); pantallas["pLanzamiento"].preparar()
-func ir_progreso(desde: String, alumno = null) -> void:
-	pantallas["pProgreso"].desde = desde; pantallas["pProgreso"].alumno = alumno if alumno != null else sesion["alumno"]
-	mostrar("pProgreso"); pantallas["pProgreso"].cargar()
 
 # =====================================================================
 #  EMPEZAR, REINICIAR, LANZAR
 # =====================================================================
-func _poner_mundo_3d(es_m: bool, titulo: String) -> void:
-	var cal := calidad_actual()
-	get_viewport().scaling_3d_scale = 1.0 if vr != null else (0.5 if minimo() else 1.0)          # rendimiento maximo: media resolucion en 3D (en las gafas, la suya)
-	if es_m:
-		if mundo3d != null and (mundo3d.calidad != cal or mundo3d.minimo != minimo()): mundo3d.queue_free(); mundo3d = null; await get_tree().process_frame
-		if mundo3d == null:
-			await mostrar_carga(titulo, "Terreno, mar, carreteras y pueblos…", 0.3)
-			mundo3d = Mundo3D.new(); mundo3d.calidad = cal; mundo3d.minimo = minimo(); add_child(mundo3d); mundo3d.construir(ent, mundo_datos, orto)
-		_poner_vista(mundo3d)
-		await mostrar_carga(titulo, "Zonas de detalle: ortofoto, edificios y árboles…", 0.6)
-		var c := _casa(); var zs := []
-		for meta in zonas_cerca(c["N"], c["E"]):
-			if not zonas_cache.has(meta["id"]): zonas_cache[meta["id"]] = DatosComunes.cargar_zona(meta)
-			if not (zonas_cache[meta["id"]] as Dictionary).is_empty(): zs.append(zonas_cache[meta["id"]])
-		mundo3d.claro = Vector2(c["E"], c["N"])
-		ent.poner_zonas(zs); mundo3d.poner_zonas(zs); mundo3d.poner_base(c["N"], c["E"])
-		await mostrar_carga(titulo, "Listo", 1.0)
-	else:
-		if campo3d != null and campo3d.calidad != cal: campo3d.queue_free(); campo3d = null; await get_tree().process_frame
-		if campo3d == null:
-			campo3d = Campo3D.new(); campo3d.calidad = cal; add_child(campo3d); campo3d.construir(ent)
-		_poner_vista(campo3d)
-	if campo3d != null: campo3d.poner_pista_fpv({} if es_m else Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {}))
 
 ## Zonas de detalle a menos de RADIO_ZONAS m del punto (N, E), primero la que lo contiene (zonasCerca de
 ## simulador.html): con zonas pegadas, como las de La Manga y el Mar Menor, se vuela en detalle hasta ~2 km del piloto.
 const RADIO_ZONAS := 2000.0
-func zonas_cerca(N: float, E: float) -> Array:
-	var dist := func(z: Dictionary) -> float:
-		return Vector2(maxf(maxf(z["N0"] - N, 0.0), N - z["N0"] - z["lado_m"]), maxf(maxf(z["E0"] - E, 0.0), E - z["E0"] - z["lado_m"])).length()
-	var dentro := DatosComunes.zona_en(indice_zonas, MUNDO, N, E)
-	var lista := indice_zonas.filter(func(z): return z["mundo"] == MUNDO and dist.call(z) <= RADIO_ZONAS)
-	lista.sort_custom(func(a, b):
-		var da: int = 0 if (not dentro.is_empty() and a["id"] == dentro["id"]) else 1; var db: int = 0 if (not dentro.is_empty() and b["id"] == dentro["id"]) else 1
-		return da < db if da != db else dist.call(a) < dist.call(b))
-	return lista
-
-## Solo un mundo en el arbol a la vez (cada uno trae su cielo, su luz y su WorldEnvironment).
-func _poner_vista(v: Node3D) -> void:
-	for w in [mundo3d, campo3d]:
-		if w != null and w != v and w.is_inside_tree(): remove_child(w)
-	if v.get_parent() == null: add_child(v)
-	vista = v
-	cam.far = 16000.0 if v == mundo3d else 3000.0     # como el navegador (cam.far de visor.js)
-
-func empezar() -> void:
-	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]; var es_m := E.has("mundo")
-	sonido.iniciar()
-	if es_m: await mostrar_carga(mundo_datos["nombre"], "Avión y física…", 0.1)
-	ent.poner_mundo(mundo_datos if es_m else {})
-	if not es_m: ent.poner_zona({})
-	modelo = crear_modelo(sesion["avion"])
-	aplicar_cm(modelo); aplicar_calibracion(modelo); aplicar_dificultad(modelo)
-	var A := DatosComunes.avion(sesion["avion"])
-	if Desgaste.clase(A) != "": Desgaste.aplicar(modelo, Desgaste.estado(sesion["avion"]))    # sus averias y el desgaste de la bateria
-	if avion3d: avion3d.queue_free()
-	avion3d = Avion3D.new(datos_visor(sesion["avion"])); add_child(avion3d)
-	if morro_de(sesion["avion"]) == "orientable": modelo.configurar({ "masa_kg": modelo.masa_kg + float(A["camara"].get("masa_orientable_kg", 0.0)) })   # la torreta pesa
-	_texto_ayuda(A)
-	hud_dji.b_briefing.visible = E.has("operacion"); ver_briefing(false)   # trabajos: el briefing a mano (B)
-	# el dron se vuela mirando la pantalla de la app (su camara); al volver a un avion, vista del piloto
-	if es_dron() != era_dron: camara = 3 if es_dron() else 1
-	era_dron = es_dron()
-	if es_bipode(): camara = 2                    # el bipode se maneja desde detras
-	if es_dron() and not es_fpv():
-		if hud.gps.get_parent() != hud_dji.mapa: hud.gps.get_parent().remove_child(hud.gps); hud_dji.mapa.add_child(hud.gps)
-		hud.gps.custom_minimum_size = Vector2(130, 130)
-	elif hud.gps.get_parent() != hud.panel:
-		hud.gps.get_parent().remove_child(hud.gps); hud.panel.add_child(hud.gps); hud.gps.custom_minimum_size = Vector2(190, 190)
-	await _poner_mundo_3d(es_m, mundo_datos["nombre"])
-	casa = _casa()
-	vel_perdida = _vel_perdida()
-	carga["raiz"].visible = false
-	reiniciar(); mostrar("")
-
-## Briefing de los trabajos: la misma imagen de la orden de trabajo (la zona y el despegue, sin las soluciones), encima del vuelo.
-func ver_briefing(ver = null) -> void:
-	var op: bool = Escenarios.datos()[sesion["escenario"]].has("operacion")
-	var abrir: bool = op and (not briefing.visible if ver == null else bool(ver))
-	if abrir:
-		var f := DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sesion["escenario"])
-		var img := Image.load_from_file(f) if FileAccess.file_exists(f) else null
-		briefing_img.texture = ImageTexture.create_from_image(img) if img != null else null
-		var w := minf(900, get_viewport().get_visible_rect().size.x * 0.7); briefing_img.custom_minimum_size = Vector2(w, w * 2 / 3.0)
-		briefing.size = Vector2.ZERO; briefing.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-	briefing.visible = abrir
-	var s := HudDji._redondo(44, Color("#ffb74d") if abrir else Color(0, 0, 0, 0.55), Color("#ffb74d") if abrir else Color(1, 1, 1, 0.4))
-	for e in ["normal", "focus", "hover", "pressed"]: hud_dji.b_briefing.add_theme_stylebox_override(e, s)
-
-func _texto_ayuda(A: Dictionary) -> void:
-	var t := "[font_size=18][b]Controles[/b][/font_size]\n"
-	if es_bipode():
-		t += "[b]W[/b] / [b]S[/b] adelante / atrás · [b]A[/b] / [b]D[/b] girar · [b]← →[/b] girar la cintura (360°) · [b]↑ ↓[/b] subir / bajar los brazos\n"
-		t += "[b]Espacio[/b] disparar (mantener) · [b]F[/b] cerrar el puño · [b]L[/b] arrancar / aparcar · [b]R[/b] empezar de nuevo\n"
-		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / puesto de tiro (con la mira) · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b]: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa\n"
-		t += "[color=#8be08f]Derriba los drones diana que vuelan alrededor (caen al primer impacto); en multijugador, también los de tus compañeros.[/color]"
-		hud.ayuda_rt.text = t; return
-	if es_fpv():
-		t += "[b]↑ ↓[/b] cabeceo (↑ adelante) · [b]← →[/b] alabeo · [b]W[/b] / [b]S[/b] gas (no vuelve al centro) · [b]Espacio[/b] gas a cero · [b]A[/b] / [b]D[/b] guiñada\n"
-		t += "[b]L[/b] armar / desarmar (con el gas abajo) · [b]M[/b] modo ANGLE / HORIZON / ACRO · [b]R[/b] empezar de nuevo\n"
-		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / FPV · [b]I[/b] OSD · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b] (modo 2): izquierda gas y guiñada, derecha alabeo y cabeceo · A armar / desarmar · LB modo · RB cámara · Back empezar de nuevo · Start pausa\n"
-		t += "[color=#8be08f]Mejor con una emisora RC por USB (el gas no tiene muelle) o un mando; con el teclado es muy difícil. Empieza en ANGLE.[/color]\n"
-	elif es_dron():
-		t += "[b]↓ ↑[/b] atrás / adelante · [b]← →[/b] laterales · [b]W[/b] / [b]S[/b] sube / baja · [b]A[/b] / [b]D[/b] gira sobre sí mismo\n"
-		t += "[b]M[/b] modo Cine / Normal / Sport · [b]Q[/b] / [b]E[/b] gimbal · [b]F[/b] foto · [b]V[/b] vídeo · [b]H[/b] volver a casa · [b]L[/b] armar · [b]R[/b] empezar de nuevo · [b]B[/b] briefing (trabajos)\n"
-		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / del dron · [b]I[/b] pantalla de la app · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b] (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · combinación de palancas (CSC: las dos abajo y hacia dentro o hacia fuera, medio segundo): arrancar motores · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa\n"
-	else:
-		t += "[b]↓ ↑[/b] profundidad (↓ tira: morro arriba) · [b]← →[/b] %s\n" % String(A.get("mandos", {}).get("izq_der", "timón"))
-		t += "[b]W[/b] / [b]S[/b] gases · [b]Espacio[/b] cortar gases · [b]L[/b] lanzar · [b]R[/b] empezar de nuevo\n"
-		t += "[b]1[/b] [b]2[/b] [b]3[/b] cámara piloto / persecución / a bordo · [b][[/b] [b]][/b] compensador\n"
-		t += "[b]H[/b] datos de vuelo · [b]I[/b] instrumentos · [b]Esc[/b] pausa · [b]T[/b] esta ayuda\n"
-		t += "[b]Mando[/b]: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · RB cámara · X empezar de nuevo · Start pausa\n"
-	if not es_fpv(): t += "[color=#ffb74d]Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.[/color]\n"
-	t += "[color=#aaaaaa]En vuelo libre: [b]+[/b] [b]−[/b] viento, [b]G[/b] rachas. %s[/color]" % String(A.get("ayuda", "El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto."))
-	hud.ayuda_rt.text = t
-
-func reiniciar() -> void:
-	_gas_fpv_mando = false; _caida = {}
-	av = modelo.estado_inicial(); colocar_en_base(av)
-	if es_uav():
-		var c0 := _casa(); piloto = PilotoUAV.new(modelo.datos["piloto"], pista_actual() if con_tren() else null, [c0["N"], c0["E"], ent.altura(c0["N"], c0["E"]) if en_mundo() else 0.0])
-		av["torreta"] = { "pan": 0.0, "tilt": -20 * D2R }; UAV["fijo"] = null; UAV["cruz"] = null; UAV["fotos"] = 0
-		if morro_de(sesion["avion"]) == "fijo": UAV["vista"] = "frontal"; poner_vista_fija()     # morro fijo: la camara frontal
-	else: piloto = null
-	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
-	if not F.is_empty() and es_fpv() and not en_mundo():                 # en la plataforma y en el modo de la mision
-		av["p"] = [float(F["salida"][0]), float(F["salida"][1]), -0.02]; modelo.modo = String(F["modo"])
-	_orientar_lanzamiento()
-	mando["pitch"] = 0.0; mando["yaw"] = 0.0; mando["trim"] = modelo.compensador_grados; mando["gimbal"] = 0.0
-	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]; var vv: Dictionary = E.get("viento", sesion["viento"])
-	ent.configurar_viento(float(vv["vel"]), float(vv["desde"]), bool(vv["rachas"]))
-	ev = Escenarios.Evaluador.new(sesion["escenario"], ent, self); vuelo = null; poner_pausa(false); ordenes_al_evaluador()
-	if mundo3d != null: mundo3d.poner_operacion(ev.op.d if ev.op != null else {}, [casa["N"], casa["E"]] if en_mundo() else [0.0, 0.0])
-	if mundo3d != null: mundo3d.poner_pista(pista_actual())
-	DJI["grabando"] = false; DJI["tRec"] = 0.0; DJI["tAnt"] = 0.0; DJI["zoomI"] = 0; DJI["termica"] = false
-	hud.guia.visible = false; hud.lejos_l.text = ""; hud.aviso.text = ""; hud.gps.estela = []
-	_fov1 = -1.0; _acum = 0.0
-	_iniciar_juego_bip()
-	if es_bipode(): hud.aviso.text = "Pulsa L (o el botón A) para arrancar el bípode"; return
-	if E.has("enVuelo"): _empezar_en_vuelo(); return
-	if con_tren(): av["frenoAparc"] = true; hud.aviso.text = "Pulsa L (o el botón A) para arrancar el motor"; return
-	hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar" if es_fpv() else ("Pulsa el botón de despegue (⇧), L o la combinación de palancas para armar" if es_dron() else "Pulsa L para lanzar")
-
-func _nuevo_vuelo(h0: float) -> void:
-	vuelo = { "id": Aula.uuid4(), "inicio": Aula.ahora_iso(), "inicio_local": Time.get_datetime_dict_from_system(), "tVuelo": 0.0, "filas": [], "final": "",
-			  "escenario": sesion["escenario"], "dificultad": sesion["dificultad"], "gasLanz": av["gases"], "hmax": h0, "otraCamara": false }
-	cn_contador = 0; RegistroVuelo.empezar(self, vuelo); grabar_muestra()
-	if not es_bipode():                          # el autodiagnostico de la app al armar
-		var ap := Desgaste.avisos_app(modelo.averias, DatosComunes.avion(sesion["avion"]))
-		if not ap.is_empty(): poner_toast(" · ".join(PackedStringArray(ap)))
-
-## Coloca el avion en vuelo (escenarios con enVuelo), como si acabara de lanzarse y subir.
-func _empezar_en_vuelo() -> void:
-	var C: Dictionary = Escenarios.datos()[sesion["escenario"]]["enVuelo"]; var vs := _vel_perdida()
-	var V0 := maxf(modelo.lanzamiento["vel_ms"] + 1, 1.35 * vs)
-	av["p"] = [float(C["N"]), float(C["E"]), -float(C["h"])]; av["q"] = Cuat.desde_euler(0, 3 * D2R, C["rumbo"] * D2R); av["v"] = [V0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]
-	av["gases"] = float(C["gas"]); av["estado"] = "volando"
-	if es_fpv(): modelo.armar_en_vuelo(av)           # dron FPV: armado y con el gas que lo sostiene
-	_nuevo_vuelo(float(C["h"]))
-	ev.empezar_guia(vs)
-	hud.aviso.text = ""; ev.guiar(av)
-
-## En la zona 2 el piloto se da la vuelta (se lanza hacia el sur); en un mundo real, con el rumbo del punto elegido.
-func _orientar_lanzamiento() -> void:
-	var es_m := en_mundo()
-	if Escenarios.zona_de(sesion["escenario"]) != 2 and not es_m: return
-	var e := Cuat.euler(av["q"])
-	var c := _casa()
-	var rumbo: float = (float(c["rumbo"]) * D2R if c.has("rumbo") else (float(sesion["lanz"].get("rumbo", 0)) * D2R if not sesion["lanz"].is_empty() else 0.0)) if es_m else PI
-	av["q"] = Cuat.desde_euler(e[0], e[1], rumbo)
-	# operaciones: el avion lanzado a mano (reconocimiento) sale de cara al viento, como se lanza de verdad
-	if Escenarios.datos()[sesion["escenario"]].has("operacion") and modelo is ModeloAvion and not con_tren() and float(ent.viento["base"]) > 1: av["q"] = Cuat.desde_euler(e[0], e[1], float(ent.viento["rumbo"]) + PI)
-
-func lanzar() -> void:
-	if es_bipode() and av.get("estado", "") == "volando":     # bipode en marcha: L lo aparca (si esta parado) y acaba
-		if absf(av["vel"]) > 0.2: poner_toast("Para antes de aparcar"); return
-		terminar_vuelo("aparcado", [0.0, 0.0, 0.0]); return
-	if av.get("estado", "") != "en mano": return
-	modelo.lanzar(av); _orientar_lanzamiento()
-	if es_bipode(): av["rumbo"] = fposmod(Cuat.euler(av["q"])[2], TAU)
-	hud.aviso.text = "Sube el gas (W o palanca izquierda arriba) para despegar" if es_dron() else ("Motor en marcha: quita el freno (espacio) y acelera (W)" if con_tren() else "")
-	if es_fpv(): poner_toast("ARMADO")
-	if es_dron():
-		get_tree().create_timer(3.0).timeout.connect(func(): if av.get("estado") == "volando" and av.get("posado", false): hud.aviso.text = "")
-	if sesion["lanz_real"] and not modelo.facil and not es_dron() and not es_bipode() and not con_tren():     # un lanzamiento a mano nunca es perfecto
-		var gauss := func() -> float: return (randf() + randf() + randf() - 1.5) / 0.5
-		var e := Cuat.euler(av["q"])
-		av["v"][0] *= 1 + 0.08 * gauss.call()
-		av["q"] = Cuat.desde_euler(e[0] + 4 * D2R * gauss.call(), e[1] + 2.5 * D2R * gauss.call(), e[2] + 3 * D2R * gauss.call())
-	_nuevo_vuelo(0.0)
-	if piloto != null and modelo.datos.get("lanzado_a_mano", false):           # lanzado a mano: sube solo
-		piloto.c["rumbo"] = Cuat.euler(av["q"])[2]; piloto.poner("LANZAMIENTO", av); piloto.c["rumbo"] = Cuat.euler(av["q"])[2]; _piloto_visto = piloto.modo
 
 # =====================================================================
 #  PASO DE LA SIMULACION (paso() de simulador.html)
 # =====================================================================
-## Entrenamiento del FPV que se vuela con las gafas (solo cuenta la camara 3): conGafas de la web.
-func con_gafas() -> bool:
-	var F: Dictionary = Escenarios.datos()[sesion["escenario"]].get("pista_fpv", {})
-	return F.get("camara", "") == "gafas" and es_fpv()
-func camara_valida() -> bool: return Escenarios.datos()[sesion["escenario"]].has("operacion") or (camara == 3 if con_gafas() else (camara == 1 or (es_dron() and camara == 3)))   # en las operaciones vale cualquier camara
-## Texto de la pista FPV: {cono:i} -> el pilon de color i (BBCode o solo el nombre) y <b> -> [b] (textoFpv de la web).
-func texto_fpv(s: String, bb: bool) -> String:
-	var re := RegEx.new(); re.compile("\\{cono:(\\d)\\}")
-	for m in re.search_all(s):
-		var i := int(m.get_string(1))
-		s = s.replace(m.get_string(), Escenarios.pilon_bb(ent, i, true) if bb else String(ent.circuito["colores"][i]["nombre"]))
-	return s.replace("<b>", "[b]").replace("</b>", "[/b]") if bb else s
-
-func paso(dt: float) -> void:
-	aplicar_recorridos()
-	var viento := ent.actualizar(dt)
-	var gas_palanca = null
-	if piloto != null and av["estado"] == "volando" and piloto.modo != "MANUAL":      # UAV con el piloto automatico: las superficies, y el gas y el freno si los lleva
-		piloto.viento_desde = ent.viento["rumbo"] - PI; piloto.viento_vel = ent.viento["base"]     # la toma en perdida, contra el viento
-		piloto.sens = modelo.sens                                                                  # sensores averiados (el Grajo)
-		var o := piloto.paso(av, dt, mando, av["gases"])
-		var mm := mando.duplicate(); mm["pitch"] = o["pitch"]; mm["yaw"] = o["yaw"]; mm["guinada"] = o["guinada"]
-		modelo.servos(av, mm, dt)
-		if o["gas"] != null: gas_palanca = av["gases"]; av["gases"] = o["gas"]
-		if o["freno"] != null: av["freno"] = o["freno"]
-		if piloto.modo != _piloto_visto:
-			if _piloto_visto != "": poner_toast("Piloto automático: " + PilotoUAV.NOMBRE[piloto.modo])
-			_piloto_visto = piloto.modo
-	else: modelo.servos(av, mando, dt)
-	av["agl"] = -av["p"][2] - ent.altura(av["p"][0], av["p"][1])
-	if con_tren():                     # avion de pista: el suelo bajo cada rueda (el terreno no es plano)
-		var g0: float = -av["p"][2] - av["agl"]; var ds := []
-		for r in modelo.tren["ruedas"]:
-			var rw := Cuat.rot(av["q"], r["p"]); ds.append(ent.altura(av["p"][0] + rw[0], av["p"][1] + rw[1]) - g0)
-		av["dSuelo"] = ds
-	viento = ent.viento_a(viento, av["agl"])
-	av["pg"] = ent.rafaga_alabeo(modelo.b_m, av["agl"])
-	if av["estado"] != "volando": return
-	if not _caida.is_empty(): _caida_derribado(dt); return     # multijugador: derribado por un bipode
-	var p_ant: Array = av["p"].duplicate()
-	if es_bipode(): _paso_terrestre(dt, viento, p_ant); return
-	Desgaste.antes_paso(modelo, av)               # averias: superficies con holgura o bisagra floja (desgaste.gd)
-	var vn: Array = modelo.paso(av, viento, dt)
-	Desgaste.despues_paso(modelo, av, dt)         # y vibraciones o el par de una helice danada
-	if av.has("roturaMontaje"): terminar_vuelo("roto (" + String(av["roturaMontaje"]) + ")", vn); return     # el Grajo con el ala sin asegurar
-	_avisos_bateria()
-	if destino_prueba != null: av["p"] = (destino_prueba as Array).duplicate(); av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]   # pruebas: el dron llevado en volandas
-	if gas_palanca != null: av["gasMotor"] = av["gases"]; av["gases"] = gas_palanca      # la palanca del gas no se mueve: en crucero elige la velocidad
-	else: av["gasMotor"] = av["gases"]
-	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
-	var suelo_h := ent.altura(av["p"][0], av["p"][1])      # una vez: la usan hmax y el contacto con el suelo (misma posicion)
-	if vuelo != null:
-		vuelo["tVuelo"] += dt; vuelo["hmax"] = maxf(vuelo["hmax"], -av["p"][2] - suelo_h)
-	if con_tren():                           # avion de pista: lo que rompe el tren o las alas en tierra y el final de la carrera
-		var ft: String = modelo.fin_tren(av)
-		if ft == "" and av["enTierra"] and ent.en_mar(av["p"][0], av["p"][1]): ft = "roto (ha caído al mar)"
-		if ft != "": terminar_vuelo(ft, vn); return
-		# un entrenamiento solo se supera visto desde el piloto (camara 1); con el dron vale tambien la pantalla de la app
-		if not vuelo["otraCamara"] and not camara_valida() and not (E["objetivos"] as Array).is_empty():
-			vuelo["otraCamara"] = true; poner_toast("Sin las gafas el entrenamiento no cuenta: vuelve a la cámara FPV (3)" if con_gafas() else "Con esta cámara el entrenamiento no cuenta: vuelve a la del piloto (1)")
-	cn_contador += 1
-	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT); vigilar_exclusiones()
-	if av["estado"] != "volando": return
-	if ent.choca_pilon(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un pilón)", vn); return
-	if ent.choca_arbol(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un árbol)", vn); return
-	if ent.choca_edificio(av["p"], modelo.b_m / 2): terminar_vuelo("roto (choque con un edificio)", vn); return
-	if ev.fpv != null:                        # pista FPV: objetivos y choques con postes, puertas y torre
-		for t in ev.fpv.paso(p_ant, av, dt, { "modo": modelo.modo, "critica": modelo.celda(av) < modelo.fc["critico_celda_V"] }): poner_toast(texto_fpv(t, false))
-		if ev.fpv.choque != "": terminar_vuelo("roto (" + ev.fpv.choque + ")", vn); return
-	if ev.op != null:                         # operaciones: normas del operador, el trabajo y los choques con cables, torres y faro
-		var cam_op := camara_op().merged({ "grabando": false }) if ((es_uav() and av.has("torreta")) or (not es_dron() and ev.op.d.has("recon"))) else { "gimbal": av.get("gimbal", -10.0), "grabando": DJI["grabando"] }   # UAV: la torreta o el morro fijo; avion: la camara de a bordo
-		for t in ev.op.paso(p_ant, av, dt, cam_op.merged(cam_dji())): poner_toast(t)
-		if ev.op.choque != "": terminar_vuelo("roto (" + ev.op.choque + ")", vn); return
-		var C = ev.op.carr
-		if C != null and C["tFin"] != null and not C.get("anotado", false):     # carrera: la meta, el mejor de la sesion y la marca del vuelo
-			C["anotado"] = true; var s: float = C["tFin"] - C["t0"]
-			if carrera_mejor == null or s < carrera_mejor["t"]: carrera_mejor = { "t": s, "avion": sesion["avion"] }
-			if vuelo != null: vuelo["marca"] = s
-		var fin_c: String = ev.op.acabada(av["t"])
-		if fin_c != "": terminar_vuelo(fin_c, vn); return
-	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
-	var su = ev.contador.actualizar(p_ant, av["p"], av["t"]) if (ev.zona == 1 and ev.contador != null) else {}
-	if ev.zona <= 2 and not E.has("mundo") and ev.fpv == null: _zona2(p_ant)
-	if su != null and not (su as Dictionary).is_empty():
-		var nom: String = ent.circuito["colores"][su["i"]]["nombre"]; var sen := int(E.get("sentido", 0))
-		match String(su["tipo"]):
-			"vuelta": poner_toast("¡Vuelta %d!  %.1f s" % [su["n"], su["tiempo"]])
-			"dentro": poner_toast("¡Por dentro del pilón %s! Vuelta anulada" % nom)
-			"sentido": poner_toast("¡Sentido contrario en el %s! El orden es %s" % [nom, ent.orden_pilones(sen)])
-			_: poner_toast(("Pilón %s: salida" % nom) if int(su["n"]) == 1 else ("Pilón %s %d/4" % [nom, int(su["n"]) - 1]))
-	var suelo := ent.contacto_suelo(av, vn, suelo_h, modelo.datos.get("toma_perdida") if modelo is ModeloAvion else null)
-	if suelo != "": terminar_vuelo(suelo, vn)
-
-## Un paso del bipode (pasoTerrestre de la web): la pendiente del terreno (a 1,5 m delante/detras y a los lados), el paso
-## del modelo, la altura del terreno donde queda y los choques: arboles y pilones lo paran (no lo rompen); en el mar se hunde.
-## Avisos de la bateria (bateria.gd), una vez cada uno: el dron con poca bateria (av.avisoBat del modelo: baja, vuelta a
-## casa por bateria, aterrizaje forzoso), el avion al 20 % y con el motor cortado por el regulador, y sin bateria. Como
-## avisosBateria() de simulador.html.
-## Despues de cada vuelo, el desgaste del vehiculo (desgaste.gd): horas, bateria y lo que se estropea; y las averias que
-## el profesor ha puesto en vuelo (sala multijugador). Se guarda en el aula (o en el ordenador). Como desgasteTrasVuelo.
-func desgaste_tras_vuelo(v: Dictionary, final: String) -> void:
-	var A := DatosComunes.avion(sesion["avion"])
-	if Desgaste.clase(A) == "" or vr != null: return             # en las gafas aun no hay Taller donde repararlo: sin desgaste
-	var R = v.get("reg")
-	var col := func(n: String) -> Array:
-		var i: int = (R["columnas"] as Array).find(n) if R != null else -1
-		if i < 0: return []
-		return (R["filas"] as Array).map(func(f): return f[i]).filter(func(x): return x is float or x is int)
-	var T: Array = col.call("temperatura_bateria_C"); var B: Array = col.call("bateria_pct") if modelo.get("B") is Dictionary and not (modelo.B as Dictionary).is_empty() else []
-	var extra: Array = (v.get("averiasSala", []) as Array).duplicate()
-	var info := { "s": float(av["t"]), "roto": final.begins_with("roto"), "bat0": B[0] if not B.is_empty() else null, "bat1": B[-1] if not B.is_empty() else null,
-				  "tempMax": T.max() if not T.is_empty() else null, "semilla": String(v["id"]), "fecha": Aula.ahora_iso(), "tomaPerdida": av.get("tomaPerdida", false) }
-	Desgaste.modificar(self, sesion["avion"], func(est):
-		for a in extra: Desgaste.anadir(est, a, "profesor", info["fecha"])
-		return Desgaste.tras_vuelo(est, A, info))
-
-func _avisos_bateria() -> void:
-	if av.get("bat") == null: return
-	var pc: float = modelo.bateria_pct(av)
-	var k: String = (String(av.get("avisoBat", "")) if String(av.get("avisoBat", "")) != "" else ("baja" if not es_dron() and pc <= 20 else "")) + ("+cortado" if av.get("cortado", false) else "") + ("+agotada" if av.get("sinBateria", false) else "")
-	var ant: String = av.get("_batVisto", "")
-	if k == ant: return
-	av["_batVisto"] = k
-	if av.get("sinBateria", false) and not ant.contains("+agotada"): poner_toast("Batería agotada: los motores se paran"); return
-	if av.get("cortado", false) and not ant.contains("+cortado"): poner_toast("El regulador ha cortado el motor: batería agotada. Planea y aterriza"); poner_aviso("Motor cortado: batería agotada"); return
-	if k.begins_with("baja") and not ant.begins_with("baja"): poner_toast("Batería baja (30 %): vuelve pronto" if es_dron() else "Batería baja (20 %): aterriza pronto")
-	if k.begins_with("rth") and not ant.begins_with("rth"): poner_toast("Batería justa para volver: volviendo a casa (mueve las palancas para cancelar)")
-	if k.begins_with("critica") and not ant.begins_with("critica"): poner_toast("¡Batería crítica! Aterrizaje forzoso: busca dónde posarlo"); poner_aviso("Aterrizaje forzoso: batería crítica")
-	if k.begins_with("celda") and not ant.begins_with("celda"): poner_toast("¡Tensión de celda muy baja! Aterrizaje forzoso"); poner_aviso("Aterrizaje forzoso: una celda de la batería se ha hundido")
 
 var _aviso_choque := false
-func _paso_terrestre(dt: float, viento, p_ant: Array) -> void:
-	var p: Array = av["p"]; var d := 1.5
-	av["pendiente"] = [(ent.altura(p[0] + d, p[1]) - ent.altura(p[0] - d, p[1])) / (2 * d), (ent.altura(p[0], p[1] + d) - ent.altura(p[0], p[1] - d)) / (2 * d)]
-	var vn: Array = modelo.paso(av, viento, dt)
-	if vuelo != null: vuelo["tVuelo"] += dt
-	if ent.choca_arbol(av["p"], 1.1) or ent.choca_pilon(av["p"], 1.1) or ent.choca_edificio(av["p"], 1.6):
-		av["p"] = p_ant.duplicate(); av["vel"] = 0.0
-		if not _aviso_choque:
-			_aviso_choque = true; poner_toast("¡Choque! Da la vuelta"); get_tree().create_timer(1.5).timeout.connect(func(): _aviso_choque = false)
-	av["p"][2] = -ent.altura(av["p"][0], av["p"][1])
-	cn_contador += 1
-	if cn_contador % CN_CADA == 0: grabar_muestra(); ev.evaluar(av, CN_CADA * DT)
-	if ent.en_mar(av["p"][0], av["p"][1]): terminar_vuelo("roto (se ha hundido en el mar)", vn); return
-	if ent.fuera_de_limites(av["p"]): terminar_vuelo("fuera de límites", vn); return
 
 # ---- juego del bipode: drones diana y disparos (JuegoBipode y EfectosBipode), sonido y marcador ----
 var juego_bip: JuegoBipode = null
 var efectos_bip: EfectosBipode = null
 var _bip_oido := { "pisadas": 0, "disparos": 0, "derribados": 0 }
-func _altura_c() -> Callable: return func(N: float, E: float) -> float: return ent.altura(N, E)
-func _iniciar_juego_bip() -> void:
-	if efectos_bip != null: efectos_bip.queue_free(); efectos_bip = null
-	juego_bip = null
-	if not es_bipode(): return
-	juego_bip = JuegoBipode.new(DatosComunes.avion(sesion["avion"]), (Time.get_ticks_msec() % 100000) + 1)
-	juego_bip.iniciar([av["p"][0], av["p"][1]], _altura_c())
-	efectos_bip = EfectosBipode.new(); add_child(efectos_bip)
-	_bip_oido = { "pisadas": av["pisadas"], "disparos": av["disparos"], "derribados": 0 }
-func _paso_juego_bip(dt: float) -> void:
-	_paso_balas_otros(dt)
-	var J := juego_bip
-	hud.bip.visible = J != null and pantalla_actual == ""
-	hud.mira.visible = false
-	if J == null: return
-	J.blancos = _blancos_sala()
-	if av["estado"] == "volando": J.paso(dt, av, modelo, _altura_c())
-	if av["pisadas"] != _bip_oido["pisadas"]: _bip_oido["pisadas"] = av["pisadas"]; sonido.evento("pisada")
-	if av["disparos"] != _bip_oido["disparos"]: _bip_oido["disparos"] = av["disparos"]; sonido.evento("disparo")
-	for e in J.eventos:
-		if e["tipo"] == "explosion": sonido.evento("explosion")
-	if J.derribados != _bip_oido["derribados"]: _bip_oido["derribados"] = J.derribados; poner_toast("¡Dron derribado! (%d)" % J.derribados)
-	efectos_bip.pintar(J, dt, cam)
-	# mira (camaras 2 y 3): donde apunta de verdad el cañon, el punto a 120 m sobre su linea de tiro proyectado en la pantalla
-	var ap: Dictionary = modelo.apuntado(av); var P := Avion3D.ned([ap["o"][0] + ap["d"][0] * 120, ap["o"][1] + ap["d"][1] * 120, ap["o"][2] + ap["d"][2] * 120])
-	if (camara == 2 or camara == 3) and pantalla_actual == "" and not cam.is_position_behind(P):
-		var sp := cam.unproject_position(P); var tam := get_viewport().get_visible_rect().size
-		hud.mira.visible = sp.x > -20 and sp.y > -20 and sp.x < tam.x + 20 and sp.y < tam.y + 20
-		hud.mira.position = sp - Vector2(28, 28)
-	hud.bip_drones.text = "DRONES DERRIBADOS %d" % J.derribados
-	var w: float = av["wCanones"] / (modelo.bp["cadencia_rpm"] / 60.0 / 6.0 * TAU)
-	hud.bip_canon.text = ("FUEGO" if w > 0.8 else "CAÑÓN ACELERANDO %d %%" % int(round(w * 100))) if av["cmd"]["fuego"] > 0 else "CAÑÓN LISTO"
 
 # ---- bipode en multijugador (como en la web): sus disparos derriban los aviones y drones de los compañeros. Cada
 # bipode manda en su estado los impactos que lleva dados a cada piloto (golpes: id -> cuantos); quien los recibe cae al
@@ -1316,317 +288,29 @@ func _paso_juego_bip(dt: float) -> void:
 const BIP_VIDAS := 1
 var _golpes_vistos := {}
 var _vida_multi := BIP_VIDAS
-func _impactos_de(o: Dictionary) -> void:
-	var g = o.get("golpes")
-	if not (g is Dictionary) or av.is_empty() or modelo == null or es_bipode(): return
-	if DatosComunes.avion(String(o.get("avion", ""))).get("tipo", "") != "bipode": return     # solo dispara el bipode
-	var gv = g.get(multi_id(), 0)
-	if not (gv is int or (gv is float and is_finite(gv))): return
-	var n := int(gv)
-	if not _golpes_vistos.has(o["id"]): _golpes_vistos[o["id"]] = n; return      # los de antes de entrar no cuentan
-	if n <= int(_golpes_vistos[o["id"]]): return
-	var nuevos: int = n - int(_golpes_vistos[o["id"]]); _golpes_vistos[o["id"]] = n
-	if av["estado"] != "volando" or av.get("posado", false) or not _caida.is_empty(): return
-	_vida_multi -= nuevos; sonido.evento("roto")
-	if _vida_multi > 0: poner_toast("¡Impacto de %s! Te quedan %d" % [o["nombre"], _vida_multi]); return
-	_vida_multi = BIP_VIDAS; poner_toast("¡Derribado por %s!" % o["nombre"])
-	_caida = { "v": Cuat.rot(av["q"], av["v"]), "w": 3 + 3 * randf(), "nombre": o["nombre"] }     # cae dando vueltas hasta el suelo
 var _caida := {}
-## Derribado: los motores se paran y cae con su velocidad, dando vueltas, hasta el suelo; ahi acaba el vuelo (caidaDerribado).
-func _caida_derribado(dt: float) -> void:
-	var c := _caida; var v: Array = c["v"]
-	v[2] += 9.81 * dt; v[0] *= 1 - 0.3 * dt; v[1] *= 1 - 0.3 * dt
-	av["p"] = [av["p"][0] + v[0] * dt, av["p"][1] + v[1] * dt, av["p"][2] + v[2] * dt]
-	var e := Cuat.euler(av["q"]); var w: float = c["w"]
-	av["q"] = Cuat.desde_euler(e[0] + w * dt, e[1] + 0.4 * w * dt, e[2] + 0.7 * w * dt)
-	av["v"] = Cuat.rot(Cuat.inv(av["q"]), v); av["gases"] = 0.0; av["rpm"] = 0.0; av["motorRoto"] = true
-	var suelo := ent.altura(av["p"][0], av["p"][1])
-	if -av["p"][2] <= suelo:
-		av["p"][2] = -suelo; _caida = {}; terminar_vuelo("roto (derribado por %s)" % c["nombre"], v)
-## Los blancos del bipode (multijugador): los aviones y drones de los demas que estan en el aire.
-func _blancos_sala() -> Array:
-	var lista := []
-	if sala.is_empty(): return lista
-	for id in multi_otros:
-		var o: Dictionary = multi_otros[id]; var D := DatosComunes.avion(String(o["avion"]))
-		if D.is_empty() or D.get("tipo", "") == "bipode" or o.get("estado", "") != "volando" or float(o.get("agl", 0.0)) < 0.3: continue
-		var g = _fantasmas.get(id)
-		lista.append({ "id": id, "p": (g["p"] as Array).duplicate() if g != null else (o["p"] as Array).duplicate(), "r": maxf(0.8, float(D.get("b_m", 1.0)) / 2 + 0.25) })
-	return lista
 ## Trazadoras de los bipodes de los demas: por cada disparo nuevo que anuncian, una bala de adorno desde su cañon.
 var _balas_otros := {}
-func _paso_balas_otros(dt: float) -> void:
-	if sala.is_empty():
-		if not _balas_otros.is_empty(): _balas_otros["ef"].queue_free(); _balas_otros = {}
-		return
-	for id in multi_otros:
-		var o: Dictionary = multi_otros[id]; var bp = o.get("bip")
-		if not (bp is Array) or bp.size() < 7: continue
-		var D := DatosComunes.avion(String(o["avion"]))
-		if D.is_empty() or not D.has("bipode"): continue
-		if _balas_otros.is_empty():
-			_balas_otros = { "J": JuegoBipode.new(D, 7), "ef": EfectosBipode.new(), "vistos": {} }; add_child(_balas_otros["ef"])
-		var n := int(bp[5]); var v = _balas_otros["vistos"].get(id); _balas_otros["vistos"][id] = n
-		if v == null or n <= int(v): continue
-		var piv := {}
-		for pz in D["modelo3d"]["piezas"]: piv[pz["nombre"]] = pz["pivote"]
-		var g = _fantasmas.get(id)
-		var est := { "p": g["p"] if g != null else o["p"], "q": o["q"], "cintura": float(bp[0]), "brazos": float(bp[1]) }
-		for k in mini(4, n - int(v)): _balas_otros["J"].disparo(ModeloBipode.apuntado_con(piv, D["bipode"], est))
-	if _balas_otros.is_empty(): return
-	var J: JuegoBipode = _balas_otros["J"]
-	J.paso(dt, { "p": [0.0, 0.0, 0.0], "disparos": J.disparos }, null, _altura_c())
-	J.eventos = J.eventos.filter(func(e): return e["tipo"] == "suelo")
-	_balas_otros["ef"].pintar(J, dt, cam)
-
-## Puerta y pasadas bajas de la zona 2 (en sus misiones y en vuelo libre), con su aviso.
-func _zona2(p_ant: Array) -> void:
-	var pu: Dictionary = ent.cruza_puerta(p_ant, av["p"])
-	if not pu.is_empty():
-		if pu["tipo"] == "puerta":
-			ev.puertas += 1
-			if ev.obj.has("puertaR") and ev.obj.has("pasada") and ev.obj["pasada"]["estado"] == "ok": ev.marcar("puertaR", "ok")
-			poner_toast("¡Puerta %d!  (hacia el %s, a %d m)" % [ev.puertas, pu["sentido"], int(round(pu["h"]))])
-		else: poner_toast(("Por encima de la puerta (%d m): no cuenta" % int(round(pu["h"]))) if pu["tipo"] == "alta" else "Por fuera de la puerta: no cuenta")
-	if not ev.subido or ev.pasada == null: return          # el lanzamiento cruza la pista 2: las pasadas cuentan despues de subir
-	var pb: Dictionary = ev.pasada.actualizar(av["p"])
-	if not pb.is_empty():
-		if pb["ok"]: ev.pasadas[pb["sentido"]] += 1; poner_toast("¡Pasada baja hacia el %s!  (%.1f–%.1f m)" % [pb["sentido"], pb["hmin"], pb["hmax"]])
-		else: poner_toast("Pasada baja no válida: " + String(pb["motivo"]))
-
-func terminar_vuelo(final: String, vn = null) -> void:
-	if av["estado"] != "volando": return
-	if vn == null: vn = [0.0, 0.0, 0.0]
-	# lanzamiento fallido: en el suelo antes de 6 s sin pasar de 5 m. No cuenta como aterrizaje; si se ha roto, como accidente
-	if vuelo != null and not es_dron() and not es_bipode() and not con_tren() and not modelo.datos.get("lanzado_a_mano", false) and av["t"] < LANZ["fallo_s"] and vuelo["hmax"] < LANZ["fallo_h"] and (final == "aterrizado" or final.begins_with("roto")):
-		vuelo["lanzamiento"] = causa_lanzamiento_fallido(vuelo["gasLanz"])
-		var roto := final.begins_with("roto")
-		final = ("roto (" if roto else "") + "lanzamiento fallido: " + String(vuelo["lanzamiento"]["corto"]) + (")" if roto else "")
-	av["estado"] = "roto" if final.begins_with("roto") else ("aterrizado" if final == "aterrizado" else "terminado")
-	av["v"] = [0.0, 0.0, 0.0]; av["w"] = [0.0, 0.0, 0.0]; av["rpm"] = 0.0
-	hud.guia.visible = false
-	if vuelo == null: return
-	vuelo["final"] = final; grabar_muestra(); RegistroVuelo.cerrar(self, vuelo); desgaste_tras_vuelo(vuelo, final)
-	ev.evaluar_final(sesion["escenario"], final, av, vn)
-	hud.aviso.text = ("LANZAMIENTO FALLIDO: " + String(vuelo["lanzamiento"]["corto"])) if vuelo.has("lanzamiento") else \
-		(("¡ROTO!  (" + final.substr(6, final.length() - 7) + ")") if final.begins_with("roto") else ("Aterrizado" if final == "aterrizado" else ("Aparcado" if final == "aparcado" else "") if final == "aparcado" else
-		("FUERA DE LÍMITES: el avión se ha perdido de vista" if final == "fuera de límites" else "")))
-	hud.lejos_l.text = ""
-	ultimo_vuelo = vuelo
-	if aj.get("cn_auto", false): guardar_csv(vuelo, OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS).path_join(nombre_csv(vuelo)))
-	if final == "aterrizado" or final.begins_with("roto"): sonido.evento("roto" if final.begins_with("roto") else "toque")
-	var v = vuelo
-	if salir_tras: salir_tras = false; guardar_vuelo(v, datos_resultado(v)); ir_inicio(); return
-	if final != "abandonado": await get_tree().create_timer(1.8).timeout
-	if vuelo == v and pantalla_actual == "" and not rep_activa: mostrar_resultado(v)     # si entretanto se pulso R o se salio, ya no toca
 
 # =====================================================================
 #  RESULTADO Y GUARDADO
 # =====================================================================
-func datos_resultado(v: Dictionary) -> Dictionary:
-	var E: Dictionary = Escenarios.datos()[v["escenario"]]; var libre := (E["objetivos"] as Array).is_empty()
-	var objs := []
-	for k in ev.orden: objs.append({ "id": k, "texto": ev.obj[k]["texto"], "ok": ev.obj[k]["estado"] == "ok" })
-	if not libre and not E.has("operacion"): objs.append({ "id": "camara", "texto": "Volar con las gafas FPV (cámara 3)" if con_gafas() else "Volar mirando al dron o con las gafas FPV (cámaras 1 o 3)" if es_fpv() else ("Volar mirando al dron o la pantalla de la app (cámaras 1 o 3)" if es_dron() else "Volar desde el puesto del piloto (cámara 1)"), "ok": not v["otraCamara"] })
-	var apto: bool = not libre and v["final"] == "aterrizado" and objs.all(func(o): return o["ok"])
-	return { "E": E, "libre": libre, "objs": objs, "apto": apto, "resultado": "LIBRE" if libre else ("APTO" if apto else "NO APTO") }
-
-func guardar_vuelo(v: Dictionary, d: Dictionary) -> Dictionary:
-	if sesion["alumno"] == null or v.get("guardado", false): return { "estado": "sin_aula" }
-	v["guardado"] = true
-	var vv: Dictionary = d["E"].get("viento", sesion["viento"]).duplicate()
-	if not cm_es_diseno(sesion["avion"]): vv["cg_pct"] = cm_actual(sesion["avion"])["cg"]; vv["masa_g"] = cm_actual(sesion["avion"])["masa"]
-	if v["dificultad"] == "facil": vv["fisica"] = "facil"
-	var final: String = v["final"]
-	return await aula.enviar_vuelo({ "id": v["id"], "alumno_id": sesion["alumno"]["id"], "inicio": v["inicio"], "fin": Aula.ahora_iso(),
-		"avion": DatosComunes.avion(sesion["avion"]).get("nombre", sesion["avion"]), "escenario": v["escenario"], "tiempo_vuelo_s": snappedf(v["tVuelo"], 0.1),
-		"accidentes": 1 if final.begins_with("roto") else 0, "aterrizajes": 1 if final == "aterrizado" else 0,
-		"objetivos": d["objs"], "resultado": d["resultado"], "final": final, "viento": vv, "marca": snappedf(v["marca"], 0.01) if v.has("marca") else null })
-
-func mostrar_resultado(v: Dictionary) -> void:
-	var R: PantallaResultado.Resultado = pantallas["pResultado"]
-	if v.get("mostrado", false): mostrar("pResultado"); return
-	v["mostrado"] = true
-	var r := datos_resultado(v)
-	R.pintar(v, r); mostrar("pResultado")
-	if sesion["alumno"] == null: R.guardado.text = "Sin conexión con el aula: este vuelo no se ha guardado."; return
-	R.guardado.text = "Guardando…"
-	var g := await guardar_vuelo(v, r)
-	match String(g["estado"]):
-		"ok":
-			R.guardado.text = "✓ Guardado en el registro del aula."
-			var antes = sesion["alumno"].get("progreso"); sesion["alumno"]["progreso"] = g.get("progreso", {})
-			var nuevos := PantallaResultado.logros_nuevos(antes, sesion["alumno"]["progreso"])
-			if not nuevos.is_empty(): R.guardado.text += " " + " · ".join(nuevos); poner_toast_menu(nuevos[-1])
-		"cola": R.guardado.text = "Sin conexión con el aula: se guardará solo en cuanto vuelva (no se perderá)."
-		_: R.guardado.text = "No se pudo guardar: " + String(g.get("msg", ""))
-
-func texto_vueltas_plano() -> String:
-	if ev == null: return ""
-	var re := RegEx.new(); re.compile("\\[[^\\]]*\\]")
-	return re.sub(ev.texto_vueltas(sesion["escenario"]), "", true).replace("\n", " · ")
 
 # =====================================================================
 #  CAJA NEGRA (CSV de cada vuelo, a 20 Hz)
 # =====================================================================
-func grabar_muestra() -> void:
-	if vuelo == null: return
-	var e := Cuat.euler(av["q"]); var vn := Cuat.rot(av["q"], av["v"]); var w: Array = ent.viento["actual"]
-	var r := func(x, n: int) -> float: return snappedf(float(x), pow(10, -n))
-	vuelo["filas"].append([r.call(av["t"], 2), r.call(av["p"][0], 2), r.call(av["p"][1], 2), r.call(-av["p"][2], 2), r.call(av["V"], 2), r.call(Vector2(vn[0], vn[1]).length(), 2),
-		r.call(-vn[2], 2), r.call(e[0] * R2D, 1), r.call(e[1] * R2D, 1), r.call(fposmod(e[2] * R2D + 360, 360), 1), r.call(av["alfa"], 2), r.call(av["beta"], 2), r.call(av["g_carga"], 2),
-		r.call(av["gases"] * 100, 1), r.call(av["rpm"], 0), r.call(av["T"], 3), r.call(av["Wh"], 4), r.call(modelo.bateria_pct(av), 1),
-		r.call(mando["pitch"], 3), r.call(mando["yaw"], 3), r.call(mando["trim"], 2), r.call(av["de"] * R2D, 2), r.call(av["dr"] * R2D, 2), r.call(av.get("da", 0.0) * R2D, 2),
-		r.call(w[0], 2), r.call(w[1], 2), r.call(av["perdida"], 2)])
-	RegistroVuelo.muestra(self, vuelo)                 # el registro de vuelo del vehiculo (registro_vuelo.gd), a 10 Hz
-
-func nombre_csv(v: Dictionary) -> String:
-	var d: Dictionary = v["inicio_local"]
-	return "vuelo_%04d-%02d-%02d_%02d-%02d-%02d_%s_%s.csv" % [d["year"], d["month"], d["day"], d["hour"], d["minute"], d["second"], v["escenario"], String(v["final"]).split(" ")[0]]
-
-func texto_csv(v: Dictionary) -> String:
-	var d: Dictionary = v["inicio_local"]; var f: Array = v["filas"]
-	var cab := ["# %s · vuelo del %02d/%02d/%04d, %02d:%02d:%02d · %s%s" % [DatosComunes.avion(sesion["avion"]).get("nombre", ""), d["day"], d["month"], d["year"], d["hour"], d["minute"], d["second"],
-				Escenarios.datos()[v["escenario"]]["nombre"], (" · " + String(sesion["alumno"]["nombre"])) if sesion["alumno"] != null else ""],
-		"# masa %d g · %s · viento %s m/s %s rachas · final: %s · %d muestras a 20 Hz" % [int(round(modelo.masa_kg * 1000)), texto_cm(), str(ent.viento["base"]), "con" if ent.viento["rachas"] else "sin", v["final"], f.size()],
-		"# ruta: x al norte, y al este, z altura (m, desde el lanzamiento) · profundidad: + = abajo · timon: + = a la derecha · aleron: + = alabeo a la derecha"]
-	var lineas := PackedStringArray(cab); lineas.append(",".join(CN_COLUMNAS))
-	for x in f: lineas.append(",".join(x.map(func(n): return str(int(n)) if float(n) == int(n) else str(n))))
-	return "\n".join(lineas) + "\n"
-
-func guardar_csv(v: Dictionary, ruta: String) -> void:
-	var fa := FileAccess.open(ruta, FileAccess.WRITE)
-	if fa == null: poner_toast("No se pudo guardar la caja negra"); return
-	fa.store_string(texto_csv(v)); fa.close()
-
-func guardar_csv_dialogo() -> void:
-	if ultimo_vuelo == null: return
-	dialogo.title = "Guardar la caja negra"; dialogo.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS); dialogo.current_file = nombre_csv(ultimo_vuelo)
-	for c in dialogo.file_selected.get_connections(): dialogo.file_selected.disconnect(c["callable"])
-	dialogo.file_selected.connect(func(ruta): guardar_csv(ultimo_vuelo, ruta), CONNECT_ONE_SHOT)
-	dialogo.popup_centered_ratio(0.6)
 
 # =====================================================================
 #  REPETICION: el vuelo grabado en la caja negra (20 Hz), interpolado
 # =====================================================================
-func ver_repeticion() -> void:
-	var v = ultimo_vuelo
-	if v == null or (v["filas"] as Array).size() < 2: return
-	REP = { "activa": true, "filas": v["filas"], "t": 0.0, "dur": float(v["filas"][-1][0]), "pausa": false, "i": 0, "vuelo": v }; rep_activa = true
-	av = modelo.estado_inicial(); av["estado"] = "repetición"; colocar_en_base(av)
-	hud.rep.visible = true; mostrar(""); hud.obj_rt.text = ""; hud.aviso.text = ""
-
-func _paso_repeticion(dt: float) -> void:
-	var f: Array = REP["filas"]
-	if not REP["pausa"]: REP["t"] = minf(REP["dur"], REP["t"] + dt)
-	var i: int = REP["i"]
-	while i < f.size() - 2 and f[i + 1][0] <= REP["t"]: i += 1
-	while i > 0 and f[i][0] > REP["t"]: i -= 1
-	REP["i"] = i
-	var a: Array = f[i]; var b: Array = f[mini(f.size() - 1, i + 1)]
-	var u: float = clampf((REP["t"] - a[0]) / (b[0] - a[0]), 0, 1) if b[0] > a[0] else 0.0
-	var L := func(j: int) -> float: return a[j] + (b[j] - a[j]) * u
-	var ang := func(j: int) -> float:
-		var d: float = b[j] - a[j]
-		if d > 180: d -= 360
-		if d < -180: d += 360
-		return a[j] + d * u
-	av["p"] = [L.call(1), L.call(2), -L.call(3)]; av["q"] = Cuat.desde_euler(ang.call(7) * D2R, ang.call(8) * D2R, ang.call(9) * D2R)
-	av["V"] = L.call(4); av["alfa"] = L.call(10); av["g_carga"] = L.call(12); av["gases"] = L.call(13) / 100; av["rpm"] = L.call(14); av["Wh"] = L.call(16)
-	av["perdida"] = L.call(26); av["t"] = REP["t"]; av["de"] = L.call(21) * D2R; av["dr"] = L.call(22) * D2R; av["da"] = L.call(23) * D2R; av["v"] = [av["V"], 0.0, 0.0]
-	mando["pitch"] = L.call(18); mando["yaw"] = L.call(19)
-	hud.rep_l.text = "[b]REPETICIÓN[/b] · %.1f s de %.1f%s · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir" % [REP["t"], REP["dur"], " · pausa" if REP["pausa"] else ""]
-	hud.rep_barra.size.x = hud.rep_fondo.size.x * REP["t"] / maxf(0.1, REP["dur"])
-	if REP["t"] >= REP["dur"]: REP["pausa"] = true
-
-func _salir_repeticion() -> void:
-	REP["activa"] = false; rep_activa = false; hud.rep.visible = false; mostrar_resultado(REP["vuelo"])
 
 # =====================================================================
 #  PAUSA
 # =====================================================================
-func _nombre_camara(n: int) -> String: return ["", "piloto", "persecución", "FPV (gafas)" if (modelo != null and es_fpv()) else ("del dron" if (modelo != null and es_dron()) else ("puesto de tiro" if (modelo != null and es_bipode()) else "a bordo"))][n]
-func _texto_instr() -> String: return ("OSD: " if es_fpv() else ("Pantalla de la app: " if es_dron() else "Instrumentos: ")) + ("no" if sin_instrumentos else "sí")
-func poner_pausa(si: bool) -> void:
-	if si == pausado: return
-	pausado = si; pausa["raiz"].visible = si
-	if si:
-		pausa["camara"].text = "Cámara: " + _nombre_camara(camara)
-		pausa["instr"].text = _texto_instr()
-		pausa["sonido"].set_pressed_no_signal(sonido.on)
-		pausa["info"].text = "%s · %s" % [DatosComunes.avion(sesion["avion"]).get("nombre", ""), Escenarios.datos()[sesion["escenario"]]["nombre"]]
-		sonido.silenciar(true)
-	else:
-		sonido.silenciar(not sonido.on or pantalla_actual != ""); hud.ayuda.visible = false; get_viewport().gui_release_focus()
-func cambiar_camara_pausa() -> void:
-	camara = camara % 3 + 1; pausa["camara"].text = "Cámara: " + _nombre_camara(camara)
-func cambiar_instrumentos_pausa() -> void:
-	sin_instrumentos = not sin_instrumentos
-	pausa["instr"].text = _texto_instr()
-func terminar_desde_pausa() -> void:
-	poner_pausa(false)
-	if av["estado"] == "volando": terminar_vuelo("abandonado")
-	elif vuelo != null and vuelo["final"] != "": mostrar_resultado(vuelo)
-	else: ir_inicio()
-## Sale al menu principal: si habia un vuelo en marcha se guarda (si hay piloto) sin pasar por el resultado.
-func salir_al_menu() -> void:
-	poner_pausa(false)
-	if not av.is_empty() and av["estado"] == "volando" and vuelo != null: salir_tras = true; terminar_vuelo("abandonado")
-	else: ir_inicio()
 
 # =====================================================================
 #  APP dron comercial FLY (cuadricoptero)
 # =====================================================================
-func dji_modo(m := "") -> void:
-	if modelo == null or not es_dron() or es_fpv(): return
-	modelo.modo = m if m != "" else { "N": "S", "S": "C", "C": "N" }.get(modelo.modo, "N")
-	poner_toast("Modo %s%s" % [NOMBRES_MODO[modelo.modo], " · sin frenado suave" if modelo.modo == "S" else ""])
-func dji_foto() -> void:
-	if modelo == null or not es_dron(): return
-	DJI["fotos"] += 1; hud_dji.foto()
-	var T: Array = ev.op.foto(av, av.get("gimbal", -10.0), cam_dji()) if (ev != null and ev.op != null) else []     # operaciones: lo que vale esa foto
-	poner_toast(" · ".join(T) if not T.is_empty() else "Foto %d" % DJI["fotos"])
-func dji_video() -> void:
-	if modelo == null or not es_dron(): return
-	DJI["video"] = true; DJI["grabando"] = not DJI["grabando"]
-	if DJI["grabando"]: DJI["tRec"] = 0.0; DJI["tAnt"] = av["t"]
-	poner_toast("Grabando" if DJI["grabando"] else "Vídeo guardado")
-func dji_disparo() -> void:
-	if DJI["video"]: dji_video()
-	else: dji_foto()
-func dji_cam_modo() -> void:
-	DJI["video"] = not DJI["video"]
-	if not DJI["video"]: DJI["grabando"] = false
-## La camara del dron de inspeccion (datos.camara: niveles de zoom, hasta donde es optico y si lleva termica), o null.
-func camara_dron():
-	var Dm = modelo.get("datos") if modelo != null else null
-	return Dm["camara"] if Dm is Dictionary and Dm.get("camara") is Dictionary else null
-## El zoom actual y si esta la termica (camDJI de la web).
-func cam_dji() -> Dictionary:
-	var C = camara_dron()
-	if C == null: return { "zoom": 1.0, "termica": false }
-	var Z: Array = C["zoom"]
-	return { "zoom": float(Z[clampi(DJI["zoomI"], 0, Z.size() - 1)]), "termica": bool(C.get("termica", false)) and DJI["termica"] }
-func dji_zoom(paso: int) -> void:
-	var C = camara_dron()
-	if C == null or rep_activa: return
-	var Z: Array = C["zoom"]; DJI["zoomI"] = clampi(DJI["zoomI"] + paso, 0, Z.size() - 1); var z: float = Z[DJI["zoomI"]]
-	poner_toast("Zoom %dx" % int(z) + (" · gran angular" if z == 1 else (" · teleobjetivo" if z <= float(C["zoom_optico"]) else " · digital")))
-func dji_termica() -> void:
-	var C = camara_dron()
-	if C == null or not C.get("termica", false) or rep_activa: return
-	DJI["termica"] = not DJI["termica"]; poner_toast("Cámara térmica" if DJI["termica"] else "Cámara normal")
-## Boton de despegue de la app: en el suelo arma y sube a 1,2 m; en vuelo, aterriza en el sitio.
-func dji_despegar() -> void:
-	if modelo == null or not es_dron() or rep_activa: return
-	if av["estado"] == "en mano": lanzar(); modelo.despegar(av); hud.aviso.text = ""
-	elif av["estado"] == "volando" and av.get("posado", false): modelo.despegar(av)
-	elif av["estado"] == "volando": av["rth"] = { "fase": "bajar" }; poner_toast("Aterrizando")
-func dji_rth() -> void:
-	if modelo == null or not es_dron() or rep_activa or av["estado"] != "volando" or av.get("posado", false): return
-	if av.get("batForzado", false): poner_toast("Aterrizaje forzoso por batería crítica: no se puede cancelar"); return
-	if av.get("rth") != null and av["rth"]["fase"] != "bajar": av["rth"] = null; poner_toast("Volver a casa cancelado"); return
-	modelo.volver_a_casa(av); poner_toast("Volviendo a casa")
 
 # =====================================================================
 #  DRON FPV: armar / desarmar y modos de Betaflight (el OSD esta en hud_fpv.gd)
@@ -1636,23 +320,6 @@ func dji_rth() -> void:
 ## estacionario (thr_mid de Betaflight), arriba del todo todo el gas, abajo nada, con curva suave cerca del centro; en
 ## el suelo con la palanca en reposo, cero (se arma sin despegar). s: palanca (+1 arriba).
 const FPV_GAS_ESTACIONARIO := 0.30               # medido: el FPV de 650 g se sostiene con el 30,4 % (bateria llena)
-func gas_fpv_consola(s: float) -> float:
-	var f := func(x: float) -> float: return 0.25 * x + 0.75 * x * x * x
-	if (av.get("posado", false) or av["estado"] == "en mano") and s <= 0.05: return 0.0
-	return FPV_GAS_ESTACIONARIO + (1 - FPV_GAS_ESTACIONARIO) * f.call(s) if s >= 0 else FPV_GAS_ESTACIONARIO * (1 - f.call(-s))
-func fpv_armar() -> void:
-	if modelo == null or not es_fpv() or rep_activa: return
-	if av["estado"] == "en mano":
-		if av["gases"] > 0.05: poner_toast("Para armar, baja el gas del todo (S o palanca izquierda abajo)"); return
-		lanzar()
-	elif av["estado"] == "volando" and av["armado"]:
-		modelo.desarmar(av); poner_toast("DESARMADO")
-		if av["estado"] == "en mano": hud.aviso.text = "Gas abajo del todo y L (o botón A) para armar"
-## Modo de vuelo de Betaflight: ANGLE -> HORIZON -> ACRO -> ANGLE (tecla M, LB del mando o el que se pida).
-func fpv_modo(m := "") -> void:
-	if modelo == null or not es_fpv(): return
-	modelo.modo = m if m != "" else { "ANGLE": "HORIZON", "HORIZON": "ACRO", "ACRO": "ANGLE" }.get(modelo.modo, "ANGLE")
-	poner_toast("Modo %s%s" % [modelo.modo, " · sin autonivelado" if modelo.modo == "ACRO" else (" · se nivela solo" if modelo.modo == "ANGLE" else "")])
 
 # =====================================================================
 #  TECLADO
@@ -1663,14 +330,14 @@ func _unhandled_input(e: InputEvent) -> void:
 		# con la camara del piloto, la rueda del raton cambia el zoom (fuera del GPS, que tiene su propia rueda)
 		var abajo: bool = e.button_index == MOUSE_BUTTON_WHEEL_DOWN; var z0: float = aj.get("zoom_piloto", 0.03)
 		var z := clampf(z0 * (0.85 if abajo else 1 / 0.85) if z0 > 0 else (0.03 if not abajo else 0.0), 0, 0.3)
-		poner_zoom_piloto(0.0 if (z < 0.025 and abajo) else snappedf(z, 0.001))
+		app_avion_ajustes.poner_zoom_piloto(0.0 if (z < 0.025 and abajo) else snappedf(z, 0.001))
 		poner_toast(("Zoom del piloto: el avión ocupa un %d %% de la pantalla" % int(round(aj["zoom_piloto"] * 100))) if aj["zoom_piloto"] > 0 else "Sin zoom: como lo ve el ojo")
 		return
 	if not (e is InputEventKey and e.pressed and not e.echo): return
 	var k: int = e.physical_keycode
 	if rep_activa:          # repeticion: espacio pausa, flechas 5 s, 1/2/3 camara, Esc sale
 		match k:
-			KEY_ESCAPE: _salir_repeticion()
+			KEY_ESCAPE: app_repeticion._salir_repeticion()
 			KEY_SPACE: REP["pausa"] = not REP["pausa"]
 			KEY_LEFT: REP["t"] = maxf(0, REP["t"] - 5)
 			KEY_RIGHT: REP["t"] = minf(REP["dur"], REP["t"] + 5)
@@ -1679,16 +346,16 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_3: camara = 3
 		get_viewport().set_input_as_handled(); return
 	if k == KEY_ESCAPE:     # con la ventana de controles abierta, Esc la cierra (y sigue el vuelo); si no, pausa
-		if briefing.visible: ver_briefing(false)
-		elif hud.ayuda.visible: hud.ayuda.visible = false; poner_pausa(false)
-		else: poner_pausa(not pausado)
+		if briefing.visible: app_vuelo.ver_briefing(false)
+		elif hud.ayuda.visible: hud.ayuda.visible = false; app_repeticion.poner_pausa(false)
+		else: app_repeticion.poner_pausa(not pausado)
 		get_viewport().set_input_as_handled(); return
 	if pausado: return
 	var libre := Escenarios.libre(sesion["escenario"]); var vto: Dictionary = ent.viento; var dron := es_dron()
 	if es_bipode():         # bipode: L arranca / aparca; espacio dispara y F cierra el puño (mientras se tienen pulsados)
 		match k:
-			KEY_L: lanzar()
-			KEY_R: reiniciar()
+			KEY_L: app_vuelo.lanzar()
+			KEY_R: app_vuelo.reiniciar()
 			KEY_1: camara = 1
 			KEY_2: camara = 2
 			KEY_3: camara = 3
@@ -1696,24 +363,24 @@ func _unhandled_input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled(); return
 	if es_fpv():            # dron FPV: L arma y desarma, M cambia de modo
 		match k:
-			KEY_M: fpv_modo()
-			KEY_L: fpv_armar()
+			KEY_M: app_apps_dron.fpv_modo()
+			KEY_L: app_apps_dron.fpv_armar()
 	elif dron:
 		match k:
-			KEY_M: dji_modo()
-			KEY_H: dji_rth()
-			KEY_F: dji_foto()
-			KEY_V: dji_video()
-			KEY_Z: dji_zoom(1)
-			KEY_X: dji_zoom(-1)
-			KEY_C: dji_termica()
+			KEY_M: app_apps_dron.dji_modo()
+			KEY_H: app_apps_dron.dji_rth()
+			KEY_F: app_apps_dron.dji_foto()
+			KEY_V: app_apps_dron.dji_video()
+			KEY_Z: app_apps_dron.dji_zoom(1)
+			KEY_X: app_apps_dron.dji_zoom(-1)
+			KEY_C: app_apps_dron.dji_termica()
 	match k:
 		KEY_L:
-			if not es_fpv(): lanzar()
-		KEY_R: reiniciar()
-		KEY_B: ver_briefing()
+			if not es_fpv(): app_vuelo.lanzar()
+		KEY_R: app_vuelo.reiniciar()
+		KEY_B: app_vuelo.ver_briefing()
 		KEY_SPACE:
-			if con_tren(): quitar_freno_aparc()
+			if con_tren(): app_mandos.quitar_freno_aparc()
 			else: av["gases"] = 0.0
 		KEY_1: camara = 1
 		KEY_2: camara = 2
@@ -1725,247 +392,34 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_BRACKETLEFT: mando["trim"] = maxf(-6, mando["trim"] - 0.25)
 		KEY_BRACKETRIGHT: mando["trim"] = minf(6, mando["trim"] + 0.25)
 	if es_uav():                          # UAV: M modo del piloto automatico, H vuelta a base, P despegue o aterrizaje automatico
-		if k == KEY_M: uav_modo()
-		if k == KEY_H: uav_poner("BASE")
-		if k == KEY_P: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
-		if k == KEY_Z: dji_zoom(1)
-		if k == KEY_X: dji_zoom(-1)
-		if k == KEY_C: dji_termica()
-		if k == KEY_K: uav_fijar()
-		if k == KEY_V and morro_de(sesion["avion"]) == "fijo": cambiar_vista_fija()
-		if k == KEY_F: uav_foto()
+		if k == KEY_M: app_mandos.uav_modo()
+		if k == KEY_H: app_mandos.uav_poner("BASE")
+		if k == KEY_P: app_mandos.uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
+		if k == KEY_Z: app_apps_dron.dji_zoom(1)
+		if k == KEY_X: app_apps_dron.dji_zoom(-1)
+		if k == KEY_C: app_apps_dron.dji_termica()
+		if k == KEY_K: app_camaras.uav_fijar()
+		if k == KEY_V and app_evaluacion.morro_de(sesion["avion"]) == "fijo": app_camaras.cambiar_vista_fija()
+		if k == KEY_F: app_camaras.uav_foto()
 	elif k == KEY_H and not dron: mostrar_hud = not mostrar_hud
-	if k == KEY_F and not es_uav() and not dron and ev != null and ev.op != null and ev.op.d.has("recon"): avion_foto()     # reconocimiento con el Poli-1 o el Entrenador 1
+	if k == KEY_F and not es_uav() and not dron and ev != null and ev.op != null and ev.op.d.has("recon"): app_camaras.avion_foto()     # reconocimiento con el Poli-1 o el Entrenador 1
 	if k == KEY_G and libre: vto["rachas"] = not vto["rachas"]
 	var tecla: int = e.keycode
 	if libre and (tecla == KEY_PLUS or tecla == KEY_KP_ADD or (e.unicode == 43)): vto["base"] = minf(10, vto["base"] + 1)
 	if libre and (tecla == KEY_MINUS or tecla == KEY_KP_SUBTRACT or (e.unicode == 45)): vto["base"] = maxf(0, vto["base"] - 1)
 	get_viewport().set_input_as_handled()
 
-static func _zona_muerta(x: float, z: float) -> float: return 0.0 if absf(x) < z else signf(x) * (absf(x) - z) / (1 - z)
-static func _expo(x: float, e: float) -> float: return (1 - e) * x + e * x * x * x
-
 # =====================================================================
 #  MANDO: palanca derecha = avion, izquierda = gas (o el mando del dron comercial). Ejes segun Ajustes › Controles (MandoCfg).
 # =====================================================================
-func _leer_mando(dt: float) -> bool:
-	if vr != null: return vr.leer_mandos(dt)       # gafas de VR: sus mandos son la emisora
-	var M := mando_cfg; var dev := MandoCfg.conectado()
-	if dev < 0: return false
-	var rx := _zona_muerta(M.eje(dev, "rx"), M.zona); var ry := _zona_muerta(M.eje(dev, "ry"), M.zona)
-	var ly := _zona_muerta(M.eje(dev, "ly"), M.zona); var lx := _zona_muerta(M.eje(dev, "lx"), M.zona)
-	_mando_torreta = []
-	if es_uav() and torreta_con_flechas(): _mando_torreta = [rx, ry]; rx = 0.0; ry = 0.0      # UAV con el automatico navegando: la palanca derecha mueve la torreta
-	var cuad := modelo != null and ((es_dron() and not es_fpv()) or es_bipode()); var fpv := modelo != null and es_fpv()   # el FPV lleva el gas como un avion; el bipode, la izquierda como el dron
-	var bip := modelo != null and es_bipode()
-	_mando_disparo = false; _mando_puno = false
-	var pulsado := func(b: int) -> bool:
-		var ahora := Input.is_joy_button_pressed(dev, b); var antes: bool = _botones_antes.get(b, false); _botones_antes[b] = ahora
-		return ahora and not antes
-	var b_start: bool = pulsado.call(JOY_BUTTON_START)
-	var bs := {}
-	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_LEFT]:
-		bs[b] = pulsado.call(b)
-	if pantalla_actual == "" and b_start: poner_pausa(not pausado)
-	M.gimbal = 0.0
-	if pantalla_actual == "" and not pausado and bip:     # bipode: A arrancar / aparcar, RB camara, Back reiniciar; gatillos: disparar (RT) y puño (LT)
-		if bs[JOY_BUTTON_A]: lanzar()
-		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
-		if bs[JOY_BUTTON_BACK]: reiniciar()
-		_mando_disparo = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) > 0.4; _mando_puno = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT) > 0.4
-	elif pantalla_actual == "" and not pausado and fpv:     # dron FPV: A armar/desarmar, LB modo, RB camara, Back reiniciar
-		if bs[JOY_BUTTON_A]: fpv_armar()
-		if bs[JOY_BUTTON_LEFT_SHOULDER]: fpv_modo()
-		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
-		if bs[JOY_BUTTON_BACK]: reiniciar()
-	elif pantalla_actual == "" and not pausado and cuad:    # mando del dron comercial: A despegar/aterrizar, B casa, X video, Y foto, LB modo, RB camara, Back reiniciar
-		if bs[JOY_BUTTON_A]: dji_despegar()
-		if bs[JOY_BUTTON_B]: dji_rth()
-		if bs[JOY_BUTTON_X]: dji_video()
-		if bs[JOY_BUTTON_Y]: dji_foto()
-		if bs[JOY_BUTTON_LEFT_SHOULDER]: dji_modo()
-		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1
-		if bs[JOY_BUTTON_BACK]: reiniciar()
-		if bs[JOY_BUTTON_DPAD_UP]: dji_zoom(1)                 # cruceta: arriba y abajo el zoom, a la derecha la termica
-		if bs[JOY_BUTTON_DPAD_DOWN]: dji_zoom(-1)
-		if bs[JOY_BUTTON_DPAD_RIGHT]: dji_termica()
-		if M.perfil == "consola": M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)   # gatillos: rueda del gimbal
-		# CSC (combinacion de palancas de los drones comerciales): las dos abajo y hacia dentro (o hacia fuera) medio segundo arranca los motores
-		var csc := ly > 0.8 and ry > 0.8 and ((lx > 0.6 and rx < -0.6) or (lx < -0.6 and rx > 0.6))
-		_t_csc = _t_csc + dt if csc else 0.0
-		if _t_csc > 0.5 and av.get("estado", "") == "en mano": _t_csc = -1e9; lanzar(); poner_toast("Motores en marcha (CSC): sube la palanca izquierda para despegar")
-	elif pantalla_actual == "" and not pausado:
-		if bs[JOY_BUTTON_A]: lanzar()
-		if es_uav():                       # UAV: LB modo, Y base, cruceta izquierda: despegue o aterrizaje automatico
-			if bs[JOY_BUTTON_LEFT_SHOULDER]: uav_modo()
-			if bs[JOY_BUTTON_Y]: uav_poner("BASE")
-			if bs[JOY_BUTTON_DPAD_LEFT]: uav_poner("DESPEGUE" if av.get("enTierra", false) else "ATERRIZAJE")
-			if bs[JOY_BUTTON_DPAD_UP]: dji_zoom(1)              # cruceta arriba y abajo zoom, derecha termica; X foto; gatillos: torreta arriba y abajo
-			if bs[JOY_BUTTON_DPAD_DOWN]: dji_zoom(-1)
-			if bs[JOY_BUTTON_DPAD_RIGHT]: dji_termica()
-			if bs[JOY_BUTTON_X]: uav_foto()
-			M.gimbal = Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT)
-		if con_tren():                     # avion de pista: B frena
-			_mando_freno = Input.is_joy_button_pressed(dev, JOY_BUTTON_B)
-			if bs[JOY_BUTTON_B]: quitar_freno_aparc()
-		elif bs[JOY_BUTTON_B]: av["gases"] = 0.0
-		if bs[JOY_BUTTON_RIGHT_SHOULDER]: camara = camara % 3 + 1     # el mismo boton que en el dron, el FPV y el bipode
-		if bs[JOY_BUTTON_X] and not es_uav(): reiniciar()
-		if bs[JOY_BUTTON_DPAD_UP] and not es_uav(): mando["trim"] = minf(6, mando["trim"] + 0.25)
-		if bs[JOY_BUTTON_DPAD_DOWN] and not es_uav(): mando["trim"] = maxf(-6, mando["trim"] - 0.25)
-	if pausado: return false
-	# palanca derecha: hacia ti = tirar = morro arriba; a la derecha = alabeo/timon a la derecha
-	var moviendo := rx != 0 or ry != 0 or lx != 0 or (cuad and ly != 0)
-	if moviendo or _mando_usado:
-		mando["pitch"] = _expo(ry, M.expo); mando["yaw"] = _expo(rx, M.expo)
-		mando["pitchObj"] = mando["pitch"]; mando["yawObj"] = mando["yaw"]
-		mando["guinada"] = _expo(lx, M.expo); mando["guinadaObj"] = mando["guinada"]   # izquierda de lado: guinada del dron o timon de 4 canales
-		if cuad: mando["vz"] = -ly; mando["vzObj"] = mando["vz"]
-	if moviendo: _mando_usado = true
-	# palanca izquierda: gas (eje Y negativo = arriba)
-	if not av["motorRoto"] and fpv and M.perfil == "consola":     # FPV con mando de consola (palanca con muelle): gas_fpv_consola
-		if ly != 0: _gas_fpv_mando = true                          # desde que se toca la palanca del gas en este vuelo
-		if _gas_fpv_mando: av["gases"] = gas_fpv_consola(-ly)
-	elif not av["motorRoto"] and not cuad:
-		if M.gas == "absoluto":
-			if _mando_usado or ly != 0: av["gases"] = clampf((1 - M.eje(dev, "ly")) / 2, 0, 1)
-		elif ly != 0: av["gases"] = clampf(av["gases"] - ly * 0.7 * dt, 0, 1)
-	return moviendo or _mando_usado
 
 var _mando_disparo := false; var _mando_puno := false; var _mando_freno := false
 ## ---- torreta EO/IR del UAV (como en la web): av.torreta {pan, tilt}, su punto fijo (K) y el punto de la cruz ----
 var UAV := { "fijo": null, "cruz": null, "fotos": 0 }
 var _mando_torreta := []
 const TORRETA_VEL := 45 * PI / 180
-## Las flechas mueven la torreta (y no el avion) con el piloto automatico navegando, o con Mayusculas.
-func torreta_con_flechas() -> bool:
-	return piloto != null and (Input.is_physical_key_pressed(KEY_SHIFT) or piloto.modo in ["PUNTO", "BASE", "DESPEGUE", "ATERRIZAJE"])
-## Donde esta la torreta (NED) y hacia donde mira (vector unitario NED).
-func eje_torreta() -> Array:
-	if avion3d != null and avion3d.cam_fija != null:            # morro fijo: sujeta al avion
-		var tf: Dictionary = av["torreta"]; var ct := cos(float(tf["tilt"])); var st := sin(float(tf["tilt"])); var cf := Cuat.rot(av["q"], avion3d.cam_fija["pos"])
-		return [[av["p"][0] + cf[0], av["p"][1] + cf[1], av["p"][2] + cf[2]], Cuat.rot(av["q"], [ct * cos(float(tf["pan"])), ct * sin(float(tf["pan"])), -st])]
-	var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]
-	var c := Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"]) if modelo.datos["malla"].has("torreta") else [0.0, 0.0, 0.0]
-	return [[av["p"][0] + c[0], av["p"][1] + c[1], av["p"][2] + c[2]], [cos(yaw) * cos(tr["tilt"]), sin(yaw) * cos(tr["tilt"]), -sin(tr["tilt"])]]
-## El punto de la cruz: [N, E, altura del suelo, distancia] donde el eje de la torreta corta el terreno (o el agua), o null.
-func punto_cruz() -> Variant:
-	var et := eje_torreta(); var o: Array = et[0]; var d: Array = et[1]
-	if d[2] <= 0.002: return null
-	var H := func(N: float, E: float) -> float: return ent.altura(N, E) if en_mundo() else 0.0
-	var s := 5.0; var ant := 0.0
-	while s < 20000:
-		if -(o[2] + s * d[2]) <= H.call(o[0] + s * d[0], o[1] + s * d[1]):
-			var a := ant; var b := s
-			for k in 12:
-				var m := (a + b) / 2
-				if -(o[2] + m * d[2]) <= H.call(o[0] + m * d[0], o[1] + m * d[1]): b = m
-				else: a = m
-			return [o[0] + b * d[0], o[1] + b * d[1], H.call(o[0] + b * d[0], o[1] + b * d[1]), b]
-		ant = s; s += maxf(5, s * 0.02)
-	return null
-## Cada cuadro: mueve la torreta con las flechas, Q/E y el mando (mas despacio cuanto mas zoom) o la apunta al punto fijo.
-## Morro fijo: la camara de la ventana elegida (frontal o lateral), con su inclinacion fija respecto al avion.
-func poner_vista_fija() -> void:
-	var F: Array = DatosComunes.avion(sesion["avion"])["malla"]["cam_fija"][UAV.get("vista", "frontal")]
-	av["torreta"] = { "pan": float(F[0]) * D2R, "tilt": float(F[1]) * D2R }
-func cambiar_vista_fija() -> void:
-	UAV["vista"] = "frontal" if UAV.get("vista", "frontal") == "lateral" else "lateral"; poner_vista_fija()
-	poner_toast("Cámara lateral (izquierda)" if UAV["vista"] == "lateral" else "Cámara frontal")
-func mover_torreta(dt: float) -> void:
-	if modelo == null or not es_uav() or av.is_empty() or not av.has("torreta") or av["estado"] == "roto": return
-	if morro_de(sesion["avion"]) == "fijo": UAV["cruz"] = punto_cruz(); return      # el morro fijo no se mueve: la cruz, donde mire el avion
-	var tr: Dictionary = av["torreta"]; var z: float = cam_dji()["zoom"]; var k := TORRETA_VEL / pow(z, 0.7) * dt; var fl := torreta_con_flechas()
-	var T := func(kk: int) -> float: return 1.0 if Input.is_physical_key_pressed(kk) else 0.0
-	var dp: float = ((T.call(KEY_RIGHT) - T.call(KEY_LEFT)) if fl else 0.0) + (_mando_torreta[0] if not _mando_torreta.is_empty() else 0.0)
-	var dtl: float = ((T.call(KEY_UP) - T.call(KEY_DOWN)) if fl else 0.0) + T.call(KEY_E) - T.call(KEY_Q) + (-_mando_torreta[1] if not _mando_torreta.is_empty() else 0.0) + mando_cfg.gimbal
-	if dp != 0 or dtl != 0:
-		if UAV["fijo"] != null: UAV["fijo"] = null; poner_toast("Torreta: punto suelto")
-		tr["pan"] = PilotoUAV.envolver(tr["pan"] + dp * k); tr["tilt"] = clampf(tr["tilt"] + dtl * k, -90 * D2R, 10 * D2R)
-	elif UAV["fijo"] != null:
-		var o: Array = eje_torreta()[0]; var dn: float = UAV["fijo"][0] - o[0]; var de: float = UAV["fijo"][1] - o[1]; var dz: float = -UAV["fijo"][2] - o[2]
-		tr["pan"] = PilotoUAV.envolver(atan2(de, dn) - Cuat.euler(av["q"])[2]); tr["tilt"] = clampf(-atan2(dz, Vector2(dn, de).length()), -90 * D2R, 10 * D2R)
-	UAV["cruz"] = punto_cruz()
-## K: fija la torreta en el punto de la cruz (o la suelta).
-func uav_fijar() -> void:
-	if morro_de(sesion["avion"]) == "fijo": poner_toast("Con el morro fijo no hay torreta: apunta con el avión"); return
-	if not es_uav(): return
-	if UAV["fijo"] != null: UAV["fijo"] = null; poner_toast("Torreta: punto suelto"); return
-	var c: Variant = punto_cruz()
-	if c == null: poner_toast("La cruz no apunta al suelo: baja la torreta"); return
-	UAV["fijo"] = [c[0], c[1], c[2]]; poner_toast("Torreta fijada en " + coord_txt(c[0], c[1]))
-## Latitud y longitud (grados y minutos decimales, como las de un GPS) de un punto N, E del mapa.
-func coord_txt(N: float, E: float) -> String:
-	var O: Dictionary = mundo_datos["origen"]; var lat: float = O["lat"] + N / 110574.0; var lon: float = O["lon"] + E / (111320.0 * cos(float(O["lat"]) * D2R))
-	var gm := func(x: float, pos: String, neg: String) -> String: return "%d°%s' %s" % [int(floor(absf(x))), ("%.3f" % (fmod(absf(x), 1.0) * 60)).pad_zeros(2), pos if x >= 0 else neg]
-	return "%s %s" % [gm.call(lat, "N", "S"), gm.call(lon, "E", "W")]
-## F: foto de la torreta (en un trabajo, lo que vale para el; si no, la foto con las coordenadas del punto de la cruz).
-## Foto con la camara de a bordo de un avion (reconocimiento): mira al frente, con el cabeceo del avion.
-func avion_foto() -> void:
-	if av["estado"] != "volando" or rep_activa: return
-	var co := camara_op(); poner_toast(" · ".join(ev.op.foto(av, co["gimbal"], { "pan": co["pan"], "zoom": 1.0 })))
-## La camara de las operaciones como gimbal (grados) y giro respecto al rumbo del avion (rad) (camaraOp de la web): la
-## torreta, tal cual; el morro fijo del UAV y la camara de a bordo de los aviones (al frente), con su direccion real.
-func camara_op() -> Dictionary:
-	if es_uav() and av.has("torreta") and not (avion3d != null and avion3d.cam_fija != null): return { "gimbal": av["torreta"]["tilt"] * R2D, "pan": av["torreta"]["pan"] }
-	var dd: Array = eje_torreta()[1] if (es_uav() and av.has("torreta")) else Cuat.rot(av["q"], [1.0, 0.0, 0.0])
-	return { "gimbal": -asin(clampf(dd[2], -1, 1)) * R2D, "pan": PilotoUAV.envolver(atan2(dd[1], dd[0]) - Cuat.euler(av["q"])[2]) }
-func uav_foto() -> void:
-	if not es_uav() or av["estado"] != "volando": return
-	UAV["fotos"] += 1
-	var co := camara_op(); var cm := cam_dji(); cm["pan"] = co["pan"]
-	var Tt: Array = ev.op.foto(av, co["gimbal"], cm) if (ev != null and ev.op != null) else []
-	var c = UAV["cruz"]; var txt := "Foto %d" % UAV["fotos"]
-	if c != null and en_mundo(): txt += " · %s · a %s" % [coord_txt(c[0], c[1]), ("%d m" % int(round(c[3]))) if c[3] < 1000 else ("%s km" % ("%.1f" % (c[3] / 1000)).replace(".", ","))]
-	poner_toast(" · ".join(Tt) if not Tt.is_empty() else txt)
-## UAV: pone un modo del piloto automatico (con su aviso, o por que no se puede).
-func uav_poner(m: String, punto = null) -> void:
-	if piloto == null or av.is_empty() or av["estado"] != "volando" or rep_activa:
-		if piloto != null and not av.is_empty() and av["estado"] == "en mano": poner_toast("Primero arranca el motor (L)")
-		return
-	var t := piloto.poner(m, av, punto)
-	if t != "":
-		_piloto_visto = piloto.modo; poner_toast("Piloto automático: " + t)
-		if m == "DESPEGUE": hud.aviso.text = ""
-		return
-	if m == "DESPEGUE": poner_toast("El despegue automático se pide parado en la pista")
-	elif m == "ATERRIZAJE": poner_toast("En tierra no hay aterrizaje automático" if piloto.pista != null else "Sin pista no hay aterrizaje automático")
-	else: poner_toast("En tierra: manual o despegue automático (P)")
-## UAV: M pasa de manual a estabilizado, a crucero y otra vez a manual.
-func uav_modo() -> void:
-	if piloto == null: return
-	var ciclo := ["MANUAL", "ESTAB", "CRUCERO"]; var i := ciclo.find(piloto.modo)
-	uav_poner("MANUAL" if i < 0 else ciclo[(i + 1) % 3])
 ## Avion de pista (con tren): el freno de aparcamiento se quita con el primer espacio (o B); despues frenan mientras se pulsan.
 func con_tren() -> bool: return modelo is ModeloAvion and modelo.tren != null
-func quitar_freno_aparc() -> void:
-	if not av.is_empty() and av.get("frenoAparc", false): av["frenoAparc"] = false; hud.aviso.text = ""; poner_toast("Freno de aparcamiento quitado: espacio (o B) frena")
-func _leer_teclado(dt: float) -> void:
-	if con_tren() and not av.is_empty(): av["freno"] = 1.0 if (av.get("frenoAparc", false) or Input.is_physical_key_pressed(KEY_SPACE) or _mando_freno) else 0.0
-	var tor := es_uav() and torreta_con_flechas()      # UAV: con el automatico navegando (o con Mayusculas) las flechas mueven la torreta
-	var cuad := (es_dron() and not es_fpv()) or es_bipode(); var T := func(k: int) -> bool: return Input.is_physical_key_pressed(k) and not (tor and k in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT])   # en el FPV W/S son el gas; el bipode anda con W/S y A/D
-	if es_bipode(): mando["disparo"] = T.call(KEY_SPACE) or _mando_disparo; mando["puno"] = T.call(KEY_F) or _mando_puno
-	var tecla_palanca: bool = T.call(KEY_DOWN) or T.call(KEY_UP) or T.call(KEY_RIGHT) or T.call(KEY_LEFT) or T.call(KEY_A) or T.call(KEY_D) or ((cuad or es_fpv()) and (T.call(KEY_W) or T.call(KEY_S)))   # en el FPV, W/S tambien devuelven el gas al teclado
-	if tecla_palanca: _mando_usado = false            # si se tocan las flechas, vuelve a mandar el teclado
-	if es_fpv() and (T.call(KEY_W) or T.call(KEY_S)): _gas_fpv_mando = false      # W/S: el gas vuelve al teclado
-	var gimbal_teclas := ((1.0 if T.call(KEY_E) else 0.0) - (1.0 if T.call(KEY_Q) else 0.0)) if cuad and not es_bipode() else 0.0
-	if _leer_mando(dt) and not tecla_palanca:
-		mando["gimbal"] = gimbal_teclas if gimbal_teclas != 0 else mando_cfg.gimbal; _leer_gas_teclado(dt); return
-	mando["gimbal"] = gimbal_teclas if gimbal_teclas != 0 else mando_cfg.gimbal
-	mando["pitchObj"] = (1.0 if T.call(KEY_DOWN) else 0.0) - (1.0 if T.call(KEY_UP) else 0.0)     # +1 = tirar
-	mando["yawObj"] = (1.0 if T.call(KEY_RIGHT) else 0.0) - (1.0 if T.call(KEY_LEFT) else 0.0)
-	mando["guinadaObj"] = (1.0 if T.call(KEY_D) else 0.0) - (1.0 if T.call(KEY_A) else 0.0)
-	mando["vzObj"] = (1.0 if T.call(KEY_W) else 0.0) - (1.0 if T.call(KEY_S) else 0.0)
-	for k in ["pitch", "yaw", "guinada", "vz"]:      # la palanca va al tope a 5/s y vuelve al centro a 8/s
-		var obj: float = mando[k + "Obj"]; var vel := 8.0 if obj == 0 else 5.0; var d: float = obj - mando[k]
-		mando[k] += signf(d) * minf(absf(d), vel * dt)
-	_leer_gas_teclado(dt)
-
-func _leer_gas_teclado(dt: float) -> void:
-	if av["motorRoto"] or (es_dron() and not es_fpv()) or es_bipode(): return          # en el dron comercial W/S son velocidad vertical; en el bipode, andar
-	var k := 0.4 if es_fpv() else 0.8                # FPV: mas despacio (se sostiene con un 30 % de gas)
-	if Input.is_physical_key_pressed(KEY_W): av["gases"] = minf(1, av["gases"] + k * dt)
-	if Input.is_physical_key_pressed(KEY_S): av["gases"] = maxf(0, av["gases"] - k * dt)
 
 # =====================================================================
 #  BUCLE, CAMARAS Y HUD
@@ -1974,98 +428,37 @@ func _process(dt_real: float) -> void:
 	var dt := minf(0.1, dt_real)
 	if not sala.is_empty():                           # multijugador: 10 veces por segundo
 		_multi_t += dt_real
-		if _multi_t >= 0.1: _multi_t = 0.0; _enviar_sala()
+		if _multi_t >= 0.1: _multi_t = 0.0; app_multijugador._enviar_sala()
 	if pantalla_actual != "" or av.is_empty() or modelo == null:
 		_acum = 0.0
-		if pantalla_actual != "": _leer_mando_en_menu()
+		if pantalla_actual != "": app_hud._leer_mando_en_menu()
 		if vr != null and pantalla_actual != "": vr.en_pantalla(dt_real)
-		if _args.has("auto") and modelo != null and not av.is_empty(): _auto(dt_real)      # pruebas: la captura puede ser del resultado
+		if _args.has("auto") and modelo != null and not av.is_empty(): app_hud._auto(dt_real)      # pruebas: la captura puede ser del resultado
 		return
 	var t_us := Time.get_ticks_usec()
-	if rep_activa: _paso_repeticion(dt)
-	elif pausado: _leer_mando(dt)
+	if rep_activa: app_repeticion._paso_repeticion(dt)
+	elif pausado: app_mandos._leer_mando(dt)
 	else:
-		if _args.has("auto"): _piloto_auto()
-		else: _leer_teclado(dt); mover_torreta(dt)
+		if _args.has("auto"): app_hud._piloto_auto()
+		else: app_mandos._leer_teclado(dt); app_camaras.mover_torreta(dt)
 		_acum += dt
-		while _acum >= DT: paso(DT); _acum -= DT
-		_paso_juego_bip(dt)
+		while _acum >= DT: app_vuelo.paso(DT); _acum -= DT
+		app_vuelo._paso_juego_bip(dt)
 		var b: Vector3 = vista.base + Vector3(1.5, 1.7, 2)
 		sonido.actualizar(av, Sonido.lejos_de(b.distance_to(Avion3D.ned(av["p"]))), camara == 1)
 		_t_obj += dt
-		if _t_obj > 0.2: _t_obj = 0; _pintar_objetivos(); _pintar_sala_info()
+		if _t_obj > 0.2: _t_obj = 0; app_hud._pintar_objetivos(); app_multijugador._pintar_sala_info()
 	var t_fis := Time.get_ticks_usec() - t_us
 	avion3d.camara_fpv = es_fpv() and camara == 3     # con la camara FPV el dron no se dibuja
 	avion3d.actualizar(av)
-	if not sala.is_empty() or not _fantasmas.is_empty(): _poner_fantasmas()
+	if not sala.is_empty() or not _fantasmas.is_empty(): app_multijugador._poner_fantasmas()
 	vista.actualizar_manga(ent.viento["actual"])
-	_camara()
+	app_hud._camara()
 	if vr != null: vr.actualizar(dt_real)
-	_termica(cam_dji()["termica"] and camara == 3 and ((es_dron() and not es_fpv()) or es_uav()))
-	_hud()
+	app_hud._termica(app_apps_dron.cam_dji()["termica"] and camara == 3 and ((es_dron() and not es_fpv()) or es_uav()))
+	app_hud._hud()
 	if _args.has("auto") and _t_auto > 1.5: _us.append([t_fis, Time.get_ticks_usec() - t_us])
-	_auto(dt_real)
-
-func _leer_mando_en_menu() -> void:       # en las pantallas solo se mira el Start (como en la web, que no hace nada)
-	pass
-
-func lectura_vs() -> float: return _vs
-
-func _camara() -> void:
-	var t := Avion3D.ned(av["p"])
-	if _args.has("cenital"):          # pruebas: vista vertical del punto de lanzamiento desde la altura dada
-		cam.fov = 60; cam.global_position = vista.base + Vector3(0, float(_args["cenital"]), 0); cam.look_at(vista.base, Vector3.FORWARD); return
-	if es_uav() and camara == 3 and avion3d.cam_fija != null:      # morro fijo: la camara sujeta al avion, al frente o de lado
-		var tf: Dictionary = av["torreta"]; var qf: Array = av["q"]; var ct := cos(float(tf["tilt"])); var st := sin(float(tf["tilt"])); var cp := cos(float(tf["pan"])); var sp := sin(float(tf["pan"]))
-		var fwf := Avion3D.ned(Cuat.rot(qf, [ct * cp, ct * sp, -st])); var upf := Avion3D.ned(Cuat.rot(qf, [-st * cp, -st * sp, -ct]))
-		var posf := t + Avion3D.ned(Cuat.rot(qf, avion3d.cam_fija["pos"])) + 0.03 * fwf; var zf: float = cam_dji()["zoom"]
-		cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zf)) if zf > 1 else 58.0; cam.global_position = posf; cam.look_at(posf + fwf, upf)
-		return
-	if es_uav() and camara != 2 and avion3d.torreta != null:
-		if camara == 1:              # camara de vuelo: fija en el morro, algo inclinada hacia abajo
-			var q: Array = av["q"]; var ti := -4 * D2R
-			var pos := t + Avion3D.ned(Cuat.rot(q, [1.1, 0.0, 0.05])); var fw := Avion3D.ned(Cuat.rot(q, [cos(ti), 0.0, -sin(ti)])); var up := Avion3D.ned(Cuat.rot(q, [-sin(ti), 0.0, -cos(ti)]))
-			cam.fov = 55; cam.global_position = pos; cam.look_at(pos + fw, up)
-		else:                        # la torreta EO/IR, estabilizada, con su giro e inclinacion; con zoom, el campo se cierra
-			var tr: Dictionary = av["torreta"]; var yaw: float = Cuat.euler(av["q"])[2] + tr["pan"]; var g: float = tr["tilt"]
-			var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
-			var pos := t + Avion3D.ned(Cuat.rot(av["q"], modelo.datos["malla"]["torreta"]["centro"])) + 0.22 * fw     # en la ventana, fuera de la bola (15 cm de radio)
-			var zc: float = cam_dji()["zoom"]
-			cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zc)) if zc > 1 else 58.0; cam.global_position = pos
-			cam.look_at(pos + fw, Vector3.UP if absf(g) < 89.5 * D2R else Avion3D.ned([cos(yaw), sin(yaw), 0.0]))
-		return
-	if camara == 1:
-		# vista del piloto con ZOOM AUTOMATICO, como en el navegador: la envergadura ocupa la fraccion zoom_piloto del alto
-		# de la pantalla (10 % por defecto; 0 = sin zoom, como lo ve el ojo), entre 50 y 1,5 grados. Suavizado
-		var b: Vector3 = vista.base + Vector3(1.5, 1.7, 2)
-		var env: float = float(modelo.b_m); var zp: float = aj.get("zoom_piloto", 0.03)
-		var d: float = b.distance_to(t); var obj: float = clampf(rad_to_deg(env / (zp * maxf(d, 0.5))), 1.5, 50.0) if zp > 0 else 50.0
-		_fov1 = obj if _fov1 < 0 else _fov1 + (obj - _fov1) * 0.08
-		cam.fov = _fov1; cam.global_position = b
-		if d > 0.1: cam.look_at(t, Vector3.UP)
-	elif avion3d.bipode and avion3d.bipode.camara(cam, av, camara): pass      # bipode: sus camaras 2 y 3
-	elif camara == 2:
-		# a escala del vehiculo: el dron de 25 cm se ve tan grande como el avion de 1,2 m (que sigue a 5 m y 1,5 m de altura)
-		var yaw: float = Cuat.euler(av["q"])[2]; var dc: float = float(modelo.b_m) * (5.0 / 1.2); var hc: float = float(modelo.b_m) * (1.5 / 1.2)
-		cam.fov = 60; cam.global_position = t + Avion3D.ned([-cos(yaw) * dc, -sin(yaw) * dc, -hc]); cam.look_at(t, Vector3.UP)
-	elif es_fpv():
-		# camara FPV: fija al bastidor, inclinada hacia arriba (uptilt) y gran angular (campo de vision HORIZONTAL fijo)
-		var F: Dictionary = modelo.fc; var ti: float = F["camara_inclinacion_grados"] * D2R; var q: Array = av["q"]
-		var pos := t + Avion3D.ned(Cuat.rot(q, F["camara_pos"])); var fw := Avion3D.ned(Cuat.rot(q, [cos(ti), 0.0, -sin(ti)])); var up := Avion3D.ned(Cuat.rot(q, [-sin(ti), 0.0, -cos(ti)]))
-		var asp: float = get_viewport().get_visible_rect().size.aspect()
-		cam.fov = rad_to_deg(2 * atan(tan(deg_to_rad(F["camara_fov_h_grados"]) / 2) / asp)); cam.global_position = pos; cam.look_at(pos + fw, up)
-	elif es_dron():
-		# camara del dron en su gimbal: nivelada, con el rumbo del dron y la inclinacion de la rueda (av.gimbal)
-		var yaw: float = Cuat.euler(av["q"])[2]; var g: float = av.get("gimbal", -10.0) * D2R
-		var pos := t + Avion3D.ned(Cuat.rot(av["q"], [0.1, 0.0, -0.1]))
-		var fw := Avion3D.ned([cos(yaw) * cos(g), sin(yaw) * cos(g), -sin(g)])
-		var zc: float = cam_dji()["zoom"]
-		cam.fov = rad_to_deg(2 * atan(tan(29 * D2R) / zc)) if zc > 1 else 58.0; cam.global_position = pos     # con zoom, el campo se cierra
-		cam.look_at(pos + fw, Vector3.UP if absf(g) < 89.5 * D2R else Avion3D.ned([cos(yaw), sin(yaw), 0.0]))
-	else:
-		var q: Array = av["q"]
-		var pos := t + Avion3D.ned(Cuat.rot(q, [0.3, 0.0, -0.1])); var fw := Avion3D.ned(Cuat.rot(q, [1.0, 0.0, 0.0])); var up := Avion3D.ned(Cuat.rot(q, [0.0, 0.0, -1.0]))
-		cam.fov = 80; cam.global_position = pos; cam.look_at(pos + fw, up)
+	app_hud._auto(dt_real)
 
 ## Imagen de la camara termica (dron de inspeccion, camara 3): _renderTermico de visor.js. La camara ve tambien la capa 2
 ## (lo que solo se ve en la termica, en colores clave: mundo_3d.gd, _termicos), el entorno pasa a tonemap lineal sin
@@ -2096,161 +489,4 @@ void fragment() {
 	vec3 s = ironbow(clamp(heat, 0.0, 1.0));
 	ALBEDO = mix(pow((s + 0.055) / 1.055, vec3(2.4)), s / 12.92, lessThan(s, vec3(0.04045)));
 }"""
-func _termica(activa: bool) -> void:
-	if cam.get_cull_mask_value(2) != activa: cam.set_cull_mask_value(2, activa)
-	if not activa:
-		if _ter != null and _ter.visible: _ter.visible = false; cam.environment = null
-		return
-	if _ter == null:
-		var q := QuadMesh.new(); q.size = Vector2(2, 2)
-		var sm := ShaderMaterial.new(); sm.shader = Shader.new(); sm.shader.code = SOMBREADOR_TERMICA; sm.render_priority = 127
-		_ter = MeshInstance3D.new(); _ter.mesh = q; _ter.material_override = sm; _ter.extra_cull_margin = 16384.0; _ter.layers = 2
-		_ter.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; cam.add_child(_ter)
-	var fuente: Environment = cam.get_world_3d().environment if cam.get_world_3d() != null else null
-	if fuente != _ter_de or _ter_env == null:
-		_ter_de = fuente; _ter_env = fuente.duplicate() if fuente != null else Environment.new()
-		_ter_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR; _ter_env.tonemap_exposure = 1.0; _ter_env.tonemap_white = 1.0
-		_ter_env.glow_enabled = false; _ter_env.adjustment_enabled = false; _ter_env.ssao_enabled = false; _ter_env.ssil_enabled = false
-	cam.environment = _ter_env; _ter.visible = true
-	var tam := get_viewport().get_visible_rect().size
-	(_ter.material_override as ShaderMaterial).set_shader_parameter("res", Vector2(640, maxf(2, round(640 * tam.y / maxf(1, tam.x)))))
 
-func _pintar_objetivos() -> void:
-	var E: Dictionary = Escenarios.datos()[sesion["escenario"]]
-	var t := "[font_size=14][b][color=#ffc83d]%s[/color][/b][/font_size]\n" % E["nombre"]     # #objetivos h3: acento, 14 px
-	if E.has("mundo") and ev.op != null:       # operacion: lo que toca ahora y la orden de trabajo
-		t += texto_fpv(ev.op.ahora(ev.obj, av), true) + "\n" + ev.lineas_objetivos()
-		if sesion["alumno"] != null: t += "[font_size=12][color=#aaaaaa]%s[/color][/font_size]" % sesion["alumno"]["nombre"]
-	elif E.has("mundo"):
-		var suelo := ent.altura(av["p"][0], av["p"][1])
-		t += "Terreno a %d m sobre el mar · casa a [b]%d m[/b]" % [int(round(suelo + ent.terreno["h0"])), int(round(Vector2(av["p"][0] - casa["N"], av["p"][1] - casa["E"]).length()))]
-	elif (E["objetivos"] as Array).is_empty(): t += ev.texto_orden() + ev.texto_vueltas(sesion["escenario"])
-	else:
-		if ev.obj.has("circ1"): t += ev.texto_orden()
-		if ev.obj.has("ocho1"): t += ev.texto_ocho()
-		if ev.zona == 2 and ev.fpv == null: t += ev.texto_zona2(sesion["escenario"])
-		if ev.fpv != null: t += texto_fpv(ev.fpv.ahora(ev.obj, av), true) + "
-"
-		t += ev.lineas_objetivos()
-		if sesion["alumno"] != null: t += "[font_size=12][color=#aaaaaa]%s[/color][/font_size]" % sesion["alumno"]["nombre"]
-	var ts := t.strip_edges()
-	if hud.obj_rt.text != ts: hud.obj_rt.text = ts          # el BBCode solo se vuelve a interpretar si cambia
-	hud.guia.visible = ev.guia_bb != "" and not ev.guia.is_empty() and av["estado"] == "volando"
-	if hud.guia_rt.text != ev.guia_bb: hud.guia_rt.text = ev.guia_bb
-
-func _hud() -> void:
-	hud_carrera.pintar()
-	var e := Cuat.euler(av["q"]); var roll: float = e[0] * R2D; var pitch: float = e[1] * R2D; var yaw: float = e[2] * R2D
-	var h := maxf(0, -av["p"][2]); var dist := Vector2(av["p"][0] - casa["N"], av["p"][1] - casa["E"]).length()
-	var vn := Cuat.rot(av["q"], av["v"]); var vs: float = -vn[2]; _vs = vs
-	var vto: Dictionary = ent.viento; var suelo := ent.altura(av["p"][0], av["p"][1]); var dron := es_dron()
-	var est := "REPETICIÓN" if rep_activa else ("EN EL SUELO" if (av["estado"] == "en mano" and dron) else ("MOTOR PARADO" if (av["estado"] == "en mano" and con_tren()) else String(av["estado"]).to_upper()))
-	var partes := [["%s · %d s" % [est, int(av["t"])], false]]
-	if vuelo != null and av["estado"] == "volando": partes.append(["● REC", true])
-	if av["motorRoto"]: partes.append(["MOTOR PARADO", true])
-	if modelo.facil: partes.append(["física fácil", false])
-	if pausado: partes.append(["PAUSA", false])
-	hud.pintar_estado(partes)
-	if dron and av["estado"] == "volando" and not av.get("posado", false) and hud.aviso.text.begins_with("Sube el gas"): hud.aviso.text = ""
-	if es_bipode(): _hud_bip(dist, yaw); return
-	var bat: float = modelo.bateria_pct(av)
-	var v_clase := "rojo" if (vel_perdida > 0 and av["V"] < 1.1 * vel_perdida) else ("ambar" if (vel_perdida > 0 and av["V"] < 1.3 * vel_perdida) else "")
-	var lect := []
-	if not ((av["estado"] == "en mano" and vuelo == null) or sin_instrumentos):
-		lect = [["%.1f" % av["V"], "vel. aire m/s", v_clase], ["%d" % int(round(-av["p"][2] - suelo)), "altura m", ""], ["%s%.1f" % ["+" if vs >= 0 else "", vs], "asc. m/s", ""],
-				["%03d°" % int(round(fposmod(yaw + 360, 360))), "rumbo", ""], ["%d" % int(round(dist)), "dist. m", ""], ["%d%%" % int(round(bat)), "combustible" if modelo.propulsion.get("combustible", false) else "batería", "rojo" if bat < 20 else ""]]
-		if av["perdida"] > 0.5 and not av.get("enTierra", false): lect.append(["¡PÉRDIDA!", "alfa %d°" % int(round(av["alfa"])), "rojo"])
-	hud.pintar_lecturas(lect)
-	hud.hud_texto.visible = mostrar_hud and not dron
-	if hud.hud_texto.visible:
-		hud.hud_rt.text = ("vel. aire [b]%.1f[/b] m/s · suelo %.1f m/s · asc. %s%.1f m/s\n" % [av["V"], Vector2(vn[0], vn[1]).length(), "+" if vs >= 0 else "", vs]) + \
-			("altura [b]%.1f[/b] m%s · distancia %d m\n" % [h, (" (sobre el terreno %d m)" % int(round(h - suelo))) if en_mundo() else "", int(round(dist))]) + \
-			("alabeo %d° · cabeceo %d° · rumbo %d°\n" % [int(round(roll)), int(round(pitch)), int(round(fposmod(yaw + 360, 360)))]) + \
-			("alfa %.1f° %s · carga %.1f g\n" % [av["alfa"], "[b]¡PÉRDIDA![/b]" if av["perdida"] > 0.5 else "", av["g_carga"]]) + \
-			("gases [b]%d %%[/b] · batería %d %%\n" % [int(round(av["gases"] * 100)), int(round(bat))]) + \
-			("viento %d m/s%s · compensador %.2f° · cámara %d" % [int(round(vto["base"])), " con rachas" if vto["rachas"] else "", mando["trim"], camara]) + \
-			("" if cm_es_diseno(sesion["avion"]) else "\n[b][color=#ffb74d]%s[/color][/b]" % texto_cm())
-	var L: Dictionary = ent.limites
-	if av["estado"] == "volando" and not en_mundo() and dist > L["aviso_m"]:
-		var hacia := int(round(fposmod(atan2(-av["p"][1], -av["p"][0]) * R2D + 360, 360)))
-		hud.lejos_l.text = "¡Demasiado lejos! (%d m) Da la vuelta: el campo está al rumbo %d°. A %d m se pierde el avión." % [int(round(dist)), hacia, int(L["distancia_m"])]
-	else: hud.lejos_l.text = aviso_lanzamiento() if (av["estado"] == "en mano" and not rep_activa) else ""
-	hud.lejos.visible = hud.lejos_l.text != ""
-	hud.disponer(camara == 1, sin_instrumentos, true, true, dron)
-	hud_dji.visible = dron and not es_fpv() and not sin_instrumentos
-	if dron and not es_fpv(): hud_dji.pintar(h, vn, vs, dist)
-	hud_fpv.visible = es_fpv() and not sin_instrumentos
-	if es_fpv(): hud_fpv.pintar(h, vn)
-	hud_uav.visible = es_uav() and not sin_instrumentos
-	if es_uav(): hud.estado.visible = false; hud_uav.pintar(vn, dist, yaw)
-	mira_recon.visible = camara == 3 and not dron and not es_uav() and ev != null and ev.op != null and ev.op.d.has("recon")
-
-## Lecturas del bipode (hudBip de la web): velocidad, rumbo, cintura, brazos, pendiente y distancia; sin instrumentos de avion.
-func _hud_bip(dist: float, yaw: float) -> void:
-	var pend: Array = av.get("pendiente", [0.0, 0.0]); var pd: float = (pend[0] * cos(float(av["rumbo"])) + pend[1] * sin(float(av["rumbo"]))) * 100
-	var cint := fposmod(av["cintura"] * R2D + 180, 360) - 180
-	hud.pintar_estado([["%s · %d s" % ["REPETICIÓN" if rep_activa else ("PARADO" if av["estado"] == "en mano" else "EN MARCHA"), int(av["t"])], false]] + ([["PAUSA", false]] if pausado else []))
-	var lect := []
-	if not ((av["estado"] == "en mano" and vuelo == null) or sin_instrumentos):
-		lect = [["%.1f" % (av["vel"] * 3.6), "km/h", ""], ["%03d°" % int(round(fposmod(yaw + 360, 360))), "rumbo", ""], ["%s%d°" % ["+" if cint >= 0 else "", int(round(cint))], "cintura", ""],
-				["%d°" % int(round(av["brazos"] * R2D)), "brazos", ""], ["%s%d %%" % ["+" if pd >= 0 else "", int(round(pd))], "pendiente", "ambar" if absf(pd) > 45 else ""], ["%d" % int(round(dist)), "dist. m", ""]]
-	hud.pintar_lecturas(lect)
-	hud.hud_texto.visible = false; hud.lejos.visible = false
-	hud.disponer(camara == 1, sin_instrumentos, false, true, false)
-	hud.horiz.visible = false; hud.vario.visible = false; hud.anemo.visible = false; hud.barra.visible = false
-	hud_dji.visible = false; hud_fpv.visible = false
-
-## Piloto automatico de las pruebas: alas niveladas, subida suave hasta 60 m sobre el terreno y luego crucero.
-func _piloto_auto() -> void:
-	if av["estado"] != "volando": return
-	if es_fpv():            # dron FPV en ANGLE: sube a 30 m con el gas y vuela en circulo despacio
-		var vz: float = -Cuat.rot(av["q"], av["v"])[2]; var hh: float = av.get("agl", 0.0); var eu := Cuat.euler(av["q"])
-		av["gases"] = clampf(0.32 / maxf(0.5, cos(eu[0]) * cos(eu[1])) + 0.04 * (30.0 - hh) - 0.05 * vz, 0, 1)
-		mando["pitch"] = -0.3 if hh > 8 else 0.0; mando["yaw"] = 0.12 if hh > 8 else 0.0; mando["guinada"] = 0.0
-		return
-	var e := Cuat.euler(av["q"]); var alto: bool = av.get("agl", 0.0) > 60
-	mando["yaw"] = clampf(-(e[0] / D2R - (20.0 if alto else 0.0)) / 45.0, -0.6, 0.6)
-	mando["pitch"] = clampf(((2.0 if alto else 10.0) - e[1] / D2R) / 15.0, -0.6, 0.6)
-	if es_dron(): mando["vz"] = 0.6 if av.get("agl", 0.0) < 30 else 0.0; mando["pitch"] = -0.5 if av.get("agl", 0.0) > 10 else 0.0; mando["yaw"] = 0.0
-	else: av["gases"] = 0.55 if alto else float(_args.get("gases", "1"))
-
-## Pruebas desde la linea de ordenes: vuela solo (gases y lanzamiento), mide el tiempo por cuadro y guarda una captura.
-func _auto(dt_real: float) -> void:
-	if not _args.has("auto"): return
-	_t_auto += dt_real
-	if _args.has("vista") and not av.is_empty():     # pruebas: dron quieto en N,E,altura,rumbo,gimbal para la captura
-		var w := Array(String(_args["vista"]).split(",")).map(func(x): return float(x))
-		av["p"] = [w[0], w[1], -(ent.altura(w[0], w[1]) + w[2])]; av["q"] = Cuat.desde_euler(0, 0, w[3] * D2R); av["gimbal"] = w[4]; av["v"] = [0.0, 0.0, 0.0]
-	var vp := get_viewport().get_viewport_rid()
-	RenderingServer.viewport_set_measure_render_time(vp, true)
-	if _t_auto > 1.5:
-		_rend.append([dt_real, Performance.get_monitor(Performance.TIME_PROCESS), Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
-					  Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
-					  RenderingServer.viewport_get_measured_render_time_cpu(vp) / 1000.0, RenderingServer.viewport_get_measured_render_time_gpu(vp) / 1000.0])
-	if _args.has("traza") and av["estado"] == "volando" and fmod(av["t"], 0.5) < DT * 30 and av["t"] - float(_args.get("_tt", "-1")) > 0.3:
-		_args["_tt"] = str(av["t"]); var e := Cuat.euler(av["q"])
-		print("  t %.1f  agl %.1f  V %.1f  alabeo %.0f  cabeceo %.0f  rumbo %.0f  gases %.2f  de %.1f  da %.1f  dr %.1f" % [av["t"], av["agl"], av["V"], e[0] / D2R, e[1] / D2R, e[2] / D2R, av["gases"], av["de"] / D2R, av["da"] / D2R, av["dr"] / D2R])
-	if _args.has("terminar") and av.get("estado") == "volando" and av["t"] >= float(_args["terminar"]): terminar_vuelo("abandonado")
-	if _args.has("repeticion") and pantalla_actual == "pResultado": _args.erase("repeticion"); ver_repeticion()
-	if _args.has("pausa") and not pausado and av.get("t", 0.0) >= float(_args["pausa"]): poner_pausa(true); _args.erase("pausa")
-	if _args.has("ayuda") and av.get("t", 0.0) >= float(_args["ayuda"]): hud.ayuda.visible = true; _args.erase("ayuda")
-	if av.get("estado") == "en mano" and pantalla_actual == "":
-		av["gases"] = float(_args.get("gases", "1")); camara = int(_args.get("camara", "3" if es_dron() else "1"))
-		if _t_auto > 0.3:
-			if es_fpv(): av["gases"] = 0.0; fpv_armar()
-			elif es_dron(): dji_despegar()
-			else: lanzar()
-	if _t_auto >= float(_args.get("esperar", "6")):
-		var med := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-		for x in _rend:
-			for i in 6: med[i] += x[i] / maxf(1, _rend.size())
-		print("AUTO: %d cuadros, %.1f ms por cuadro (%.0f fps), proceso %.1f ms, render CPU %.1f ms GPU %.1f ms, %d llamadas de dibujo, %.1f M primitivas; estado %s, altura %.1f m, t %.1f s" % [
-			_rend.size(), med[0] * 1000, 1.0 / maxf(med[0], 1e-6), med[1] * 1000, med[4] * 1000, med[5] * 1000, med[2], med[3] / 1e6,
-			av["estado"], -av["p"][2] - ent.altura(av["p"][0], av["p"][1]), av["t"]])
-		var uf := 0.0; var ut := 0.0
-		for x in _us: uf += x[0] / maxf(1, _us.size()); ut += x[1] / maxf(1, _us.size())
-		print("AUTO: principal._process %.2f ms por cuadro (fisica y mandos %.2f ms, camara y HUD %.2f ms)" % [ut / 1000, uf / 1000, (ut - uf) / 1000])
-		if _args.has("captura"):
-			var img := get_viewport().get_texture().get_image(); img.save_png(_args["captura"])
-			print("Captura en " + _args["captura"])
-		get_tree().quit()

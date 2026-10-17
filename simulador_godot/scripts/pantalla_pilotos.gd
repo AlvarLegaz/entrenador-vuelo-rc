@@ -1,8 +1,9 @@
 class_name PantallaPilotos
 extends Control
-## Acceso (#pAlumno de simulador/simulador.html): lo primero al abrir el simulador. La ortofoto de fondo y, en el
+## Acceso (#pAlumno de simulador_web/simulador.html): lo primero al abrir el simulador. La ortofoto de fondo y, en el
 ## centro, la direccion del servidor del aula, el usuario y la contrasena; "Conectar" entra en el aula (si el usuario no
-## existe, ofrece crearlo) y "Continuar sin conexion" deja volar sin guardar los vuelos ni el progreso.
+## existe, ofrece el registro), "Soy nuevo: registrarme" lleva al registro (pantalla_registro.gd) y "Continuar sin
+## conexion" deja volar sin guardar los vuelos ni el progreso.
 
 var p: Node
 var e_url: LineEdit; var e_usuario: LineEdit; var e_clave: LineEdit
@@ -33,8 +34,9 @@ func _init(p_: Node) -> void:
 	e_usuario = _campo(c, "Usuario", "", false); e_usuario.max_length = 60
 	e_clave = _campo(c, "Contraseña", "", true); e_clave.max_length = 20
 	err = Tema.etiqueta("", 14, Color("#ff8a80"), false, true); err.custom_minimum_size = Vector2(384, 18); c.add_child(Tema.margen(err, 0, 6, 0, 0))
-	c.add_child(Tema.boton("Conectar", "BotonPrim", func(): _entrar(false)))
-	c.add_child(Tema.boton("Continuar sin conexión", "", func(): p.salir_del_aula(); p.ir_inicio()))
+	c.add_child(Tema.boton("Conectar", "BotonPrim", func(): _entrar()))
+	c.add_child(Tema.boton("Soy nuevo: registrarme", "", func(): _ir_registro(e_usuario.text.strip_edges())))
+	c.add_child(Tema.boton("Continuar sin conexión", "", func(): p.app_pantallas.salir_del_aula(); p.app_pantallas.ir_inicio()))
 	var nota := Tema.etiqueta("Sin conexión se vuela igual, pero no se guardan los vuelos ni el progreso.", 13, Tema.SUAVE, false, true)
 	nota.custom_minimum_size.x = 384; c.add_child(Tema.margen(nota, 0, 4, 0, 0))
 	pendientes = Tema.etiqueta("", 13, Tema.SUAVE, false, true); pendientes.custom_minimum_size.x = 384; c.add_child(pendientes)
@@ -51,7 +53,7 @@ func _init(p_: Node) -> void:
 func _campo(c: VBoxContainer, titulo: String, ejemplo: String, secreto: bool) -> LineEdit:
 	c.add_child(Tema.margen(Tema.etiqueta(titulo, 13, Tema.SUAVE), 0, 8, 0, 0))
 	var e := LineEdit.new(); e.placeholder_text = ejemplo; e.secret = secreto; e.custom_minimum_size = Vector2(384, 38)
-	e.text_submitted.connect(func(_t): _entrar(false)); c.add_child(e)
+	e.text_submitted.connect(func(_t): _entrar()); c.add_child(e)
 	return e
 
 ## La pantalla al llegar (irAcceso): la ultima direccion y el ultimo usuario ya puestos; la contrasena, vacia.
@@ -61,18 +63,24 @@ func refrescar(msg := "") -> void:
 	pendientes.text = ("%d vuelo(s) de este ordenador pendientes de enviar al aula." % n) if n else ""
 	(e_clave if e_usuario.text != "" else e_usuario).grab_focus.call_deferred()
 
-func _entrar(crear: bool) -> void:
+## Al registro (irRegistro de la web), con el usuario que haya escrito; hace falta la direccion del aula.
+func _ir_registro(usuario: String) -> void:
+	var u := Aula.normalizar_url(e_url.text)
+	if u == "": err.text = "Escribe la dirección del servidor del aula"; return
+	p.aula.url = u; p.app_pantallas.ir_registro(usuario)
+
+func _entrar() -> void:
 	var usuario := " ".join(e_usuario.text.split(" ", false))
 	if Aula.normalizar_url(e_url.text) == "": err.text = "Escribe la dirección del servidor del aula"; return
 	if usuario == "": err.text = "Escribe tu usuario"; return
 	if e_clave.text == "": err.text = "Escribe tu contraseña"; return
 	err.text = "Conectando…"
-	var r: Dictionary = await p.aula.entrar(e_url.text, usuario, e_clave.text, crear)
-	if r["ok"]: err.text = ""; p.dentro_del_aula(r["alumno"]); p.ir_inicio(); return
-	if r["status"] == 404 and not crear:
-		err.text = ""
-		if await p.confirmar("¿Crear el usuario «%s»?" % usuario, "No hay ningún alumno con ese nombre en el aula. Si eres nuevo, se crea con la contraseña que has escrito (de 4 a 20 caracteres).", "Crear usuario"):
-			await _entrar(true)
+	var r: Dictionary = await p.aula.entrar(e_url.text, usuario, e_clave.text)
+	if r["ok"]: err.text = ""; p.app_pantallas.dentro_del_aula(r["alumno"]); p.app_pantallas.ir_inicio(); return
+	if r["status"] == 404:                           # no existe: los alumnos nuevos se registran (y los aprueba el profesor)
+		err.text = String(r["error"])
+		if await p.app_pantallas.confirmar("¿Registrarte como «%s»?" % usuario, "No hay ningún alumno con ese usuario en el aula. Si eres nuevo, regístrate: el profesor tiene que aprobar tu cuenta.", "Registrarme"):
+			_ir_registro(usuario)
 		return
 	err.text = String(r["error"])
 

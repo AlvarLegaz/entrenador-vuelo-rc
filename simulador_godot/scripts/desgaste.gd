@@ -1,6 +1,6 @@
 class_name Desgaste
-## Desgaste y averias de los vehiculos: traduccion LITERAL de simulador/js/desgaste.js (los mismos datos, el mismo azar
-## y los mismos efectos, para que los dos simuladores vuelen igual; pruebas/prueba_averias.gd lo compara). Cada vehiculo
+## Desgaste y averias de los vehiculos: traduccion LITERAL de simulador_web/js/desgaste.js (los mismos datos, el mismo azar
+## y los mismos efectos, para que los dos simuladores vuelen igual; simulador_godot/Tests/prueba_averias.gd lo compara). Cada vehiculo
 ## de cada alumno lleva su estado (en el aula y, sin conexion, en user://vehiculos.json): horas de vuelo, horas de cada
 ## componente, salud y ciclos de la bateria, averias y libro de mantenimiento. La primera hora de vuelo del vehiculo no
 ## pasa nada; despues, cada vuelo puede estropear algo (mas cuanto mas usado esta), y tambien un golpe, una descarga por

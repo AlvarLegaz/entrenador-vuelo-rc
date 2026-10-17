@@ -1,6 +1,6 @@
 class_name HudUav
 extends Control
-## Estacion de control del UAV (Cernicalo XM-7): #gcs de simulador/simulador.html (hudUav). Barra de arriba (modo del
+## Estacion de control del UAV (Cernicalo XM-7): #gcs de simulador_web/simulador.html (hudUav). Barra de arriba (modo del
 ## piloto automatico, estado, enlace de datos y combustible), consignas del automatico, botones a la derecha (modos,
 ## zoom, termica, fijar y foto) y, con la camara 3, la mira de la torreta EO/IR con el punto de la cruz y su distancia,
 ## los datos del sensor y la escala de temperaturas. Los instrumentos del avion siguen abajo (hud_vuelo.gd). p: la escena principal.
@@ -64,15 +64,15 @@ func _init(p_: Node) -> void:
 	der.anchor_left = 1; der.anchor_right = 1; der.anchor_top = 0.5; der.anchor_bottom = 0.5; der.offset_right = -16; der.offset_left = -68
 	der.offset_top = -200; der.offset_bottom = 200; der.grow_horizontal = Control.GROW_DIRECTION_BEGIN; der.grow_vertical = Control.GROW_DIRECTION_BOTH
 	for q in [["MAN", "MANUAL", "Manual (M)"], ["EST", "ESTAB", "Estabilizado (M)"], ["CRU", "CRUCERO", "Crucero: mantiene altura, rumbo y velocidad (M)"], ["BASE", "BASE", "Vuelta a base (H, Y)"]]:
-		var m: String = q[1]; var b := _boton(q[0], q[2], func(): p.uav_poner(m)); botones[m] = b; der.add_child(b)
-	b_auto = _boton("ATO", "Despegue o aterrizaje automático (P, cruceta izquierda)", func(): p.uav_poner("DESPEGUE" if p.av.get("enTierra", false) else "ATERRIZAJE")); der.add_child(b_auto)
+		var m: String = q[1]; var b := _boton(q[0], q[2], func(): p.app_mandos.uav_poner(m)); botones[m] = b; der.add_child(b)
+	b_auto = _boton("ATO", "Despegue o aterrizaje automático (P, cruceta izquierda)", func(): p.app_mandos.uav_poner("DESPEGUE" if p.av.get("enTierra", false) else "ATERRIZAJE")); der.add_child(b_auto)
 	var sep := Control.new(); sep.custom_minimum_size = Vector2(0, 6); der.add_child(sep)
-	der.add_child(_boton("+", "Acercar el zoom de la torreta (Z, cruceta arriba)", func(): p.dji_zoom(1)))
+	der.add_child(_boton("+", "Acercar el zoom de la torreta (Z, cruceta arriba)", func(): p.app_apps_dron.dji_zoom(1)))
 	zoom_txt = Tema.etiqueta("1x", 11, VERDE, true); zoom_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _sombra(zoom_txt); der.add_child(zoom_txt)
-	der.add_child(_boton("−", "Alejar el zoom (X, cruceta abajo)", func(): p.dji_zoom(-1)))
-	b_ir = _boton("IR", "Cámara térmica (C, cruceta derecha)", func(): p.dji_termica()); der.add_child(b_ir)
-	b_fijar = _boton("FIJAR", "Fijar la torreta en el punto de la cruz (K)", func(): p.uav_fijar()); der.add_child(b_fijar)
-	der.add_child(_boton("FOTO", "Foto de la torreta (F, botón X)", func(): p.uav_foto()))
+	der.add_child(_boton("−", "Alejar el zoom (X, cruceta abajo)", func(): p.app_apps_dron.dji_zoom(-1)))
+	b_ir = _boton("IR", "Cámara térmica (C, cruceta derecha)", func(): p.app_apps_dron.dji_termica()); der.add_child(b_ir)
+	b_fijar = _boton("FIJAR", "Fijar la torreta en el punto de la cruz (K)", func(): p.app_camaras.uav_fijar()); der.add_child(b_fijar)
+	der.add_child(_boton("FOTO", "Foto de la torreta (F, botón X)", func(): p.app_camaras.uav_foto()))
 	add_child(der)
 	# ---- mira de la torreta (camara 3) ----
 	mira = VBoxContainer.new(); mira.add_theme_constant_override("separation", 2); mira.mouse_filter = Control.MOUSE_FILTER_IGNORE; mira.visible = false
@@ -140,14 +140,14 @@ func pintar(vn: Array, dist: float, yaw: float) -> void:
 	for k in botones: _poner_activo(botones[k], k == m)
 	_poner_activo(b_auto, pista_m); b_auto.text = "ATO" if av.get("enTierra", false) else "ATL"
 	# torreta
-	var cm: Dictionary = p.cam_dji(); var cam3: bool = p.camara == 3; var tr: Dictionary = av.get("torreta", { "pan": 0.0, "tilt": 0.0 })
+	var cm: Dictionary = p.app_apps_dron.cam_dji(); var cam3: bool = p.camara == 3; var tr: Dictionary = av.get("torreta", { "pan": 0.0, "tilt": 0.0 })
 	zoom_txt.text = "%dx" % int(cm["zoom"]); _poner_activo(b_ir, cm["termica"]); _poner_activo(b_fijar, p.UAV["fijo"] != null)
 	mira.visible = cam3; sensor.visible = cam3; paleta.visible = cam3 and cm["termica"]
 	sin_video.visible = cam3 and p.modelo.get("efe") != null and bool(p.modelo.efe.get("sinVideo", false))     # el Grajo con el morro sin asegurar
 	if cam3:
 		var X = p.UAV["cruz"]; var L = p.ev.op.lectura if (p.ev != null and p.ev.op != null) else null
 		var s := "[center]" + ("[b][color=#ffb74d]FIJADO[/color][/b]\n" if p.UAV["fijo"] != null else "")
-		if X != null and p.en_mundo(): s += "%s\n%s" % [p.coord_txt(X[0], X[1]), ("%d m" % int(round(X[3]))) if X[3] < 1000 else ("%s km" % ("%.2f" % (X[3] / 1000)).replace(".", ","))]
+		if X != null and p.en_mundo(): s += "%s\n%s" % [p.app_mandos.coord_txt(X[0], X[1]), ("%d m" % int(round(X[3]))) if X[3] < 1000 else ("%s km" % ("%.2f" % (X[3] / 1000)).replace(".", ","))]
 		else: s += "sin punto en el suelo"
 		if cm["termica"] and L != null: s += "\n[bgcolor=#0000008c][color=#ffffff] %s °C [/color][/bgcolor]" % ("%.1f" % L["T"]).replace(".", ",")
 		obj.text = s + "[/center]"

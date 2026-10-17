@@ -1,6 +1,6 @@
 """Bipode de asalto HQ-07 (vehiculo secreto del hangar): genera su modelo 3D y lo escribe como DATOS COMUNES de los
-dos simuladores en simulador/aviones/BIPODE.js (entre las marcas // <DATOS> y // </DATOS>) y las calcomanias en
-simulador/aviones/BIPODE_calcas.png. El navegador (BIPODE.js) y Godot (modelo_bipode_3d.gd) solo decodifican estas
+dos simuladores en datos/vehiculos/BIPODE.js (entre las marcas // <DATOS> y // </DATOS>) y las calcomanias en
+datos/vehiculos/BIPODE_calcas.png. El navegador (BIPODE.js) y Godot (modelo_bipode_3d.gd) solo decodifican estas
 mallas: la geometria es la misma en los dos por construccion.
 
 Geometria: todo procedural (sin ficheros de malla). Placas de blindaje como cajas biseladas (con aristas redondeadas y
@@ -25,8 +25,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-F_JS = os.path.join(RAIZ, "simulador", "aviones", "BIPODE.js")
-F_PNG = os.path.join(RAIZ, "simulador", "aviones", "BIPODE_calcas.png")
+F_JS = os.path.join(RAIZ, "datos", "vehiculos", "BIPODE.js")
+F_PNG = os.path.join(RAIZ, "datos", "vehiculos", "BIPODE_calcas.png")
 
 # ---------------------------------------------------------------- materiales
 # nombre, color (sRGB), rugosidad, metalico. El sombreador les pone el desgaste.

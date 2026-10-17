@@ -1,5 +1,5 @@
 """Exporta el modelo de vuelo del entrenador (E1, o el que diga la variable de entorno ENTRENADOR) al
-simulador (simulador/aviones/E1.js o E2.js):
+simulador (datos/vehiculos/E1.js o E2.js):
 tablas del VLM (ala + cola + correcciones de fuselaje), perdida, resistencia parasita estimada,
 helice, mandos, masa e inercias de masas_e1.py y una malla ligera para el visor 3D.
 
@@ -14,7 +14,7 @@ from avion import ID, P
 import geom_e1 as G
 import vlm_e1 as V
 
-DIR_SIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "simulador")
+DIR_DATOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "datos")                 # datos comunes de los simuladores
 iner = json.load(open(os.path.join(G.OUT, "inercias.json")))
 x_cg, z_cg = iner["cg_mm"][0], iner["cg_mm"][2]
 mod = V.Modelo(x_cg_mm=x_cg, z_cg_mm=z_cg)
@@ -129,9 +129,9 @@ modelo = dict(
     lanzamiento=dict(vel_ms=9.0, cabeceo_grados=8.0),     # lanzamiento firme: la perdida esta en 7,2 m/s
     malla=malla, punto_neutro_mm=xnp, x_le_mm=P.X_LE,     # borde de ataque: para dar el CG en % de la cuerda
 )
-# cada avion es un fichero de simulador/aviones/ que se registra solo; indice.js lista los ficheros
+# cada avion es un fichero de datos/vehiculos/ que se registra solo; indice.js lista los ficheros
 # (el servidor del aula lo genera leyendo la carpeta; sin servidor vale el que se escribe aqui)
-DIR_AV = os.path.join(DIR_SIM, "aviones")
+DIR_AV = os.path.join(DIR_DATOS, "vehiculos")
 NL = chr(10)
 if ID in ("E1", "E2"):                      # retirados del simulador (2026-10-15): el entrenador del simulador es el E3
     raise SystemExit("%s ya no esta en el simulador: no se exporta (el E3 es el Entrenador 1)" % ID)

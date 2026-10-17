@@ -1,6 +1,6 @@
 class_name PantallaInicio
 extends Control
-## Pantalla de inicio (#pInicio de simulador/simulador.html): la ortofoto de Cartagena de fondo con el degradado, el
+## Pantalla de inicio (#pInicio de simulador_web/simulador.html): la ortofoto de Cartagena de fondo con el degradado, el
 ## titulo, el menu (Vuelo libre, Entrenamientos, Multijugador, Operaciones, Hangar, Taller, Perfil, Ajustes), el avion elegido girando a la derecha y el pie con
 ## el piloto y el aula.
 
@@ -42,14 +42,14 @@ func _init(p_: Node) -> void:
 	izq.add_child(Tema.etiqueta("UxS Trainer", 44, Tema.TEXTO, true))
 	var lp := Tema.sub("Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.", 15); lp.custom_minimum_size.x = 372; izq.add_child(lp)
 	izq.add_child(Tema.margen(Control.new(), 0, 0, 0, 16))
-	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.ir_volar()))   # se vuela con el usuario del aula (o sin conexion)
-	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV", func(): p.ir_entrenamientos()))
-	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.ir_multi()))
-	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.ir_operaciones()))
-	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.ir_hangar()))
-	izq.add_child(_boton_menu("taller", "Taller", "Conecta el vehículo, descarga sus registros de vuelo y mira cómo varían la batería y lo demás", func(): p.ir_taller()))
-	izq.add_child(_boton_menu("perfil", "Perfil", "Tu progreso y tu sesión en el aula", func(): p.ir_perfil()))
-	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.ir_ajustes("")))
+	izq.add_child(_boton_menu("volar", "Vuelo libre", "El campo de vuelo del club o el Campo de Cartagena con mapa real", func(): p.app_pantallas.ir_volar()))   # se vuela con el usuario del aula (o sin conexion)
+	izq.add_child(_boton_menu("entrenar", "Entrenamientos", "Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV", func(): p.app_pantallas.ir_entrenamientos()))
+	izq.add_child(_boton_menu("multi", "Multijugador", "Vuela con tus compañeros en la misma sala del aula: os veis unos a otros", func(): p.app_multijugador.ir_multi()))
+	izq.add_child(_boton_menu("operaciones", "Operaciones", "Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo", func(): p.app_pantallas.ir_operaciones()))
+	izq.add_child(_boton_menu("hangar", "Hangar", "Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora", func(): p.app_pantallas.ir_hangar()))
+	izq.add_child(_boton_menu("taller", "Taller", "Conecta el vehículo, descarga sus registros de vuelo y mira cómo varían la batería y lo demás", func(): p.app_pantallas.ir_taller()))
+	izq.add_child(_boton_menu("perfil", "Perfil", "Tu progreso y tu sesión en el aula", func(): p.app_pantallas.ir_perfil()))
+	izq.add_child(_boton_menu("ajustes", "Ajustes", "Mando, gráficos, sonido, dificultad y registro de vuelos", func(): p.app_pantallas.ir_ajustes("")))
 	# derecha: el avion girando y su nombre
 	var der := Control.new(); der.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cuerpo.add_child(der)
 	previa = VistaPrevia.new(); previa.set_anchors_preset(Control.PRESET_FULL_RECT); der.add_child(previa)
@@ -64,7 +64,7 @@ func _init(p_: Node) -> void:
 	perfil.add_theme_stylebox_override("hover", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
 	perfil.add_theme_stylebox_override("pressed", Tema.caja(Color(1, 0.78, 0.24, 0.14), Color(1, 0.78, 0.24, 0.5), 14, 1, 22, 8))
 	perfil.anchor_left = 0.5; perfil.anchor_right = 0.5; perfil.offset_top = 36; perfil.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	perfil.pressed.connect(func(): p.ir_perfil())
+	perfil.pressed.connect(func(): p.app_pantallas.ir_perfil())
 	var pv := VBoxContainer.new(); pv.add_theme_constant_override("separation", 0); pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var pt := Tema.etiqueta("PERFIL", 11, Tema.ACENTO, true); var fv2 := FontVariation.new(); fv2.base_font = Tema.negrita; fv2.spacing_glyph = 2; pt.add_theme_font_override("font", fv2)
 	perfil_nombre = Tema.etiqueta("", 26, Tema.TEXTO, true); perfil_modo = Tema.etiqueta("", 13, Tema.SUAVE)
@@ -120,4 +120,4 @@ func refrescar() -> void:
 	var w := maxf(perfil_nombre.get_minimum_size().x, perfil_modo.get_minimum_size().x) + 44
 	perfil.custom_minimum_size = Vector2(w, 84); perfil.offset_left = -w / 2; perfil.offset_right = w / 2
 	chip_aula.text = p.aula.texto_estado()
-	previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.75)
+	previa.mostrar(p.app_evaluacion.datos_visor(p.sesion["avion"]), 1.75)

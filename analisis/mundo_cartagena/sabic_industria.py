@@ -1,4 +1,4 @@
-"""Instalaciones de la fabrica de SABIC de La Aljorra para simulador/singulares.js (pedido del usuario 2026-10-14: "la
+"""Instalaciones de la fabrica de SABIC de La Aljorra para datos/escenarios/singulares.js (pedido del usuario 2026-10-14: "la
 factoria de sabic tiene muy poco detalle"). El Catastro solo trae naves y oficinas; lo que da el aspecto de planta
 quimica (tanques, racks de tuberias, estructuras de proceso, columnas, torres de refrigeracion, chimeneas) sale de aqui:
 
@@ -12,7 +12,7 @@ Fotos de referencia: no hay fotos publicas utiles del interior; las formas sigue
 de policarbonato (LX1/LX2, ULTEM, compounding) con sus servicios (vapor y electricidad de Energyworks, gases de Air
 Liquide).
 
-    python analisis/mundo_cartagena/sabic_industria.py      (necesita la zona simulador/zonas/fotovoltaica)
+    python analisis/mundo_cartagena/sabic_industria.py      (necesita la zona datos/escenarios/zonas/fotovoltaica)
 """
 import json, math, os, re
 import numpy as np
@@ -21,7 +21,7 @@ from scipy import ndimage
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.join(AQUI, "..", "..")
-ZDIR = os.path.join(RAIZ, "simulador", "zonas", "fotovoltaica")
+ZDIR = os.path.join(RAIZ, "datos", "escenarios", "zonas", "fotovoltaica")
 NOMBRE = "Fábrica de SABIC (La Aljorra)"
 R = 46.0                                                      # rumbo de las calles de la fabrica (eje u)
 SU, CU = math.sin(math.radians(R)), math.cos(math.radians(R))
@@ -140,7 +140,7 @@ def main():
     print("piezas %d: %d estructuras, %d columnas, %d tanques, %d racks" % (len(piezas), n_est, n_col, len(TANQUES), len(RACKS)))
 
     # a singulares.js: sustituye la entrada de SABIC si ya estaba
-    p = os.path.join(RAIZ, "simulador", "singulares.js"); s = open(p, encoding="utf-8").read()
+    p = os.path.join(RAIZ, "datos", "escenarios", "singulares.js"); s = open(p, encoding="utf-8").read()
     nueva = entrada({"mundo": "cartagena", "nombre": NOMBRE,
                      "nota": "Generado por analisis/mundo_cartagena/sabic_industria.py desde la ortofoto PNOA a 0,25 m: tanques, racks, torres de refrigeración y balas medidos a mano; estructuras de proceso y columnas donde la foto muestra las unidades.",
                      "piezas": piezas})

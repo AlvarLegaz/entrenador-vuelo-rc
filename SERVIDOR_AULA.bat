@@ -1,6 +1,6 @@
 @echo off
 rem Servidor del aula (aula\servidor_aula.py) en este ordenador: perfiles online, vuelos de todos, panel del profesor y
-rem salas del multijugador. Doble clic; se para cerrando la ventana o con Ctrl+C. Necesita Python 3.9 o posterior (sin
+rem salas del multijugador. Doble clic; se para cerrando la ventana o con Ctrl+C. Necesita Python 3.8 o posterior (sin
 rem instalar nada mas). La primera vez pide el PIN del profesor. Otro puerto: SERVIDOR_AULA.bat --puerto 8000
 chcp 65001 >nul
 cd /d "%~dp0"

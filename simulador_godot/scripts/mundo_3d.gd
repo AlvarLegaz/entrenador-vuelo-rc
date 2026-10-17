@@ -1,8 +1,8 @@
 class_name Mundo3D
 extends Node3D
 ## El mundo real en 3D (version Godot) con los MISMOS datos que el navegador: la malla de terreno del mundo
-## (simulador/mundos/<id>.js) con la ortofoto PNOA de la region, el mar, las carreteras y zonas urbanas de OSM, los
-## rotulos de los pueblos y, donde la hay, la zona de detalle (simulador/zonas/<id>/): terreno a 5 m con la ortofoto
+## (datos/escenarios/mundos/<id>.js) con la ortofoto PNOA de la region, el mar, las carreteras y zonas urbanas de OSM, los
+## rotulos de los pueblos y, donde la hay, la zona de detalle (datos/escenarios/zonas/<id>/): terreno a 5 m con la ortofoto
 ## a 0,5 m, edificios del Catastro con sus plantas y arboles detectados en la ortofoto. Fuera de la zona, arboles
 ## sacados de la ortofoto de la region (pixeles de vegetacion). El suelo fisico es el de Entorno: aqui solo se dibuja.
 ## Ejes: x = este, y = arriba, z = sur (como en el navegador).
@@ -914,14 +914,14 @@ func _arboles_zona(z: Dictionary) -> void:
 		return [Transform3D(b, Vector3(it[0], ent.altura(it[1], it[0]) + rc * 0.3, -it[1])), lin(_hsl(0.15 + 0.06 * it[5], 0.16 + 0.1 * it[6], 0.3 + 0.08 * it[4]))], 500.0, 0.0, 4000.0,
 		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 
-# ---------------------------------------------------------------- elementos singulares (simulador/singulares.js)
-## Elementos singulares del mundo (simulador/singulares.js, comun con la web: la entrada del CIFP Politecnico...), con
+# ---------------------------------------------------------------- elementos singulares (datos/escenarios/singulares.js)
+## Elementos singulares del mundo (datos/escenarios/singulares.js, comun con la web: la entrada del CIFP Politecnico...), con
 ## las mismas piezas y texturas que _singulares de visor_real.js.
 static var _singulares_datos = null
 static func singulares_datos() -> Array:
 	if _singulares_datos != null: return _singulares_datos
 	_singulares_datos = []
-	var t := FileAccess.get_file_as_string(DatosComunes.carpeta().path_join("singulares.js"))
+	var t := FileAccess.get_file_as_string(DatosComunes.carpeta().path_join("escenarios/singulares.js"))
 	var re := RegEx.new(); re.compile("(?m)^window[.]SINGULARES = ")
 	var mm := re.search(t)
 	if mm != null:

@@ -1,6 +1,6 @@
 class_name Capas
 extends RefCounted
-## Capas que van encima de todo, como en simulador/simulador.html (.velo): pausa (#pausa), carga (#carga) y la ventana
+## Capas que van encima de todo, como en simulador_web/simulador.html (.velo): pausa (#pausa), carga (#carga) y la ventana
 ## de confirmar (#modal). Cada una es un Control a pantalla completa con el velo oscuro y su panel centrado.
 
 static func _velo(alfa := 0.55) -> Control:
@@ -21,16 +21,16 @@ static func pausa(p: Node) -> Dictionary:
 	caja.add_child(Tema.etiqueta("Pausa", 22, Tema.TEXTO, true)); caja.add_child(Tema.margen(Control.new(), 0, 0, 0, 6))
 	var b := func(texto: String, tipo: String, f: Callable) -> Button:
 		var x := Tema.boton(texto, tipo, f); x.alignment = HORIZONTAL_ALIGNMENT_LEFT; caja.add_child(x); return x
-	b.call("Continuar", "BotonPrim", func(): p.poner_pausa(false))
-	b.call("Empezar el vuelo de nuevo", "", func(): p.poner_pausa(false); p.reiniciar())
-	var bc: Button = b.call("Cámara: piloto", "", func(): p.cambiar_camara_pausa())
-	var bi: Button = b.call("Instrumentos: sí", "", func(): p.cambiar_instrumentos_pausa())
+	b.call("Continuar", "BotonPrim", func(): p.app_repeticion.poner_pausa(false))
+	b.call("Empezar el vuelo de nuevo", "", func(): p.app_repeticion.poner_pausa(false); p.app_vuelo.reiniciar())
+	var bc: Button = b.call("Cámara: piloto", "", func(): p.app_repeticion.cambiar_camara_pausa())
+	var bi: Button = b.call("Instrumentos: sí", "", func(): p.app_repeticion.cambiar_instrumentos_pausa())
 	b.call("Controles", "", func(): p.hud.ayuda.visible = not p.hud.ayuda.visible)
-	b.call("Terminar el vuelo", "", func(): p.terminar_desde_pausa())
-	b.call("Salir al menú principal", "BotonPeligro", func(): p.salir_al_menu())
+	b.call("Terminar el vuelo", "", func(): p.app_repeticion.terminar_desde_pausa())
+	b.call("Salir al menú principal", "BotonPeligro", func(): p.app_repeticion.salir_al_menu())
 	var f := HBoxContainer.new(); f.add_theme_constant_override("separation", 10)
 	var cs := Tema.casilla("Sonido", true); cs.add_theme_color_override("font_color", Tema.SUAVE)
-	cs.toggled.connect(func(x): p.sonido_on(x))
+	cs.toggled.connect(func(x): p.app_avion_ajustes.sonido_on(x))
 	var info := Tema.etiqueta("", 12, Tema.SUAVE); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	f.add_child(cs); f.add_child(info); caja.add_child(Tema.margen(f, 0, 6, 0, 0))
 	return { "raiz": v, "camara": bc, "instr": bi, "sonido": cs, "info": info }

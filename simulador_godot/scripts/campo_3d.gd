@@ -1,7 +1,7 @@
 class_name Campo3D
 extends Node3D
 ## EL CAMPO DE VUELO DEL CLUB en 3D (version Godot): la isla que se vuela en el vuelo libre y en todos los
-## entrenamientos. Traduccion de Visor._campo() de simulador/js/visor.js (la escena del navegador cuando no hay mundo
+## entrenamientos. Traduccion de Visor._campo() de simulador_web/js/visor.js (la escena del navegador cuando no hay mundo
 ## real), con los mismos generadores deterministas (semilla, ruido, fbm, costa, bordeMonte, alturaTerreno) y las mismas
 ## listas de arboles, matas, coches y nubes: el suelo pintado (pintarCampo: bancales de almendros sobre tierra rojiza,
 ## la rambla, el monte bajo del cerro, los caminos, la autopista, la pista 1 con sus marcas de cal y la zona 2 con la

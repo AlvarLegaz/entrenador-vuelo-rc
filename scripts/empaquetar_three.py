@@ -1,8 +1,8 @@
 """Empaqueta Three.js (paquete npm, p. ej. three-0.169.0.tgz descomprimido) como scripts GLOBALES para el simulador
 del navegador, que carga todo con <script src> (tambien abriendo simulador.html con doble clic, sin servidor):
 
-  simulador/lib/three.js          el nucleo (build/three.cjs envuelto: deja window.THREE)
-  simulador/lib/three-extras.js   Sky, Water y CSM (examples/jsm), cada uno en su bloque, con sus import cambiados
+  simulador_web/lib/three.js          el nucleo (build/three.cjs envuelto: deja window.THREE)
+  simulador_web/lib/three-extras.js   Sky, Water y CSM (examples/jsm), cada uno en su bloque, con sus import cambiados
                                   por lecturas de THREE y sus export por THREE.X = X
 
     python scripts/empaquetar_three.py <carpeta 'package' del tgz>
@@ -10,7 +10,7 @@ del navegador, que carga todo con <script src> (tambien abriendo simulador.html 
 import os, re, sys
 
 pkg = sys.argv[1]
-dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "simulador", "lib")
+dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "simulador_web", "lib")
 os.makedirs(dst, exist_ok=True)
 version = re.search(r'"version":\s*"([^"]+)"', open(os.path.join(pkg, "package.json"), encoding="utf-8").read()).group(1)
 

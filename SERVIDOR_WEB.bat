@@ -1,5 +1,5 @@
 @echo off
-rem Sirve el simulador web (carpeta simulador) para que los alumnos lo abran en su navegador desde otro ordenador:
+rem Sirve el simulador web (carpeta simulador_web, y los datos de datos\) para que los alumnos lo abran en su navegador desde otro ordenador:
 rem   http://IP-de-este-ordenador  (puerto 80, el de la web: no hace falta escribirlo; index.html lleva a simulador.html)
 rem El servidor solo entrega los ficheros: la fisica, el 3D y la evaluacion las hace el navegador de cada alumno, en su
 rem PC. Es aparte del servidor del aula (SERVIDOR_AULA.bat, puerto 8080), que guarda perfiles, vuelos y salas: el
@@ -19,7 +19,7 @@ if not defined PY (
 )
 rem Las zonas de detalle (no van en git): si faltan o hay una version nueva se descargan (unos 330 MB; si ya estan, sale
 rem enseguida). Sin ellas el simulador funciona igual, con menos detalle en esos sitios.
-powershell -NoProfile -ExecutionPolicy Bypass -File "simulador\descargar_zonas.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "datos\descargar_zonas.ps1"
 set "PUERTO=%~1"
 if "%PUERTO%"=="" set "PUERTO=80"
 set "DIR=:%PUERTO%"
@@ -27,7 +27,7 @@ if "%PUERTO%"=="80" set "DIR="
 title Simulador web - UxS Trainer (puerto %PUERTO%)
 echo Simulador web en http://localhost%DIR% y, desde los demas ordenadores, http://IP-de-este%DIR% con esta IP:
 ipconfig | findstr /i "IPv4"
-%PY% -m http.server %PUERTO% --bind 0.0.0.0 --directory simulador
+%PY% simulador_web\servidor_web.py %PUERTO%
 if errorlevel 1 (
   echo.
   echo No se pudo abrir el puerto %PUERTO%: suele ser que otro programa ya lo usa ^(en el 80, IIS, Skype o el servidor

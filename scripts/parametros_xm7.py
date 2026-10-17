@@ -5,7 +5,7 @@ cola con estabilizador entre las vigas y una deriva con timon al final de cada u
 despegar y aterrizar en pista. Todas las cifras son SUPUESTOS razonados con las de esa clase de aviones.
 
 Solo lo usan analisis/vlm_e1.py (con ENTRENADOR=XM7) y scripts/modelo_aero_xm7.py, que escribe
-simulador/aviones/XM7.js:  python scripts/modelo_aero_xm7.py
+datos/vehiculos/XM7.js:  python scripts/modelo_aero_xm7.py
 
 Ejes del proyecto (los de vlm_e1.py): X a lo largo de la barquilla (0 = punta del morro, positivo hacia la cola),
 Y a la derecha, Z arriba. Unidades: mm y grados.

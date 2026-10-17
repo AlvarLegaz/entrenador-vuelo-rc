@@ -3,7 +3,7 @@ abiertas (2026-10-13): cuadrado de 2 km centrado en el centro, ortofoto PNOA a 0
 real del vuelo en Cartagena; a 0,125 m no se ve mas), MDT a 5 m, edificios del Catastro por partes con sus plantas
 reales (los tejados se texturizan con la propia ortofoto y las fachadas llevan ventanas por planta en los dos
 simuladores) y arboles de la ortofoto. El punto de despegue del CIFP esta destacado en el mapa de salida
-(simulador/escenarios.js, "destacados" del vuelo libre en Cartagena).
+(datos/escenarios.js, "destacados" del vuelo libre en Cartagena).
 
     python analisis/mundo_cartagena/zona_cifp.py          (unos 5 min; la zona no va al repositorio)
     python analisis/mundo_cartagena/zona_cifp.py --solo-fachadas      (solo vuelve a marcar las fachadas)
@@ -21,7 +21,7 @@ def marcar_fachadas(dir_zona):
     """Pone "f" (color de fachada) a los edificios de la zona cuyo centro cae dentro de la parcela del CIFP."""
     import json, math
     Z = json.load(open(os.path.join(dir_zona, "zona.json")))
-    s = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "simulador", "mundos", "cartagena.js"), encoding="utf-8").read()
+    s = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "datos", "escenarios", "mundos", "cartagena.js"), encoding="utf-8").read()
     o = json.loads(s[s.index("Mundos.registrar(") + 17: s.rindex(");")])["origen"]
     M_LAT, M_LON = 110574.0, 111320.0 * math.cos(math.radians(o["lat"]))
     P = [((la - o["lat"]) * M_LAT, (lo - o["lon"]) * M_LON) for la, lo in PARCELA]       # (N, E)
@@ -40,9 +40,9 @@ def marcar_fachadas(dir_zona):
 
 if __name__ == "__main__":
     aqui = os.path.dirname(os.path.abspath(__file__))
-    mundo = os.path.join(aqui, "..", "..", "simulador", "mundos", "cartagena.js")
+    mundo = os.path.join(aqui, "..", "..", "datos", "escenarios", "mundos", "cartagena.js")
     env = dict(os.environ, ZONA_PX="2048")
-    dir_zona = os.path.join(aqui, "..", "..", "simulador", "zonas", ID)
+    dir_zona = os.path.join(aqui, "..", "..", "datos", "escenarios", "zonas", ID)
     if "--solo-fachadas" not in sys.argv:
         subprocess.run([sys.executable, os.path.join(aqui, "zona.py"), mundo, ID, "%.6f" % LAT, "%.6f" % LON, str(LADO)], cwd=aqui, env=env, check=True)
     marcar_fachadas(dir_zona)

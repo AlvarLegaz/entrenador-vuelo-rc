@@ -1,7 +1,7 @@
 class_name ContadorVueltas
 extends RefCounted
 ## VUELTAS AL CIRCUITO de la isla (Entorno.contador_vueltas). Traduccion literal de ContadorVueltas en
-## simulador/js/entorno.js (pruebas/prueba_campo.gd lo compara con el navegador).
+## simulador_web/js/entorno.js (simulador_godot/Tests/prueba_campo.gd lo compara con el navegador).
 ## Se mira el angulo del avion alrededor del centro del rectangulo: cuando cruza la direccion de un pilon, ese pilon esta
 ## pasado; por fuera si el avion esta mas lejos del centro que el pilon. Una vuelta = rodear las 4 esquinas por fuera, en
 ## el mismo sentido, hasta volver al pilon de salida. Cortar uno por dentro anula la vuelta en curso. Si el circuito tiene

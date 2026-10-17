@@ -1,7 +1,7 @@
 class_name Escenarios
 extends RefCounted
-## Entrenamientos y vuelos libres: los datos son los de simulador/escenarios.js (COMUNES con la web) y la logica es una
-## traduccion literal de la de simulador/simulador.html: nuevoEvaluador, marcar, evaluar, pasoOcho, la guia del
+## Entrenamientos y vuelos libres: los datos son los de datos/escenarios.js (COMUNES con la web) y la logica es una
+## traduccion literal de la de simulador_web/simulador.html: nuevoEvaluador, marcar, evaluar, pasoOcho, la guia del
 ## aterrizaje (GUIA_TRAMOS, guiar), evaluarFinal y los textos del panel de objetivos (pintarObjetivos, textoOrden,
 ## textoVueltas, textoZona2, textoOcho), aqui en BBCode para un RichTextLabel.
 ##
@@ -13,15 +13,21 @@ const R2D := 180.0 / PI
 static var _datos := {}
 
 ## ESCENARIOS de la web: { id: { nombre, desc, objetivos: [[id, texto]], sentido, zona, mundo, viento, guia, enVuelo,
-## dificultad, titulo_grupo } }, en el orden del fichero.
+## dificultad, titulo_grupo } }, en el orden de datos/escenarios.js: su lista ESCENARIOS_FICHEROS y despues cada fichero
+## (ESCENARIOS["<id>"] = {...}), como datos/leer_datos.py.
 static func datos() -> Dictionary:
 	if not _datos.is_empty(): return _datos
-	var t := FileAccess.get_file_as_string(DatosComunes.carpeta().path_join("escenarios.js"))
-	var re := RegEx.new(); re.compile("(?m)^window[.]ESCENARIOS = ")     # la asignacion (el comentario de arriba la nombra)
+	var C := DatosComunes.carpeta()
+	var t := FileAccess.get_file_as_string(C.path_join("escenarios.js"))
+	var re := RegEx.new(); re.compile(r"ESCENARIOS_FICHEROS = (\[[^\]]*\])")
 	var m := re.search(t)
-	if m == null: push_error("Sin escenarios.js"); return {}
-	var resto := t.substr(m.get_end()); var d = JSON.parse_string(resto.substr(0, resto.rfind("}") + 1))
-	_datos = d if d is Dictionary else {}
+	if m == null: push_error("Sin datos/escenarios.js"); return {}
+	var re_id := RegEx.new(); re_id.compile(r'(?m)^ESCENARIOS\["([^"]+)"\] = ')
+	for f in JSON.parse_string(m.get_string(1)):
+		var s := FileAccess.get_file_as_string(C.path_join(String(f))); var mi := re_id.search(s)
+		if mi == null: push_error("Escenario sin datos: " + String(f)); continue
+		var resto := s.substr(mi.get_end()); var d = JSON.parse_string(resto.substr(0, resto.rfind("}") + 1))
+		if d is Dictionary: _datos[mi.get_string(1)] = d
 	return _datos
 
 ## Tipo de vehiculo de un avion: "avion", "dron" (el dron comercial) o "fpv" (escenarios.js: "vehiculos"; vehiculoDe de la web).
@@ -160,7 +166,7 @@ class Evaluador extends RefCounted:
 			if fallo_hecho: marcar("fallo", "mal")
 		if id == "emergencia" and t_fallo >= 0 and not fallo_hecho and t >= t_fallo:
 			fallo_hecho = true; av["motorRoto"] = true; av["gases"] = 0.0; marcar("fallo", "curso")
-			p.poner_aviso("¡FALLO DE MOTOR!", 2.5)
+			p.app_pantallas.poner_aviso("¡FALLO DE MOTOR!", 2.5)
 		if not guia.is_empty(): guiar(av)
 
 	## Pasos del ocho de la mision de orientacion con la posicion; devuelve los ochos completos (pasoOcho).

@@ -1,7 +1,7 @@
 class_name PistaFpv
 extends RefCounted
 ## PISTA FPV: los entrenamientos del dron FPV (escenarios.js, "pista_fpv"), en la zona despejada de detras del piloto.
-## Traduccion literal de simulador/js/pista_fpv.js (pruebas/prueba_pista_fpv.gd la compara con la web): evalua los
+## Traduccion literal de simulador_web/js/pista_fpv.js (simulador_godot/Tests/prueba_pista_fpv.gd la compara con la web): evalua los
 ## objetivos de cada mision (estacionario en el cilindro, la caja de conos, slalom y ocho, el circuito de puertas, la recta
 ## en ACRO, power loop, split-S y picado; y en todas: modo, bateria, plataforma y desarmar) y detecta los choques con los
 ## postes, las puertas y la torre. Lo dibuja campo_3d.gd (poner_pista_fpv).

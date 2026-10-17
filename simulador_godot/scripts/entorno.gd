@@ -3,8 +3,8 @@ extends RefCounted
 ## El entorno fisico: viento con rachas, turbulencia de alabeo, viento junto al suelo, contacto con el suelo y, segun el
 ## mundo, la isla del campo de vuelo del club (mundo vacio: la pista, los 4 pilones del circuito, la zona 2 con la pista 2,
 ## la diana y la puerta, y los limites del campo) o un mundo real (terreno del mundo y, donde la hay, el de la zona de
-## detalle a 5 m, y el agua). Traduccion literal de Entorno (simulador/js/entorno.js): pruebas/prueba_fisica.gd compara
-## los mundos reales y pruebas/prueba_campo.gd la isla (con ContadorVueltas y PasadaBaja) con el navegador.
+## detalle a 5 m, y el agua). Traduccion literal de Entorno (simulador_web/js/entorno.js): simulador_godot/Tests/prueba_fisica.gd compara
+## los mundos reales y simulador_godot/Tests/prueba_campo.gd la isla (con ContadorVueltas y PasadaBaja) con el navegador.
 ## Coordenadas NED en metros con origen en el piloto, que mira al norte. La pista va hacia el norte.
 
 const D2R := PI / 180.0

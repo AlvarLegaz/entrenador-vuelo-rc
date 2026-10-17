@@ -71,9 +71,9 @@ def limpiar(zdir):
 
 if __name__ == "__main__":
     aqui = os.path.dirname(os.path.abspath(__file__))
-    zdir = os.path.join(aqui, "..", "..", "simulador", "zonas", ID)
+    zdir = os.path.join(aqui, "..", "..", "datos", "escenarios", "zonas", ID)
     if len(sys.argv) < 2 or sys.argv[1] != "limpiar":
-        mundo = os.path.join(aqui, "..", "..", "simulador", "mundos", "cartagena.js")
+        mundo = os.path.join(aqui, "..", "..", "datos", "escenarios", "mundos", "cartagena.js")
         if os.path.exists(os.path.join(zdir, "arboles_detectados.bin")): os.remove(os.path.join(zdir, "arboles_detectados.bin"))
         subprocess.run([sys.executable, os.path.join(aqui, "zona.py"), mundo, ID, "%.6f" % LAT, "%.6f" % LON, str(LADO)], cwd=aqui, check=True,
                        env=dict(os.environ, ZONA_PX="2048"))

@@ -1,4 +1,4 @@
-"""Exporta el modelo de vuelo del Poli-1 al simulador (simulador/aviones/G1.js). Es un avion de foam ya construido,
+"""Exporta el modelo de vuelo del Poli-1 al simulador (datos/vehiculos/G1.js). Es un avion de foam ya construido,
 sin piezas impresas: todo sale de scripts/parametros_g1.py (medidas del avion, la foto y estimaciones marcadas).
 
     python scripts/modelo_aero_g1.py
@@ -9,8 +9,8 @@ Lo que hace, como modelo_aero_e1.py para los entrenadores impresos:
     derivadas del VLM (analisis/vlm_e1.py con ENTRENADOR=G1), con alerones y timon a la vez
   - resistencia parasita estimada (foam con cinta, tren fijo con ruedas) y helice 8x4 con el A2208/14T 1400 KV en 3S
   - una malla ligera para el visor (cajas y prismas: no hay STL) con la franja negra, las ruedas y el motor
-y escribe simulador/aviones/G1.js con la clase ModeloG1 (scripts/clase_g1.js: alerones en la palanca derecha y timon en
-la izquierda, o A / D) y lo anade a simulador/aviones/indice.js.
+y escribe datos/vehiculos/G1.js con la clase ModeloG1 (scripts/clase_g1.js: alerones en la palanca derecha y timon en
+la izquierda, o A / D) y lo anade a datos/vehiculos/indice.js.
 
 Ejes cuerpo estandar (x adelante, y derecha, z abajo); coeficientes por radian. La malla va en metros, en ejes cuerpo
 con origen en el CG.
@@ -25,7 +25,7 @@ from avion import ID, P   # noqa: E402
 assert ID == "G1"
 import vlm_e1 as V        # noqa: E402
 
-DIR_SIM = os.path.join(AQUI, "..", "simulador")
+DIR_DATOS = os.path.join(AQUI, "..", "datos")                 # datos comunes de los simuladores
 V_CRUCERO = 12.0          # m/s: ~1,3 veces la perdida
 
 # =====================================================================
@@ -265,7 +265,7 @@ modelo = dict(
     colores=dict(fuselaje=0xf2e21b, ala=0xf2e21b, estab=0xf2e21b, moviles=0x1c1c1c),
     origen="Avión real (no impreso): medidas del usuario y estimaciones de scripts/parametros_g1.py",
 )
-DIR_AV = os.path.join(DIR_SIM, "aviones"); NL = chr(10)
+DIR_AV = os.path.join(DIR_DATOS, "vehiculos"); NL = chr(10)
 clase = open(os.path.join(AQUI, "clase_g1.js"), encoding="utf-8").read().rstrip()
 clase = clase.replace("class ModeloG1 extends", "window.ModeloG1 = window.ModeloG1 || class ModeloG1 extends", 1)
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:

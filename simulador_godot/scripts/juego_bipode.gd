@@ -1,5 +1,5 @@
 class_name JuegoBipode
-## Juego del bipode: drones diana y disparos. Traduccion LITERAL de la clase JuegoBipode de simulador/js/bipode.js (misma
+## Juego del bipode: drones diana y disparos. Traduccion LITERAL de la clase JuegoBipode de simulador_web/js/bipode.js (misma
 ## semilla, mismo azar Park-Miller): drones que patrullan alrededor del bipode a 15-55 m sobre el suelo, balas con su caida
 ## (una de cada tres, trazadora), impacto con un dron (cae al primero) o con el suelo, y los drones derribados caen dando
 ## vueltas y explotan al llegar al suelo; a los 6 s sale otro lejos. Multijugador: blancos (los aviones y drones de los

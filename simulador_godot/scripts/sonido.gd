@@ -1,6 +1,6 @@
 class_name Sonido
 extends Node
-## Sonido procedural del vuelo: el mismo que el objeto Sonido de simulador/simulador.html (Web Audio), con los mismos
+## Sonido procedural del vuelo: el mismo que el objeto Sonido de simulador_web/simulador.html (Web Audio), con los mismos
 ## parametros. Motor = diente de sierra a rpm/60 Hz (ganancia 0,7) + cuadrada al doble (0,22, paso de pala de 2 palas) por un
 ## paso bajo de 500 + 2600*gas Hz, con ganancia (0,06 + 0,3*gas^1,3)*lejos si rpm > 0; viento = ruido blanco en bucle por un
 ## paso banda de 250 + 30*V Hz (Q 0,5) con ganancia min(0,45; 0,0011*V^2) (por 0,35*lejos en la camara del piloto); aviso de

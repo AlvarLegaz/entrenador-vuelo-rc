@@ -1,6 +1,6 @@
 class_name EfectosBipode
 extends Node3D
-## Efectos del juego del bipode (ModeloBipode.efectos3D de simulador/js/bipode.js): los drones diana (cuadricoptero de
+## Efectos del juego del bipode (ModeloBipode.efectos3D de simulador_web/js/bipode.js): los drones diana (cuadricoptero de
 ## 60 cm con sus discos de helice y luces), las trazadoras (estelas de 45 m que engordan con la distancia para verse
 ## siempre) y las particulas (polvo al dar en el suelo, chispas al dar en un dron, humo y fuego de los derribados).
 ## pintar(juego, dt, camara) cada cuadro, con el JuegoBipode (posiciones en NED del mundo).

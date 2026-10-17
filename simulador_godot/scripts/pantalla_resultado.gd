@@ -1,6 +1,6 @@
 class_name PantallaResultado
 extends RefCounted
-## Resultado (#pResultado) y progreso (#pProgreso) de simulador/simulador.html.
+## Resultado (#pResultado) y progreso (#pProgreso) de simulador_web/simulador.html.
 
 static func fmt_min(s: float) -> String: return "%d:%02d" % [int(s / 60), int(round(fmod(s, 60)))]
 
@@ -160,12 +160,12 @@ class Resultado extends Control:
 		objetivos = VBoxContainer.new(); (c2[1] as VBoxContainer).add_child(objetivos)
 		guardado = Tema.sub("", 13); (c2[1] as VBoxContainer).add_child(guardado)
 		var pie: HBoxContainer = d["pie"]
-		pie.add_child(Tema.boton("Volar otra vez", "BotonPrimGrande", func(): p.empezar()))
-		b_rep = Tema.boton("Ver la repetición", "", func(): p.ver_repeticion()); pie.add_child(b_rep)
-		b_otro = Tema.boton("Otro entrenamiento", "", func(): p.ir_entrenamientos() if not Escenarios.libre(p.sesion["escenario"]) else p.ir_volar()); pie.add_child(b_otro)
-		b_prog = Tema.boton("Mi progreso", "", func(): p.ir_progreso("pResultado")); pie.add_child(b_prog)
-		b_cn = Tema.boton("Caja negra (CSV)", "", func(): p.guardar_csv_dialogo()); pie.add_child(b_cn)
-		pie.add_child(Tema.espacio()); pie.add_child(Tema.boton("Menú principal", "", func(): p.ir_inicio()))
+		pie.add_child(Tema.boton("Volar otra vez", "BotonPrimGrande", func(): p.app_vuelo.empezar()))
+		b_rep = Tema.boton("Ver la repetición", "", func(): p.app_repeticion.ver_repeticion()); pie.add_child(b_rep)
+		b_otro = Tema.boton("Otro entrenamiento", "", func(): p.app_pantallas.ir_entrenamientos() if not Escenarios.libre(p.sesion["escenario"]) else p.app_pantallas.ir_volar()); pie.add_child(b_otro)
+		b_prog = Tema.boton("Mi progreso", "", func(): p.app_pantallas.ir_progreso("pResultado")); pie.add_child(b_prog)
+		b_cn = Tema.boton("Caja negra (CSV)", "", func(): p.app_resultado.guardar_csv_dialogo()); pie.add_child(b_cn)
+		pie.add_child(Tema.espacio()); pie.add_child(Tema.boton("Menú principal", "", func(): p.app_pantallas.ir_inicio()))
 	func pintar(v: Dictionary, r: Dictionary) -> void:
 		var E: Dictionary = r["E"]; var libre: bool = r["libre"]
 		d["titulo"].text = E["nombre"]
@@ -178,7 +178,7 @@ class Resultado extends Control:
 		elif final.begins_with("roto"): fin = "Accidente: " + final.substr(6, final.length() - 7)
 		elif final == "fuera de límites": fin = "Fuera de límites: a más de %d m el avión ya no se ve" % int(p.ent.limites.get("distancia_m", 650))
 		else: fin = "Vuelo terminado sin aterrizar"
-		var vueltas: String = "" if E.has("mundo") else (" · " + p.texto_vueltas_plano())
+		var vueltas: String = "" if E.has("mundo") else (" · " + p.app_resultado.texto_vueltas_plano())
 		t_final.text = "%s · tiempo de vuelo %.1f min%s" % [fin, v["tVuelo"] / 60.0, vueltas]; t_final.visible = true
 		for x in objetivos.get_children(): x.queue_free()
 		if (r["objs"] as Array).is_empty(): objetivos.add_child(Tema.etiqueta("Sin objetivos: el tiempo cuenta para las horas de entrenamiento.", 14, Tema.TEXTO, false, true))
@@ -209,8 +209,8 @@ class Progreso extends Control:
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("", "Progreso del entrenamiento"); add_child(d["raiz"])
-		b_cerrar = Tema.boton("Cerrar sesión", "", func(): p.cerrar_sesion()); d["botones"].add_child(b_cerrar)
-		d["botones"].add_child(Tema.boton("← Volver", "", func(): p.mostrar("pResultado") if desde == "pResultado" else p.ir_inicio() if desde == "pInicio" else p.ir_hangar()))
+		b_cerrar = Tema.boton("Cerrar sesión", "", func(): p.app_pantallas.cerrar_sesion()); d["botones"].add_child(b_cerrar)
+		d["botones"].add_child(Tema.boton("← Volver", "", func(): p.mostrar("pResultado") if desde == "pResultado" else p.app_pantallas.ir_inicio() if desde == "pInicio" else p.app_pantallas.ir_hangar()))
 		cont = VBoxContainer.new(); cont.add_theme_constant_override("separation", 12); d["cuerpo"].add_child(Tema.desplazable(cont))
 	func cargar() -> void:
 		d["titulo"].text = String(alumno["nombre"]); b_cerrar.visible = desde == "pInicio"

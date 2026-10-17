@@ -1,7 +1,7 @@
 class_name ModeloBipode3D
 extends Node3D
-## El bipode en 3D: traduccion de ModeloBipode.construir3D (simulador/js/bipode.js). Las mallas vienen hechas en los
-## datos (simulador/aviones/BIPODE.js, generadas por analisis/bipode/generar_bipode.py): aqui solo se decodifican
+## El bipode en 3D: traduccion de ModeloBipode.construir3D (simulador_web/js/bipode.js). Las mallas vienen hechas en los
+## datos (datos/vehiculos/BIPODE.js, generadas por analisis/bipode/generar_bipode.py): aqui solo se decodifican
 ## (18 bytes por vertice: posicion int16 x3 en 0,1 mm NED desde el pivote de la pieza, normal int8 x3, material,
 ## curvatura, oclusion, altura, relleno y uv uint16 x2) y se montan las piezas con sus pivotes. El sombreado es el comun
 ## (DATOS.modelo3d.sombreador, el mismo texto que usa el navegador) con la tabla de materiales; recibe la posicion y la
@@ -79,7 +79,7 @@ void fragment() {
 }
 """
 	_material = ShaderMaterial.new(); _material.shader = sh
-	var f := DatosComunes.carpeta().path_join("aviones").path_join(String(K["calcas"]))
+	var f := DatosComunes.carpeta().path_join("vehiculos").path_join(String(K["calcas"]))
 	var img := Image.load_from_file(f) if FileAccess.file_exists(f) else null
 	if img != null:
 		img.generate_mipmaps(); _material.set_shader_parameter("calcas", ImageTexture.create_from_image(img))

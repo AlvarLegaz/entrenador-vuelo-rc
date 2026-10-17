@@ -1,4 +1,4 @@
-"""Imagenes de briefing de los trabajos del modo Operaciones (simulador/operaciones/<id>.jpg): la ortofoto de la zona de
+"""Imagenes de briefing de los trabajos del modo Operaciones (datos/operaciones/<id>.jpg): la ortofoto de la zona de
 detalle con la zona de trabajo (discontinua amarilla) y el punto de despegue (H) marcados, el norte, la escala y la
 atribucion del PNOA. Sin las soluciones: ni los puntos que fotografiar, ni las manchas, ni el senderista, ni los modulos
 danados. Las leen las dos versiones del simulador (la orden de trabajo de la pantalla de Operaciones).
@@ -6,16 +6,16 @@ danados. Las leen las dos versiones del simulador (la orden de trabajo de la pan
     python analisis/mundo_cartagena/briefing_operaciones.py [id ...]     (necesita las zonas de detalle en simulador/zonas)
 
 Un trabajo mas grande que las zonas de detalle (la patrulla del Mar Menor) sale sobre la ortofoto de toda la region
-(simulador/mundos/cartagena_orto.jpg, 12 m/px).
+(datos/escenarios/mundos/cartagena_orto.jpg, 12 m/px).
 """
 import json, math, os, re, sys
 from PIL import Image, ImageDraw, ImageFont
 
 RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-SIM = os.path.join(RAIZ, "simulador")
-t = open(os.path.join(SIM, "escenarios.js"), encoding="utf-8").read(); m = re.search(r"(?m)^window[.]ESCENARIOS = ", t)
-ESC = json.loads(t[m.end():t.rindex("}") + 1])
-ZONAS = json.load(open(os.path.join(SIM, "zonas", "indice.json"), encoding="utf-8"))
+SIM = os.path.join(RAIZ, "datos")                       # datos comunes de los simuladores
+sys.path.insert(0, SIM); from leer_datos import escenarios
+ESC = escenarios(SIM)
+ZONAS = json.load(open(os.path.join(SIM, "escenarios", "zonas", "indice.json"), encoding="utf-8"))
 W, H = 1200, 800
 try: F = lambda n: ImageFont.truetype("arialbd.ttf", n)
 except OSError: F = lambda n: ImageFont.load_default()
@@ -33,8 +33,8 @@ def zona_que_cubre(n0, n1, e0, e1):
 
 def recorte_region(n0, n1, e0, e1):
     """Lo mismo sobre la ortofoto de la region (fila 0 = borde norte de la malla del mundo)."""
-    s = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s[s.index("Mundos.registrar(") + 17: s.rindex(");")])["terreno"]
-    Image.MAX_IMAGE_PIXELS = None; big = Image.open(os.path.join(SIM, "mundos", "cartagena_orto.jpg")).convert("RGB")
+    s = open(os.path.join(SIM, "escenarios", "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s[s.index("Mundos.registrar(") + 17: s.rindex(");")])["terreno"]
+    Image.MAX_IMAGE_PIXELS = None; big = Image.open(os.path.join(SIM, "escenarios", "mundos", "cartagena_orto.jpg")).convert("RGB")
     k = big.size[0] / ((T["nE"] - 1) * T["paso"]); Nn = T["N0"] + (T["nN"] - 1) * T["paso"]
     return big.crop((int((e0 - T["E0"]) * k), int((Nn - n1) * k), int((e1 - T["E0"]) * k), int((Nn - n0) * k))), k
 
@@ -42,12 +42,12 @@ def recorte(n0, n1, e0, e1):
     """Ortofoto de la zona entre n0..n1, e0..e1 (m), con la misma escala en los dos ejes; devuelve (imagen, m->px)."""
     z = zona_que_cubre(n0, n1, e0, e1)
     if z is None and (n1 - n0) > 3000: return recorte_region(n0, n1, e0, e1)
-    z = z or zona_de((n0 + n1) / 2, (e0 + e1) / 2); meta = json.load(open(os.path.join(SIM, "zonas", z["id"], "zona.json"), encoding="utf-8"))
-    O = meta["orto"]; nt, tm = O["teselas"], O["tesela_m"]; px = Image.open(os.path.join(SIM, "zonas", z["id"], O["archivo"].format(i=0, j=0))).size[0]
+    z = z or zona_de((n0 + n1) / 2, (e0 + e1) / 2); meta = json.load(open(os.path.join(SIM, "escenarios", "zonas", z["id"], "zona.json"), encoding="utf-8"))
+    O = meta["orto"]; nt, tm = O["teselas"], O["tesela_m"]; px = Image.open(os.path.join(SIM, "escenarios", "zonas", z["id"], O["archivo"].format(i=0, j=0))).size[0]
     k = px / tm; big = Image.new("RGB", (nt * px, nt * px))
     for i in range(nt):
         for j in range(nt):
-            big.paste(Image.open(os.path.join(SIM, "zonas", z["id"], O["archivo"].format(i=i, j=j))).convert("RGB"), (j * px, (nt - 1 - i) * px))
+            big.paste(Image.open(os.path.join(SIM, "escenarios", "zonas", z["id"], O["archivo"].format(i=i, j=j))).convert("RGB"), (j * px, (nt - 1 - i) * px))
     N0, E0, L = meta["N0"], meta["E0"], nt * tm
     caja = (int((e0 - E0) * k), int((N0 + L - n1) * k), int((e1 - E0) * k), int((N0 + L - n0) * k))
     return big.crop(caja), k
@@ -95,7 +95,7 @@ def briefing(id_):
     cn, ce = (min(ns) + max(ns)) / 2, (min(es) + max(es)) / 2
     lado_e = max(max(es) - min(es), (max(ns) - min(ns)) * W / H) * 1.3 + 40; lado_n = lado_e * H / W
     if "candidatos_vertido" in O:                                 # sobre la ortofoto de la region: sin salirse de su borde norte
-        s_ = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s_[s_.index("Mundos.registrar(") + 17: s_.rindex(");")])["terreno"]
+        s_ = open(os.path.join(SIM, "escenarios", "mundos", "cartagena.js"), encoding="utf-8").read(); T = json.loads(s_[s_.index("Mundos.registrar(") + 17: s_.rindex(");")])["terreno"]
         cn = min(cn, T["N0"] + (T["nN"] - 1) * T["paso"] - lado_n / 2 - 10)
     img, k0 = recorte(cn - lado_n / 2, cn + lado_n / 2, ce - lado_e / 2, ce + lado_e / 2)
     img = img.resize((W, H), Image.LANCZOS); k = W / lado_e

@@ -1,7 +1,7 @@
 class_name ModeloFPV3D
 extends RefCounted
 ## Modelo 3D del dron FPV: un 5" tipo iFlight Nazgul / XING hecho con geometria procedural (sin ficheros de malla), el
-## MISMO que construye ModeloFPV.construir3D en el navegador (simulador/aviones/FPV.js) con los mismos datos
+## MISMO que construye ModeloFPV.construir3D en el navegador (datos/vehiculos/FPV.js) con los mismos datos
 ## (datos.modelo3d) y el mismo algoritmo, paso a paso:
 ##  - piezas: placas extruidas con chaflan (brazos de carbono de 5,5 mm, placas inferior, intermedia y superior con
 ##    agujeros y ranuras, placas de la electronica, soportes de TPU de la camara), piezas de revolucion (motores 2306:

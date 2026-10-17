@@ -1,6 +1,6 @@
 class_name PantallaAjustes
 extends Control
-## Ajustes (#pAjustes de simulador/simulador.html): menu a la izquierda (Controles, Graficos, Sonido, Dificultad,
+## Ajustes (#pAjustes de simulador_web/simulador.html): menu a la izquierda (Controles, Graficos, Sonido, Dificultad,
 ## Registro y aula) y el panel elegido a la derecha. Lo unico que no esta en la web es la direccion del servidor del
 ## aula (en la web es la de la propia pagina).
 
@@ -24,7 +24,7 @@ const ZOOMS := [0.0, 0.03, 0.05, 0.1, 0.15, 0.22]
 func _init(p_: Node) -> void:
 	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 	d = Tema.pantalla("Ajustes", "Se guardan en este ordenador."); add_child(d["raiz"])
-	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 	var g := HBoxContainer.new(); g.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(g)
 	menu = VBoxContainer.new(); menu.custom_minimum_size.x = 220; menu.add_theme_constant_override("separation", 2); g.add_child(menu)
 	var der := VBoxContainer.new(); der.size_flags_horizontal = Control.SIZE_EXPAND_FILL; g.add_child(Tema.desplazable(der))
@@ -136,44 +136,44 @@ func _graficos(c: VBoxContainer) -> void:
 	c.add_child(Tema.h2("Calidad gráfica"))
 	o_calidad = Tema.desplegable(["Automática: alta, y baja sola si no llega a 35 fps", "Alta: sombras, agua con reflejos, vegetación lejana", "Media: sin vegetación lejana ni reflejos", "Baja: tres cuartos de resolución, sin matas ni nubes",
 								  "Rendimiento máximo: portátiles y tabletas sencillos (media resolución, sin sombras, materiales simples)"])
-	o_calidad.item_selected.connect(func(i): p.aj["calidad_modo"] = ["auto", "2", "1", "0", "min"][i]; p.guardar_ajustes(); refrescar())
+	o_calidad.item_selected.connect(func(i): p.aj["calidad_modo"] = ["auto", "2", "1", "0", "min"][i]; p.app_avion_ajustes.guardar_ajustes(); refrescar())
 	c.add_child(Tema.fila("Calidad", o_calidad))
 	t_calidad = Tema.sub("", 13); c.add_child(t_calidad)
 	c.add_child(Tema.margen(Tema.h2("Cámara del piloto"), 0, 18, 0, 0))
 	o_zoom = Tema.desplegable(["Sin zoom: como lo ve el ojo (el avión se hace pequeño al alejarse)", "Por defecto: la envergadura ocupa un 3 % de la pantalla", "Poco: un 5 % de la pantalla", "Medio: un 10 % de la pantalla",
 							   "Mucho: un 15 % de la pantalla", "Máximo: un 22 % de la pantalla", "Ajustado con la rueda del ratón"])
 	o_zoom.set_item_disabled(6, true)
-	o_zoom.item_selected.connect(func(i): if i < 6: p.poner_zoom_piloto(ZOOMS[i]))
+	o_zoom.item_selected.connect(func(i): if i < 6: p.app_avion_ajustes.poner_zoom_piloto(ZOOMS[i]))
 	c.add_child(Tema.fila("Zoom automático", o_zoom))
 	c.add_child(Tema.sub("Con zoom, el campo de visión se cierra al alejarse el avión para que se vea siempre del mismo tamaño (hasta un teleobjetivo de 1,5°). En vuelo, con la cámara del piloto, la rueda del ratón lo ajusta.", 13))
 
 func _sonido(c: VBoxContainer) -> void:
 	c.add_child(Tema.h2("Sonido"))
-	c_sonido = Tema.casilla("motor, viento y aviso de pérdida", true); c_sonido.toggled.connect(func(x): p.sonido_on(x))
+	c_sonido = Tema.casilla("motor, viento y aviso de pérdida", true); c_sonido.toggled.connect(func(x): p.app_avion_ajustes.sonido_on(x))
 	c.add_child(Tema.fila("Sonido", c_sonido))
 	s_vol = Tema.deslizador(0, 100, 5, 60); s_vol.size_flags_horizontal = Control.SIZE_FILL; s_vol.custom_minimum_size.x = 320
 	t_vol = Tema.etiqueta("", 14, Tema.TEXTO, true)
 	var f := HBoxContainer.new(); f.add_theme_constant_override("separation", 12); f.add_child(s_vol); f.add_child(t_vol)
-	s_vol.value_changed.connect(func(x): p.sonido_volumen(x / 100.0); t_vol.text = "%d %%" % int(x))
+	s_vol.value_changed.connect(func(x): p.app_avion_ajustes.sonido_volumen(x / 100.0); t_vol.text = "%d %%" % int(x))
 	c.add_child(Tema.fila("Volumen", f))
 	c.add_child(Tema.sub("En la cámara del piloto el motor suena más lejano cuanto más se aleja el avión, como en el campo.", 13))
 
 func _dificultad(c: VBoxContainer) -> void:
 	c.add_child(Tema.h2("Física"))
 	o_dif = Tema.desplegable(["Real: como el avión de verdad (la más difícil)", "Fácil: la física sencilla"])
-	o_dif.item_selected.connect(func(i): p.sesion["dificultad"] = "facil" if i == 1 else "real"; p.guardar_sesion(); refrescar())
+	o_dif.item_selected.connect(func(i): p.sesion["dificultad"] = "facil" if i == 1 else "real"; p.app_avion_ajustes.guardar_sesion(); refrescar())
 	c.add_child(Tema.fila("Dificultad", o_dif))
 	t_dif = Tema.sub("", 13); c.add_child(t_dif)
 
 func _datos(c: VBoxContainer) -> void:
 	c.add_child(Tema.h2("Caja negra"))
 	c_cn = Tema.casilla("un CSV a 20 Hz de cada vuelo (también se puede guardar desde el resultado)", false)
-	c_cn.toggled.connect(func(x): p.aj["cn_auto"] = x; p.guardar_ajustes())
+	c_cn.toggled.connect(func(x): p.aj["cn_auto"] = x; p.app_avion_ajustes.guardar_ajustes())
 	c.add_child(Tema.fila("Descarga automática", c_cn))
 	c.add_child(Tema.margen(Tema.h2("Aula y progreso"), 0, 18, 0, 0))
 	t_aula = Tema.sub("", 13); c.add_child(t_aula)
 	var fb := HBoxContainer.new(); fb.add_theme_constant_override("separation", 12)
-	fb.add_child(Tema.boton("Cambiar de usuario o de servidor…", "", func(): p.ir_acceso()))
+	fb.add_child(Tema.boton("Cambiar de usuario o de servidor…", "", func(): p.app_pantallas.ir_acceso()))
 	b_profesor = Tema.boton("Panel del profesor", "", func(): if p.aula.url != "": OS.shell_open(p.aula.url.trim_suffix("/") + "/profesor.html"))
 	fb.add_child(b_profesor); c.add_child(fb)
 
@@ -189,7 +189,7 @@ func refrescar() -> void:
 		mon[k]["inv"].button_pressed = (int(M.ejes[k]["s"]) != int(base[1])) if base != null else int(M.ejes[k]["s"]) < 0
 	var modo: String = p.aj.get("calidad_modo", "auto")
 	o_calidad.selected = ["auto", "2", "1", "0", "min"].find(modo)
-	t_calidad.text = "Ahora: %s%s. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel." % ["rendimiento máximo" if p.minimo() else ["baja", "media", "alta"][p.calidad_actual()], (" (automática: tableta o móvil)" if p.minimo() else " (automática)") if modo == "auto" else ""]
+	t_calidad.text = "Ahora: %s%s. La alta necesita una tarjeta gráfica decente; si el vuelo va a tirones, baja un nivel." % ["rendimiento máximo" if p.app_avion_ajustes.minimo() else ["baja", "media", "alta"][p.app_avion_ajustes.calidad_actual()], (" (automática: tableta o móvil)" if p.app_avion_ajustes.minimo() else " (automática)") if modo == "auto" else ""]
 	var z: float = p.aj.get("zoom_piloto", 0.03); var iz := -1
 	for i in ZOOMS.size():
 		if absf(ZOOMS[i] - z) < 0.004: iz = i

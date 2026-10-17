@@ -1,7 +1,7 @@
 class_name ModeloCuadricoptero
 extends RefCounted
 ## Mini Dron HQ (cuadricoptero de 249 g) con su controlador de vuelo: traduccion LITERAL de la clase ModeloCuadricoptero de
-## simulador/aviones/DJI_MINI.js (mismos datos, mismas formulas, mismo orden). pruebas/prueba_cuadricoptero.gd la compara
+## datos/vehiculos/DJI_MINI.js (mismos datos, mismas formulas, mismo orden). simulador_godot/Tests/prueba_cuadricoptero.gd la compara
 ## con trazas de la del navegador. Si se cambia algo aqui, hay que cambiarlo igual alli (y al reves).
 ## El controlador es como el del dron comercial (modo estabilizado con retencion de posicion y altura, como con GPS): la palanca
 ## derecha pide velocidad horizontal (pitch: + = palanca hacia ti = atras; yaw: + = derecha), la izquierda velocidad

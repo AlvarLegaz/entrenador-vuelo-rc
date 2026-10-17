@@ -1,4 +1,4 @@
-// Tandem T1: fisica con ELEVONES. scripts/modelo_aero_t1.py copia esta clase al principio de simulador/aviones/T1.js
+// Tandem T1: fisica con ELEVONES. scripts/modelo_aero_t1.py copia esta clase al principio de datos/vehiculos/T1.js
 // y registra los datos con ella.
 // Las dos superficies del ala trasera hacen de profundidad y de alerones a la vez: cada elevon recibe la suma de la
 // consigna de profundidad (de, + = borde de fuga abajo) y la de alabeo (da, + = elevon derecho arriba = alabeo a la

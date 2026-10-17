@@ -1,6 +1,6 @@
 class_name Instrumento
 extends Control
-## Un instrumento del panel de vuelo, dibujado como el SVG o el lienzo de simulador/simulador.html:
+## Un instrumento del panel de vuelo, dibujado como el SVG o el lienzo de simulador_web/simulador.html:
 ##  "vario"  variometro (viewBox 150): -6 a +6 m/s, aguja y cifra
 ##  "anemo"  anemometro (viewBox 150) con las bandas del avion (construirAnemometro): rojo < 1,1 Vs, ambar < 1,3 Vs,
 ##           verde < 2 Vs, blanco por encima
@@ -38,7 +38,7 @@ var _vm := {}                    # GPS del mundo: centro y escala del ultimo dib
 func _gui_input(ev: InputEvent) -> void:
 	if tipo == "gps" and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and p.piloto != null and not _vm.is_empty():
 		var W: float = _vm["W"]; var x: float = ev.position.x * W / size.x; var y: float = ev.position.y * W / size.y   # UAV: clic en el mapa = ir a ese punto
-		p.uav_poner("PUNTO", [_vm["N"] - (y - W / 2) / _vm["k"], _vm["E"] + (x - W / 2) / _vm["k"]]); accept_event(); return
+		p.app_mandos.uav_poner("PUNTO", [_vm["N"] - (y - W / 2) / _vm["k"], _vm["E"] + (x - W / 2) / _vm["k"]]); accept_event(); return
 	if tipo == "gps" and ev is InputEventMouseButton and ev.pressed:
 		if ev.button_index == MOUSE_BUTTON_WHEEL_UP: gps_zoom = maxf(0.12, gps_zoom * 0.8); accept_event()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN: gps_zoom = minf(8.0, gps_zoom * 1.25); accept_event()
@@ -84,7 +84,7 @@ func _vario() -> void:
 		var col := Color("#8be08f") if vz > 0 else (Color("#ff8a80") if vz < 0 else Color.WHITE)
 		draw_line(_pt(vang.call(vz), 62, k), _pt(vang.call(vz), 50 if mayor else 56, k), col, (2 if mayor else 1) * k, true)
 		if mayor: _txt(_pt(vang.call(vz), 40, k) + Vector2(0, 4 * k), ("+" if vz > 0 else "") + str(vz), 11 * k, TXT)
-	var vs: float = p.lectura_vs()
+	var vs: float = p.app_hud.lectura_vs()
 	draw_line(Vector2(75, 75) * k, _pt(vang.call(vs), 55, k), Color.WHITE, 3 * k, true); draw_circle(Vector2(75, 75) * k, 5 * k, Color.WHITE)
 	_txt(Vector2(75, 118) * k, ("+" if vs >= 0 else "") + "%.1f" % vs, 17 * k, TXT, true)
 	_txt(Vector2(75, 134) * k, "m/s · asc. / desc.", 9 * k, Color("#8b949e"))

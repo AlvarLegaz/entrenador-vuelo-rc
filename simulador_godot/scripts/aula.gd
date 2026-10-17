@@ -1,6 +1,6 @@
 class_name Aula
 extends Node
-## Aula y registro de vuelos, como en simulador/simulador.html (pantalla de acceso, api, cola de vuelos):
+## Aula y registro de vuelos, como en simulador_web/simulador.html (pantalla de acceso, api, cola de vuelos):
 ##  - al abrir el simulador, la pantalla de acceso: direccion del servidor del aula (aula/servidor_aula.py, el PC del
 ##    profesor), usuario y contrasena. Dentro, los vuelos y el progreso se guardan en el servidor (las mismas rutas
 ##    /api/... por HTTP); el alumno manda su pase con cada vuelo.
@@ -41,10 +41,11 @@ static func normalizar_url(u: String) -> String:
 	if u != "" and not (u.begins_with("http://") or u.begins_with("https://")): u = "http://" + u
 	return u.replace("://localhost", "://127.0.0.1")
 
-## Entra en el aula con usuario y contrasena (crear: alta del usuario si no existe). { ok, status, alumno, error }.
-func entrar(direccion: String, usu: String, clave: String, crear := false) -> Dictionary:
+## Entra en el aula con usuario y contrasena. { ok, status, alumno, error } (404: no existe; 403: contrasena incorrecta o
+## cuenta pendiente de que la apruebe el profesor).
+func entrar(direccion: String, usu: String, clave: String) -> Dictionary:
 	url = normalizar_url(direccion); usuario = " ".join(usu.split(" ", false)); _guardar_cfg()
-	var r := await api("POST", "entrar", { "usuario": usuario, "clave": clave, "crear": crear }, "-")
+	var r := await api("POST", "entrar", { "usuario": usuario, "clave": clave }, "-")
 	if not r["ok"]:
 		if r["status"] == 0: r["error"] = "No se puede conectar con el aula en %s. Comprueba la dirección y que el profesor tenga abierto SERVIDOR_AULA.bat." % url
 		return { "ok": false, "status": r["status"], "alumno": null, "error": r["error"] }
@@ -56,6 +57,16 @@ func entrar(direccion: String, usu: String, clave: String, crear := false) -> Di
 	if e["ok"] and e["datos"] is Dictionary: nombre_aula = String(e["datos"].get("aula", url))
 	vaciar_cola()
 	return { "ok": true, "status": r["status"], "alumno": r["datos"]["alumno"], "error": "" }
+
+## Registro de alumno nuevo (enviarRegistro de la web): queda pendiente hasta que lo apruebe el profesor.
+## d: { nombre, apellidos, correo, usuario, clave }. { ok, status, mensaje, error }.
+func registro(d: Dictionary) -> Dictionary:
+	var r := await api("POST", "registro", { "usuario": d["usuario"], "correo": d["correo"], "nombre": d["nombre"], "apellidos": d["apellidos"], "clave": d["clave"] }, "-")
+	if r["ok"]:
+		usuario = String(d["usuario"]); _guardar_cfg()
+		return { "ok": true, "status": r["status"], "mensaje": String(r["datos"].get("mensaje", "Solicitud enviada: el profesor tiene que aprobarla.")), "error": "" }
+	if r["status"] == 0: r["error"] = "No se puede conectar con el aula en %s." % url
+	return { "ok": false, "status": r["status"], "mensaje": "", "error": r["error"] }
 
 ## Sin conexion (o al cerrar la sesion): se vuela igual, sin guardar.
 func salir() -> void:

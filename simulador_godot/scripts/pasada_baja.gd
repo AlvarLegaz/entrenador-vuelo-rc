@@ -1,7 +1,7 @@
 class_name PasadaBaja
 extends RefCounted
 ## PASADA BAJA por la pista 2 de la zona 2 de la isla (Entorno.pasada_baja). Traduccion literal de PasadaBaja en
-## simulador/js/entorno.js (pruebas/prueba_campo.gd la compara con el navegador): entrar por una punta de la pista (de
+## simulador_web/js/entorno.js (simulador_godot/Tests/prueba_campo.gd la compara con el navegador): entrar por una punta de la pista (de
 ## este a oeste o al reves), recorrerla entera sin salirse por los lados (ancho/2 + margen a cada lado del eje) y salir por
 ## la otra punta, siempre entre hmin y hmax de altura. Tocar el suelo ya termina el vuelo (lo mira el Entorno).
 

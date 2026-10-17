@@ -1,6 +1,6 @@
 class_name PantallaHangar
 extends Control
-## Hangar (#pHangar de simulador/simulador.html): lista de aviones, el elegido girando con su nombre, y la ficha con dos
+## Hangar (#pHangar de simulador_web/simulador.html): lista de aviones, el elegido girando con su nombre, y la ficha con dos
 ## pestanas: Ficha (caracteristicas) y Ajustes del avion (centro de gravedad y peso, recorridos de la emisora y
 ## lanzamiento, calibracion con el avion real y aire), en secciones plegables como los <details> de la web.
 
@@ -26,9 +26,9 @@ var _pintando := false
 func _init(p_: Node) -> void:
 	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 	d = Tema.pantalla("Hangar", "Elige el avión y, si quieres, ajústalo como el tuyo."); add_child(d["raiz"])
-	b_progreso = Tema.boton("Mi progreso", "", func(): p.ir_progreso("pHangar")); d["botones"].add_child(b_progreso)
-	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
-	d["botones"].add_child(Tema.boton("Volar con este avión →", "BotonPrim", func(): p.ir_inicio()))   # el vehiculo queda elegido: en el inicio se elige que volar
+	b_progreso = Tema.boton("Mi progreso", "", func(): p.app_pantallas.ir_progreso("pHangar")); d["botones"].add_child(b_progreso)
+	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
+	d["botones"].add_child(Tema.boton("Volar con este avión →", "BotonPrim", func(): p.app_pantallas.ir_inicio()))   # el vehiculo queda elegido: en el inicio se elige que volar
 	var g := HBoxContainer.new(); g.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(g)
 	# lista de aviones
 	lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 8)
@@ -87,7 +87,7 @@ func _construir_ajustes() -> void:
 			   ["orientable", "[b]Orientable[/b] · torreta estabilizada de día y noche bajo el morro (como la modernización DDL): se mueve con las flechas y Mayúsculas y se fija en un punto (K). Pesa 0,3 kg más"]]:
 		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 8)
 		var cb := CheckBox.new(); cb.button_group = grupo; cb.name = "Morro_" + op[0]; cb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		cb.toggled.connect(func(on): if on and not _pintando: p.poner_morro(p.sesion["avion"], op[0]); previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.4))
+		cb.toggled.connect(func(on): if on and not _pintando: p.app_evaluacion.poner_morro(p.sesion["avion"], op[0]); previa.mostrar(p.app_evaluacion.datos_visor(p.sesion["avion"]), 1.4))
 		var t := Tema.rico(op[1], 14); t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(cb); h.add_child(t); mo.add_child(h); morros[op[0]] = cb
 	# ---- centro de gravedad y peso ----
@@ -104,7 +104,7 @@ func _construir_ajustes() -> void:
 	t_masa = _txt_b(); c.add_child(t_masa)
 	t_efecto = Tema.etiqueta("", 13, Tema.OK, false, true); c.add_child(t_efecto)
 	t_bateria = Tema.sub("", 13); c.add_child(t_bateria)
-	var bd := Tema.boton("Volver a los valores de diseño", "", func(): p.borrar_cm(p.sesion["avion"]); refrescar_cm())
+	var bd := Tema.boton("Volver a los valores de diseño", "", func(): p.app_avion_ajustes.borrar_cm(p.sesion["avion"]); refrescar_cm())
 	bd.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; c.add_child(bd)
 	s_cg.value_changed.connect(func(_x): _leer_cm()); s_masa.value_changed.connect(func(_x): _leer_cm())
 	# ---- emisora: recorridos y lanzamiento ----
@@ -132,7 +132,7 @@ func refrescar() -> void:
 	d["subtitulo"].visible = true
 	b_progreso.visible = al != null
 	for x in lista.get_children(): x.queue_free()
-	for id in p.ids_hangar():
+	for id in p.app_avion_ajustes.ids_hangar():
 		var A := DatosComunes.avion(id)
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 2)
 		v.add_child(Tema.etiqueta(String(A.get("nombre", id)), 16, Tema.TEXTO, true))
@@ -143,7 +143,7 @@ func refrescar() -> void:
 		var sub := "cuadricóptero, mandos de dron comercial" if A.get("tipo", "") == "cuadricoptero" else "dron FPV, modos de Betaflight" if A.get("tipo", "") == "fpv" else "vehículo terrestre de dos patas" if A.get("tipo", "") == "bipode" else (mandos_txt if mandos_txt != "" else String(A.get("mandos", {}).get("izq_der", "timón")) + " y profundidad")
 		v.add_child(Tema.etiqueta(sub + ((" · " + masa) if masa != "" else ""), 12, Tema.SUAVE, false, true))
 		var t := Tarjeta.new(v); t.elegida = id == p.sesion["avion"]
-		t.pulsada.connect(func(): p.elegir_avion(id); refrescar())
+		t.pulsada.connect(func(): p.app_pantallas.elegir_avion(id); refrescar())
 		lista.add_child(t)
 	var A := DatosComunes.avion(p.sesion["avion"])
 	nombre.text = String(A.get("nombre", "")); desc.text = String(A.get("descripcion", ""))
@@ -154,8 +154,8 @@ func refrescar() -> void:
 	if A.has("perfil") and not tiene.call("perfil"): filas.insert(2, ["Perfil alar", A["perfil"]])
 	for x in panel_ficha.get_children(): x.queue_free()
 	panel_ficha.add_child(Tema.tabla_datos(filas))
-	previa.mostrar(p.datos_visor(p.sesion["avion"]), 1.4)
-	var mo = p.morro_de(p.sesion["avion"]); sec_morro.visible = mo != null
+	previa.mostrar(p.app_evaluacion.datos_visor(p.sesion["avion"]), 1.4)
+	var mo = p.app_evaluacion.morro_de(p.sesion["avion"]); sec_morro.visible = mo != null
 	_pintando = true
 	for k in morros: morros[k].button_pressed = k == mo
 	_pintando = false
@@ -167,7 +167,7 @@ func refrescar_cm() -> void:
 	var id: String = p.sesion["avion"]; var A := DatosComunes.avion(id)
 	if not A.has("x_le_mm") or not A.has("punto_neutro_mm"): sec_cm.visible = false; _pintando = false; return
 	sec_cm.visible = true
-	var C: float = A["c_m"] * 1000; var dd: Dictionary = p.cm_diseno(A); var c: Dictionary = p.cm_actual(id)
+	var C: float = A["c_m"] * 1000; var dd: Dictionary = p.app_avion_ajustes.cm_diseno(A); var c: Dictionary = p.app_avion_ajustes.cm_actual(id)
 	var rango: Array = A.get("cg_rango_pct", [15, 60])
 	s_cg.min_value = rango[0]; s_cg.max_value = rango[1]
 	s_masa.min_value = round(dd["masa"] * 0.8 / 10) * 10; s_masa.max_value = round(dd["masa"] * 1.5 / 10) * 10
@@ -183,11 +183,11 @@ func refrescar_cm() -> void:
 	else: txt = "Margen estático %d %% (punto neutro al %d %%): dentro de lo normal en un entrenador (10–30 %%)." % [int(round(margen)), int(round(np))]
 	if c["masa"] > dd["masa"] * 1.15: txt += " Con %d g más, pierde a %s m/s: hay que lanzarlo más fuerte y aterrizar más rápido." % [int(c["masa"] - dd["masa"]), _f1(vs)]
 	elif c["masa"] < dd["masa"] * 0.9: txt += " Más ligero: vuela más despacio, pero las rachas lo mueven más."
-	var gmin = null if (A.has("tren") or A.get("lanzado_a_mano", false)) else p.gas_minimo_lanzamiento({})      # un avion de pista no se lanza a mano; el Grajo lo sube el automatico
+	var gmin = null if (A.has("tren") or A.get("lanzado_a_mano", false)) else p.app_avion_ajustes.gas_minimo_lanzamiento({})      # un avion de pista no se lanza a mano; el Grajo lo sube el automatico
 	if A.get("lanzado_a_mano", false): txt += " Se lanza a mano, de cara al viento, con el motor a tope: el piloto automático lo sube solo (modo Lanzamiento)."
 	elif A.has("tren"): txt += " Despega y aterriza en pista."
 	elif gmin == null: color = Color("#ff6e66"); txt += " ⚠ Con %d g no sale de la mano ni con todo el gas: demasiado peso para lanzarlo a mano." % int(c["masa"])
-	else: txt += " Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el %d %% de gas." % p.pct_gas(gmin)
+	else: txt += " Lanzado a mano (sin viento y sin tocar los mandos) sale con al menos el %d %% de gas." % p.app_avion_ajustes.pct_gas(gmin)
 	t_efecto.text = txt; t_efecto.add_theme_color_override("font_color", color)
 	var dbat: float = (c["cg"] - dd["cg"]) / 100.0 * C * c["masa"] / 115.0
 	t_bateria.text = "En el avión real, el centro de gravedad se ajusta moviendo la batería." if c["cg"] == dd["cg"] else \
@@ -198,11 +198,11 @@ static func _f1(x: float) -> String: return ("%.1f" % x)
 
 func _leer_cm() -> void:
 	if _pintando: return
-	p.poner_cm(p.sesion["avion"], int(s_cg.value), int(s_masa.value))
+	p.app_avion_ajustes.poner_cm(p.sesion["avion"], int(s_cg.value), int(s_masa.value))
 	refrescar_cm()
 
 func _pintar_cfg() -> void:
-	var id: String = p.sesion["avion"]; var c: Dictionary = p.cfg_de(id); var A := DatosComunes.avion(id); var mec: Dictionary = p.recorrido_mecanico(id)
+	var id: String = p.sesion["avion"]; var c: Dictionary = p.app_avion_ajustes.cfg_de(id); var A := DatosComunes.avion(id); var mec: Dictionary = p.app_avion_ajustes.recorrido_mecanico(id)
 	var M: Dictionary = A.get("mandos", {})
 	var lat := "alerones y timón" if (M.get("timon_max_grados", 0) > 0 and M.get("aleron_max_grados", 0)) else ("timón" if M.get("timon_max_grados", 0) > 0 else "alerones")
 	var mlat: float = mec.get("aleron", mec.get("timon", M.get("aleron_max_grados", M.get("timon_max_grados", 0))))
@@ -219,8 +219,8 @@ func _pintar_cfg() -> void:
 
 func _leer_cfg() -> void:
 	if _pintando: return
-	var id: String = p.sesion["avion"]; var c: Dictionary = p.cfg_de(id)
+	var id: String = p.sesion["avion"]; var c: Dictionary = p.app_avion_ajustes.cfg_de(id)
 	c["drAlabeo"] = s_dr_al.value; c["drProf"] = s_dr_prof.value; c["lanzReal"] = c_lanz.button_pressed
 	c["empuje"] = e_empuje.text.strip_edges(); c["res"] = s_res.value; c["temp"] = s_temp.value
-	p.poner_cfg(id, c)
+	p.app_avion_ajustes.poner_cfg(id, c)
 	_pintando = true; _pintar_cfg(); _pintando = false

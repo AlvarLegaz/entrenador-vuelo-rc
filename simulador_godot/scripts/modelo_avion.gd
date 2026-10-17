@@ -1,8 +1,8 @@
 class_name ModeloAvion
 extends RefCounted
-## Fisica de 6 grados de libertad de un avion: traduccion LITERAL de ModeloAvion (simulador/js/modelos.js) y de las
+## Fisica de 6 grados de libertad de un avion: traduccion LITERAL de ModeloAvion (simulador_web/js/modelos.js) y de las
 ## clases ModeloE2 (alerones) y ModeloT1 (elevones) de scripts/clase_e2.js y clase_t1.js. Mismos datos (los .js de
-## simulador/aviones), mismas formulas, mismo orden: pruebas/prueba_fisica.gd la compara con trazas de la del
+## simulador/aviones), mismas formulas, mismo orden: simulador_godot/Tests/prueba_fisica.gd la compara con trazas de la del
 ## navegador. Si se cambia algo aqui, hay que cambiarlo igual alli (y al reves).
 ## Ejes: cuerpo (x adelante, y derecha, z abajo) y mundo NED. El estado del avion (av) es un Dictionary con las
 ## mismas claves que en JS.

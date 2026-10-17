@@ -1,7 +1,7 @@
 class_name Operacion
 extends RefCounted
 ## OPERACIONES: los trabajos de operador de dron (escenarios.js, "operacion") en el mapa real de Cartagena, con el DJI.
-## Traduccion literal de simulador/js/operaciones.js (pruebas/prueba_operaciones.gd la compara con la web): evalua lo que
+## Traduccion literal de simulador_web/js/operaciones.js (simulador_godot/Tests/prueba_operaciones.gd la compara con la web): evalua lo que
 ## pide cada orden de trabajo (inspeccion de edificios, fotogrametria, busqueda y rescate, agricultura, paneles
 ## fotovoltaicos y video) y las normas del operador (120 m, a la vista, fuera de la zona del aeropuerto, aterrizar en el punto de despegue
 ## y con reserva de bateria), y detecta los choques con los paneles y el faro. Lo dibuja mundo_3d.gd
@@ -436,7 +436,8 @@ func paso(_p_ant: Array, av: Dictionary, dt: float, info: Dictionary) -> Array:
 		if t0 != null and not av.get("posado", false) and not av.get("enTierra", false):
 			var R: Dictionary = d["recon"]; var lejos: bool = Vector2(N - casa[0], E - casa[1]).length() > R["radio_despegue"]
 			if agl > R["techo"]: m.call("techo", "mal"); _aviso("techo", "¡Por encima de %s m! Baja" % _n(R["techo"]), T)
-			if lejos and agl < R["minima"]: m.call("minima", "mal"); _aviso("minima", "¡Por debajo de %s m lejos del lanzamiento! Sube" % _n(R["minima"]), T)
+			# en la toma automatica (el Grajo) baja a su altura de entrada: la minima no cuenta
+			if lejos and agl < R["minima"] and not info.get("aterrizando", false): m.call("minima", "mal"); _aviso("minima", "¡Por debajo de %s m lejos del lanzamiento! Sube" % _n(R["minima"]), T)
 	elif not d.has("carrera"):
 		if agl > TECHO: m.call("techo", "mal"); _aviso("techo", "¡Por encima de 120 m de altura! Baja", T)
 		if Vector2(N - casa[0], E - casa[1]).length() > VLOS: m.call("vlos", "mal"); _aviso("vlos", "¡Más de 500 m del piloto! Ya no lo ves: vuelve", T)

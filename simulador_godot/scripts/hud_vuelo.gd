@@ -1,6 +1,6 @@
 class_name HudVuelo
 extends Control
-## HUD de vuelo, el MISMO que el de simulador/simulador.html (#estado, #hud, #aviso, #lejos, #guia, #toast, #objetivos,
+## HUD de vuelo, el MISMO que el de simulador_web/simulador.html (#estado, #hud, #aviso, #lejos, #guia, #toast, #objetivos,
 ## #panelVuelo, #ayuda, #repBarra): pastillas de estado arriba a la izquierda, objetivos arriba a la derecha, abajo el
 ## GPS, la barra de gas y la palanca, las lecturas en el centro y los relojes y el horizonte (en la camara del piloto el
 ## GPS va a la derecha y no hay relojes), avisos en el centro y la ventana de controles. p es la escena principal.

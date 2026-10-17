@@ -1,7 +1,7 @@
 """Poli-1: avion de foam de ala alta, de 4 canales (alerones, profundidad, timon y motor), con tren fijo de dos
 ruedas y patin de cola. NO es un diseno de este proyecto ni tiene piezas impresas: es el modelo de vuelo de un avion
 ya construido, a partir de sus medidas y de una foto (2026-10-13). Solo lo usan analisis/vlm_e1.py (con
-ENTRENADOR=G1) y scripts/modelo_aero_g1.py, que escribe simulador/aviones/G1.js.
+ENTRENADOR=G1) y scripts/modelo_aero_g1.py, que escribe datos/vehiculos/G1.js.
 
 Medidas dadas por el usuario: envergadura 720 mm, cuerda 150 mm, helice de 210 mm (8"), motor A2208/14T 1400 KV,
 distancia del centro del ala al centro del estabilizador 400 mm y peso en vuelo 600 g. Todo lo demas sale de la

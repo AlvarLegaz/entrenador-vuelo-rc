@@ -1,6 +1,6 @@
 class_name HudCarrera
 extends Control
-## Carrera de drones (hudCarrera de simulador/simulador.html): la barra de arriba (el mejor tiempo de la sala o de la
+## Carrera de drones (hudCarrera de simulador_web/simulador.html): la barra de arriba (el mejor tiempo de la sala o de la
 ## sesion, el cronometro y el obstaculo que toca) y el indicador del siguiente obstaculo: un rombo con su numero y la
 ## distancia encima de el o, si no esta a la vista, una flecha en el borde de la pantalla hacia donde esta. p: la escena
 ## principal.

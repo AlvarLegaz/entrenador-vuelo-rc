@@ -1,6 +1,6 @@
 class_name PantallaLanzamiento
 extends Control
-## ¿Desde donde sales? (#pLanzamiento de simulador/simulador.html): el mapa del mundo real para elegir el punto de
+## ¿Desde donde sales? (#pLanzamiento de simulador_web/simulador.html): el mapa del mundo real para elegir el punto de
 ## lanzamiento (clic), con el texto del punto elegido abajo (#lanzInfo) y los botones Vuelo libre / Despegar aqui.
 
 var p: Node
@@ -15,15 +15,15 @@ func _init(p_: Node) -> void:
 	p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 	d = Tema.pantalla("¿Desde dónde sales?", "Haz clic en el mapa para elegir el punto de lanzamiento. Se despega hacia el lado más despejado."); add_child(d["raiz"])
 	b_dest = HBoxContainer.new(); b_dest.add_theme_constant_override("separation", 10); d["botones"].add_child(b_dest)
-	d["botones"].add_child(Tema.boton("← Vuelo libre", "", func(): p.ir_volar()))
-	b_aqui = Tema.boton("Despegar aquí →", "BotonPrimGrande", func(): p.empezar()); d["botones"].add_child(b_aqui)
+	d["botones"].add_child(Tema.boton("← Vuelo libre", "", func(): p.app_pantallas.ir_volar()))
+	b_aqui = Tema.boton("Despegar aquí →", "BotonPrimGrande", func(): p.app_vuelo.empezar()); d["botones"].add_child(b_aqui)
 	var caja := PanelContainer.new(); caja.add_theme_stylebox_override("panel", Tema.caja(Color("#0b0f14"), Tema.BORDE, Tema.RADIO, 1, 0, 0))
 	caja.size_flags_vertical = Control.SIZE_EXPAND_FILL; caja.size_flags_horizontal = Control.SIZE_EXPAND_FILL; caja.custom_minimum_size.y = 300; caja.clip_contents = true
 	d["cuerpo"].add_child(caja)
 	var dentro := Control.new(); dentro.size_flags_vertical = Control.SIZE_EXPAND_FILL; dentro.size_flags_horizontal = Control.SIZE_EXPAND_FILL; caja.add_child(dentro)
 	mapa = MapaLanzamiento.new(); mapa.set_anchors_preset(Control.PRESET_FULL_RECT); mapa.offset_left = 1; mapa.offset_top = 1; mapa.offset_right = -1; mapa.offset_bottom = -1; mapa.mouse_default_cursor_shape = Control.CURSOR_CROSS; dentro.add_child(mapa)
-	mapa.punto_elegido.connect(func(N, E): p.elegir_punto(N, E); pintar())
-	mapa.destacado_elegido.connect(func(dd): p.elegir_destacado(dd); pintar())
+	mapa.punto_elegido.connect(func(N, E): p.app_evaluacion.elegir_punto(N, E); pintar())
+	mapa.destacado_elegido.connect(func(dd): p.app_evaluacion.elegir_destacado(dd); pintar())
 	var pi := PanelContainer.new(); pi.add_theme_stylebox_override("panel", Tema.caja(Color(8 / 255.0, 14 / 255.0, 22 / 255.0, 0.78), Color(0, 0, 0, 0), 10, 0, 12, 8))
 	pi.anchor_left = 0; pi.anchor_right = 1; pi.anchor_top = 1; pi.anchor_bottom = 1; pi.offset_left = 14; pi.offset_right = -14; pi.offset_bottom = -12
 	pi.grow_vertical = Control.GROW_DIRECTION_BEGIN; pi.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -35,11 +35,11 @@ func preparar() -> void:
 		_puesto = true
 		var M: Dictionary = p.mundo_datos
 		mapa.poner(p.orto[1], p.ent.terreno, M["lugares"], p.indice_zonas, M.get("carreteras", []))
-		mapa.a_ne = func(la: float, lo: float) -> Array: return p.lat_lon_a_ne(M, la, lo)
-	mapa.destacados = p.destacados_lanz()
+		mapa.a_ne = func(la: float, lo: float) -> Array: return p.app_evaluacion.lat_lon_a_ne(M, la, lo)
+	mapa.destacados = p.app_evaluacion.destacados_lanz()
 	for x in b_dest.get_children(): x.queue_free()
 	for dd in mapa.destacados:
-		var b := Tema.boton("📍 " + String(dd["nombre"]), "", func(): p.elegir_destacado(dd); pintar())
+		var b := Tema.boton("📍 " + String(dd["nombre"]), "", func(): p.app_evaluacion.elegir_destacado(dd); pintar())
 		b.tooltip_text = "Despegar desde " + String(dd["nombre"])
 		for e in ["normal", "hover", "pressed", "focus"]:           # .btn.destacado de la web: borde naranja
 			b.add_theme_stylebox_override(e, Tema.caja(Color(1, 1, 1, 0.12 if e == "hover" else 0.06), Color("#ff8c00"), 10, 1, 18, 9))

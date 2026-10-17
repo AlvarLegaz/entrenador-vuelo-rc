@@ -1,6 +1,6 @@
 class_name PantallaMisiones
 extends RefCounted
-## Entrenamientos (#pEntrenamientos) y vuelo libre (#pVolar) de simulador/simulador.html, con el panel de condiciones
+## Entrenamientos (#pEntrenamientos) y vuelo libre (#pVolar) de simulador_web/simulador.html, con el panel de condiciones
 ## (#condiciones) que comparten, y los iconos de las misiones (iconoMision, los mismos SVG).
 
 ## Icono esquematico de cada mision (SVG de 200 x 110), igual que iconoMision de la web.
@@ -120,7 +120,7 @@ class Condiciones extends PanelContainer:
 	func leer() -> void:
 		if _montando or not s_vel.editable: return
 		p.sesion["viento"] = { "vel": s_vel.value, "desde": DIRS[o_dir.selected], "rachas": c_rachas.button_pressed }
-		t_vel.text = _vel(s_vel.value); p.guardar_sesion()
+		t_vel.text = _vel(s_vel.value); p.app_avion_ajustes.guardar_sesion()
 	func mover_a(destino: Control) -> void:
 		if get_parent() != destino:
 			if get_parent(): get_parent().remove_child(self)
@@ -136,7 +136,7 @@ class Entrenamientos extends Control:
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Entrenamientos", " "); add_child(d["raiz"])
-		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
 		var sc := Tema.desplazable(lista); dos.add_child(sc)
@@ -145,7 +145,7 @@ class Entrenamientos extends Control:
 		var cf := Tema.capa(6); der.add_child(cf[0])
 		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
 		hueco = VBoxContainer.new(); der.add_child(hueco)
-		var bv := Tema.boton("Volar →", "BotonPrimGrande", func(): p.sesion["escenario"] = sel; p.guardar_sesion(); p.empezar())
+		var bv := Tema.boton("Volar →", "BotonPrimGrande", func(): p.sesion["escenario"] = sel; p.app_avion_ajustes.guardar_sesion(); p.app_vuelo.empezar())
 		bv.size_flags_horizontal = Control.SIZE_FILL; der.add_child(bv); b_volar = bv
 	func refrescar() -> void:
 		var E := Escenarios.datos(); var al = p.sesion["alumno"]
@@ -170,7 +170,7 @@ class Entrenamientos extends Control:
 			rejilla.add_child(_tarjeta(id, M, st))
 		var M: Dictionary = E[sel]
 		var bb := "[font_size=20][b]%s[/b][/font_size]\n[color=#9fb3c8]%s[/color]\n" % [M["nombre"], M["desc"]]
-		if M.has("sentido"): bb += "Orden de los pilones: %s\n" % Escenarios.orden_bb(p.ent_campo(), int(M["sentido"]))
+		if M.has("sentido"): bb += "Orden de los pilones: %s\n" % Escenarios.orden_bb(p.app_evaluacion.ent_campo(), int(M["sentido"]))
 		bb += "\n[font_size=12][color=#9fb3c8][b]OBJETIVOS[/b][/color][/font_size]\n"
 		for o in M["objetivos"]: bb += "  •  %s\n" % o[1]
 		ficha_rt.text = bb
@@ -204,17 +204,22 @@ const COMPROBACIONES_OP := ["Operador registrado en AESA y piloto con el certifi
 const COMPROBACIONES_UAV := ["NOTAM publicado y vuelo coordinado con la torre de San Javier (espacio aéreo controlado)", "Tripulación de la estación de control con la habilitación del UAS",
 	"Combustible y aceite comprobados; hélice, tren y frenos sin daños", "Enlace de datos, GPS y estación de control probados; vuelta a base programada",
 	"Viento en pista dentro de los límites del avión", "Pista libre y autorización de despegue de la torre"]     # UAV de pista (espacio aereo controlado)
+const COMPROBACIONES_MANO := ["Zona consultada en el mapa de ENAIRE Drones y vuelo coordinado (NOTAM si es espacio aéreo controlado)", "Piloto y observador con la habilitación del sistema",
+	"Baterías del avión y de la estación de control cargadas; hélice sin daños", "Montaje comprobado: ala, cola y morro asegurados",
+	"Enlace de datos, GPS y estación de control probados; vuelta a base programada", "Viento dentro de los límites del lanzamiento a mano: se lanza de cara al viento",
+	"Zona de lanzamiento y de toma despejadas, nadie delante"]     # aviones lanzados a mano (Grajo, Poli-1, Entrenador 1)
 const RUMBOS_VIENTO := ["norte", "nordeste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"]
 class Operaciones extends Control:
 	var p: Node; var d: Dictionary
 	var lista: VBoxContainer; var ficha_rt: RichTextLabel; var b_volar: Button; var briefing: TextureRect
 	var sel := ""
 	var check: Control; var check_sub: Label; var check_lista: VBoxContainer; var check_si: Button; var marcas := []
+	var check_veh: VBoxContainer; var check_veh_botones: HFlowContainer         # ¿con que vehiculo vuelas? (los trabajos que dejan elegir)
 	var elegir_box: HBoxContainer
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Operaciones", "Trabajos en el mapa real de Cartagena, en una fila por vehículo: cada trabajo se vuela con el suyo"); add_child(d["raiz"])
-		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
 		var sc := Tema.desplazable(lista); dos.add_child(sc)
@@ -222,7 +227,7 @@ class Operaciones extends Control:
 		var sd := Tema.desplazable(der); sd.size_flags_horizontal = Control.SIZE_FILL; dos.add_child(sd)
 		var cf := Tema.capa(6); der.add_child(cf[0])
 		briefing = TextureRect.new(); briefing.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; briefing.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; briefing.custom_minimum_size = Vector2(0, 228)
-		(cf[1] as VBoxContainer).add_child(briefing)                       # el mapa del briefing (simulador/operaciones/<id>.jpg)
+		(cf[1] as VBoxContainer).add_child(briefing)                       # el mapa del briefing (datos/operaciones/<id>.jpg)
 		elegir_box = HBoxContainer.new(); elegir_box.add_theme_constant_override("separation", 6); (cf[1] as VBoxContainer).add_child(elegir_box)   # la carrera: con que dron
 		ficha_rt = Tema.rico("", 14); (cf[1] as VBoxContainer).add_child(ficha_rt)
 		b_volar = Tema.boton("Volar →", "BotonPrimGrande", func(): pedir_comprobaciones())
@@ -233,6 +238,10 @@ class Operaciones extends Control:
 		panel.custom_minimum_size.x = 520; check.get_node("Centro").add_child(panel)
 		caja.add_child(Tema.etiqueta("Antes de volar", 18, Tema.TEXTO, true))
 		check_sub = Tema.etiqueta("", 14, Tema.SUAVE); caja.add_child(check_sub)
+		check_veh = VBoxContainer.new(); check_veh.add_theme_constant_override("separation", 6); caja.add_child(check_veh)
+		check_veh.add_child(Tema.etiqueta("¿Con qué vehículo vuelas?", 13, Tema.TEXTO, true))
+		check_veh_botones = HFlowContainer.new(); check_veh_botones.add_theme_constant_override("h_separation", 6); check_veh_botones.add_theme_constant_override("v_separation", 6)
+		check_veh.add_child(Tema.margen(check_veh_botones, 0, 0, 0, 6))
 		check_lista = VBoxContainer.new(); check_lista.add_theme_constant_override("separation", 6); caja.add_child(check_lista)
 		var bb := HBoxContainer.new(); bb.add_theme_constant_override("separation", 10); bb.alignment = BoxContainer.ALIGNMENT_END
 		bb.add_child(Tema.boton("Cancelar", "", func(): check.visible = false))
@@ -267,26 +276,43 @@ class Operaciones extends Control:
 		var bb := "[font_size=15][color=#ffc83d][b]ORDEN DE TRABAJO[/b][/color][/font_size]\n[font_size=18][b]%s[/b][/font_size]\n[font_size=13][table=2]" % M["nombre"]
 		bb += fila.call("Cliente", O["cliente"]) + fila.call("Lugar", O["lugar"]) + fila.call("Trabajo", O["trabajo"]) + fila.call("Entrega", O["entrega"])
 		bb += fila.call("Viento previsto", "%s m/s del %s%s" % [PasadaBaja._num(v["vel"]), RUMBOS_VIENTO[int(round(v["desde"] / 45.0)) % 8], ", con rachas" if v["rachas"] else ""])
-		var Dd: Dictionary = DatosComunes.avion(p.veh_op(sel)) if p.ids_aviones.has(p.veh_op(sel)) else {}
+		var Dd: Dictionary = DatosComunes.avion(p.app_pantallas.veh_op(sel)) if p.ids_aviones.has(p.app_pantallas.veh_op(sel)) else {}
 		for x in elegir_box.get_children(): x.queue_free()
 		elegir_box.visible = O.has("elegir")
 		if O.has("elegir"):                                                # carrera: se puede volar con cualquier dron del hangar
 			elegir_box.add_child(Tema.etiqueta("VUELA CON", 12, Tema.SUAVE, true))
-			for a in p.ids_hangar():
-				if not p.op_permite(O, a): continue
+			for a in p.app_avion_ajustes.ids_hangar():
+				if not p.app_pantallas.op_permite(O, a): continue
 				var aa: String = a
-				var b := Tema.boton(String(DatosComunes.avion(a)["nombre"]), "BotonPrim" if a == p.veh_op(sel) else "", func(): p.op_vehiculo[sel] = aa; refrescar())
+				var b := Tema.boton(String(DatosComunes.avion(a)["nombre"]), "BotonPrim" if a == p.app_pantallas.veh_op(sel) else "", func(): p.op_vehiculo[sel] = aa; refrescar())
 				b.add_theme_font_size_override("font_size", 13); elegir_box.add_child(b)
 		bb += fila.call("Vehículo" if O.has("elegir") else "Dron", ("%s (%s)" % [Dd["nombre"], Dd.get("categoria", "")]) if not Dd.is_empty() else String(O.get("avion", ""))) + "[/table][/font_size]\n\n[font_size=12][color=#9fb3c8][b]SE EVALÚA[/b][/color][/font_size]\n"
 		for o in M["objetivos"]: bb += "  •  %s\n" % o[1]
 		ficha_rt.text = bb
 		var img := Image.load_from_file(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) if FileAccess.file_exists(DatosComunes.carpeta().path_join("operaciones/%s.jpg" % sel)) else null
 		briefing.texture = ImageTexture.create_from_image(img) if img != null else null
-	## Las comprobaciones antes de volar del trabajo id (las del UAV de pista o las del dron).
-	static func comprobaciones_de(id: String) -> Array:
-		return COMPROBACIONES_UAV if Escenarios.vehiculo_de(String(Escenarios.datos()[id]["operacion"].get("avion", ""))) == "uav" else COMPROBACIONES_OP
-	## Volar: la ventana de las comprobaciones, todas sin marcar; Despegar solo cuando estan todas.
+	## Las comprobaciones antes de volar del trabajo id con el vehiculo con el que se vuela (comprobacionesDe de la web): las
+	## del dron, las del UAV de pista (con tren) o las de un avion lanzado a mano.
+	func comprobaciones_de(id: String) -> Array:
+		var a: String = p.app_pantallas.veh_op(id); var v := Escenarios.vehiculo_de(a)
+		if v == "dron" or v == "fpv": return COMPROBACIONES_OP
+		return COMPROBACIONES_UAV if DatosComunes.avion(a).get("tren") is Dictionary else COMPROBACIONES_MANO
+	## Volar: la ventana de las comprobaciones, todas sin marcar; Despegar solo cuando estan todas. En los trabajos que
+	## dejan elegir el vehiculo (la carrera, la patrulla, el reconocimiento), arriba, con que vehiculo se vuela.
 	func pedir_comprobaciones() -> void:
+		var O: Dictionary = Escenarios.datos()[sel]["operacion"]
+		var ids: Array = p.app_avion_ajustes.ids_hangar().filter(func(a): return p.app_pantallas.op_permite(O, a)) if O.has("elegir") else []
+		check_veh.visible = ids.size() > 1
+		for x in check_veh_botones.get_children(): x.queue_free()
+		var elegido: String = p.app_pantallas.veh_op(sel)
+		for a in ids:
+			var D := DatosComunes.avion(a); var aa: String = a
+			var b := Tema.boton("%s\n%s" % [D["nombre"], D.get("categoria", "")], "BotonPrim" if a == elegido else "", func():
+				p.op_vehiculo[sel] = aa; refrescar(); pedir_comprobaciones())
+			b.add_theme_font_size_override("font_size", 13); check_veh_botones.add_child(b)
+		_lista_comprobaciones()
+		check.visible = true
+	func _lista_comprobaciones() -> void:
 		var L := comprobaciones_de(sel); marcas = []
 		for x in check_lista.get_children(): x.queue_free()
 		for i in L.size():
@@ -295,13 +321,14 @@ class Operaciones extends Control:
 			cb.add_theme_font_size_override("font_size", 14); cb.focus_mode = Control.FOCUS_NONE
 			cb.toggled.connect(func(si: bool): marcas[i] = si; _boton())
 			check_lista.add_child(cb)
-		check_sub.text = String(Escenarios.datos()[sel]["nombre"]); _boton(); check.visible = true
+		check_sub.text = String(Escenarios.datos()[sel]["nombre"]); _boton()
 	func _despegar() -> void:
 		if not marcas.all(func(x): return x): return
-		check.visible = false; p.volar_operacion(sel)
+		check.visible = false; p.app_pantallas.volar_operacion(sel)
 	func _boton() -> void:
 		var ok: bool = marcas.all(func(x): return x); var n := marcas.filter(func(x): return x).size()
-		check_si.disabled = not ok; check_si.text = "Despegar →" if ok else "Marca todas las comprobaciones (%d/%d)" % [n, marcas.size()]
+		check_si.disabled = not ok
+		check_si.text = ("Despegar con el %s →" % DatosComunes.avion(p.app_pantallas.veh_op(sel))["nombre"]) if ok else "Marca todas las comprobaciones (%d/%d)" % [n, marcas.size()]
 	func _tarjeta(id: String, M: Dictionary) -> Tarjeta:
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)
 		v.add_child(PantallaMisiones.imagen(id, 110))
@@ -328,7 +355,7 @@ class Multijugador extends Control:
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Multijugador", "Vuela con tus compañeros en la misma sala: cada uno con su avión, os veis unos a otros"); add_child(d["raiz"])
-		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		lista = VBoxContainer.new(); lista.add_theme_constant_override("separation", 10)
 		var sc := Tema.desplazable(lista); dos.add_child(sc)
@@ -344,18 +371,18 @@ class Multijugador extends Control:
 	func _pedir_sala(sala: Dictionary) -> void:
 		var clave := ""
 		if sala.get("con_clave", false):
-			var c = await p.pedir_clave("Sala " + String(sala["nombre"]), "Esta sala tiene clave: te la dice el profesor.", false)
+			var c = await p.app_pantallas.pedir_clave("Sala " + String(sala["nombre"]), "Esta sala tiene clave: te la dice el profesor.", false)
 			if c == null: return
 			clave = c[0]
 		var al = p.sesion["alumno"]
-		var r: Dictionary = await p.aula.api("POST", "salas/%s/entrar" % String(sala["codigo"]).uri_encode(), { "id": p.multi_id(), "clave": clave, "nombre": p.nombre_piloto(), "alumno": al["id"] if al != null else null })
-		if r["ok"]: p.entrar_sala(sala)
-		else: await p.confirmar("No puedes entrar", Tema.bb(String(r["error"])), "Vale")
+		var r: Dictionary = await p.aula.api("POST", "salas/%s/entrar" % String(sala["codigo"]).uri_encode(), { "id": p.app_multijugador.multi_id(), "clave": clave, "nombre": p.app_multijugador.nombre_piloto(), "alumno": al["id"] if al != null else null })
+		if r["ok"]: p.app_multijugador.entrar_sala(sala)
+		else: await p.app_pantallas.confirmar("No puedes entrar", Tema.bb(String(r["error"])), "Vale")
 	func refrescar() -> void:
-		var ok: bool = p.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
+		var ok: bool = p.app_multijugador.multi_posible(); crear.visible = ok; sin_aula.visible = not ok
 		_salas(); reloj.start()
 	func _salas() -> void:
-		if not p.multi_posible():
+		if not p.app_multijugador.multi_posible():
 			for x in lista.get_children(): x.queue_free()
 			return
 		var r: Dictionary = await p.aula.api("GET", "salas")
@@ -390,7 +417,7 @@ class Volar extends Control:
 	func _init(p_: Node) -> void:
 		p = p_; set_anchors_preset(Control.PRESET_FULL_RECT)
 		d = Tema.pantalla("Vuelo libre", "Sin objetivos: cuenta como horas de entrenamiento."); add_child(d["raiz"])
-		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+		d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 		var dos := HBoxContainer.new(); dos.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(dos)
 		var izq := VBoxContainer.new(); izq.size_flags_horizontal = Control.SIZE_EXPAND_FILL; izq.add_theme_constant_override("separation", 14); dos.add_child(izq)
 		var sitios := HBoxContainer.new(); sitios.add_theme_constant_override("separation", 12); izq.add_child(sitios)
@@ -404,9 +431,9 @@ class Volar extends Control:
 		var der := VBoxContainer.new(); der.custom_minimum_size.x = 380; der.add_theme_constant_override("separation", 12); dos.add_child(der)
 		hueco = VBoxContainer.new(); der.add_child(hueco)
 		b_volar = Tema.boton("Volar →", "BotonPrimGrande", func():
-			p.sesion["escenario"] = p.sitio_sel; p.guardar_sesion()
-			if p.sitio_sel == "libre_cartagena": p.ir_lanzamiento()
-			else: p.empezar())
+			p.sesion["escenario"] = p.sitio_sel; p.app_avion_ajustes.guardar_sesion()
+			if p.sitio_sel == "libre_cartagena": p.app_pantallas.ir_lanzamiento()
+			else: p.app_vuelo.empezar())
 		der.add_child(b_volar)
 	func _sitio(img: Control, titulo: String, texto: String) -> Tarjeta:
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0)

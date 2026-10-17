@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UxS Trainer</title>
+<!--
+  UxS TRAINER (entrenador de sistemas no tripulados; antes Entrenador Vuelo RC): simulador de entrenamiento del aula. Fisica de 6 grados de libertad y visor 3D en el navegador.
+
+  FLUJO: acceso (aula o sin conexion) -> inicio -> vuelo libre / entrenamientos / hangar / ajustes -> volar -> resultado -> progreso.
+  Pantallas: pInicio, pAlumno, pHangar, pEntrenamientos, pVolar, pLanzamiento, pAjustes, pResultado, pProgreso; capas:
+  pausa (Esc), carga (mundos reales) y modal. En vuelo: HUD con lecturas abajo, relojes y horizonte; repeticion del vuelo
+  desde la caja negra; sonido con Web Audio (Sonido).
+
+  Al abrirlo, la pantalla de acceso: servidor del aula, usuario y contrasena (aula/servidor_aula.py guarda los
+  vuelos y el progreso de cada alumno) o "Continuar sin conexion" (se vuela igual, pero no se guarda nada).
+
+  Codigo: js/modelos.js (Modelos y ModeloAvion: carga de aviones y fisica), js/entorno.js (Entorno: viento,
+  pista, pilones, suelo) y js/visor.js (Visor y VistaPrevia: Three.js). Los aviones estan en la carpeta
+  datos/vehiculos/ (ver datos/vehiculos/LEEME.md): con el servidor del aula, un avion nuevo aparece solo al copiarlo ahi.
+  Ejes de la fisica: cuerpo (x adelante, y derecha, z abajo) y mundo NED (norte, este, abajo). El
+  piloto esta en el origen mirando al norte; la pista va hacia el norte (N 10 a 70).
+
+  TECLAS (en vuelo)
+    Flechas  arriba/abajo = profundidad (abajo = tirar = morro arriba), izq/der = alerones (timon en el Poli-1, con A/D)
+    W / S    gases + / -        Espacio: cortar gases       L: lanzar a mano
+    R        volver a empezar   Esc: pausa
+    1 / 2 / 3 camara: piloto / persecucion / a bordo         [ / ]: compensador de profundidad
+    H        datos   T: ayuda   G: rachas (solo vuelo libre)  + / -: viento (solo vuelo libre)
+-->
+<style>
+  :root { --fondo: #0b1521; --panel: rgba(16, 30, 46, .86); --panel2: rgba(22, 40, 60, .92); --borde: #2a4766; --texto: #e8eef5; --suave: #9fb3c8;
+          --acento: #ffc83d; --ok: #58d06a; --mal: #ff6e66; --azul: #4fb3ff; --radio: 14px; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--texto); }
+  * { box-sizing: border-box; }
+  #vista { width: 100%; height: 100%; display: block; }
+  h1, h2, h3 { font-weight: 700; letter-spacing: -.01em; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: #2a4766; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- HUD de vuelo ---------- */
+  .hudCapa { position: absolute; pointer-events: none; }
+  #hud { left: 16px; top: 14px; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; font-size: 14px; line-height: 1.45;
+         background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 10px; display: none; }
+  #hud b { color: var(--acento); }
+  #estado { left: 16px; top: 14px; display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; letter-spacing: .04em;
+            text-shadow: 0 0 6px #000; }
+  #estado .pill { background: rgba(0,0,0,.5); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.15); }
+  #estado .rec { color: #ff5252; }
+  #aviso { left: 0; right: 0; top: 30%; text-align: center; color: #fff; font-size: 34px; font-weight: 700; text-shadow: 0 2px 12px #000; }
+  #lejos { left: 50%; top: 40%; transform: translateX(-50%); color: #ffb74d; font-weight: 600; font-size: 17px; text-align: center; text-shadow: 0 0 6px #000;
+           max-width: 70%; background: rgba(0,0,0,.45); padding: 6px 14px; border-radius: 10px; }
+  #lejos:empty { display: none; }
+  #guia { left: 16px; top: 60px; max-width: min(520px, 55%); background: rgba(0,0,0,.62); color: #fff; font-size: 17px; line-height: 1.3;
+          padding: 10px 14px; border-radius: 10px; text-align: left; border-left: 5px solid var(--acento); }
+  #guia:empty { display: none; }
+  #guia small { display: block; color: #ffb74d; font-size: 14px; margin-top: 5px; }
+  #guia small.peligro { color: #ff5252; font-weight: 700; }
+  #toast { left: 0; right: 0; top: 20%; text-align: center; color: var(--acento); font-size: 26px; font-weight: 700; text-shadow: 0 2px 8px #000; }
+  #salaInfo { z-index: 5; right: 16px; bottom: 236px; background: rgba(0,0,0,.5); padding: 8px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; display: none; max-width: 300px; }
+  #salaInfo b { color: #4fc3f7; }
+  #ordenesHud { z-index: 6; left: 50%; top: 64px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; max-width: 70%; }
+  #ordenesHud .notam { background: rgba(255,183,77,.92); color: #1a1000; padding: 5px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  #ordenesHud .aterriza { background: rgba(211,47,47,.95); color: #fff; padding: 10px 22px; border-radius: 10px; font-size: 26px; font-weight: 800; letter-spacing: .03em; animation: parpadeo 1s infinite; }
+  @keyframes parpadeo { 50% { opacity: .55; } }
+  #briefing { z-index: 30; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(900px, 70vw); pointer-events: auto; cursor: pointer; display: none;
+              background: rgba(0,0,0,.6); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,.25); }
+  #briefing img { width: 100%; display: block; border-radius: 8px; } #briefing div { text-align: center; font-size: 12px; color: var(--suave); margin-top: 6px; }
+  body:not(.operacion) #djiBriefing { display: none; }
+  #objetivos { right: 16px; top: 14px; background: rgba(0,0,0,.5); padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.55;
+               min-width: 240px; max-width: 320px; border: 1px solid rgba(255,255,255,.1); }
+  #objetivos h3 { margin: 0 0 4px; font-size: 14px; color: var(--acento); }
+  #objetivos:empty { display: none; }
+  .ob-ok { color: #8be08f; } .ob-mal { color: #ff8a80; } .ob-pend { color: #ddd; } .ob-curso { color: #b3e5fc; }
+  /* panel de instrumentos: abajo, de izquierda a derecha GPS, gases y palanca, lecturas, relojes y horizonte */
+  #panelVuelo { left: 16px; right: 16px; bottom: 14px; display: flex; align-items: flex-end; gap: 12px; pointer-events: none; }
+  #panelVuelo .esp { flex: 1; }
+  #lecturas { display: flex; gap: 8px; align-items: flex-end; }
+  .lect { background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 6px 12px; min-width: 86px; text-align: center; }
+  .lect b { display: block; font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .lect span { font-size: 10px; color: var(--suave); letter-spacing: .08em; text-transform: uppercase; }
+  .lect.rojo b { color: #ff5252; } .lect.ambar b { color: #ffb300; }
+  .mando { display: inline-block; width: 84px; height: 84px; border: 1px solid rgba(255,255,255,.35); border-radius: 10px; position: relative;
+           background: rgba(0,0,0,.4); vertical-align: bottom; }
+  .mando::before, .mando::after { content: ""; position: absolute; background: rgba(255,255,255,.15); }
+  .mando::before { left: 50%; top: 6px; bottom: 6px; width: 1px; } .mando::after { top: 50%; left: 6px; right: 6px; height: 1px; }
+  .mando i { position: absolute; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: var(--acento); left: 50%; top: 50%; box-shadow: 0 0 6px #000; }
+  .gases { display: inline-block; width: 16px; height: 84px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; position: relative;
+           background: rgba(0,0,0,.4); vertical-align: bottom; margin-right: 8px; }
+  .gases i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #58d06a, #ffc83d); border-radius: 0 0 5px 5px; }
+  #horizonte { width: 190px; height: 190px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #anemometro, #variometro { width: 124px; height: 124px; pointer-events: none; display: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #gps { width: 190px; height: 190px; pointer-events: auto; cursor: zoom-in; display: none; border-radius: 10px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  body.cam1 #gps { order: 10; }     /* camara del piloto: el GPS va a la derecha, donde en las otras camaras estan los relojes */
+  #ayuda { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #ddd; background: rgba(8,14,22,.92); padding: 18px 22px;
+           border-radius: var(--radio); font-size: 14px; line-height: 1.6; max-width: 560px; display: none; border: 1px solid var(--borde); z-index: 35; }
+  #ayuda h3 { margin: 0 0 8px; font-size: 16px; color: var(--acento); }
+  #ayuda b { color: #fff; background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 5px; }
+  #repBarra { left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+              padding: 8px 16px; font-size: 14px; display: none; min-width: 420px; text-align: center; }
+  #repBarra .pista { height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  #repBarra .pista i { display: block; height: 100%; background: var(--acento); width: 0; }
+  #repBarra b { color: var(--acento); }
+  /* ---------- pantalla de la app del dron (cuadricoptero): sustituye al panel de instrumentos del avion ---------- */
+  #dji { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.dron #dji { display: block; } body.dron #panelVuelo, body.dron #estado { display: none !important; }
+  body.dron #objetivos { top: 50px; } body.dron #guia { top: 50px; }
+  #djiTop { position: absolute; left: 0; right: 0; top: 0; height: 42px; background: linear-gradient(rgba(0,0,0,.7), rgba(0,0,0,0)); display: flex; align-items: center;
+            gap: 16px; padding: 0 16px; font-size: 13px; text-shadow: 0 0 4px #000; }
+  #djiTop .modo { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.4); border-radius: 6px; padding: 2px 9px; font-weight: 700; letter-spacing: .05em;
+                  pointer-events: auto; cursor: pointer; min-width: 22px; text-align: center; }
+  #djiTop .modo.S { color: #ff5252; border-color: #ff5252; } #djiTop .modo.C { color: #4fc3f7; border-color: #4fc3f7; }
+  #djiTop .estado { flex: 1; text-align: center; font-weight: 600; color: #8be08f; }
+  #djiTop .estado.aviso { color: #ffb74d; } #djiTop .estado.rojo { color: #ff5252; }
+  #djiTop .bat { font-weight: 700; font-variant-numeric: tabular-nums; } #djiTop .bat.rojo { color: #ff5252; }
+  #djiTop .bat i { display: inline-block; width: 26px; height: 11px; border: 1px solid #fff; border-radius: 2px; vertical-align: -1px; margin-right: 5px; position: relative; }
+  #djiTop .bat i::after { content: ""; position: absolute; left: 1px; top: 1px; bottom: 1px; width: var(--w, 22px); background: #8be08f; }
+  #djiTop .bat.rojo i::after { background: #ff5252; }
+  #djiRec { font-weight: 700; color: #ff5252; font-variant-numeric: tabular-nums; } #djiRec:empty { display: none; }
+  #djiAbajo { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: flex-end; gap: 16px; }
+  #djiMapa { width: 130px; height: 130px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.5); }
+  #djiMapa canvas { width: 130px !important; height: 130px !important; border-radius: 0; display: block !important; filter: none; }
+  #djiTele { display: flex; gap: 22px; font-size: 12px; background: rgba(0,0,0,.5); border-radius: 8px; padding: 6px 14px; text-shadow: 0 0 4px #000; }
+  #djiTele span { color: var(--suave); margin-right: 5px; } #djiTele b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .djiBotones { position: absolute; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: auto; }
+  #djiIzq { left: 16px; } #djiLado { right: 16px; }
+  .djiBotones button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.55); color: #fff; font-size: 15px;
+                       font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .djiBotones button:hover { background: rgba(255,255,255,.22); } .djiBotones button.activo { background: #ffb74d; color: #000; border-color: #ffb74d; }
+  .djiBotones button.disparo { width: 60px; height: 60px; border: 3px solid #fff; background: rgba(0,0,0,.35); }
+  .djiBotones button.disparo i { width: 42px; height: 42px; border-radius: 50%; background: #fff; display: block; transition: all .15s; }
+  .djiBotones button.disparo.video i { background: #ff3d3d; } .djiBotones button.disparo.video.rec i { width: 22px; height: 22px; border-radius: 4px; }
+  .djiBotones .txt { font-size: 10px; color: var(--suave); letter-spacing: .08em; text-shadow: 0 0 4px #000; }
+  #djiGimbal { position: absolute; right: 94px; top: 50%; transform: translateY(-50%); width: 5px; height: 130px; background: rgba(255,255,255,.25); border-radius: 3px; }
+  #djiGimbal i { position: absolute; left: -6px; width: 17px; height: 4px; background: #fff; border-radius: 2px; margin-top: -2px; box-shadow: 0 0 4px #000; }
+  #djiGimbal span { position: absolute; right: 16px; font-size: 11px; color: #fff; margin-top: -7px; white-space: nowrap; text-shadow: 0 0 4px #000; }
+  #djiZoomCaja { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 4px; }
+  .djiBotones #djiZoomCaja button { width: 36px; height: 36px; font-size: 15px; }
+  #djiMedidor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; text-align: center; }
+  #djiMedidor svg { width: 46px; height: 46px; display: block; margin: 0 auto; }
+  #djiTemp { display: inline-block; margin-top: 4px; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; color: #fff; background: rgba(0,0,0,.55); border-radius: 5px; padding: 1px 7px; }
+  #djiPaleta { position: absolute; right: 150px; top: 50%; transform: translateY(-50%); display: none; font-size: 11px; color: #fff; text-shadow: 0 0 4px #000; text-align: center; }
+  #djiPaleta i { display: block; width: 10px; height: 120px; margin: 3px auto; border: 1px solid rgba(255,255,255,.5);
+                 background: linear-gradient(#fffeed, #ffdb33 7%, #ff8000 20%, #db2933 35%, #8c008c 55%, #1f005c 78%, #00000d); }
+  #djiFlash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity .3s; }
+  /* estacion de control del UAV (XM-7): barra de arriba, consignas del piloto automatico, botones a la derecha y mira de la torreta */
+  #gcs { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.uav #gcs { display: block; } body.uav #estado { display: none !important; }
+  #gcsTop { position: absolute; left: 0; right: 0; top: 0; height: 40px; background: linear-gradient(rgba(5,12,8,.85), rgba(5,12,8,0)); display: flex; align-items: center;
+            gap: 18px; padding: 0 16px; font: 600 13px/1 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; letter-spacing: .04em; }
+  #gcsTop .modo { border: 1px solid #b8f5b0; border-radius: 4px; padding: 3px 9px; font-weight: 700; }
+  #gcsTop .modo.auto { color: #4dd0e1; border-color: #4dd0e1; } #gcsTop .modo.pista { color: #ffb74d; border-color: #ffb74d; }
+  #gcsTop .estado { flex: 1; text-align: center; } #gcsTop .rojo { color: #ff5252; }
+  #gcsConsignas { position: absolute; left: 16px; top: 48px; font: 600 12px/1.6 ui-monospace, Consolas, monospace; color: #4dd0e1; text-shadow: 0 0 4px #000; }
+  #gcsDer { right: 16px; } #gcsDer button { width: 52px; height: 30px; border-radius: 5px; font: 700 12px ui-monospace, Consolas, monospace; }
+  #gcsDer .sep { height: 6px; } #gcsDer .txt { font: 600 11px ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
+  #gcsSinVideo { position: fixed; inset: 0; background: #050607; color: #ff6e66; display: none; align-items: center; justify-content: center; flex-direction: column;
+                 font: 700 34px ui-monospace, monospace; letter-spacing: .1em; text-align: center; pointer-events: none; z-index: 0; }
+  #gcsSinVideo span { font-size: 15px; letter-spacing: 0; color: #c9d1d9; margin-top: 10px; font-weight: 400; }
+  #gcsMira { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; text-align: center;
+             font: 600 12px/1.5 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; }
+  #gcsMira svg { width: 120px; height: 120px; display: block; margin: 0 auto; }
+  #gcsMira .fijo { color: #ffb74d; font-weight: 700; } #gcsMira .temp { color: #fff; background: rgba(0,0,0,.55); border-radius: 4px; padding: 0 6px; }
+  #gcsPaleta { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); display: none; font-size: 11px; color: #fff; text-shadow: 0 0 4px #000; text-align: center; }
+  #gcsPaleta i { display: block; width: 10px; height: 120px; margin: 3px auto; border: 1px solid rgba(255,255,255,.5);
+                 background: linear-gradient(#fffeed, #ffdb33 7%, #ff8000 20%, #db2933 35%, #8c008c 55%, #1f005c 78%, #00000d); }
+  body.uav #objetivos { top: 46px; }
+  #gcsSensor { position: absolute; left: 16px; top: 72px; font: 600 12px/1.6 ui-monospace, Consolas, monospace; color: #b8f5b0; text-shadow: 0 0 4px #000; display: none; }
+  #djiFlash.on { opacity: .75; transition: none; }
+  /* ---------- OSD de Betaflight (dron FPV): lo que se ve en las gafas, sustituye al panel de instrumentos ---------- */
+  #fpv { left: 0; right: 0; top: 0; bottom: 0; display: none; }
+  body.fpv #fpv { display: block; } body.fpv #panelVuelo, body.fpv #estado { display: none !important; }
+  #fpv .osd { position: absolute; font: 700 22px "Consolas", "Courier New", monospace; color: #fff; white-space: nowrap; letter-spacing: .03em;
+              text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px #000; }
+  #fpv .osd.c { transform: translateX(-50%); } #fpv .osd.rojo { color: #ff5252; } #fpv .osd.ambar { color: #ffd740; }
+  #fpv .osd.grande { font-size: 30px; } #fpv .osd:empty { display: none; }
+  #reconMira { position: fixed; left: 50%; top: 50%; width: 90px; height: 30px; margin: -15px 0 0 -45px; pointer-events: none; display: none; z-index: 4; }
+  #fpvMira { position: absolute; left: 50%; top: 50%; width: 90px; height: 30px; margin: -15px 0 0 -45px; }
+
+  /* ---------- pantallas ---------- */
+  .pantalla { position: absolute; inset: 0; display: none; z-index: 10; overflow: hidden; background: var(--fondo); }
+  .pantalla.activa { display: flex; flex-direction: column; }
+  .pantalla.conFoto { background: #0b1521 url("../datos/escenarios/mundos/cartagena_orto.jpg") center / cover no-repeat; }
+  .pantalla.conFoto::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,14,22,.94) 0%, rgba(8,14,22,.78) 45%, rgba(8,14,22,.35) 100%),
+                              linear-gradient(0deg, rgba(8,14,22,.9) 0%, rgba(8,14,22,0) 40%); }
+  .pantalla > * { position: relative; }
+  .cabecera { display: flex; align-items: center; gap: 14px; padding: 18px 28px 12px; }
+  .cabecera h1 { margin: 0; font-size: 26px; }
+  .cabecera .sub { margin: 2px 0 0; color: var(--suave); font-size: 14px; }
+  .cabecera .esp { flex: 1; }
+  .cuerpo { flex: 1; overflow: auto; padding: 0 28px 24px; }
+  .pie { display: flex; gap: 12px; align-items: center; padding: 14px 28px; border-top: 1px solid rgba(255,255,255,.08); background: rgba(8,14,22,.6); }
+  .pie .esp { flex: 1; }
+  .sub { color: var(--suave); }
+  .capa { background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 16px 18px; backdrop-filter: blur(6px); }
+  .capa h2 { margin: 0 0 10px; font-size: 15px; color: var(--acento); text-transform: uppercase; letter-spacing: .08em; }
+  .dos { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .dos { grid-template-columns: 1fr; } }
+  /* modo Taller (js/taller.js) */
+  .tallerGrid { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .tallerGrid { grid-template-columns: 1fr; } }
+  .tallerVeh { display: block; width: 100%; text-align: left; margin-bottom: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+               border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .tallerVeh b { display: block; font-size: 15px; } .tallerVeh span { color: var(--suave); font-size: 12px; }
+  .tallerVeh.sel { border-color: var(--acento); background: rgba(255,200,40,.12); }
+  .barraTaller { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); margin-top: 14px; overflow: hidden; }
+  .barraTaller i { display: block; height: 100%; background: var(--acento); transition: width .4s; }
+  .tablaTaller table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .tablaTaller th { text-align: left; color: var(--suave); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .tablaTaller td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .tablaTaller tr[data-i] { cursor: pointer; } .tablaTaller tr[data-i]:hover { background: rgba(255,255,255,.06); }
+  .resumenTaller { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 12px 0; }
+  .resumenTaller div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 7px 10px; }
+  .resumenTaller span { display: block; color: var(--suave); font-size: 12px; } .resumenTaller b { font-size: 15px; }
+  .graficasTaller { display: flex; gap: 12px; align-items: flex-start; } .graficasTaller > canvas { flex: 1; min-width: 0; border-radius: 8px; }
+  .graficasTaller > div { width: 260px; flex: none; } #tallerTraza { border-radius: 8px; display: block; }
+  .eventosTaller { max-height: 300px; overflow: auto; font-size: 13px; margin-top: 8px; } .eventosTaller div { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  @media (max-width: 900px) { .graficasTaller { flex-direction: column; } }
+  .pestTaller { display: flex; gap: 8px; margin: 12px 0; }
+  .botonesTaller { display: flex; flex-wrap: wrap; gap: 8px; }
+  .botonesTaller .btn { font-size: 14px; padding: 8px 14px; }
+  .tituloTaller { margin: 18px 0 8px; font-size: 15px; color: var(--texto); }
+  .revTaller { margin-top: 10px; background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+  .revTaller ul { margin: 6px 0 0; padding-left: 20px; } .revTaller li { margin: 2px 0; }
+  .btn { background: rgba(255,255,255,.08); color: var(--texto); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 10px 18px; font-size: 15px;
+         cursor: pointer; transition: background .12s, transform .08s; }
+  .btn:hover { background: rgba(255,255,255,.14); } .btn:active { transform: translateY(1px); }
+  .btn.prim { background: var(--acento); color: #1a1400; border-color: var(--acento); font-weight: 700; }
+  .btn.prim:hover { background: #ffd666; }
+  .btn.grande { font-size: 18px; padding: 14px 28px; border-radius: 12px; }
+  .btn.peligro { background: #5a1e1e; border-color: #8a2c2c; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.ico { display: flex; align-items: center; gap: 10px; }
+  .btn.ico svg { width: 22px; height: 22px; }
+  input[type=text], input[type=search], input[type=password], input[type=number], select { background: rgba(0,0,0,.35); color: var(--texto); border: 1px solid var(--borde);
+      border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; }
+  input[type=range] { accent-color: var(--acento); }
+  input[type=checkbox] { accent-color: var(--acento); width: 16px; height: 16px; }
+  .fila { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  /* monitor de palancas del mando: una fila por palanca, barra centrada, numero de eje e invertir */
+  #mandoMonitor { margin: 10px 0 4px; display: grid; grid-template-columns: minmax(150px, 230px) 1fr 52px 96px; gap: 6px 10px; align-items: center; font-size: 13px; }
+  #mandoMonitor .nom { color: var(--suave); } #mandoMonitor .eje { color: var(--suave); font-variant-numeric: tabular-nums; }
+  #mandoMonitor .barra { height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; position: relative; overflow: hidden; }
+  #mandoMonitor .barra::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.35); }
+  #mandoMonitor .barra i { position: absolute; top: 0; bottom: 0; background: var(--acento); }
+  #mandoMonitor .barra.hecho i { background: #8be08f; }
+  #mandoMonitor.inactivo { opacity: .45; }
+  #mandoMonitor label { min-width: 0; font-size: 13px; }
+  #mandoAsist { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--acento); border-radius: 10px; background: rgba(255,200,61,.08); display: none; font-size: 15px; }
+  #mandoAsist.activo { display: block; } #mandoAsist b { color: var(--acento); }
+  #mandoAviso { color: #ffb74d; font-size: 13px; margin: 6px 0; } #mandoAviso:empty { display: none; }
+  .fila label { min-width: 140px; color: var(--suave); font-size: 14px; }
+  .fila input[type=range] { flex: 1; min-width: 120px; max-width: 320px; }
+  .fila b { font-size: 14px; }
+  .chip { display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 12px; background: rgba(255,255,255,.1); margin-right: 4px; }
+  .chip.ok { background: rgba(88,208,106,.2); color: #9be59f; } .chip.mal { background: rgba(255,110,102,.2); color: #ffb4ab; } .chip.acento { background: rgba(255,200,61,.2); color: var(--acento); }
+  details.avanzado { margin-top: 12px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 8px; }
+  details.avanzado > summary { cursor: pointer; color: var(--suave); font-size: 14px; list-style: none; display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  details.avanzado > summary::before { content: "▸"; font-size: 12px; } details.avanzado[open] > summary::before { content: "▾"; }
+  details.avanzado > summary::-webkit-details-marker { display: none; }
+  .pestanas { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 14px; }
+  .pestanas button { background: none; border: none; color: var(--suave); padding: 10px 16px; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .pestanas button.sel { color: var(--texto); border-bottom-color: var(--acento); }
+  .panelPestana { display: none; } .panelPestana.sel { display: block; }
+  .err { color: #ff8a80; min-height: 1.3em; font-size: 14px; }
+  table.datos { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table.datos td, table.datos th { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+  table.datos th { color: var(--suave); font-weight: 500; width: 42%; }
+  .estadisticas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .estadisticas div { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+  .estadisticas b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .estadisticas span { color: var(--suave); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .progreso { height: 14px; background: rgba(0,0,0,.4); border: 1px solid var(--borde); border-radius: 7px; overflow: hidden; }
+  .progreso i { display: block; height: 100%; background: linear-gradient(90deg, #ffc83d, #58d06a); }
+  .logros { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .logro { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .logro.ok { border-color: rgba(255,213,79,.55); box-shadow: 0 0 0 2px rgba(255,213,79,.12); }
+  .logro .ins { width: 104px; height: 104px; align-self: center; }
+  .logro h3 { margin: 4px 0 0; font-size: 16px; text-align: center; }
+  .logro p { margin: 0; font-size: 13px; color: var(--suave); text-align: center; }
+  .logro .lin { font-size: 12px; display: flex; justify-content: space-between; margin-top: 4px; }
+  .logro .progreso { height: 8px; }
+  .logro .falta { font-size: 12px; color: var(--suave); }
+  .logro .estado { font-size: 13px; font-weight: 700; text-align: center; margin-top: 4px; }
+  .aviso-aula { background: rgba(255,200,61,.1); border: 1px solid rgba(255,200,61,.35); color: #ffe6a6; border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; }
+
+  /* ---------- inicio ---------- */
+  #pInicio .cuerpo { display: flex; align-items: stretch; padding: 0; overflow: hidden; }
+  #inicioIzq { width: min(460px, 46%); padding: 48px 40px 24px 48px; display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; }   /* pantallas bajas: el menu se desplaza */
+  #inicioIzq > * { flex-shrink: 0; }
+  @media (max-height: 820px) { #inicioIzq { padding-top: 26px; } #inicioIzq .titulo { margin-bottom: 12px; } #inicioIzq .titulo h1 { font-size: 34px; } #inicioIzq .titulo p { font-size: 14px; } }
+  #inicioIzq .titulo { margin: 0 0 26px; }
+  #inicioIzq .titulo small { display: block; color: var(--acento); letter-spacing: .3em; text-transform: uppercase; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  #inicioIzq .titulo h1 { margin: 0; font-size: 44px; line-height: 1.02; }
+  #inicioIzq .titulo p { color: var(--suave); margin: 10px 0 0; font-size: 15px; }
+  .menu-btn { display: flex; align-items: center; gap: 16px; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+              border-radius: 14px; padding: 14px 18px; cursor: pointer; transition: background .12s, border-color .12s, transform .08s; }
+  .menu-btn:hover { background: rgba(255,200,61,.14); border-color: rgba(255,200,61,.5); transform: translateX(4px); }
+  .menu-btn svg { width: 34px; height: 34px; flex: none; color: var(--acento); }
+  .menu-btn b { display: block; font-size: 19px; }
+  .menu-btn span { display: block; color: var(--suave); font-size: 13px; margin-top: 2px; }
+  #inicioDer { flex: 1; position: relative; }
+  #previaSlotInicio { position: absolute; inset: 0; }
+  #vistaPrevia { width: 100%; height: 100%; display: block; }
+  #inicioPerfil { position: absolute; z-index: 2; left: 50%; top: 36px; transform: translateX(-50%); text-align: center; cursor: pointer; padding: 8px 22px;
+                  border-radius: 14px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); }
+  #inicioPerfil:hover { background: rgba(255,200,61,.14); border-color: rgba(255,200,61,.5); }
+  #inicioPerfil small { display: block; font-size: 11px; letter-spacing: .2em; color: var(--acento); font-weight: 700; }
+  #inicioPerfil b { display: block; font-size: 26px; } #inicioPerfil span { display: block; color: var(--suave); font-size: 13px; }
+  #inicioAvion { position: absolute; right: 36px; bottom: 90px; text-align: right; }
+  #inicioAvion b { display: block; font-size: 26px; } #inicioAvion span { color: var(--suave); font-size: 14px; }
+  #inicioPie { display: flex; gap: 10px; align-items: center; padding: 12px 48px 18px; color: var(--suave); font-size: 13px; }
+  #inicioPie .chip { font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  #inicioPie .chip:hover { background: rgba(255,255,255,.18); }
+
+  /* ---------- hangar ---------- */
+  #hangarCuerpo { display: grid; grid-template-columns: 220px 1fr 420px; gap: 16px; height: 100%; }
+  @media (max-width: 1100px) { #hangarCuerpo { grid-template-columns: 200px 1fr; } #hangarCuerpo > .capa:last-child { grid-column: 1 / -1; } }
+  .avCarta { display: block; width: 100%; text-align: left; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); color: var(--texto);
+             border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .avCarta:hover { background: rgba(255,255,255,.1); }
+  .avCarta.sel { border-color: var(--acento); background: rgba(255,200,61,.12); }
+  .avCarta b { display: block; font-size: 16px; } .avCarta span { color: var(--suave); font-size: 12px; }
+  #previaSlotHangar { position: relative; min-height: 360px; height: 100%; border-radius: var(--radio); overflow: hidden;
+                      background: radial-gradient(ellipse at 50% 70%, #35546f 0%, #142434 60%, #0b1521 100%); border: 1px solid var(--borde); }
+  #previaSlotHangar::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: 18%; height: 2px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent); }
+  #hangarNombre { position: absolute; left: 20px; top: 16px; } #hangarNombre b { display: block; font-size: 24px; } #hangarNombre span { color: var(--suave); font-size: 13px; max-width: 420px; display: block; }
+  #hangarFicha { overflow: auto; max-height: 100%; }
+
+  /* ---------- entrenamientos y vuelo libre ---------- */
+  .ordenTrabajo { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 8px; }
+  .ordenTrabajo td { padding: 4px 0; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .ordenTrabajo td:first-child { color: var(--suave); width: 92px; padding-right: 8px; }
+  #checkOp .capa { max-width: 520px; margin: 16px; }
+  #checkOp h3 { margin: 0 0 4px; }
+  #checkOp label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 8px 0; cursor: pointer; }
+  #checkOp .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .elegirVeh { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+  .elegirVeh b { font-size: 12px; color: var(--suave); text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+  .elegirVeh .btn { padding: 6px 10px; font-size: 13px; }
+  .elegirVeh.grande { margin: 6px 0 12px; } .elegirVeh.grande .btn { padding: 8px 12px; font-size: 14px; text-align: left; }
+  .elegirVeh.grande .btn small { display: block; font-size: 11px; opacity: .75; font-weight: 400; }
+  .grupoOp { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); margin: 14px 0 6px; }
+  .grupoOp:first-child { margin-top: 0; }
+  .grupoOp span { font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 8px; }
+  .filaOp { display: grid; grid-auto-flow: column; gap: 12px; overflow-x: auto; padding-bottom: 4px; }   /* columnas: irOperaciones */
+  #listaOperaciones { min-width: 0; }
+  .misiones { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .zonaTitulo { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 13px; color: var(--suave); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .zonaTitulo:first-child { margin-top: 0; }
+  .mision { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; overflow: hidden; cursor: pointer; transition: border-color .12s, transform .08s; }
+  .mision:hover { border-color: rgba(255,200,61,.5); transform: translateY(-2px); }
+  .mision.sel { border-color: var(--acento); box-shadow: 0 0 0 2px rgba(255,200,61,.3); }
+  .mision .img { height: 110px; background: linear-gradient(180deg, #1d3a56, #0f2235); display: flex; align-items: center; justify-content: center; }
+  .mision .img svg { width: 100%; height: 100%; }
+  .mision .txt { padding: 10px 12px 12px; }
+  .mision h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+  .mision p { margin: 0 0 6px; color: var(--suave); font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mision .meta { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--suave); }
+  .estrellas { color: var(--acento); letter-spacing: 2px; }
+  .mision .hecha { color: var(--ok); font-weight: 700; }
+  #fichaMision h2 { text-transform: none; letter-spacing: 0; font-size: 20px; color: var(--texto); }
+  #fichaMision ul { padding-left: 18px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
+  .sitios { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sitio { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; overflow: hidden; cursor: pointer; }
+  .sitio:hover { border-color: rgba(255,200,61,.5); } .sitio.sel { border-color: var(--acento); box-shadow: 0 0 0 2px rgba(255,200,61,.3); }
+  .sitio .img { height: 160px; background-size: cover; background-position: center; overflow: hidden; }
+  .sitio .img svg { width: 100%; height: 100%; display: block; }
+  #sitioCampoImg { background: linear-gradient(180deg, #1d3a56, #0f2235); }
+  .sitio .txt { padding: 12px 14px; } .sitio h3 { margin: 0 0 4px; font-size: 17px; } .sitio p { margin: 0; color: var(--suave); font-size: 13px; }
+  #condiciones .fila { margin: 6px 0; }
+
+  /* ---------- mapa de lanzamiento ---------- */
+  #pLanzamiento .cuerpo { display: flex; flex-direction: column; padding-bottom: 0; }
+  #mapaCaja { flex: 1; position: relative; border-radius: var(--radio); overflow: hidden; border: 1px solid var(--borde); background: #0b0f14; min-height: 300px; }
+  #mapaLanz { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; display: block; }
+  .btn.destacado { border-color: #ff8c00; color: #ffb74d; font-weight: 700; }
+  #lanzInfo { position: absolute; left: 14px; bottom: 12px; right: 14px; background: rgba(8,14,22,.78); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+
+  /* ---------- ajustes ---------- */
+  #ajustesCuerpo { display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+  #ajustesMenu button { display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent; color: var(--suave); padding: 10px 14px; font-size: 15px;
+                        border-radius: 10px; cursor: pointer; }
+  #ajustesMenu button.sel { background: rgba(255,255,255,.08); color: var(--texto); border-color: rgba(255,255,255,.12); }
+  .teclas td:first-child { white-space: nowrap; } .teclas kbd { background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 5px; font-family: inherit; font-size: 13px; }
+
+  /* ---------- resultado ---------- */
+  .grande { font-size: 40px; font-weight: 800; margin: 2px 0 6px; }
+  .apto { color: #66d36e; } .noapto { color: #ff6e66; } .libre { color: var(--azul); }
+  #resGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { #resGrid { grid-template-columns: 1fr; } }
+  #resTraza { width: 100%; height: 300px; display: block; border-radius: 10px; background: #0b0f14; }
+  #resObjetivos td:first-child { width: 28px; }
+
+  /* ---------- acceso: servidor del aula, usuario y contrasena ---------- */
+  #accesoCuerpo { display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  #accesoCaja { width: 440px; max-width: 100%; padding: 26px 28px; display: flex; flex-direction: column; gap: 6px; }
+  #accesoCaja small { font-size: 11px; letter-spacing: .2em; color: var(--acento); font-weight: 700; }
+  #accesoCaja h1 { margin: 2px 0 4px; } #accesoCaja label { font-size: 13px; color: var(--suave); margin-top: 8px; }
+  #accesoCaja input { width: 100%; } #accesoCaja .btn { width: 100%; margin-top: 6px; }
+  /* registro de alumno nuevo: pagina aparte, en dos columnas (una en el movil) */
+  #registroCaja { width: 620px; max-width: 100%; padding: 26px 28px; display: flex; flex-direction: column; gap: 6px; }
+  #registroCaja small { font-size: 11px; letter-spacing: .2em; color: var(--acento); font-weight: 700; }
+  #registroCaja h1 { margin: 2px 0 4px; } #registroCaja label { font-size: 13px; color: var(--suave); margin-top: 8px; display: block; }
+  #registroCaja input { width: 100%; box-sizing: border-box; } #registroCaja .btn { width: 100%; margin-top: 6px; }
+  .regCols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  @media (max-width: 560px) { .regCols { grid-template-columns: 1fr; } }
+  #accesoCaja .err { min-height: 18px; margin-top: 6px; }
+  .pieAcceso { display: flex; padding: 12px 48px 18px; color: var(--suave); font-size: 13px; }
+
+  /* ---------- bipode: sin instrumentos de avion; marcador de drones y mira ---------- */
+  body.bipode #horizonte, body.bipode #anemometro, body.bipode #variometro, body.bipode #barra { display: none !important; }
+  #hudBip { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; align-items: center; z-index: 5; pointer-events: none;
+    font: 700 14px/1.2 system-ui, sans-serif; color: #ffe9a8; text-shadow: 0 1px 3px #000; letter-spacing: .06em; }
+  body.bipode.enVuelo #hudBip { display: flex; }
+  #hudBip .pill { background: rgba(0,0,0,.45); border: 1px solid rgba(255,200,61,.4); border-radius: 999px; padding: 5px 12px; }
+  #miraBip { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; display: none; z-index: 4; pointer-events: none; }
+  body.bipode.enVuelo.miraBip #miraBip { display: block; }
+
+  /* ---------- capas: pausa, carga, modal ---------- */
+  .velo { position: absolute; inset: 0; display: none; z-index: 30; align-items: center; justify-content: center; background: rgba(5,10,16,.55); backdrop-filter: blur(3px); }
+  .velo.activa { display: flex; }
+  #pausa .capa { width: 420px; padding: 24px 26px; }
+  #pausa h2 { font-size: 22px; text-transform: none; letter-spacing: 0; color: var(--texto); margin-bottom: 14px; }
+  #pausa .btn { display: block; width: 100%; margin-bottom: 8px; text-align: left; }
+  #pausa .fila { margin: 10px 0 0; }
+  #carga { background: rgba(5,10,16,.92); flex-direction: column; gap: 14px; z-index: 40; }
+  #carga h2 { font-size: 22px; margin: 0; } #carga p { color: var(--suave); margin: 0; }
+  #carga .progreso { width: 360px; }
+  #modal .capa { max-width: 440px; margin: 16px; }
+  #modal h3 { margin: 0 0 8px; }
+  #modal .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  #carreraBar { z-index: 6; left: 50%; transform: translateX(-50%); top: 26%;    /* bajo los avisos (#toast, 20 %) */ text-align: center; display: none; }
+  #carreraBar .rec { display: inline-block; background: rgba(0,0,0,.55); border: 1px solid rgba(255,213,79,.6); color: #ffd54f; border-radius: 16px; padding: 3px 12px; font-size: 13px; font-weight: 700; }
+  #carreraBar .crono { margin-top: 4px; font: 700 30px/1.1 ui-monospace, "Cascadia Mono", Consolas, monospace; color: #fff; text-shadow: 0 2px 8px #000; }
+  #carreraBar .crono small { font-size: 16px; color: #cfe8ff; margin-left: 8px; }
+  #carreraBar.fuera .crono { color: #ff8a80; }
+  #carreraMarca { left: 0; top: 0; width: 100%; height: 100%; z-index: 4; }
+  body:not(.enVuelo) .hudCapa { display: none !important; }
+  body.espectador .hudCapa, body.espectador #gps, body.espectador #dji, body.espectador #fpv, body.espectador #gcs, body.espectador #ayuda { display: none !important; }
+  #espBar { display: none; position: absolute; left: 12px; right: 12px; top: 10px; z-index: 20; background: rgba(0,0,0,.6); border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.45; pointer-events: none; }
+  body.espectador #espBar { display: block; }
+  #espBar .sub2 { color: #9fb3c8; font-size: 12px; }
+  #espBar.perdido { background: rgba(120,20,20,.75); }
+</style>
+</head>
+<body>
+<canvas id="vista"></canvas>
+<!-- ============ HUD DE VUELO ============ -->
+<div id="estado" class="hudCapa"></div>
+<div id="hud" class="hudCapa"></div>
+<div id="aviso" class="hudCapa"></div>
+<div id="lejos" class="hudCapa"></div>
+<div id="guia" class="hudCapa"></div>
+<div id="toast" class="hudCapa"></div>
+<div id="objetivos" class="hudCapa"></div>
+<div id="salaInfo" class="hudCapa"></div>
+<canvas id="carreraMarca" class="hudCapa"></canvas>
+<div id="espBar"></div>
+<div id="carreraBar" class="hudCapa"><div class="rec" id="carreraRecord"></div><div class="crono" id="carreraCrono"></div></div>
+<div id="ordenesHud" class="hudCapa"></div>
+<div id="hudBip" class="hudCapa"><span class="pill" id="bipDrones">DRONES DERRIBADOS 0</span><span class="pill" id="bipCanon">CAÑÓN LISTO</span></div>
+<svg id="miraBip" class="hudCapa" viewBox="0 0 56 56" fill="none" stroke="#ffd36a" stroke-width="2"><circle cx="28" cy="28" r="14" stroke-opacity=".85"/><path d="M28 4v12M28 40v12M4 28h12M40 28h12" /><circle cx="28" cy="28" r="1.5" fill="#ffd36a"/></svg>
+<div id="briefing" class="hudCapa" title="Pulsa B, Esc o haz clic para cerrarlo"><img alt=""><div>Briefing de la orden de trabajo · <b>B</b> o clic para cerrar</div></div>
+<div id="repBarra" class="hudCapa"><div><b>REPETICIÓN</b> · <span id="repTiempo">0 s</span> · espacio: pausa · ← →: 5 s · 1/2/3: cámara · Esc: salir</div><div class="pista"><i id="repProgreso"></i></div></div>
+<div id="ayuda">
+  <h3>Controles</h3>
+  <div id="ayudaTeclasDron" style="display:none">
+  <b>↓ ↑</b> atrás / adelante · <b>← →</b> laterales · <b>W</b> / <b>S</b> sube / baja · <b>A</b> / <b>D</b> gira sobre sí mismo<br>
+  <b>M</b> modo Cine / Normal / Sport · <b>Q</b> / <b>E</b> gimbal · <b>F</b> foto · <b>V</b> vídeo · <b>H</b> volver a casa · <b>L</b> armar · <b>R</b> empezar de nuevo · <b>B</b> briefing (trabajos)<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / del dron · <b>I</b> pantalla de la app · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b> (modo 2): izquierda sube, baja y gira; derecha mueve · A despegar / aterrizar · combinación de palancas (CSC: las dos abajo y hacia dentro o hacia fuera, medio segundo): arrancar motores · B volver a casa · X vídeo · Y foto · LB modo · RB cámara · gatillos gimbal · Start pausa<br>
+  </div>
+  <div id="ayudaTeclasBip" style="display:none">
+  <b>W</b> / <b>S</b> adelante / atrás · <b>A</b> / <b>D</b> girar · <b>← →</b> girar la cintura (360°) · <b>↑ ↓</b> subir / bajar los brazos<br>
+  <b>Espacio</b> disparar (mantener) · <b>F</b> cerrar el puño · <b>L</b> arrancar / aparcar · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / puesto de tiro (con la mira) · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b>: palanca izquierda andar y girar, derecha cintura y brazos · gatillo derecho disparar · gatillo izquierdo puño · A arrancar / aparcar · RB cámara · Back empezar de nuevo · Start pausa<br>
+  <span style="color:#8be08f">Derriba los drones diana que vuelan alrededor (caen al primer impacto); en multijugador, también los de tus compañeros.</span><br>
+  </div>
+  <div id="ayudaTeclasFPV" style="display:none">
+  <b>↑ ↓</b> cabeceo (↑ adelante) · <b>← →</b> alabeo · <b>W</b> / <b>S</b> gas (no vuelve al centro) · <b>Espacio</b> gas a cero · <b>A</b> / <b>D</b> guiñada<br>
+  <b>L</b> armar / desarmar (con el gas abajo) · <b>M</b> modo ANGLE / HORIZON / ACRO · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / FPV · <b>I</b> OSD · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b> (modo 2): izquierda gas y guiñada, derecha alabeo y cabeceo · A armar / desarmar · LB modo · RB cámara · Back empezar de nuevo · Start pausa<br>
+  <span style="color:#8be08f">Mejor con una emisora RC por USB (el gas no tiene muelle) o un mando; con el teclado es muy difícil. Empieza en ANGLE.</span><br>
+  </div>
+  <div id="ayudaTeclasAvion">
+  <b>↓ ↑</b> profundidad (↓ tira: morro arriba) · <b>← →</b> <span id="ayudaLR">timón</span><br>
+  <b>W</b> / <b>S</b> gases · <b>Espacio</b> cortar gases · <b>L</b> lanzar · <b>R</b> empezar de nuevo<br>
+  <b>1</b> <b>2</b> <b>3</b> cámara piloto / persecución / a bordo · <b>[</b> <b>]</b> compensador<br>
+  <b>H</b> datos de vuelo · <b>I</b> instrumentos · <b>Esc</b> pausa · <b>T</b> esta ayuda<br>
+  <b>Mando</b>: palanca derecha el avión, izquierda el gas · A lanzar · B cortar gas · RB cámara · X empezar de nuevo · Start pausa<br>
+  </div>
+  <span id="ayudaPar" style="color:#ffb74d">Al lanzar a tope, el par del motor alabea el avión a la izquierda: corrige con un poco de alabeo a la derecha.<br></span>
+  <span style="color:#aaa">En vuelo libre: <b>+</b> <b>−</b> viento, <b>G</b> rachas.
+  <span id="ayudaAvion">El avión vira con el timón: el diedro inclina las alas solo. Si sueltas los mandos, vuelve a volar recto.</span></span>
+</div>
+<div id="panelVuelo" class="hudCapa">
+  <canvas id="gps" width="200" height="200" aria-label="GPS: mapa del campo"></canvas>
+  <div id="barra">
+    <div class="gases"><i id="gasesBarra" style="height:0%"></i></div>
+    <div class="mando"><i id="punto"></i></div>
+  </div>
+  <div class="esp"></div>
+  <div id="lecturas"></div>
+  <div class="esp"></div>
+  <svg id="variometro" viewBox="0 0 150 150" aria-label="Ascenso y descenso">
+    <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="vaEscala"></g>
+    <line id="vaAguja" x1="75" y1="75" x2="22" y2="75" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="75" cy="75" r="5" fill="#fff"/>
+    <text id="vaTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">+0.0</text>
+    <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · asc. / desc.</text>
+  </svg>
+  <svg id="anemometro" viewBox="0 0 150 150" aria-label="Velocidad del aire">
+    <circle cx="75" cy="75" r="73" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="anBandas" fill="none" stroke-width="9"></g><g id="anEscala"></g>
+    <line id="anAguja" x1="75" y1="75" x2="75" y2="22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="75" cy="75" r="5" fill="#fff"/>
+    <text id="anTxt" x="75" y="118" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">0.0</text>
+    <text x="75" y="134" text-anchor="middle" fill="#8b949e" font-size="9">m/s · vel. aire</text>
+  </svg>
+  <svg id="horizonte" viewBox="0 0 300 300" aria-label="Horizonte artificial y rumbo">
+    <defs><clipPath id="clipActitud"><circle cx="150" cy="150" r="98"/></clipPath></defs>
+    <circle cx="150" cy="150" r="148" fill="#0b0f14" fill-opacity="0.85" stroke="#3d4956" stroke-width="2"/>
+    <g id="hzRosa"></g>
+    <g id="hzMarcas">
+      <polygon id="hzCasa" points="150,20 142,34 158,34" fill="#ffd54f" stroke="#000" stroke-width="1"/>
+      <g id="hzPista" stroke="#ff4fd8" stroke-width="5"><line x1="150" y1="104" x2="150" y2="118"/><line x1="150" y1="182" x2="150" y2="196"/></g>
+      <polygon id="hzViento" points="150,24 141,12 159,12" fill="#4fc3f7" stroke="#000" stroke-width="1"/>
+    </g>
+    <g clip-path="url(#clipActitud)">
+      <g id="hzActitud">
+        <rect x="-600" y="-1400" width="1500" height="1550" fill="#1f7ae0"/>
+        <rect x="-600" y="150" width="1500" height="1550" fill="#6b4a1e"/>
+        <line x1="-600" y1="150" x2="900" y2="150" stroke="#fff" stroke-width="1.5"/>
+        <g id="hzEscalera"></g>
+      </g>
+    </g>
+    <circle cx="150" cy="150" r="98" fill="none" stroke="#3d4956" stroke-width="2"/>
+    <g id="hzBanco" fill="none" stroke="#fff" stroke-width="1.5"></g>
+    <polygon points="150,58 144,70 156,70" fill="#fff"/>
+    <circle cx="150" cy="150" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <line x1="100" y1="150" x2="132" y2="150" stroke="#fff" stroke-width="3"/>
+    <line x1="168" y1="150" x2="200" y2="150" stroke="#fff" stroke-width="3"/>
+    <polygon points="150,3 143,16 157,16" fill="#f85149"/>
+    <text id="hzRumbo" x="150" y="290" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">000°</text>
+  </svg>
+</div>
+
+<!-- ============ INICIO ============ -->
+<div class="pantalla conFoto" id="pInicio">
+  <div class="cuerpo">
+    <div id="inicioIzq">
+      <div class="titulo"><small>Entrenador de sistemas no tripulados</small><h1>UxS Trainer</h1><p>Aprende a volar antes de lanzar el avión de verdad: misma física, mismos aviones.</p></div>
+      <button class="menu-btn" id="mnVolar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l19-7-19-7 4 7-4 7z"/><path d="M6.5 12h15"/></svg><div><b>Vuelo libre</b><span>El campo de vuelo del club o el Campo de Cartagena con mapa real</span></div></button>
+      <button class="menu-btn" id="mnEntrenar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg><div><b>Entrenamientos</b><span>Misiones con objetivos para cada vehículo: el avión, el dron comercial y el dron FPV</span></div></button>
+      <button class="menu-btn" id="mnMulti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg><div><b>Multijugador</b><span>Vuela con tus compañeros en la misma sala del aula: os veis unos a otros</span></div></button>
+      <button class="menu-btn" id="mnOperaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><div><b>Operaciones</b><span>Trabajos de operador de dron: inspección, fotogrametría, rescate, agricultura, paneles solares y vídeo</span></div></button>
+      <button class="menu-btn" id="mnHangar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M7 20v-7h10v7"/><path d="M3 20h18"/></svg><div><b>Hangar</b><span>Elige el avión, mira su ficha y ajusta el centro de gravedad y la emisora</span></div></button>
+      <button class="menu-btn" id="mnTaller"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.5-.5-.5-2.5z"/></svg><div><b>Taller</b><span>Conecta el vehículo, descarga sus registros de vuelo y mira cómo varían la batería y lo demás</span></div></button>
+      <button class="menu-btn" id="mnPerfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><div><b>Perfil</b><span>Tu progreso y tu sesión en el aula</span></div></button>
+      <button class="menu-btn" id="mnAjustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><div><b>Ajustes</b><span>Mando, gráficos, sonido, dificultad y registro de vuelos</span></div></button>
+    </div>
+    <div id="inicioDer">
+      <div id="inicioPerfil" title="Tu progreso y tu sesión"><small>PERFIL</small><b id="inicioPerfilNombre"></b><span id="inicioPerfilModo"></span></div>
+      <div id="previaSlotInicio"><canvas id="vistaPrevia"></canvas></div>
+      <div id="inicioAvion"><b id="inicioAvionNombre"></b><span id="inicioAvionDesc"></span></div>
+    </div>
+  </div>
+  <div id="inicioPie"><span id="chipAula" class="sub"></span><span style="flex:1"></span><span>UxS Trainer · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
+</div>
+
+<!-- ============ ACCESO: servidor del aula, usuario y contrasena, o sin conexion ============ -->
+<div class="pantalla conFoto" id="pAlumno">
+  <div class="cuerpo" id="accesoCuerpo">
+    <div class="capa" id="accesoCaja">
+      <small>UxS TRAINER</small>
+      <h1>Entrar en el aula</h1>
+      <p class="sub" style="margin:0;font-size:14px">Con tu usuario se guardan tus vuelos y tu progreso en el servidor del aula (el PC del profesor).</p>
+      <label for="urlAula">Servidor del aula</label><input type="text" id="urlAula" placeholder="http://192.168.1.20:8080" autocomplete="off">
+      <label for="accUsuario">Usuario</label><input type="text" id="accUsuario" maxlength="60" autocomplete="username">
+      <label for="accClave">Contraseña</label><input type="password" id="accClave" maxlength="20" autocomplete="current-password">
+      <div class="err" id="errAlumno"></div>
+      <button class="btn prim" id="btnEntrar">Conectar</button>
+      <button class="btn" id="btnIrRegistro">Soy nuevo: registrarme</button>
+      <button class="btn" id="btnSinConexion">Continuar sin conexión</button>
+      <p class="sub" style="margin:4px 0 0;font-size:13px">Sin conexión se vuela igual, pero no se guardan los vuelos ni el progreso.</p>
+      <p class="sub" id="pendientes" style="margin:4px 0 0;font-size:13px"></p>
+      <button class="btn" id="btnProfesor" style="margin-top:10px;font-size:13px">Panel del profesor</button>
+    </div>
+  </div>
+  <div class="pieAcceso"><span style="flex:1"></span><span>UxS Trainer · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
+</div>
+
+<!-- ============ REGISTRO DE ALUMNO NUEVO ============ -->
+<div class="pantalla conFoto" id="pRegistro">
+  <div class="cuerpo" id="registroCuerpo" style="display:flex;align-items:center;justify-content:center;padding:24px 16px">
+    <div class="capa" id="registroCaja">
+      <small>UxS TRAINER</small>
+      <h1>Registro de alumno nuevo</h1>
+      <p class="sub" style="margin:0;font-size:14px">Tu cuenta queda pendiente hasta que la apruebe el profesor. Después entrarás con tu usuario y tu contraseña.</p>
+      <p class="sub" style="margin:0;font-size:13px">Servidor del aula: <b id="regAula"></b></p>
+      <div class="regCols">
+        <div><label for="regNombre">Nombre</label><input type="text" id="regNombre" maxlength="60" autocomplete="given-name"></div>
+        <div><label for="regApellidos">Apellidos</label><input type="text" id="regApellidos" maxlength="60" autocomplete="family-name"></div>
+        <div><label for="regCorreo">Correo del centro</label><input type="email" id="regCorreo" maxlength="80" placeholder="nombre@alu.murciaeduca.es o @murciaeduca.es" autocomplete="email"></div>
+        <div><label for="regUsuario">Usuario</label><input type="text" id="regUsuario" maxlength="60" autocomplete="username"></div>
+        <div><label for="regClave">Contraseña</label><input type="password" id="regClave" maxlength="20" autocomplete="new-password"></div>
+        <div><label for="regClave2">Repite la contraseña</label><input type="password" id="regClave2" maxlength="20" autocomplete="new-password"></div>
+      </div>
+      <div class="err" id="errRegistro"></div>
+      <button class="btn prim" id="btnRegistrar">Enviar solicitud</button>
+      <button class="btn" id="btnRegVolver">Volver</button>
+    </div>
+  </div>
+  <div class="pieAcceso"><span style="flex:1"></span><span>UxS Trainer · v1 navegador · © 2026 Álvar Legaz Aparicio · todos los derechos reservados</span></div>
+</div>
+
+<!-- ============ HANGAR ============ -->
+<div class="pantalla" id="pHangar">
+  <div class="cabecera"><div><h1>Hangar</h1><p class="sub" id="saludo"></p></div><div class="esp"></div>
+    <button class="btn" id="btnVerProgreso">Mi progreso</button><button class="btn" id="btnHangarVolver">← Inicio</button><button class="btn prim" id="btnHangarVolar">Volar con este avión →</button></div>
+  <div class="cuerpo"><div id="hangarCuerpo">
+    <div id="selAviones"></div>
+    <div id="previaSlotHangar"><div id="hangarNombre"><b id="avNombre"></b><span id="avDesc"></span></div></div>
+    <div class="capa" id="hangarFicha">
+      <div class="pestanas"><button class="sel" data-p="ficha">Ficha</button><button data-p="ajustes">Ajustes del avión</button></div>
+      <div class="panelPestana sel" data-p="ficha"><table class="datos" id="avDatos"></table></div>
+      <div class="panelPestana" data-p="ajustes">
+        <details class="avanzado" id="secMorro" open><summary>Carga útil: morro de cámaras</summary>
+          <label class="fila" style="gap:8px;align-items:flex-start"><input type="radio" name="morro" value="fijo"> <span><b>Fijo</b> · cámaras de color e infrarroja que miran al frente y de lado, sujetas al avión (se inclinan con él). V cambia de una a otra; para apuntar, se apunta con el avión</span></label>
+          <label class="fila" style="gap:8px;align-items:flex-start"><input type="radio" name="morro" value="orientable"> <span><b>Orientable</b> · torreta estabilizada de día y noche bajo el morro (como la modernización DDL): se mueve con las flechas y Mayúsculas y se fija en un punto (K). Pesa 0,3 kg más</span></label>
+        </details>
+        <details class="avanzado" id="secCM" open><summary>Centro de gravedad y peso</summary>
+          <div class="fila"><label for="cmCg">Centro de gravedad</label><span class="sub">morro</span><input type="range" id="cmCg" min="15" max="60" step="1"><span class="sub">cola</span></div>
+          <b id="cmCgTxt" style="display:block;margin:-4px 0 8px"></b>
+          <div class="fila"><label for="cmMasa">Peso</label><span class="sub">ligero</span><input type="range" id="cmMasa" step="10"><span class="sub">pesado</span></div>
+          <b id="cmMasaTxt" style="display:block;margin:-4px 0 8px"></b>
+          <p id="cmEfecto" style="margin:6px 0 0;font-size:13px"></p>
+          <p class="sub" id="cmBateria" style="margin:4px 0 8px;font-size:13px"></p>
+          <button class="btn" id="btnCmDiseno">Volver a los valores de diseño</button>
+        </details>
+        <details class="avanzado"><summary>Emisora: recorridos y lanzamiento</summary>
+          <p class="sub" style="margin:0 0 8px;font-size:13px">Con mando, la palanca a tope mueve las superficies el recorrido mecánico del avión por este porcentaje, igual que el <b>dual rate</b> de la emisora. Con teclado se usan recorridos reducidos.</p>
+          <div class="fila"><label for="drAlabeo">Alabeo</label><input type="range" id="drAlabeo" min="20" max="100" step="5"></div><b id="drAlabeoTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="drProf">Profundidad</label><input type="range" id="drProf" min="20" max="100" step="5"></div><b id="drProfTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="lanzReal">Lanzamiento real</label><input type="checkbox" id="lanzReal" checked> <span class="sub" style="font-size:13px">velocidad, cabeceo y alabeo al azar, como al lanzar a mano</span></div>
+        </details>
+        <details class="avanzado"><summary>Calibración con el avión real y aire</summary>
+          <div class="fila"><label for="calEmpuje">Empuje estático medido</label><input type="number" id="calEmpuje" min="200" max="2000" step="10" placeholder="del fabricante" style="width:130px"> <span class="sub" style="font-size:13px">gramos, con báscula</span></div>
+          <div class="fila"><label for="calRes">Resistencia</label><input type="range" id="calRes" min="70" max="160" step="5"></div><b id="calResTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <div class="fila"><label for="calTemp">Temperatura del aire</label><input type="range" id="calTemp" min="0" max="40" step="1"></div><b id="calTempTxt" style="display:block;margin:-4px 0 8px;font-size:13px"></b>
+          <p class="sub" id="calInfo" style="margin:6px 0 0;font-size:13px"></p>
+        </details>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ ENTRENAMIENTOS ============ -->
+<div class="pantalla" id="pEntrenamientos">
+  <div class="cabecera"><div><h1>Entrenamientos</h1><p class="sub" id="escSub"></p></div><div class="esp"></div><button class="btn" id="btnEntrenarVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div class="misiones" id="listaEscenarios"></div>
+    <div>
+      <div class="capa" id="fichaMision"></div>
+      <div id="condicionesSlotEntrenar" style="margin-top:12px"></div>
+      <button class="btn prim grande" id="btnMisionVolar" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ MULTIJUGADOR (salas del servidor del aula) ============ -->
+<div class="pantalla" id="pMulti">
+  <div class="cabecera"><div><h1>Multijugador</h1><p class="sub" id="multiSub">Vuela con tus compañeros en la misma sala: cada uno con su avión, os veis unos a otros</p></div><div class="esp"></div><button class="btn" id="btnMultiVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div><div class="zonaTitulo">Salas abiertas</div><div class="misiones" id="listaSalas"></div><p class="sub" id="multiVacio" style="font-size:14px"></p></div>
+    <div>
+      <div class="capa" id="multiCrear"><h2>¿Y crear una sala?</h2><p style="font-size:14px">Las salas las crea el profesor en su panel del aula, con lo que se vuela, el punto de salida y el viento. Entra en la de tu clase: verás a tus compañeros y el profesor te verá a ti.</p></div>
+      <div class="capa" id="multiSinAula" style="display:none"><h2>Hace falta el aula</h2><p style="font-size:14px">El multijugador va por el servidor del aula (el PC del profesor): entra en el aula con tu usuario y tu contraseña (Perfil › Cerrar sesión, o al abrir el simulador).</p></div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ OPERACIONES (trabajos de operador de dron) ============ -->
+<div class="pantalla" id="pOperaciones">
+  <div class="cabecera"><div><h1>Operaciones</h1><p class="sub" id="opSub">Trabajos en el mapa real de Cartagena, en una fila por vehículo: cada trabajo se vuela con el suyo</p></div><div class="esp"></div><button class="btn" id="btnOpVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div id="listaOperaciones"></div>
+    <div>
+      <div class="capa" id="fichaOperacion"></div>
+      <button class="btn prim grande" id="btnOpVolar" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ TALLER (registros de vuelo de cada vehiculo: js/taller.js) ============ -->
+<div class="pantalla" id="pTaller">
+  <div class="cabecera"><div><h1>Taller</h1><p class="sub">Conecta el vehículo y descarga sus registros de vuelo: batería, celdas, corriente, temperatura, altura y velocidad</p></div><div class="esp"></div><button class="btn" id="btnTallerVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="tallerGrid">
+    <div id="tallerLista"></div>
+    <div id="tallerCentro"></div>
+  </div></div>
+</div>
+
+<!-- ============ VUELO LIBRE ============ -->
+<div class="pantalla" id="pVolar">
+  <div class="cabecera"><div><h1>Vuelo libre</h1><p class="sub">Sin objetivos: cuenta como horas de entrenamiento.</p></div><div class="esp"></div><button class="btn" id="btnVolarVolver">← Inicio</button></div>
+  <div class="cuerpo"><div class="dos">
+    <div>
+      <div class="sitios">
+        <div class="sitio" id="sitioCampo"><div class="img" id="sitioCampoImg"></div><div class="txt"><h3>Campo de vuelo</h3><p>El campo del club: pista, circuito de pilones, zona de precisión detrás del piloto y límite de alcance de 400 m. Se cronometra cada vuelta.</p></div></div>
+        <div class="sitio" id="sitioCartagena"><div class="img" style="background-image:url('../datos/escenarios/mundos/cartagena_orto.jpg')"></div><div class="txt"><h3>Campo de Cartagena · mapa real</h3><p>78 × 38 km reales: Cartagena, el Mar Menor, La Manga, la sierra y los pueblos. Eliges el punto de lanzamiento en el mapa. Sin límite de alcance.</p></div></div>
+      </div>
+      <p class="sub" id="volarNota" style="margin:14px 0 0;font-size:13px"></p>
+    </div>
+    <div>
+      <div id="condicionesSlotVolar"></div>
+      <button class="btn prim grande" id="btnVolarYa" style="width:100%;margin-top:12px">Volar →</button>
+    </div>
+  </div></div>
+</div>
+<div class="capa" id="condiciones" style="display:none">
+  <h2>Condiciones</h2>
+  <div class="fila"><label for="vVel">Viento</label><input type="range" id="vVel" min="0" max="10" step="0.5" value="2"><b id="vVelTxt">2 m/s</b></div>
+  <div class="fila"><label for="vDir">Viene del</label><select id="vDir" style="flex:1">
+    <option value="0">norte (de cara al piloto)</option><option value="45">nordeste</option><option value="90">este (cruzado)</option><option value="135">sudeste</option>
+    <option value="180">sur (de cola en la pista)</option><option value="225">sudoeste</option><option value="270">oeste (cruzado)</option><option value="315">noroeste</option></select></div>
+  <div class="fila"><label for="vRachas">Rachas</label><input type="checkbox" id="vRachas" checked><span class="sub" style="font-size:13px">y turbulencia</span></div>
+  <p class="sub" id="condNota" style="margin:6px 0 0;font-size:13px"></p>
+</div>
+
+<!-- ============ PUNTO DE LANZAMIENTO (mundo real) ============ -->
+<div class="pantalla" id="pLanzamiento">
+  <div class="cabecera"><div><h1>¿Desde dónde sales?</h1><p class="sub">Haz clic en el mapa para elegir el punto de lanzamiento. Se despega hacia el lado más despejado.</p></div><div class="esp"></div>
+    <span id="lanzDestacados" style="display:flex;gap:10px"></span><button class="btn" id="btnLanzVolver">← Vuelo libre</button><button class="btn prim grande" id="btnLanzAqui">Despegar aquí →</button></div>
+  <div class="cuerpo"><div id="mapaCaja"><canvas id="mapaLanz" width="1400" height="700"></canvas><div id="lanzInfo"></div></div></div>
+</div>
+
+<!-- ============ AJUSTES ============ -->
+<div class="pantalla" id="pAjustes">
+  <div class="cabecera"><div><h1>Ajustes</h1><p class="sub">Se guardan en este navegador.</p></div><div class="esp"></div><button class="btn" id="btnAjustesVolver">← Inicio</button></div>
+  <div class="cuerpo"><div id="ajustesCuerpo">
+    <div id="ajustesMenu">
+      <button class="sel" data-a="controles">Controles</button><button data-a="graficos">Gráficos</button><button data-a="sonido">Sonido</button>
+      <button data-a="dificultad">Dificultad</button><button data-a="datos">Registro y aula</button>
+    </div>
+    <div>
+      <div class="capa panelPestana sel" data-a="controles">
+        <h2>Mando o emisora por USB</h2>
+        <p id="mandoEstado" style="margin:0 0 8px;font-size:14px">Sin mando: se vuela con el teclado. Conecta un mando (o una emisora RC por USB) y pulsa cualquier botón.</p>
+        <div class="fila"><label for="mandoGas">Gas</label><select id="mandoGas" style="flex:1"><option value="incremental">Palanca con muelle (mando de consola): arriba sube el gas, abajo lo baja</option>
+          <option value="absoluto">Palanca sin muelle (emisora RC): la posición es el gas</option></select></div>
+        <div class="fila"><label for="mandoExpo">Exponencial</label><input type="range" id="mandoExpo" min="0" max="100" step="5"><b id="mandoExpoTxt"></b></div>
+        <div class="fila"><label for="mandoPerfil">Orden de los ejes</label><select id="mandoPerfil" style="flex:1">
+          <option value="consola">Mando de consola (Xbox, PlayStation…)</option>
+          <option value="aetr">Emisora RC, canales AETR (EdgeTX, OpenTX, RadioMaster, FrSky, Jumper)</option>
+          <option value="taer">Emisora RC, canales TAER (Spektrum, Futaba)</option>
+          <option value="propio">Asignado con el asistente</option></select></div>
+        <div class="fila"><label></label><button class="btn" id="btnMandoAsist">Asignar las palancas moviéndolas…</button>
+          <span class="sub" style="font-size:13px;flex:1">Detecta qué eje es cada palanca y en qué sentido va. Sirve para cualquier emisora.</span></div>
+        <div id="mandoAsist"><div id="mandoAsistTxt"></div><div class="fila" style="margin-bottom:0"><button class="btn" id="btnMandoAsistNo">Cancelar</button></div></div>
+        <div id="mandoAviso"></div>
+        <div id="mandoMonitor"></div>
+        <p class="sub" style="font-size:13px">Modo 2: palanca derecha profundidad (hacia ti, morro arriba) y alerones o timón; palanca izquierda gas (y guiñada en el cuadricóptero). En el monitor, la barra va a la derecha al subir el gas, al mover a la derecha y al empujar la palanca de profundidad; si alguna va al revés, marca «invertir». Botones del mando de consola: A lanzar · B cortar gas · Y cámara · X empezar de nuevo · cruceta compensador · Start pausa.</p>
+        <h2 style="margin-top:18px">Teclado</h2>
+        <table class="datos teclas">
+          <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Profundidad: ↓ tira (morro arriba), ↑ empuja</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Timón o alerones</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Timón en los aviones de 4 canales (alerones y timón, como el Poli-1); guiñada en el cuadricóptero</td></tr>
+          <tr><td><kbd>W</kbd> <kbd>S</kbd></td><td>Gases más / menos · <kbd>Espacio</kbd> cortar gases</td></tr>
+          <tr><td><kbd>L</kbd></td><td>Lanzar a mano · <kbd>R</kbd> empezar de nuevo</td></tr>
+          <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Cámara piloto / persecución / a bordo</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Compensador de profundidad</td></tr>
+          <tr><td><kbd>H</kbd> <kbd>I</kbd></td><td>Datos de vuelo en texto · instrumentos sí/no</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Pausa</td></tr>
+          <tr><td><kbd>L</kbd> <kbd>M</kbd></td><td>Dron FPV: armar / desarmar (con el gas abajo) · modo ANGLE / HORIZON / ACRO; W / S son el gas, que se queda donde lo dejas</td></tr>
+        </table>
+      </div>
+      <div class="capa panelPestana" data-a="graficos">
+        <h2>Calidad gráfica</h2>
+        <div class="fila"><label for="calidad">Calidad</label><select id="calidad" style="flex:1">
+          <option value="auto">Automática: alta, y baja sola si no llega a 35 fps</option><option value="2">Alta: sombras, agua con reflejos, vegetación lejana</option>
+          <option value="1">Media: sin vegetación lejana ni reflejos</option><option value="0">Baja: tres cuartos de resolución, sin matas ni nubes</option>
+          <option value="min">Rendimiento máximo: portátiles y tabletas sencillos (media resolución, sin sombras, materiales simples)</option></select></div>
+        <p class="sub" id="calidadInfo" style="font-size:13px"></p>
+        <h2 style="margin-top:18px">Cámara del piloto</h2>
+        <div class="fila"><label for="zoomPiloto">Zoom automático</label><select id="zoomPiloto" style="flex:1">
+          <option value="0">Sin zoom: como lo ve el ojo (el avión se hace pequeño al alejarse)</option>
+          <option value="0.03">Por defecto: la envergadura ocupa un 3 % de la pantalla</option>
+          <option value="0.05">Poco: un 5 % de la pantalla</option>
+          <option value="0.1">Medio: un 10 % de la pantalla</option>
+          <option value="0.15">Mucho: un 15 % de la pantalla</option>
+          <option value="0.22">Máximo: un 22 % de la pantalla</option>
+          <option value="otro" hidden>Ajustado con la rueda del ratón</option></select></div>
+        <p class="sub" style="font-size:13px">Con zoom, el campo de visión se cierra al alejarse el avión para que se vea siempre del mismo tamaño (hasta un teleobjetivo de 1,5°). En vuelo, con la cámara del piloto, la rueda del ratón lo ajusta.</p>
+      </div>
+      <div class="capa panelPestana" data-a="sonido">
+        <h2>Sonido</h2>
+        <div class="fila"><label for="sonidoOn">Sonido</label><input type="checkbox" id="sonidoOn" checked><span class="sub" style="font-size:13px">motor, viento y aviso de pérdida</span></div>
+        <div class="fila"><label for="sonidoVol">Volumen</label><input type="range" id="sonidoVol" min="0" max="100" step="5"><b id="sonidoVolTxt"></b></div>
+        <p class="sub" style="font-size:13px">En la cámara del piloto el motor suena más lejano cuanto más se aleja el avión, como en el campo.</p>
+      </div>
+      <div class="capa panelPestana" data-a="dificultad">
+        <h2>Física</h2>
+        <div class="fila"><label for="dificultad">Dificultad</label><select id="dificultad" style="flex:1">
+          <option value="real">Real: como el avión de verdad (la más difícil)</option><option value="facil">Fácil: la física sencilla</option></select></div>
+        <p class="sub" id="dificultadInfo" style="font-size:13px"></p>
+      </div>
+      <div class="capa panelPestana" data-a="datos">
+        <h2>Caja negra</h2>
+        <div class="fila"><label for="cnAuto">Descarga automática</label><input type="checkbox" id="cnAuto"><span class="sub" style="font-size:13px">un CSV a 20 Hz de cada vuelo (también se puede bajar desde el resultado)</span></div>
+        <h2 style="margin-top:18px">Aula y progreso</h2>
+        <p class="sub" id="datosAula" style="font-size:13px"></p>
+        <div class="fila"><button class="btn" id="btnDatosAcceso">Cambiar de usuario o de servidor…</button><button class="btn" id="btnDatosProfesor">Panel del profesor</button></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ RESULTADO ============ -->
+<div class="pantalla" id="pResultado">
+  <div class="cabecera"><div><h1 id="resTitulo"></h1><div class="grande" id="resVeredicto"></div><p class="sub" id="resFinal" style="margin:0"></p></div></div>
+  <div class="cuerpo"><div id="resGrid">
+    <div class="capa"><h2>Resumen del vuelo</h2><div class="estadisticas" id="resStats"></div><canvas id="resTraza" width="800" height="300" style="margin-top:12px"></canvas></div>
+    <div class="capa"><h2>Objetivos</h2><table class="datos" id="resObjetivos"></table><p class="sub" id="resGuardado" style="margin:12px 0 0;font-size:13px"></p></div>
+  </div></div>
+  <div class="pie">
+    <button class="btn prim grande" id="btnRepetir">Volar otra vez</button><button class="btn" id="btnRepeticion">Ver la repetición</button>
+    <button class="btn" id="btnOtroEscenario">Otro entrenamiento</button><button class="btn" id="btnResProgreso">Mi progreso</button>
+    <button class="btn" id="cnUltimo" disabled>Caja negra (CSV)</button><span class="esp"></span><button class="btn" id="btnResInicio">Menú principal</button>
+  </div>
+</div>
+
+<!-- ============ PROGRESO ============ -->
+<div class="pantalla" id="pProgreso">
+  <div class="cabecera"><div><h1 id="progNombre"></h1><p class="sub">Progreso del entrenamiento</p></div><div class="esp"></div><button class="btn" id="btnCerrarSesion" style="display:none">Cerrar sesión</button><button class="btn" id="btnProgVolver">← Volver</button></div>
+  <div class="cuerpo"><div id="progContenido"></div></div>
+</div>
+
+<!-- ============ CAPAS ============ -->
+<div id="gcs" class="hudCapa">
+  <div id="gcsSinVideo">SIN VÍDEO<br><span>el morro de cámaras no está bien asegurado: revísalo en el Taller</span></div>
+  <div id="gcsTop"><span class="modo" id="gcsModo">MANUAL</span><span class="estado" id="gcsEstado"></span><span id="gcsEnlace">ENLACE ▮▮▮▮ 100 %</span><span id="gcsComb"></span></div>
+  <div id="gcsConsignas"></div>
+  <div class="djiBotones" id="gcsDer">
+    <button data-modo="MANUAL" title="Manual (M)">MAN</button><button data-modo="ESTAB" title="Estabilizado (M)">EST</button>
+    <button data-modo="CRUCERO" title="Crucero: mantiene altura, rumbo y velocidad (M)">CRU</button><button data-modo="BASE" title="Vuelta a base (H, Y)">BASE</button>
+    <button data-modo="AUTO" title="Despegue o aterrizaje automático (P, cruceta izquierda)">ATO</button>
+    <div class="sep"></div>
+    <button id="gcsZoomMas" title="Acercar el zoom de la torreta (Z, cruceta arriba)">+</button><span class="txt" id="gcsZoomTxt">1x</span>
+    <button id="gcsZoomMenos" title="Alejar el zoom (X, cruceta abajo)">−</button><button id="gcsIR" title="Cámara térmica (C, cruceta derecha)">IR</button>
+    <button id="gcsFijar" title="Fijar la torreta en el punto de la cruz (K)">FIJAR</button><button id="gcsFoto" title="Foto de la torreta (F, botón X)">FOTO</button>
+  </div>
+  <div id="gcsMira"><svg viewBox="0 0 120 120" aria-hidden="true"><g fill="none" stroke="#000" stroke-width="3"><path d="M60 8V44M60 76V112M8 60H44M76 60H112"/><path d="M38 38h-8v8M82 38h8v8M38 82h-8v-8M82 82h8v-8"/></g>
+    <g fill="none" stroke="#b8f5b0" stroke-width="1.5"><path d="M60 8V44M60 76V112M8 60H44M76 60H112"/><path d="M38 38h-8v8M82 38h8v8M38 82h-8v-8M82 82h8v-8"/><circle cx="60" cy="60" r="2"/></g></svg>
+    <div id="gcsObj"></div></div>
+  <div id="gcsSensor"></div>
+  <div id="gcsPaleta">150 °C<i></i>−20 °C</div>
+</div>
+<div id="dji" class="hudCapa">
+  <div id="djiTop"><span class="modo" id="djiModo" title="Modo de vuelo: Cine / Normal / Sport (M, LB)">N</span><span class="estado" id="djiEstado"></span><span id="djiRec"></span>
+    <span id="djiGps" title="Satélites GPS">GPS 18</span><span title="Señal del mando y del vídeo">RC ▮▮▮▮ · HD ▮▮▮▮</span><span class="bat" id="djiBat"><i></i>100 % · 30:00</span></div>
+  <div class="djiBotones" id="djiIzq"><button id="djiDespegar" title="Despegar / aterrizar (botón A del mando)">⇧</button><button id="djiRTH" title="Volver a casa (H, botón B)">H</button><button id="djiBriefing" title="Briefing: mapa de la zona de trabajo (B)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></button></div>
+  <div id="djiGimbal" title="Inclinación de la cámara (Q/E, gatillos)"><i id="djiGimbalMarca"></i><span id="djiGimbalTxt">−10°</span></div>
+  <div class="djiBotones" id="djiLado"><button class="disparo" id="djiDisparo" title="Disparar: foto o vídeo (F / V, botones Y / X)"><i></i></button>
+    <button id="djiCamModo" title="Cambiar entre foto y vídeo">⇄</button><span class="txt" id="djiCamTxt">FOTO</span>
+    <div id="djiZoomCaja"><button id="djiZoomMas" title="Acercar el zoom (Z, cruceta arriba)">+</button><span class="txt" id="djiZoomTxt">1x</span>
+      <button id="djiZoomMenos" title="Alejar el zoom (X, cruceta abajo)">−</button><button id="djiIR" title="Cámara térmica (C, cruceta derecha)">IR</button></div></div>
+  <div id="djiMedidor"><svg viewBox="0 0 46 46" aria-hidden="true"><path d="M23 2V17M23 29V44M2 23H17M29 23H44" stroke="#000" stroke-width="4"/><path d="M23 2V17M23 29V44M2 23H17M29 23H44" stroke="#fff" stroke-width="2"/><circle cx="23" cy="23" r="3" fill="none" stroke="#fff" stroke-width="1.5"/></svg><span id="djiTemp"></span></div>
+  <div id="djiPaleta">150 °C<i></i>−20 °C</div>
+  <div id="djiAbajo"><div id="djiMapa"></div><div id="djiTele"><div><span>D</span><b id="djiD">0 m</b></div><div><span>H</span><b id="djiH">0 m</b></div>
+    <div><span>HS</span><b id="djiHS">0,0 m/s</b></div><div><span>VS</span><b id="djiVS">0,0 m/s</b></div></div></div>
+  <div id="djiFlash"></div>
+</div>
+<svg id="reconMira" viewBox="0 0 90 30" aria-hidden="true"><path d="M8 15H36M54 15H82M45 2V8M45 22V28" stroke="#000" stroke-width="5" stroke-linecap="square"/><path d="M8 15H36M54 15H82M45 2V8M45 22V28" stroke="#fff" stroke-width="2.5" stroke-linecap="square"/></svg>
+<div id="fpv" class="hudCapa">
+  <svg id="fpvMira" viewBox="0 0 90 30" aria-hidden="true"><path d="M8 15H34M56 15H82M45 9V21" stroke="#000" stroke-width="5" stroke-linecap="square"/><path d="M8 15H34M56 15H82M45 9V21" stroke="#fff" stroke-width="2.5" stroke-linecap="square"/></svg>
+  <div class="osd" id="fpvModo" style="left:30%;top:9%" title="Modo de vuelo: ANGLE / HORIZON / ACRO (M, LB)"></div>
+  <div class="osd c" id="fpvTiempo" style="left:50%;top:9%" title="Tiempo armado"></div>
+  <div class="osd" id="fpvGas" style="left:63%;top:9%" title="Gas"></div>
+  <div class="osd c grande" id="fpvAviso" style="left:50%;top:15%"></div>
+  <div class="osd" id="fpvAlt" style="left:12%;top:50%" title="Altura sobre el despegue"></div>
+  <div class="osd" id="fpvVel" style="right:12%;top:50%" title="Velocidad"></div>
+  <div class="osd" id="fpvBat" style="left:16%;bottom:9%" title="Batería: tensión total y por celda"></div>
+  <div class="osd c" id="fpvArm" style="left:50%;bottom:9%"></div>
+  <div class="osd" id="fpvAmp" style="right:16%;bottom:9%" title="Corriente y carga gastada"></div>
+</div>
+<div class="velo" id="pausa"><div class="capa"><h2>Pausa</h2>
+  <button class="btn prim" id="btnPausaSeguir">Continuar</button>
+  <button class="btn" id="btnPausaReiniciar">Empezar el vuelo de nuevo</button>
+  <button class="btn" id="btnPausaCamara">Cámara: piloto</button>
+  <button class="btn" id="btnPausaInstr">Instrumentos: sí</button>
+  <button class="btn" id="btnPausaAyuda">Controles</button>
+  <button class="btn" id="btnPausaTerminar">Terminar el vuelo</button>
+  <button class="btn peligro" id="btnPausaSalir">Salir al menú principal</button>
+  <div class="fila"><label for="pausaSonido" style="min-width:0">Sonido</label><input type="checkbox" id="pausaSonido"><span class="sub" style="flex:1"></span><span class="sub" id="pausaInfo" style="font-size:12px"></span></div>
+</div></div>
+<div class="velo" id="carga"><h2 id="cargaTitulo">Preparando el vuelo…</h2><div class="progreso"><i id="cargaBarra" style="width:0"></i></div><p id="cargaTexto"></p></div>
+<div class="velo" id="checkOp"><div class="capa"><h3>Antes de volar</h3><p class="sub" id="checkOpSub" style="margin:0 0 8px"></p>
+  <div id="checkOpVeh" style="display:none"><b style="font-size:13px">¿Con qué vehículo vuelas?</b><div class="elegirVeh grande" id="checkOpVehBotones"></div></div><div id="checkOpLista"></div>
+  <div class="botones"><button class="btn" id="checkOpNo">Cancelar</button><button class="btn prim" id="checkOpSi">Despegar →</button></div></div></div>
+<div class="velo" id="modal"><div class="capa"><h3 id="modTitulo"></h3><div id="modTexto"></div>
+  <div class="botones"><button class="btn" id="modNo">Cancelar</button><button class="btn peligro" id="modSi">Sí</button></div></div></div>
+
+<script src="lib/three.js?v=20"></script>
+<script src="lib/three-extras.js?v=21"></script>
+<script src="js/bateria.js?v=2"></script>
+<script src="js/modelos.js?v=25"></script>
+<script src="js/entorno.js?v=25"></script>
+<script src="js/pista_fpv.js?v=1"></script>
+<script src="js/operaciones.js?v=8"></script>
+<script src="js/piloto_uav.js?v=2"></script>
+<script src="js/registro.js?v=2"></script>
+<script src="js/desgaste.js?v=1"></script>
+<script src="js/visor.js?v=39"></script>
+<script src="js/industria.js?v=4"></script>
+<script src="js/visor_real.js?v=44"></script>
+<script src="js/bipode.js?v=3"></script>
+<script src="../datos/escenarios/mundos/cartagena.js?v=20"></script>
+<script src="../datos/escenarios.js?v=14"></script>
+<script>   // cada escenario en su fichero (datos/entrenamientos, datos/operaciones, datos/escenarios), en el orden del indice
+  for (const f of window.ESCENARIOS_FICHEROS) document.write('<script src="../datos/' + f + '?v=14"><\/script>');
+</script>
+<script src="../datos/escenarios/singulares.js?v=3"></script>
+<script src="js/app/estado.js?v=1"></script>
+<script src="js/app/aula_cliente.js?v=1"></script>
+<script src="js/app/avion_ajustes.js?v=1"></script>
+<script src="js/app/evaluacion.js?v=1"></script>
+<script src="js/app/vuelo.js?v=1"></script>
+<script src="js/app/resultado.js?v=1"></script>
+<script src="js/app/pantallas.js?v=1"></script>
+<script src="js/app/multijugador.js?v=1"></script>
+<script src="js/app/menus.js?v=1"></script>
+<script src="js/app/sonido.js?v=1"></script>
+<script src="js/app/repeticion.js?v=1"></script>
+<script src="js/app/mandos.js?v=1"></script>
+<script src="js/app/camaras.js?v=1"></script>
+<script src="js/app/apps_dron.js?v=1"></script>
+<script src="js/app/hud.js?v=1"></script>
+<script src="js/app/espectador.js?v=1"></script>
+<script>
+"use strict";
+(async function arrancar() {
+  const ids = await Modelos.cargar();
+  if (!ids.length) { irAcceso("No hay ningún vehículo en la carpeta datos/vehiculos/."); return; }
+  let guardado = null; try { guardado = localStorage.getItem("sim_avion"); } catch (e) {}
+  const visibles = idsHangar();
+  sesion.avion = visibles.includes(guardado) ? guardado : ids.includes("DJI_MINI") ? "DJI_MINI" : visibles[0];      // por defecto, el dron comercial
+  visor = new Visor(document.getElementById("vista"), entorno);
+  previa = new VistaPrevia(document.getElementById("vistaPrevia"), { transparente: true });
+  let modoCal = "auto"; try { modoCal = localStorage.getItem("sim_calidad_modo") || "auto"; } catch (e) {}
+  if (modoCal !== "auto") aplicarModoCalidad(modoCal);
+  Sonido.cargarCfg();
+  if (ESPECTADOR) { requestAnimationFrame(bucle); iniciarEspectador(); return; }      // la vista del alumno del panel del profesor
+  if (await retomarSesion()) irInicio(); else irAcceso();       // la pantalla de acceso: aula o sin conexion
+  requestAnimationFrame(bucle);
+})();
+</script>
+<script src="js/taller.js?v=2"></script>
+</body>
+</html>

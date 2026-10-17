@@ -37,9 +37,9 @@ ZONAS = [
 
 if __name__ == "__main__":
     aqui = os.path.dirname(os.path.abspath(__file__))
-    mundo = os.path.join(aqui, "..", "..", "simulador", "mundos", "cartagena.js")
+    mundo = os.path.join(aqui, "..", "..", "datos", "escenarios", "mundos", "cartagena.js")
     for zid, lat, lon in ZONAS:
-        if os.path.isfile(os.path.join(aqui, "..", "..", "simulador", "zonas", zid, "zona.json")):
+        if os.path.isfile(os.path.join(aqui, "..", "..", "datos", "escenarios", "zonas", zid, "zona.json")):
             print(zid, "ya esta"); continue
         print("===", zid, flush=True)
         subprocess.run([sys.executable, os.path.join(aqui, "zona.py"), mundo, zid, "%.6f" % lat, "%.6f" % lon, "3000"], cwd=aqui, check=True)

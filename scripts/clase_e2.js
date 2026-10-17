@@ -1,5 +1,5 @@
 // Entrenador E2: fisica con alerones y profundidad. scripts/modelo_aero_e1.py (con ENTRENADOR=E2) copia esta
-// clase al principio de simulador/aviones/E2.js y registra los datos con ella.
+// clase al principio de datos/vehiculos/E2.js y registra los datos con ella.
 // Las flechas izquierda/derecha mueven los alerones (da, + = aleron derecho arriba = alabeo a la derecha) en vez
 // del timon; la deriva es fija (dr siempre 0). Las derivadas Clda, Cnda y CYda salen del VLM (analisis/vlm_e1.py).
 class ModeloE2 extends ModeloAvion {

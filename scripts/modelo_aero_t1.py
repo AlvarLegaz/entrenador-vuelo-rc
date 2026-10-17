@@ -1,4 +1,4 @@
-"""Exporta el modelo de vuelo del Tandem T1 al simulador (simulador/aviones/T1.js), como modelo_aero_e1.py para los
+"""Exporta el modelo de vuelo del Tandem T1 al simulador (datos/vehiculos/T1.js), como modelo_aero_e1.py para los
 entrenadores: tablas del VLM en configuracion tandem (dos alas, elevones, winglets, correcciones de fuselaje),
 perdida ala por ala, resistencia parasita estimada, helice del E1, mandos (elevones), masa e inercias de
 masas_t1.py y una malla ligera para el visor 3D.
@@ -25,7 +25,7 @@ assert ID == "T1"
 import vlm_e1 as V        # noqa: E402
 GT = P.GT
 
-DIR_SIM = os.path.join(AQUI, "..", "simulador")
+DIR_DATOS = os.path.join(AQUI, "..", "datos")                 # datos comunes de los simuladores
 iner = json.load(open(os.path.join(GT.OUT, "inercias.json")))
 x_cg, z_cg = iner["cg_mm"][0], iner["cg_mm"][2]
 mod = V.Modelo(x_cg_mm=x_cg, z_cg_mm=z_cg)
@@ -186,7 +186,7 @@ modelo = dict(
     colores=dict(fuselaje=0xf4f4f4, ala=0x4caf50, estab=0xdddddd, moviles=0xd32f2f),
     reparto_alas=propio,
 )
-DIR_AV = os.path.join(DIR_SIM, "aviones")
+DIR_AV = os.path.join(DIR_DATOS, "vehiculos")
 NL = chr(10)
 clase = P.CLASE_JS
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:

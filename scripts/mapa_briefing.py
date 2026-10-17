@@ -2,7 +2,7 @@
 
 Zona 1 (delante del piloto): pista 1, los 4 pilones de colores y el sentido de vuelta de cada escenario.
 Zona 2 (detras del piloto): pista 2 con la diana, la puerta naranja y las pasadas bajas.
-Los datos son los de simulador/js/entorno.js (Entorno: pista, circuito, zona2); si cambian alli, cambiar aqui.
+Los datos son los de simulador_web/js/entorno.js (Entorno: pista, circuito, zona2); si cambian alli, cambiar aqui.
 Escribe mapa_campo_briefing.png en la raiz del proyecto.
 """
 import os

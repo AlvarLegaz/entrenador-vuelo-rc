@@ -1,6 +1,6 @@
 class_name PantallaTaller
 extends Control
-## Modo Taller (#pTaller de simulador/simulador.html, js/taller.js, igual): se elige un vehiculo, se "conecta" y se
+## Modo Taller (#pTaller de simulador_web/simulador.html, js/taller.js, igual): se elige un vehiculo, se "conecta" y se
 ## descargan sus registros de vuelo (registro_vuelo.gd: los de este ordenador y, con el alumno en el aula, los suyos del
 ## servidor), como los de un dron comercial. De cada vuelo: un resumen (duracion, alturas, velocidad, bateria usada,
 ## tension minima y desequilibrio de las celdas, corriente y temperatura maximas, avisos), las graficas con el tiempo
@@ -28,7 +28,7 @@ func _init(p_: Node) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var d := Tema.pantalla("Taller", "Conecta el vehículo y descarga sus registros de vuelo: batería, celdas, corriente, temperatura, altura y velocidad")
 	add_child(d["raiz"])
-	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.ir_inicio()))
+	d["botones"].add_child(Tema.boton("← Inicio", "", func(): p.app_pantallas.ir_inicio()))
 	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 16); d["cuerpo"].add_child(h)
 	lista_veh = VBoxContainer.new(); lista_veh.add_theme_constant_override("separation", 8)
 	var sl := Tema.desplazable(lista_veh); sl.size_flags_horizontal = Control.SIZE_FILL; sl.custom_minimum_size.x = 260; h.add_child(sl)
@@ -37,7 +37,7 @@ func _init(p_: Node) -> void:
 
 ## Los vehiculos del hangar que llevan registro de vuelo (el bipode no).
 func ids() -> Array:
-	return p.ids_hangar().filter(func(id): return DatosComunes.avion(id).get("tipo", "") != "bipode")
+	return p.app_avion_ajustes.ids_hangar().filter(func(id): return DatosComunes.avion(id).get("tipo", "") != "bipode")
 
 func abrir() -> void:
 	if avion == "" or not ids().has(avion): avion = p.sesion["avion"] if ids().has(p.sesion["avion"]) else "DJI_MINI"
@@ -65,7 +65,7 @@ func pintar_vehiculos() -> void:
 
 ## La ficha de la bateria del vehiculo (de sus datos).
 func bateria_texto(id: String) -> String:
-	var B = p.crear_modelo(id).get("B")
+	var B = p.app_avion_ajustes.crear_modelo(id).get("B")
 	if not B is Dictionary or B.is_empty(): return "Motor de combustión: el registro da el combustible"
 	return "Batería %s %dS de %d mAh (%s Wh)" % ["Li-ion" if B["quimica"] == "liion" else "LiPo", int(B["celdas"]), int(round(float(B["capacidad_mAh"]))),
 		("%.1f" % (int(B["celdas"]) * 3.7 * float(B["capacidad_mAh"]) / 1000)).replace(".", ",")]
@@ -146,10 +146,10 @@ func reparar(id: String, sin_preguntar := false) -> void:
 	for x in Desgaste.reparaciones(A):
 		if x[0] == id: R = x; break
 	if R == null: return
-	if not sin_preguntar and not await p.confirmar(R[1], "Se cambia (o se calibra) y queda apuntado en el libro de mantenimiento. Vuela después para comprobar que el vehículo va bien.", "Hacerlo"): return
+	if not sin_preguntar and not await p.app_pantallas.confirmar(R[1], "Se cambia (o se calibra) y queda apuntado en el libro de mantenimiento. Vuela después para comprobar que el vehículo va bien.", "Hacerlo"): return
 	var e = await Desgaste.modificar(p, avion, func(est): return Desgaste.reparar(est, A, id, Aula.ahora_iso()))
-	if e == null: p.poner_toast_menu("No se ha podido guardar: comprueba la conexión con el aula"); return
-	vistos = {}; p.poner_toast_menu("Hecho: apuntado en el libro de mantenimiento"); pintar_centro()
+	if e == null: p.app_avion_ajustes.poner_toast_menu("No se ha podido guardar: comprueba la conexión con el aula"); return
+	vistos = {}; p.app_avion_ajustes.poner_toast_menu("Hecho: apuntado en el libro de mantenimiento"); pintar_centro()
 
 func _celda(c: Control) -> Control:
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -180,7 +180,7 @@ func ver(meta: Dictionary) -> void:
 	var r := {}
 	if meta.get("_aula", false):
 		var q: Dictionary = await p.aula.api("GET", "registros/" + String(meta["id"]).uri_encode() + "?alumno=" + String(p.sesion["alumno"]["id"]).uri_encode())
-		if not q["ok"]: p.poner_toast_menu("No se pudo leer el registro: " + String(q["error"])); return
+		if not q["ok"]: p.app_avion_ajustes.poner_toast_menu("No se pudo leer el registro: " + String(q["error"])); return
 		r = q["datos"]
 	else: r = RegistroVuelo.leer(String(meta["avion"]), String(meta["id"]))
 	if r.is_empty(): return
@@ -265,7 +265,7 @@ func nombre_csv(R: Dictionary) -> String:
 
 func exportar(ruta: String) -> bool:
 	var fa := FileAccess.open(ruta, FileAccess.WRITE)
-	if fa == null: p.poner_toast_menu("No se pudo guardar el CSV"); return false
+	if fa == null: p.app_avion_ajustes.poner_toast_menu("No se pudo guardar el CSV"); return false
 	fa.store_string(RegistroVuelo.csv(reg)); fa.close(); return true
 
 func exportar_dialogo() -> void:

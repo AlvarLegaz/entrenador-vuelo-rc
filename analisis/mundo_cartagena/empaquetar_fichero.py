@@ -4,9 +4,9 @@ imagenes sueltas como de otro origen: WebGL no las acepta y el suelo sale negro.
 en data: no tiene ese problema. Con servidor (aula o http.server) se siguen usando los ficheros sueltos.
 
 Escribe:
-  simulador/mundos/<id>_orto.js     Mundos.ortofoto("<id>", "data:image/jpeg;base64,...")
-  simulador/zonas/indice.js         Zonas.indice([...])            (el mismo contenido que indice.json)
-  simulador/zonas/<id>/zona.js      Zonas.registrar("<id>", { dem, arboles (base64), edificios, orto: {"i_j": data:...} })
+  datos/escenarios/mundos/<id>_orto.js     Mundos.ortofoto("<id>", "data:image/jpeg;base64,...")
+  datos/escenarios/zonas/indice.js         Zonas.indice([...])            (el mismo contenido que indice.json)
+  datos/escenarios/zonas/<id>/zona.js      Zonas.registrar("<id>", { dem, arboles (base64), edificios, orto: {"i_j": data:...} })
 
 Uso:  python analisis/mundo_cartagena/empaquetar_fichero.py [carpeta simulador]
 zona.py y orto_region.py lo llaman solos al terminar.
@@ -60,4 +60,4 @@ def todo(dir_sim):
 
 
 if __name__ == "__main__":
-    todo(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "simulador"))
+    todo(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "datos", "escenarios"))

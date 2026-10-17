@@ -1,7 +1,7 @@
 """Carrera de drones del CIFP Politecnico (op_carrera, escenarios.js): el recorrido de obstaculos por el campus y el barrio
 de al lado, en la zona de detalle cifp_politecnico. Comprueba que ninguna puerta ni ningun tramo recto entre dos
 seguidas toca un edificio del Catastro (con su altura) y dibuja el recorrido sobre la ortofoto
-(analisis/mundo_cartagena/carrera_cifp.jpg); con --escribir lo pone en simulador/escenarios.js.
+(analisis/mundo_cartagena/carrera_cifp.jpg); con --escribir lo pone en datos/operaciones/op_carrera.js.
 
 Obstaculos (n, e: centro en m del origen del mundo; rumbo: hacia donde se cruza, grados; h: altura del suelo al
 borde de abajo, m):
@@ -11,7 +11,7 @@ borde de abajo, m):
   picado   marco horizontal de 4 x 4 m en lo alto de un andamio: se cruza hacia abajo y se sale por delante (rumbo):
            el andamio solo tiene cruces en los lados
 Los arboles solidos de la zona (los que tiene la fisica del simulador) estan en carrera_cifp_arboles.json ([E, N, radio,
-pie, copa], m sobre el suelo), sacados del simulador; la prueba de verdad es simulador_godot/pruebas/prueba_carrera_web.py.
+pie, copa], m sobre el suelo), sacados del simulador; la prueba de verdad es simulador_web/Tests/prueba_carrera_web.py.
 
     python analisis/mundo_cartagena/carrera_cifp.py [--escribir]
 """
@@ -19,7 +19,7 @@ import json, math, os, re, sys
 from PIL import Image, ImageDraw, ImageFont
 
 AQUI = os.path.dirname(os.path.abspath(__file__)); RAIZ = os.path.join(AQUI, "..", "..")
-SIM = os.path.join(RAIZ, "simulador"); Z = os.path.join(SIM, "zonas", "cifp_politecnico")
+SIM = os.path.join(RAIZ, "datos")                       # datos comunes de los simuladores; Z = os.path.join(SIM, "escenarios", "zonas", "cifp_politecnico")
 MEDIDAS = {"puerta": (3.0, 2.4), "arco": (6.0, 4.0), "banderas": (5.0, 5.0), "picado": (4.0, 4.0)}   # ancho, alto (picado: lado)
 SALIDA = dict(n=58.0, e=6653.0, rumbo=95.0)          # el aparcamiento interior del CIFP (destacado del vuelo libre)
 # el recorrido, en orden
@@ -47,7 +47,7 @@ OBST = [
 
 
 def mundo():
-    s = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read()
+    s = open(os.path.join(SIM, "escenarios", "mundos", "cartagena.js"), encoding="utf-8").read()
     return json.loads(s[s.index("Mundos.registrar(") + 17: s.rindex(");")])
 
 
@@ -207,15 +207,8 @@ def escribir():
             "carrera": {"obstaculos": OBST, "limite_s": LIMITE_S},
         },
     }
-    p = os.path.join(SIM, "escenarios.js"); t = open(p, encoding="utf-8").read()
-    bloque = ' "op_carrera": ' + json.dumps(O, indent=1, ensure_ascii=False).replace("\n", "\n ") + ",\n"
-    if '\n "op_carrera": {' in t:
-        i = t.index('\n "op_carrera": {') + 1; j = t.index('\n "', i + 5) + 1; t = t[:i] + bloque + t[j:]
-    else:
-        i = t.index('\n "libre_cartagena": {') + 1; t = t[:i] + bloque + t[i:]
-    m = re.search(r"(?m)^window[.]ESCENARIOS = ", t); json.loads(t[m.end():t.rindex("}") + 1])
-    open(p, "w", encoding="utf-8", newline="\n").write(t)
-    print("escrito op_carrera en", p)
+    sys.path.insert(0, SIM); from leer_datos import escribir             # datos/operaciones/op_carrera.js y la lista de datos/escenarios.js
+    print("escrito op_carrera en", escribir("op_carrera", O, "operaciones"))
 
 
 if __name__ == "__main__":

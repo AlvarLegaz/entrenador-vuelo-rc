@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sirve el simulador web (carpeta simulador) para que los alumnos lo abran en su navegador desde otro ordenador:
+# Sirve el simulador web (carpeta simulador_web, y los datos de datos/) para que los alumnos lo abran en su navegador desde otro ordenador:
 #   http://IP-de-este-ordenador  (puerto 80, el de la web: no hace falta escribirlo; index.html lleva a simulador.html)
 # Lo mismo que SERVIDOR_WEB.bat en Windows. El servidor solo entrega los ficheros: la fisica, el 3D y la evaluacion las
 # hace el navegador de cada alumno, en su PC. Es aparte del servidor del aula (SERVIDOR_AULA.sh, puerto 8080), que
@@ -27,7 +27,7 @@ if [ "$(id -u)" -eq 0 ] && [ -n "$SUDO_USER" ]; then ZONAS=(sudo -u "$SUDO_USER"
 DIR=":$PUERTO"; [ "$PUERTO" = "80" ] && DIR=""
 echo "Simulador web en http://localhost$DIR y, desde los demas ordenadores, http://IP-de-este$DIR con esta IP:"
 for ip in $(hostname -I 2>/dev/null); do case "$ip" in *:*) ;; *) echo "   http://$ip$DIR";; esac; done
-if ! python3 -m http.server "$PUERTO" --bind 0.0.0.0 --directory simulador; then
+if ! python3 simulador_web/servidor_web.py "$PUERTO"; then
   echo
   echo "No se pudo abrir el puerto $PUERTO: suele ser que otro programa ya lo usa (en el 80, apache2 o nginx)."
   echo "Cierra ese programa o usa otro puerto: $0 8000"

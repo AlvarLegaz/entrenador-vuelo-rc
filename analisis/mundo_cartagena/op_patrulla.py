@@ -2,7 +2,7 @@
 de la pista 05R de San Javier, busca con la torreta EO/IR tres vertidos (manchas de hidrocarburo en el agua) en los
 sectores que da el aviso de un pesquero, los fotografia enviando su posicion y vuelve a aterrizar en la pista.
 
-Los sitios posibles de los vertidos salen del propio mapa (simulador/mundos/cartagena.js): celdas de la laguna del Mar
+Los sitios posibles de los vertidos salen del propio mapa (datos/escenarios/mundos/cartagena.js): celdas de la laguna del Mar
 Menor (laguna_b64) a mas de 700 m de cualquier tierra (agua_b64), dentro de lo que cubre el terreno, cada ~1,2 km.
 Operacion.sortear elige tres separados (operaciones.js) y les pone forma, tamano y sector al azar.
 
@@ -10,17 +10,17 @@ La pista es la 05R/23L real (OpenStreetMap, aeroway=runway): umbral 05R en 37.76
 
     python analisis/mundo_cartagena/op_patrulla.py
 """
-import base64, json, math, os, re
+import base64, json, math, os, re, sys
 import numpy as np
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-SIM = os.path.join(AQUI, "..", "..", "simulador")
+SIM = os.path.join(AQUI, "..", "..", "datos")             # datos comunes de los simuladores
 PISTA = {"nombre": "San Javier 05R/23L", "n": 17121.5, "e": 20133.2, "rumbo": 45.86, "largo": 2311, "ancho": 45}
 LEJOS_ORILLA, PASO_CAND = 700.0, 1200.0
 
 
 def main():
-    t = open(os.path.join(SIM, "mundos", "cartagena.js"), encoding="utf-8").read()
+    t = open(os.path.join(SIM, "escenarios", "mundos", "cartagena.js"), encoding="utf-8").read()
     M = json.loads(t[t.index("Mundos.registrar(") + 17:t.rindex(")")])
     T = M["terreno"]; nN, nE, paso, N0, E0 = T["nN"], T["nE"], T["paso"], T["N0"], T["E0"]
     bits = lambda k: np.unpackbits(np.frombuffer(base64.b64decode(T[k]), np.uint8))[:nN * nE].reshape(nN, nE).astype(bool)
@@ -70,15 +70,8 @@ def main():
             "dist_foto": 450, "h_min": 150, "techo": 900, "radio_pista": 5000, "limite_s": 2400,
         },
     }
-    p = os.path.join(SIM, "escenarios.js"); t = open(p, encoding="utf-8").read()
-    bloque = ' "op_patrulla": ' + json.dumps(O, indent=1, ensure_ascii=False).replace("\n", "\n ") + ",\n"
-    if '\n "op_patrulla": {' in t:
-        i = t.index('\n "op_patrulla": {') + 1; j = t.index('\n "', i + 5) + 1; t = t[:i] + bloque + t[j:]
-    else:
-        i = t.index('\n "libre_cartagena": {') + 1; t = t[:i] + bloque + t[i:]
-    m = re.search(r"(?m)^window[.]ESCENARIOS = ", t); json.loads(t[m.end():t.rindex("}") + 1])
-    open(p, "w", encoding="utf-8", newline="\n").write(t)
-    print("escrito op_patrulla en escenarios.js")
+    sys.path.insert(0, SIM); from leer_datos import escribir             # datos/operaciones/op_patrulla.js y la lista de datos/escenarios.js
+    print("escrito op_patrulla en", escribir("op_patrulla", O, "operaciones"))
 
 
 if __name__ == "__main__":

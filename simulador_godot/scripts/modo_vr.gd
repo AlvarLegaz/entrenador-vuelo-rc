@@ -38,7 +38,7 @@ static func iniciar(principal) -> ModoVR:
 	ci.button_pressed.connect(func(b: String): v._boton(b, false))
 	return v
 
-## Para las pruebas (pruebas/prueba_vr.gd), sin gafas: la cabeza y los mandos son nodos que mueve la prueba (las
+## Para las pruebas (simulador_pico/Tests/prueba_vr.gd), sin gafas: la cabeza y los mandos son nodos que mueve la prueba (las
 ## palancas, en el metadato "primary" de cada mando).
 static func para_pruebas(principal) -> ModoVR:
 	return _crear(principal, Node3D.new(), Node3D.new(), Node3D.new(), Node3D.new())
@@ -71,12 +71,12 @@ func _boton(b: String, derecho: bool) -> void:
 	if p.av.is_empty() or p.pantalla_actual != "": return
 	match [b, derecho]:
 		["ax_button", true]:
-			if p.es_dron() and not p.es_fpv(): p.dji_despegar()
-			else: p.lanzar()
+			if p.es_dron() and not p.es_fpv(): p.app_apps_dron.dji_despegar()
+			else: p.app_vuelo.lanzar()
 		["by_button", true]: p.camara = p.camara % 3 + 1
-		["trigger_click", true]: if p.es_dron() and not p.es_fpv(): p.dji_foto()
-		["ax_button", false]: if p.es_dron() and not p.es_fpv(): p.dji_rth()
-		["by_button", false]: p.empezar()
+		["trigger_click", true]: if p.es_dron() and not p.es_fpv(): p.app_apps_dron.dji_foto()
+		["ax_button", false]: if p.es_dron() and not p.es_fpv(): p.app_apps_dron.dji_rth()
+		["by_button", false]: p.app_vuelo.empezar()
 		["grip_click", false]: _cam_ant = -1          # al volver a colocar la vista queda de frente
 
 ## Lee los mandos de las gafas como una emisora (en lugar de _leer_mando con el mando de consola). Devuelve true.
@@ -142,4 +142,4 @@ func _pintar_panel() -> void:
 func en_pantalla(dt: float) -> void:
 	if _t_fin < 0: _t_fin = 4.0; panel.text = "Vuelo terminado.\nEmpieza otro en unos segundos…"
 	_t_fin -= dt
-	if _t_fin <= 0: _t_fin = -1.0; p.empezar()
+	if _t_fin <= 0: _t_fin = -1.0; p.app_vuelo.empezar()

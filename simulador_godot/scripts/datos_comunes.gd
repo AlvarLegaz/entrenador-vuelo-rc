@@ -9,18 +9,18 @@ class_name DatosComunes
 static var _carpeta_android := ""
 static func carpeta() -> String:
 	if OS.has_feature("android"): return _datos_android()
-	# simulador_godot/ esta junto a simulador/; si se exporta, se busca junto al ejecutable
-	var cand := [ProjectSettings.globalize_path("res://").path_join("../simulador"), OS.get_executable_path().get_base_dir().path_join("simulador"),
-				 OS.get_executable_path().get_base_dir().path_join("../simulador")]
+	# los datos comunes (datos/) estan junto a simulador_godot/; si se exporta, se buscan junto al ejecutable
+	var cand := [ProjectSettings.globalize_path("res://").path_join("../datos"), OS.get_executable_path().get_base_dir().path_join("datos"),
+				 OS.get_executable_path().get_base_dir().path_join("../datos")]
 	for c in cand:
 		if DirAccess.dir_exists_absolute(c): return c.simplify_path()
 	return cand[0].simplify_path()
 
-## En Android (las gafas de VR) no hay carpeta simulador/: va en el APK como res://datos_android.zip (lo prepara
+## En Android (las gafas de VR) no hay carpeta datos/: va en el APK como res://datos_android.zip (lo prepara
 ## exportar_pico.py) y se descomprime en la carpeta de datos de la app la primera vez, o cuando cambia su version.
 static func _datos_android() -> String:
 	if _carpeta_android != "": return _carpeta_android
-	var dest := OS.get_user_data_dir().path_join("simulador"); _carpeta_android = dest
+	var dest := OS.get_user_data_dir().path_join("datos"); _carpeta_android = dest
 	var zr := ZIPReader.new()
 	if zr.open("res://datos_android.zip") != OK: push_error("Falta res://datos_android.zip"); return dest
 	var ver := zr.read_file("version.txt").get_string_from_utf8().strip_edges()
@@ -50,7 +50,7 @@ static func _json_tras_marca(texto: String, marca: String, ruta: String) -> Dict
 
 ## Ids de los aviones, en el orden de aviones/indice.js.
 static func aviones() -> Array:
-	var t := FileAccess.get_file_as_string(carpeta().path_join("aviones/indice.js"))
+	var t := FileAccess.get_file_as_string(carpeta().path_join("vehiculos/indice.js"))
 	var i := t.find("Modelos.indice(")
 	var lista = JSON.parse_string(t.substr(i + 15, t.rfind("]") - i - 14))
 	var ids := []
@@ -62,7 +62,7 @@ static var _grandes := {}           # los datos de cada avion, leidos y parseado
 static func avion(id: String) -> Dictionary:
 	if _grandes.has(id): return _grandes[id]
 	if not id.is_valid_filename() or id.begins_with("."): return {}      # un id raro (de la red) no lee nada del disco
-	var ruta := carpeta().path_join("aviones/%s.js" % id)
+	var ruta := carpeta().path_join("vehiculos/%s.js" % id)
 	var d := {}
 	if FileAccess.file_exists(ruta):
 		var texto := FileAccess.get_file_as_string(ruta)
@@ -108,7 +108,7 @@ static func _malla_cuadricoptero(datos: Dictionary) -> void:
 		_caja(V, "fuselaje", x * 0.62, y * 0.62, -0.004, 0.11, 0.012, 0.008, atan2(y, x))   # brazo
 		_caja(V, "estab", x, y, -0.008, 0.02, 0.02, 0.016)                                   # motor
 		_caja(V, "estab", x * 0.5, y * 0.4, 0.03, 0.01, 0.01, 0.02)                          # pata
-	var S: float = float(datos.get("modelo3d", {}).get("escala", 1.0))     # aviones/HQ3T.js: la misma malla a escala
+	var S: float = float(datos.get("modelo3d", {}).get("escala", 1.0))     # vehiculos/HQ3T.js: la misma malla a escala
 	if S != 1.0:
 		for parte in V.values():
 			var mv: Array = parte["v"]
@@ -128,13 +128,13 @@ static func _caja(V: Dictionary, parte: String, cx: float, cy: float, cz: float,
 		mi.append_array([b + f[0], b + f[1], b + f[2], b + f[0], b + f[2], b + f[3]])
 
 static func mundo(id: String) -> Dictionary:
-	return _json_de_registrar(carpeta().path_join("mundos/%s.js" % id), "Mundos.registrar(")
+	return _json_de_registrar(carpeta().path_join("escenarios/mundos/%s.js" % id), "Mundos.registrar(")
 
 static func ruta_orto_mundo(id: String) -> String:
-	return carpeta().path_join("mundos/%s_orto.jpg" % id)
+	return carpeta().path_join("escenarios/mundos/%s_orto.jpg" % id)
 
 static func indice_zonas() -> Array:
-	var ruta := carpeta().path_join("zonas/indice.json")
+	var ruta := carpeta().path_join("escenarios/zonas/indice.json")
 	if not FileAccess.file_exists(ruta): return []
 	var d = JSON.parse_string(FileAccess.get_file_as_string(ruta))
 	return d if d is Array else []
@@ -148,7 +148,7 @@ static func zona_en(indice: Array, mundo_id: String, N: float, E: float) -> Dict
 
 ## { meta, dem: PackedInt32Array (dm sobre el mar, -32768 = agua), base: carpeta de la zona }
 static func cargar_zona(meta: Dictionary) -> Dictionary:
-	var base := carpeta().path_join("zonas/%s" % meta["id"])
+	var base := carpeta().path_join("escenarios/zonas/%s" % meta["id"])
 	var bytes := FileAccess.get_file_as_bytes(base.path_join(meta["dem"]["archivo"]))
 	var n := bytes.size() / 2
 	var dem := PackedInt32Array(); dem.resize(n)

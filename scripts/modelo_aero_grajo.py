@@ -1,4 +1,4 @@
-"""Exporta el modelo de vuelo del Grajo MX-2 al simulador (simulador/aviones/GRAJO.js). Es un mini UAV lanzado a mano
+"""Exporta el modelo de vuelo del Grajo MX-2 al simulador (datos/vehiculos/GRAJO.js). Es un mini UAV lanzado a mano
 como el RQ-11B Raven (scripts/parametros_grajo.py: lo publico del real y supuestos marcados), sin piezas impresas.
 
     python scripts/modelo_aero_grajo.py
@@ -13,7 +13,7 @@ Lo que hace, como modelo_aero_g1.py y modelo_aero_xm7.py:
     perdida profunda estable (~45 grados de senda), que es como aterriza (js/piloto_uav.js, modo ATERRIZAJE sin pista)
   - el piloto automatico (velocidades, alturas y ganancias para un avion de 1,9 kg que vira con el timon)
   - el modelo 3D (vaina con el morro de camaras, ala con su poliedro, pilono, motor y helice propulsora, botalon, cola)
-y escribe simulador/aviones/GRAJO.js (clase ModeloAvion: timon y profundidad) y lo anade a simulador/aviones/indice.js.
+y escribe datos/vehiculos/GRAJO.js (clase ModeloAvion: timon y profundidad) y lo anade a datos/vehiculos/indice.js.
 
 Ejes cuerpo estandar (x adelante, y derecha, z abajo); coeficientes por radian. La malla va en metros, en ejes cuerpo
 con origen en el CG.
@@ -28,7 +28,7 @@ from avion import ID, P   # noqa: E402
 assert ID == "GRAJO"
 import vlm_e1 as V        # noqa: E402
 
-DIR_SIM = os.path.join(AQUI, "..", "simulador")
+DIR_DATOS = os.path.join(AQUI, "..", "datos")                 # datos comunes de los simuladores
 V_CRUCERO = 11.5          # m/s: REAL ~42 km/h (26 mph de la ficha de la USAF)
 
 # =====================================================================
@@ -440,7 +440,7 @@ modelo = dict(
     colores=dict(fuselaje=GRIS, ala=GRIS, estab=GRIS, moviles=GRIS),
     origen="Como el RQ-11B Raven (lo público del real y supuestos de scripts/parametros_grajo.py); sin marcas",
 )
-DIR_AV = os.path.join(DIR_SIM, "aviones"); NL = chr(10)
+DIR_AV = os.path.join(DIR_DATOS, "vehiculos"); NL = chr(10)
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:
     fj.write("// %s. Generado por scripts/modelo_aero_grajo.py: no editar a mano." % P.NOMBRE + NL)
     fj.write("Modelos.registrar(" + json.dumps(modelo, ensure_ascii=False) + ");" + NL)

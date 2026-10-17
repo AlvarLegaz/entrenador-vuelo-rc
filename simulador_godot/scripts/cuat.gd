@@ -1,5 +1,5 @@
 class_name Cuat
-## Cuaterniones [w, x, y, z]: rotacion cuerpo -> mundo NED. Traduccion literal de Cuat en simulador/js/modelos.js
+## Cuaterniones [w, x, y, z]: rotacion cuerpo -> mundo NED. Traduccion literal de Cuat en simulador_web/js/modelos.js
 ## (mismas formulas y mismo orden de operaciones, para que la fisica de los dos simuladores coincida).
 
 static func mul(a: Array, b: Array) -> Array:

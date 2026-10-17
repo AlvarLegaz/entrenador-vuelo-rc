@@ -11,5 +11,5 @@ ID, LAT, LON, LADO = "mingrano", 37.6415, -1.2170, 2000     # al norte del caser
 
 if __name__ == "__main__":
     aqui = os.path.dirname(os.path.abspath(__file__))
-    mundo = os.path.join(aqui, "..", "..", "simulador", "mundos", "cartagena.js")
+    mundo = os.path.join(aqui, "..", "..", "datos", "escenarios", "mundos", "cartagena.js")
     subprocess.run([sys.executable, os.path.join(aqui, "zona.py"), mundo, ID, "%.6f" % LAT, "%.6f" % LON, str(LADO)], cwd=aqui, check=True)

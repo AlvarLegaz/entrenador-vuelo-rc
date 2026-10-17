@@ -1,6 +1,6 @@
 class_name MandoCfg
 extends RefCounted
-## Mando o emisora por USB, como MANDO en simulador/simulador.html: orden de los ejes (mando de consola, emisora AETR o
+## Mando o emisora por USB, como MANDO en simulador_web/simulador.html: orden de los ejes (mando de consola, emisora AETR o
 ## TAER, o asignado con el asistente), invertir cada eje, gas con muelle (incremental) o sin muelle (absoluto) y
 ## exponencial. Convencion interna de las palancas (modo 2): lx izquierda horizontal (+ derecha), ly izquierda vertical
 ## (- arriba), rx derecha horizontal (+ derecha), ry derecha vertical (- arriba = empujada).

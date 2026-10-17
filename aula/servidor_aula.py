@@ -20,7 +20,10 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-DIR_SIM = os.path.normpath(os.path.join(AQUI, "..", "simulador"))
+DIR_WEB = os.path.normpath(os.path.join(AQUI, "..", "simulador_web"))      # el simulador web (la vista del alumno del panel)
+DIR_COMUNES = os.path.normpath(os.path.join(AQUI, "..", "datos"))         # los datos comunes: vehiculos, escenarios, entrenamientos y operaciones
+sys.path.insert(0, DIR_COMUNES)
+import leer_datos
 DIR_DATOS = os.path.join(AQUI, "datos")
 DB = os.path.join(DIR_DATOS, "aula.db")
 DIR_COPIAS = os.path.join(DIR_DATOS, "copias")
@@ -112,6 +115,10 @@ def crear_bd():
         con.execute("ALTER TABLE alumnos ADD COLUMN clave TEXT")
     if "marca" not in [c[1] for c in con.execute("PRAGMA table_info(vuelos)")]:        # tiempo de la carrera de drones (s) (2026-10-15)
         con.execute("ALTER TABLE vuelos ADD COLUMN marca REAL")
+    cols = [c[1] for c in con.execute("PRAGMA table_info(alumnos)")]                   # registro de alumnos nuevos (2026-10-17)
+    for c, tipo in [("correo", "TEXT"), ("nombre_real", "TEXT"), ("apellidos", "TEXT"), ("pendiente", "INTEGER NOT NULL DEFAULT 0")]:
+        if c not in cols: con.execute("ALTER TABLE alumnos ADD COLUMN %s %s" % (c, tipo))
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS alumnos_correo_activo ON alumnos(correo) WHERE archivado = 0 AND correo IS NOT NULL")
     con.commit(); con.close()
 
 
@@ -296,7 +303,32 @@ def secreto(con):
 
 
 def pase_alumno(con, row):
+    if row["pendiente"]: raise Error(403, PENDIENTE)       # una cuenta pendiente nunca recibe pase: no guarda nada
     return row["id"] + "." + hmac.new(bytes.fromhex(secreto(con)), (row["id"] + "|" + (row["clave"] or "")).encode(), hashlib.sha256).hexdigest()
+
+
+DOMINIOS_REGISTRO = ("alu.murciaeduca.es", "murciaeduca.es")    # el correo del registro: los de la Consejeria de la Region de Murcia
+PENDIENTE = "Tu cuenta está pendiente de que la apruebe el profesor. Mientras, puedes volar sin conexión."
+MAX_PENDIENTES = 300                             # solicitudes sin revisar como mucho (que nadie llene el aula de registros)
+
+
+def correo_valido(c):
+    c = str(c or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9._%+-]{1,64}@(" + "|".join(re.escape(d) for d in DOMINIOS_REGISTRO) + ")", c):
+        raise Error(400, "El correo tiene que ser el del centro: …@%s" % " o …@".join(DOMINIOS_REGISTRO))
+    return c
+
+
+def texto_valido(t, que, minimo=1, maximo=60):
+    t = re.sub(r"\s+", " ", str(t or "")).strip()
+    if not minimo <= len(t) <= maximo or re.search(r"[<>\x00-\x1f]", t): raise Error(400, "Escribe %s (de %d a %d letras)" % (que, minimo, maximo))
+    return t
+
+
+def token_de(cabecera):
+    """El token de "Authorization: Bearer <token>" (sin str.removeprefix: el aula funciona con Python 3.8, el de Ubuntu 20.04)."""
+    c = (cabecera or "").strip()
+    return (c[len("Bearer "):] if c.startswith("Bearer ") else c).strip()
 
 
 def clave_valida(c):
@@ -351,7 +383,7 @@ def certificado(con):
 # Tres retos por piloto, con lo que ya guarda cada vuelo (vehiculo, entrenamiento, tiempo y APTO): 2 h de vuelo en ala fija
 # y todos sus entrenamientos; 2 h de vuelo con drones y todos los entrenamientos del dron; y todas las operaciones. Con
 # los tres se desbloquea el robot (el bipode HQ-07, datos.oculto) en el hangar de los dos simuladores. Que vehiculo es de
-# que clase y que misiones hay salen de los mismos ficheros que usan los simuladores (aviones/*.js y escenarios.js).
+# que clase y que misiones hay salen de los mismos ficheros que usan los simuladores (datos/vehiculos/*.js y los escenarios).
 HORAS_LOGRO = 2.0
 _CATALOGO = {"marca": None}
 
@@ -359,10 +391,12 @@ _CATALOGO = {"marca": None}
 def catalogo_logros():
     """{clase: {aviones, entrenos}, operaciones}: ala fija = aviones de pista o de mano (y el UAV), dron = cuadricopteros
     y FPV (el bipode no cuenta). Se relee si cambian los ficheros."""
-    dir_av = os.path.join(DIR_SIM, "aviones"); f_esc = os.path.join(DIR_SIM, "escenarios.js")
+    dir_av = os.path.join(DIR_COMUNES, "vehiculos")
     try: ficheros = sorted(f for f in os.listdir(dir_av) if f.endswith(".js") and f != "indice.js")
     except OSError: ficheros = []
-    marca = tuple((f, os.path.getmtime(os.path.join(dir_av, f))) for f in ficheros) + ((os.path.getmtime(f_esc),) if os.path.isfile(f_esc) else ())
+    try: f_esc = [os.path.join(DIR_COMUNES, "escenarios.js")] + [os.path.join(DIR_COMUNES, f) for f in leer_datos.ficheros(DIR_COMUNES)]
+    except (OSError, ValueError, AttributeError): f_esc = []
+    marca = tuple((f, os.path.getmtime(os.path.join(dir_av, f))) for f in ficheros) + tuple((f, os.path.getmtime(f)) for f in f_esc if os.path.isfile(f))
     if _CATALOGO["marca"] == marca: return _CATALOGO["datos"]
     clase = {}
     for f in ficheros:
@@ -378,10 +412,8 @@ def catalogo_logros():
             try: clase[normalizar(json.loads(nm.group(1)))] = c
             except ValueError: pass
     esc = {}
-    try:
-        t = open(f_esc, encoding="utf-8").read(); m = re.search(r"(?m)^window[.]ESCENARIOS = ", t)
-        esc = json.loads(t[m.end():t.rindex("}") + 1]) if m else {}
-    except (OSError, ValueError): esc = {}
+    try: esc = leer_datos.escenarios(DIR_COMUNES)
+    except (OSError, ValueError, AttributeError): esc = {}
     entreno = lambda veh: [k for k, e in esc.items() if e.get("objetivos") and not e.get("operacion") and veh in (e.get("vehiculos") or ["avion"])]
     datos = dict(clase=clase, ala=entreno("avion"), dron=entreno("dron"), operaciones=[k for k, e in esc.items() if e.get("operacion")])
     _CATALOGO.update(marca=marca, datos=datos)
@@ -445,8 +477,9 @@ def alumno_dict(con, row, con_progreso=True, privado=False):
     """privado: con las notas del profesor (solo para el panel del profesor; los alumnos no las ven)."""
     d = dict(id=row["id"], nombre=row["nombre"], creado=row["creado"],
              archivado=bool(row["archivado"]), archivado_en=row["archivado_en"],
-             habilitado=bool(row["habilitado"]), habilitado_en=row["habilitado_en"], tiene_clave=bool(row["clave"]))
-    if privado: d["notas"] = row["notas"]
+             habilitado=bool(row["habilitado"]), habilitado_en=row["habilitado_en"], tiene_clave=bool(row["clave"]),
+             pendiente=bool(row["pendiente"]))
+    if privado: d.update(notas=row["notas"], correo=row["correo"], nombre_real=row["nombre_real"], apellidos=row["apellidos"])
     if con_progreso: d["progreso"] = progreso(con, row["id"])
     return d
 
@@ -604,7 +637,7 @@ class Manejador(BaseHTTPRequestHandler):
         except Error: return False
 
     def profesor(self):
-        tok = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+        tok = token_de(self.headers.get("Authorization"))
         cad = SESIONES.get(tok)
         if not cad or cad < time.time():
             SESIONES.pop(tok, None)
@@ -661,14 +694,16 @@ class Manejador(BaseHTTPRequestHandler):
             self.send_response(302); self.send_header("Location", "/profesor.html"); self.end_headers(); return
         marco = "DENY"
         if ruta == "/espectador.html": ruta = "/simulador.html"; marco = "SAMEORIGIN"   # la vista del alumno del panel del profesor: el simulador en modo espectador
-        elif not (ruta == "/profesor.html" or ruta in ("/escenarios.js", "/singulares.js") or ruta.startswith(("/mundos/", "/zonas/", "/aviones/", "/js/", "/lib/", "/operaciones/"))):
+        elif not (ruta == "/profesor.html" or ruta.startswith(("/datos/", "/js/", "/lib/"))):
             raise Error(404, "El servidor del aula solo tiene el panel del profesor: el simulador se abre en cada ordenador")
-        if ruta == "/aviones/indice.js":       # la carpeta de aviones se lee al momento: un avion nuevo aparece al copiarlo
-            dav = os.path.join(DIR_SIM, "aviones")
+        if ruta == "/datos/vehiculos/indice.js":       # la carpeta de vehiculos se lee al momento: uno nuevo aparece al copiarlo
+            dav = os.path.join(DIR_COMUNES, "vehiculos")
             fs = sorted(f for f in os.listdir(dav) if f.endswith(".js") and f != "indice.js") if os.path.isdir(dav) else []
             self.enviar(200, ("Modelos.indice(%s);" % json.dumps(fs)).encode(), "text/javascript; charset=utf-8"); return
-        f = os.path.normpath(os.path.join(DIR_SIM, ruta.lstrip("/")))
-        if not f.startswith(DIR_SIM + os.sep) or not os.path.isfile(f):
+        # el panel, en aula/; los datos comunes, en datos/ (nunca los de aula/datos: la base de datos); el resto, del simulador web
+        base, rel = (AQUI, "profesor.html") if ruta == "/profesor.html" else (DIR_COMUNES, ruta[len("/datos/"):]) if ruta.startswith("/datos/") else (DIR_WEB, ruta.lstrip("/"))
+        f = os.path.normpath(os.path.join(base, rel))
+        if not f.startswith(base + os.sep) or not os.path.isfile(f) or (base == DIR_COMUNES and not f.endswith((".js", ".json", ".jpg", ".png", ".bin"))):
             raise Error(404, "no existe")
         tipo = mimetypes.guess_type(f)[0] or "application/octet-stream"
         if tipo.startswith("text/") or tipo.endswith("javascript"): tipo += "; charset=utf-8"
@@ -822,25 +857,24 @@ class Manejador(BaseHTTPRequestHandler):
         # --- alumnos (sin PIN) ---
         if p == ["alumnos"] and m == "GET":
             filtro = normalizar(q.get("q", [""])[0])
-            rows = con.execute("SELECT * FROM alumnos WHERE archivado = 0 ORDER BY nombre_norm").fetchall()
+            rows = con.execute("SELECT * FROM alumnos WHERE archivado = 0 AND pendiente = 0 ORDER BY nombre_norm").fetchall()
             return [alumno_dict(con, r) for r in rows if filtro in r["nombre_norm"]]         # sin las notas del profesor
         if p == ["alumnos"] and m == "POST":
-            return self.alta(con, self.cuerpo())
+            raise Error(403, "Los alumnos nuevos se registran desde el simulador (y los aprueba el profesor)")
         if len(p) == 2 and p[0] == "alumnos" and m == "GET":
-            r = con.execute("SELECT * FROM alumnos WHERE id = ?", (p[1],)).fetchone()
+            r = con.execute("SELECT * FROM alumnos WHERE id = ? AND pendiente = 0", (p[1],)).fetchone()
             if not r: raise Error(404, "alumno no encontrado")
             d = alumno_dict(con, r)
             d["vuelos"] = [vuelo_dict(v) for v in con.execute(
                 "SELECT * FROM vuelos WHERE alumno_id = ? ORDER BY inicio DESC", (p[1],))]
             return d
+        if p == ["registro"] and m == "POST":   # alumno nuevo: queda pendiente hasta que lo apruebe el profesor
+            return self.registro(con, self.cuerpo())
         if p == ["entrar"] and m == "POST":     # pantalla de inicio del simulador: usuario y contrasena -> { alumno, pase }
             d = self.cuerpo(); nombre = re.sub(r"\s+", " ", str(d.get("usuario", ""))).strip()
             if not nombre: raise Error(400, "Escribe tu usuario")
             r = con.execute("SELECT * FROM alumnos WHERE nombre_norm = ? AND archivado = 0", (normalizar(nombre),)).fetchone()
-            if not r:
-                if not d.get("crear"): raise Error(404, "No existe el usuario «%s» en este aula" % nombre)
-                al = self.alta(con, dict(nombre=nombre, clave=d.get("clave")))      # alta del alumno con su contrasena
-                return dict(alumno={k: v for k, v in al.items() if k != "pase"}, pase=al["pase"])
+            if not r: raise Error(404, "No existe el usuario «%s» en este aula. Si eres nuevo, regístrate" % nombre)
             clave = clave_valida(d.get("clave"))
             if not r["clave"]:                  # el profesor lo dio de alta sin contrasena: la primera que escribe se queda
                 with con:
@@ -852,9 +886,10 @@ class Manejador(BaseHTTPRequestHandler):
                 if not hmac.compare_digest(hash_pin(clave, sal), r["clave"]): raise Error(403, "Contraseña incorrecta")
                 self.acierto(ip)
             r = con.execute("SELECT * FROM alumnos WHERE id = ?", (r["id"],)).fetchone()
+            if r["pendiente"]: raise Error(403, PENDIENTE)      # la contrasena es buena, pero el profesor aun no la ha aprobado
             return dict(alumno=alumno_dict(con, r), pase=pase_alumno(con, r))
         if len(p) == 3 and p[0] == "alumnos" and p[2] == "entrar" and m == "POST":     # el alumno entra en su perfil
-            r = con.execute("SELECT * FROM alumnos WHERE id = ? AND archivado = 0", (p[1],)).fetchone()
+            r = con.execute("SELECT * FROM alumnos WHERE id = ? AND archivado = 0 AND pendiente = 0", (p[1],)).fetchone()
             if not r: raise Error(404, "alumno no encontrado")
             if not r["clave"]: return dict(sin_clave=True)
             clave = str(self.cuerpo().get("clave", ""))
@@ -864,7 +899,7 @@ class Manejador(BaseHTTPRequestHandler):
             self.acierto(ip)
             return dict(pase=pase_alumno(con, r))
         if len(p) == 3 and p[0] == "alumnos" and p[2] == "clave" and m == "POST":      # crearla (la primera vez) o cambiarla
-            r = con.execute("SELECT * FROM alumnos WHERE id = ? AND archivado = 0", (p[1],)).fetchone()
+            r = con.execute("SELECT * FROM alumnos WHERE id = ? AND archivado = 0 AND pendiente = 0", (p[1],)).fetchone()
             if not r: raise Error(404, "alumno no encontrado")
             if r["clave"] and not self.pase_ok(con, r): raise Error(403, "Para cambiar la clave hay que entrar con la de ahora")
             nueva = clave_valida(self.cuerpo().get("nueva"))
@@ -985,6 +1020,32 @@ class Manejador(BaseHTTPRequestHandler):
         if not row["clave"]: return True
         return hmac.compare_digest(self.headers.get("X-Alumno") or "", pase_alumno(con, row))
 
+    def registro(self, con, d):
+        """Solicitud de un alumno nuevo desde el simulador: usuario, correo del centro, nombre, apellidos y contrasena.
+        Queda pendiente (sin pase: no guarda nada) hasta que el profesor la aprueba en el panel."""
+        ip = ("registro", self.client_address[0])
+        with CERROJO_FALLOS:                                     # 10 solicitudes por hora y equipo
+            n, desde = FALLOS.get(ip, (0, time.time()))
+            if time.time() - desde > 3600: n, desde = 0, time.time()
+            if n >= 10: raise Error(429, "Demasiadas solicitudes desde este equipo. Espera un rato.")
+            FALLOS[ip] = (n + 1, desde)
+        nombre = texto_valido(d.get("usuario"), "tu usuario", 2, 60); norm = normalizar(nombre)
+        correo = correo_valido(d.get("correo")); nombre_real = texto_valido(d.get("nombre"), "tu nombre")
+        apellidos = texto_valido(d.get("apellidos"), "tus apellidos"); clave = clave_valida(d.get("clave"))
+        with con:
+            if con.execute("SELECT COUNT(*) FROM alumnos WHERE pendiente = 1 AND archivado = 0").fetchone()[0] >= MAX_PENDIENTES:
+                raise Error(429, "Hay demasiadas solicitudes sin revisar: avisa al profesor")
+            if con.execute("SELECT 1 FROM alumnos WHERE nombre_norm = ? AND archivado = 0", (norm,)).fetchone():
+                raise Error(409, "Ese usuario ya existe: elige otro")
+            if con.execute("SELECT 1 FROM alumnos WHERE correo = ? AND archivado = 0", (correo,)).fetchone():
+                raise Error(409, "Ya hay una cuenta con ese correo")
+            aid = str(uuid.uuid4())
+            con.execute("INSERT INTO alumnos (id, nombre, nombre_norm, creado, clave, correo, nombre_real, apellidos, pendiente) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)", (aid, nombre, norm, ahora(), hash_pin(clave), correo, nombre_real, apellidos))
+            registrar(con, "registro", "%s (%s, %s) desde %s" % (nombre, correo, aid, self.address_string()))
+        CAMBIOS["desde_copia"] += 1
+        return dict(ok=True, pendiente=True, mensaje="Solicitud enviada. Cuando el profesor la apruebe, podrás entrar con tu usuario y tu contraseña.")
+
     def alta(self, con, d, profesor=False):
         nombre = re.sub(r"\s+", " ", str(d.get("nombre", ""))).strip()
         clave = clave_valida(d.get("clave")) if (d.get("clave") or not profesor) else None
@@ -1005,7 +1066,7 @@ class Manejador(BaseHTTPRequestHandler):
 
     def api_profesor(self, m, p, q, con):
         if p == ["salir"] and m == "POST":
-            SESIONES.pop((self.headers.get("Authorization") or "").removeprefix("Bearer ").strip(), None)
+            SESIONES.pop(token_de(self.headers.get("Authorization")), None)
             return dict(ok=True)
         if p == ["alumnos"] and m == "GET":
             rows = con.execute("SELECT * FROM alumnos ORDER BY archivado, nombre_norm").fetchall()
@@ -1035,6 +1096,18 @@ class Manejador(BaseHTTPRequestHandler):
                     con.execute("UPDATE alumnos SET clave = ? WHERE id = ?", (hash_pin(clave_valida(c)) if c else None, aid))
                     registrar(con, "clave por el profesor", "%s (%s): %s" % (r["nombre"], aid, "nueva" if c else "quitada"))
                 return alumno_dict(con, con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone(), privado=True)
+            if p[2:] == ["aprobar"] and m == "POST":           # registro: el profesor acepta al alumno nuevo
+                with con:
+                    con.execute("UPDATE alumnos SET pendiente = 0 WHERE id = ?", (aid,))
+                    registrar(con, "aprobar registro", "%s (%s, %s)" % (r["nombre"], r["correo"], aid))
+                CAMBIOS["desde_copia"] += 1
+                return alumno_dict(con, con.execute("SELECT * FROM alumnos WHERE id = ?", (aid,)).fetchone(), privado=True)
+            if p[2:] == ["rechazar"] and m == "POST":          # registro: no es de la clase (solo las solicitudes pendientes)
+                if not r["pendiente"]: raise Error(409, "Solo se rechazan las solicitudes pendientes; a un alumno se le archiva")
+                with con:
+                    con.execute("DELETE FROM alumnos WHERE id = ?", (aid,))
+                    registrar(con, "rechazar registro", "%s (%s, %s)" % (r["nombre"], r["correo"], aid))
+                return dict(ok=True)
             if p[2:] == ["archivar"] and m == "POST":
                 with con:
                     con.execute("UPDATE alumnos SET archivado = 1, archivado_en = ? WHERE id = ?", (ahora(), aid))

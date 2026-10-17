@@ -11,7 +11,7 @@ SUPUESTO: cuerda y perfil del ala, quiebro y angulo del poliedro, cola, bateria 
 con ~60 W), helice de 9", reparto de masas y que no lleva alerones (timon y profundidad, como un velero de vuelo libre).
 
 Solo lo usan analisis/vlm_e1.py (con ENTRENADOR=GRAJO) y scripts/modelo_aero_grajo.py, que escribe
-simulador/aviones/GRAJO.js:  python scripts/modelo_aero_grajo.py
+datos/vehiculos/GRAJO.js:  python scripts/modelo_aero_grajo.py
 
 Ejes del proyecto (los de vlm_e1.py): X a lo largo del fuselaje (0 = punta del morro, positivo hacia la cola), Y a la
 derecha, Z arriba. Unidades: mm y grados.

@@ -2,7 +2,7 @@
 # Despliega UxS Trainer en un servidor Ubuntu (o Debian) del aula: deja en marcha, como servicios de systemd que
 # arrancan solos con el ordenador y se reinician si fallan,
 #   - uxs-aula: el servidor del aula (aula/servidor_aula.py, puerto 8080): perfiles, vuelos, panel del profesor y salas;
-#   - uxs-web:  el simulador web (carpeta simulador, puerto 80): los alumnos lo abren con http://IP-del-servidor.
+#   - uxs-web:  el simulador web (carpeta simulador_web y los datos de datos/, puerto 80): los alumnos lo abren con http://IP-del-servidor.
 # Antes descarga las zonas de detalle (DESCARGAR_ZONAS.sh) y, si aun no hay PIN del profesor, lo pide aqui (el
 # servicio no tiene consola). Los servicios corren con el usuario que lanza el script (no como root) y la base de datos
 # se queda en aula/datos, como en Windows. Abre los puertos en el cortafuegos si ufw esta activo.
@@ -44,7 +44,7 @@ fi
 
 PY="$(command -v python3 || true)"
 if [ -z "$PY" ]; then echo "Falta Python 3: sudo apt install python3"; exit 1; fi
-if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then echo "Hace falta Python 3.9 o posterior"; exit 1; fi
+if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)'; then echo "Hace falta Python 3.8 o posterior"; exit 1; fi
 
 # 1. zonas de detalle
 if [ "$ZONAS" = 1 ]; then bash ./DESCARGAR_ZONAS.sh || echo "Sigo sin las zonas de detalle (el simulador funciona igual, con menos detalle)."; fi
@@ -84,7 +84,7 @@ FIN
 # el aula hace una copia de la base de datos al cerrar (con Ctrl+C): SIGINT en vez de SIGTERM para que la haga
 unidad uxs-aula "UxS Trainer - servidor del aula (puerto $PUERTO_AULA)" "$PY $DIR_REPO/aula/servidor_aula.py --puerto $PUERTO_AULA" "KillSignal=SIGINT"
 # la web en el puerto 80 sin ser root: solo el permiso de abrir puertos bajos
-unidad uxs-web "UxS Trainer - simulador web (puerto $PUERTO_WEB)" "$PY -m http.server $PUERTO_WEB --bind 0.0.0.0 --directory $DIR_REPO/simulador" "AmbientCapabilities=CAP_NET_BIND_SERVICE"
+unidad uxs-web "UxS Trainer - simulador web (puerto $PUERTO_WEB)" "$PY $DIR_REPO/simulador_web/servidor_web.py $PUERTO_WEB" "AmbientCapabilities=CAP_NET_BIND_SERVICE"
 corre $SUDO systemctl daemon-reload
 corre $SUDO systemctl enable uxs-aula.service uxs-web.service
 corre $SUDO systemctl restart uxs-aula.service uxs-web.service

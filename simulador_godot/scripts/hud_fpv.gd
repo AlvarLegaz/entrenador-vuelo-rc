@@ -1,6 +1,6 @@
 class_name HudFPV
 extends Control
-## OSD de Betaflight del dron FPV (#fpv de simulador/simulador.html): lo que se ve en las gafas, en letra de ancho fijo
+## OSD de Betaflight del dron FPV (#fpv de simulador_web/simulador.html): lo que se ve en las gafas, en letra de ancho fijo
 ## blanca con borde negro. Arriba el modo (ANGL / HOR / ACRO), el tiempo armado y el gas; en el centro la mira (solo con
 ## la camara FPV); a los lados la altura y la velocidad; abajo la bateria (total y por celda), ARMED / DISARMED y la
 ## corriente con los mAh gastados; y los avisos (bateria baja, aterriza ya, desarma para terminar). p es la escena principal.

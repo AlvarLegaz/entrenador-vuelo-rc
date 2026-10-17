@@ -1,7 +1,7 @@
 class_name ModeloFPV
 extends RefCounted
 ## Dron FPV de 5 pulgadas con controlador tipo Betaflight: traduccion LITERAL de la clase ModeloFPV de
-## simulador/aviones/FPV.js (mismos datos, mismas formulas, mismo orden). pruebas/prueba_fpv.gd la compara con trazas
+## datos/vehiculos/FPV.js (mismos datos, mismas formulas, mismo orden). simulador_godot/Tests/prueba_fpv.gd la compara con trazas
 ## de la del navegador. Si se cambia algo aqui, hay que cambiarlo igual alli (y al reves).
 ## Sin GPS ni retencion de posicion ni de altura: el gas (av.gases, 0-1) va directo a los motores. Modos de Betaflight
 ## (modo): ANGLE (la palanca derecha pide inclinacion, hasta 55 grados, y al soltarla se nivela), HORIZON (ANGLE cerca

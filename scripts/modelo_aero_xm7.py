@@ -1,4 +1,4 @@
-"""Exporta el modelo de vuelo del Cernicalo XM-7 al simulador (simulador/aviones/XM7.js). Es un UAV tactico de diseno
+"""Exporta el modelo de vuelo del Cernicalo XM-7 al simulador (datos/vehiculos/XM7.js). Es un UAV tactico de diseno
 propio (scripts/parametros_xm7.py, todo SUPUESTO razonado con los de su clase), sin piezas impresas.
 
     python scripts/modelo_aero_xm7.py
@@ -11,8 +11,8 @@ Lo que hace, como modelo_aero_g1.py para el Poli-1:
     28" con un motor de 28 CV; el "combustible" es la energia en el eje de 45 l de gasolina
   - el tren triciclo (ruedas, amortiguadores, rodadura, frenos y rueda de morro dirigible) para la fisica en pista
   - el modelo 3D (barquilla, ala, vigas, cola en H, timones, motor, helice, torreta EO/IR, tren y antenas)
-y escribe simulador/aviones/XM7.js con la clase ModeloG1 (scripts/clase_g1.js: alerones, profundidad y timon, de 4
-canales como en una emisora) y lo anade a simulador/aviones/indice.js.
+y escribe datos/vehiculos/XM7.js con la clase ModeloG1 (scripts/clase_g1.js: alerones, profundidad y timon, de 4
+canales como en una emisora) y lo anade a datos/vehiculos/indice.js.
 
 Ejes cuerpo estandar (x adelante, y derecha, z abajo); coeficientes por radian. La malla y el tren van en metros, en
 ejes cuerpo con origen en el CG.
@@ -27,7 +27,7 @@ from avion import ID, P   # noqa: E402
 assert ID == "XM7"
 import vlm_e1 as V        # noqa: E402
 
-DIR_SIM = os.path.join(AQUI, "..", "simulador")
+DIR_DATOS = os.path.join(AQUI, "..", "datos")                 # datos comunes de los simuladores
 V_CRUCERO = 32.0          # m/s (115 km/h): ~1,35 veces la perdida
 
 # =====================================================================
@@ -377,7 +377,7 @@ modelo = dict(
     colores=dict(fuselaje=0x7c8288, ala=0x7c8288, estab=0x7c8288, moviles=0x6d7378),
     origen="Diseño propio de UxS Trainer (scripts/parametros_xm7.py): no es un avión real",
 )
-DIR_AV = os.path.join(DIR_SIM, "aviones"); NL = chr(10)
+DIR_AV = os.path.join(DIR_DATOS, "vehiculos"); NL = chr(10)
 clase = open(os.path.join(AQUI, "clase_g1.js"), encoding="utf-8").read().rstrip()
 clase = clase.replace("class ModeloG1 extends", "window.ModeloG1 = window.ModeloG1 || class ModeloG1 extends", 1)
 with open(os.path.join(DIR_AV, ID + ".js"), "w", encoding="utf-8") as fj:

@@ -1,5 +1,5 @@
 class_name Bateria
-## Bateria de los vehiculos electricos: Bateria de simulador/js/bateria.js, el mismo calculo (para que los dos
+## Bateria de los vehiculos electricos: Bateria de simulador_web/js/bateria.js, el mismo calculo (para que los dos
 ## simuladores vuelen igual). Celdas en serie con su curva de tension en vacio segun la carga, LiPo (FPV y aviones) o
 ## Li-ion (drones comerciales); resistencia interna que hace caer la tension con la corriente (mas con frio); capacidad
 ## algo menor con frio; un pequeno desequilibrio entre celdas que crece al vaciarse; y la temperatura del pack, que sube
