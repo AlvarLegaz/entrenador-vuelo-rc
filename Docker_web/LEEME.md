@@ -75,13 +75,18 @@ Todas desde `Docker_web/`. Sin estar en el grupo `docker`, anteponed `sudo`.
 | Parar o arrancar | `docker compose down` / `docker compose up -d` |
 | Cambiar el PIN | En el panel del profesor, o `docker compose exec -it aula python aula/servidor_aula.py --datos /datos --cambiar-pin` |
 | Copia de la base de datos | `docker compose cp aula:/datos/aula.db ./aula_copia.db` (además, el aula hace sus copias en `/datos/copias`) |
-| Pasar el aula de `DESPLEGAR_UBUNTU.sh` a Docker | `docker compose cp ../aula/datos/. aula:/datos/`, luego `docker compose restart aula` |
 | Otros puertos | `PUERTO_HTTP`, `PUERTO_HTTPS` y `PUERTO_AULA` en `.env` |
 
 `UXS_PIN_PROFESOR` solo vale la primera vez, con la base de datos vacía. Después manda el que se ponga en el panel.
 
-Las dos formas de desplegar no pueden ir a la vez en los mismos puertos. Antes de Docker, parad los servicios:
+## Venir de la instalación de siempre
 
-```bash
-sudo systemctl disable --now uxs-web uxs-aula
-```
+Si en el servidor estaba el aula con `DESPLEGAR_UBUNTU.sh` (servicios `uxs-aula` y `uxs-web`, en los mismos puertos),
+`PREPARAR.sh` lo hace solo:
+
+- para y quita esos servicios;
+- trae a Docker los datos de `aula/datos`: alumnos, vuelos, el PIN, el certificado, copias y registros (allí quedan
+  como copia);
+- no pregunta el PIN, porque ya viene en esos datos.
+
+Si el aula de Docker ya tiene datos, no los toca.

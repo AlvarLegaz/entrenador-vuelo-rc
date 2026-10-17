@@ -7,6 +7,7 @@
 #
 # Se prepara con ./PREPARAR.sh (escribe .env, baja las zonas de detalle y arranca). A mano, desde esta carpeta:
 #   docker compose up -d --build
+name: uxs-trainer                                   # nombre fijo: volumenes uxs-trainer_aula_datos y uxs-trainer_certificados
 services:
   aula:
     build:

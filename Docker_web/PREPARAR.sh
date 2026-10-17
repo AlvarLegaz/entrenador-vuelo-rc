@@ -2,8 +2,10 @@
 # Prepara y arranca UxS Trainer en Docker (nginx con HTTPS + servidor del aula) en un servidor Ubuntu:
 #   1. instala Docker y Docker Compose si faltan (paquetes de Ubuntu: docker.io, docker-compose-v2, docker-buildx)
 #   2. escribe .env (IP o nombre del servidor y PIN inicial del profesor) si no existe
-#   3. baja las zonas de detalle (../DESCARGAR_ZONAS.sh, unos 330 MB, solo la primera vez)
-#   4. construye las imagenes y arranca (docker compose up -d --build) y comprueba que responde
+#   3. si estaba la instalacion de siempre (DESPLEGAR_UBUNTU.sh: servicios uxs-aula y uxs-web), la para y trae a Docker
+#      los datos del aula (aula/datos: base de datos con el PIN, copias y registros), si el aula de Docker aun no tiene
+#   4. baja las zonas de detalle (../DESCARGAR_ZONAS.sh, unos 330 MB, solo la primera vez)
+#   5. construye las imagenes y arranca (docker compose up -d --build) y comprueba que responde
 #
 #   ./PREPARAR.sh                 pregunta lo que falte
 #   UXS_HOST=192.168.1.20 UXS_PIN_PROFESOR=123456 ./PREPARAR.sh      sin preguntas
@@ -22,8 +24,10 @@ if ! tiene_docker; then
   $SUDO apt-get install -y -q docker.io docker-compose-v2 docker-buildx
   $SUDO systemctl enable --now docker
 fi
-DC="docker compose"; docker info >/dev/null 2>&1 || DC="$SUDO docker compose"   # sin estar en el grupo docker: con sudo
+D="docker"; docker info >/dev/null 2>&1 || D="$SUDO docker"     # sin estar en el grupo docker: con sudo
+DC="$D compose"
 $DC version
+AULA_ANTES="$(cd .. && pwd)/aula/datos"              # los datos de la instalacion de siempre (SERVIDOR_AULA, DESPLEGAR_UBUNTU.sh)
 
 echo "== 2. Configuracion (.env)"
 if [ ! -f .env ]; then
@@ -31,12 +35,16 @@ if [ ! -f .env ]; then
   H="${UXS_HOST:-}"
   if [ -z "$H" ]; then read -r -p "IP o nombre de este servidor (va en el certificado) [${IP:-localhost}]: " H; H="${H:-${IP:-localhost}}"; fi
   P="${UXS_PIN_PROFESOR:-}"
-  while ! echo "$P" | grep -Eq '^[0-9]{4,12}$'; do
+  if [ -z "$P" ] && [ -f "$AULA_ANTES/aula.db" ]; then
+    echo "Hay un aula anterior en aula/datos: se traen sus datos y su PIN (no hace falta otro)"; P="-"
+  fi
+  while [ "$P" != "-" ] && ! echo "$P" | grep -Eq '^[0-9]{4,12}$'; do
     read -r -s -p "PIN del profesor (4 a 12 cifras): " P; echo
     read -r -s -p "Repitelo: " P2; echo
     [ "$P" = "$P2" ] || { echo "  No coinciden."; P=""; continue; }
     echo "$P" | grep -Eq '^[0-9]{4,12}$' || echo "  Tiene que ser de 4 a 12 cifras."
   done
+  [ "$P" = "-" ] && P=""
   umask 077
   cat > .env <<EOF
 # Configuracion de Docker_web (la escribio PREPARAR.sh). No va en git.
@@ -56,17 +64,29 @@ else
 fi
 set -a; . ./.env; set +a
 
-echo "== 3. Zonas de detalle"
+echo "== 3. Instalacion de siempre (DESPLEGAR_UBUNTU.sh)"
+if systemctl list-unit-files uxs-aula.service uxs-web.service 2>/dev/null | grep -q "^uxs-"; then
+  echo "Estan los servicios uxs-aula y uxs-web (en los mismos puertos): se paran y se quitan (los datos se quedan)"
+  ../DESPLEGAR_UBUNTU.sh --quitar
+fi
+$DC build -q
+$DC create >/dev/null 2>&1 || true                   # crea los volumenes (sin arrancar)
+if [ -f "$AULA_ANTES/aula.db" ]; then
+  $D run --rm --user root -v uxs-trainer_aula_datos:/datos -v "$AULA_ANTES":/antes:ro uxs-trainer/aula sh -c     'if [ -f /datos/aula.db ]; then echo "el aula de Docker ya tiene sus datos: no se tocan"; else cp -a /antes/. /datos/ && chown -R 1000:1000 /datos && echo "datos del aula traidos de aula/datos (alli quedan como copia)"; fi'
+fi
+
+echo "== 4. Zonas de detalle"
 mkdir -p ../datos/escenarios/zonas
 if [ "$SIN_ZONAS" = 1 ]; then echo "sin zonas (--sin-zonas)"; else ../DESCARGAR_ZONAS.sh; fi
 
-echo "== 4. Construir y arrancar"
+echo "== 5. Construir y arrancar"
 $DC up -d --build
 echo "Esperando al aula ..."
 for i in $(seq 1 30); do
   c=$(curl -sk -o /dev/null -w "%{http_code}" "https://127.0.0.1:${PUERTO_HTTPS}/api/estado" || true)
   [ "$c" = 200 ] && break; sleep 2
 done
+if [ "$c" != 200 ]; then echo "ERROR: el aula no responde. Lo ultimo que dijo:"; $DC logs --tail 20 aula; exit 1; fi
 $DC ps
 for u in "https://127.0.0.1:${PUERTO_HTTPS}/simulador.html" "https://127.0.0.1:${PUERTO_HTTPS}/datos/escenarios.js" \
          "https://127.0.0.1:${PUERTO_HTTPS}/api/estado" "https://127.0.0.1:${PUERTO_HTTPS}/profesor.html" "http://127.0.0.1:${PUERTO_AULA}/api/estado"; do
